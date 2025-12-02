@@ -862,7 +862,7 @@ fun AppNavHost(navController: NavHostController) {
                         jobTarget = selectedPosition,
                         jobCategory = selectedCategory.takeIf { it.isNotBlank() },
                         jobSubCategory = selectedPosition,
-                        questionCount = 5
+                        questionCount = null
                     )
                     val result = aiInterviewRepository.createSession(request)
                     result.onSuccess { data ->

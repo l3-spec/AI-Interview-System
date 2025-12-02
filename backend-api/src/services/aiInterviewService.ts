@@ -86,23 +86,20 @@ class AIInterviewService {
 
     const normalizedJobId =
       typeof jobId === 'string' && jobId.trim().length > 0 ? jobId.trim() : undefined;
+    const totalDurationTargetMinutes = 15;
+    const minutesPerQuestion = 2.5;
     const normalizedJobCategory =
       typeof jobCategory === 'string' && jobCategory.trim().length > 0 ? jobCategory.trim() : undefined;
     const normalizedJobSubCategory =
       typeof jobSubCategory === 'string' && jobSubCategory.trim().length > 0 ? jobSubCategory.trim() : undefined;
-
-    const minutesPerQuestion = 3;
-    const maxQuestionsByDuration = Math.max(1, Math.floor(30 / minutesPerQuestion));
+    const maxQuestionsByDuration = Math.max(1, Math.round(totalDurationTargetMinutes / minutesPerQuestion));
 
     const requestedCount =
       typeof questionCount === 'number' && Number.isFinite(questionCount)
         ? Math.round(questionCount)
         : undefined;
 
-    const baseFallbackCount = (() => {
-      const derived = Math.round((jobTarget?.length || 6) * 0.8);
-      return Math.min(20, Math.max(4, derived));
-    })();
+    const baseFallbackCount = Math.max(4, maxQuestionsByDuration);
 
     let normalizedQuestionCount = requestedCount ?? baseFallbackCount;
     normalizedQuestionCount = Math.max(1, Math.min(normalizedQuestionCount, 20));
@@ -114,7 +111,7 @@ class AIInterviewService {
     }
     normalizedQuestionCount = cappedByDuration;
     if (!requestedCount) {
-      console.log(`根据岗位特征自动设定问题数量为 ${normalizedQuestionCount}`);
+      console.log(`根据15分钟面试时长目标自动设定问题数量为 ${normalizedQuestionCount}`);
     }
 
     try {
@@ -293,7 +290,10 @@ class AIInterviewService {
         jobCategory: normalizedJobCategory,
         jobSubCategory: normalizedJobSubCategory,
         personaInstruction,
-        estimatedDurationMinutes: Math.min(30, normalizedQuestionCount * minutesPerQuestion),
+        estimatedDurationMinutes: Math.min(
+          totalDurationTargetMinutes,
+          Math.max(8, Math.round(normalizedQuestionCount * minutesPerQuestion))
+        ),
       });
 
       const generatedQuestions = generationResult.questions;
@@ -302,7 +302,10 @@ class AIInterviewService {
       }
 
       const totalQuestions = generatedQuestions.length;
-      const estimatedDurationMinutes = Math.min(30, Math.max(5, totalQuestions * minutesPerQuestion));
+      const estimatedDurationMinutes = Math.min(
+        totalDurationTargetMinutes,
+        Math.max(8, Math.round(totalQuestions * minutesPerQuestion))
+      );
 
       console.log(
         `成功生成 ${totalQuestions} 个问题（请求${normalizedQuestionCount}个），预估时长 ${estimatedDurationMinutes} 分钟`

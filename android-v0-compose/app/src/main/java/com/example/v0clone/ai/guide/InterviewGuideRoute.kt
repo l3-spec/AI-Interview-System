@@ -176,7 +176,7 @@ fun InterviewGuideRoute(
                 jobTarget = position,
                 jobCategory = category.takeIf { it.isNotBlank() },
                 jobSubCategory = position,
-                questionCount = 5
+                questionCount = null
             )
             val result = repository.createSession(request)
             result.onSuccess { payload ->

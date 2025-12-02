@@ -793,46 +793,72 @@ private fun ConversationPanel(
     isDigitalHumanSpeaking: Boolean,
     connectionState: ConnectionState
 ) {
-    val lastUserMessage = conversation.lastOrNull { it.role == ConversationRole.USER }?.text
-    val lastDigitalHumanMessage = conversation.lastOrNull { it.role == ConversationRole.DIGITAL_HUMAN }?.text
-
-    val userDisplay = when {
-        partialTranscript.isNotBlank() -> partialTranscript
-        !lastUserMessage.isNullOrBlank() -> lastUserMessage
-        isRecording -> "正在聆听，请开始说话…"
-        else -> "点击“开始答题”与数字人沟通"
-    }
-
-    val digitalDisplay = when {
-        !latestDigitalHumanText.isNullOrBlank() -> latestDigitalHumanText
-        !lastDigitalHumanMessage.isNullOrBlank() -> lastDigitalHumanMessage
-        connectionState != ConnectionState.CONNECTED -> "语音服务连接中…"
-        isDigitalHumanSpeaking -> "数字人正在回答…"
-        else -> "等待你的回答"
+    // Determine what to show in the subtitle area
+    val (roleLabel, contentText, activeColor) = when {
+        // 1. User is speaking (High Priority)
+        isRecording -> {
+            val text = if (partialTranscript.isNotBlank()) partialTranscript else "..."
+            Triple("我", text, Color(0xFFEC7C38))
+        }
+        // 2. Digital Human is speaking
+        isDigitalHumanSpeaking -> {
+            val text = if (!latestDigitalHumanText.isNullOrBlank()) latestDigitalHumanText else "..."
+            Triple("面试官", text, Color(0xFF43C1C9))
+        }
+        // 3. Fallback to last message
+        else -> {
+            val lastMsg = conversation.lastOrNull()
+            if (lastMsg != null) {
+                val isUser = lastMsg.role == ConversationRole.USER
+                Triple(
+                    if (isUser) "我" else "面试官",
+                    lastMsg.text,
+                    if (isUser) Color(0xFFEC7C38) else Color(0xFF43C1C9)
+                )
+            } else {
+                // 4. Initial state
+                Triple("", "点击“开始答题”与数字人沟通", Color.Gray)
+            }
+        }
     }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(Color.Black.copy(alpha = 0.18f))
+            .background(Color.Black.copy(alpha = 0.4f)) // Slightly darker for better readability
             .padding(horizontal = 16.dp, vertical = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.Center
     ) {
-        ConversationBubble(
-            label = "",
-            text = digitalDisplay,
-            isActive = isDigitalHumanSpeaking,
-            indicatorColor = Color(0xFF43C1C9)
-        )
+        if (roleLabel.isNotBlank()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(bottom = 6.dp)
+            ) {
+                // Only show indicator if actively speaking/recording
+                if (isRecording || isDigitalHumanSpeaking) {
+                    AnimatedRecordingIndicator(
+                        modifier = Modifier.size(10.dp),
+                        isSpeaking = true,
+                        activeColor = activeColor
+                    )
+                }
+                Text(
+                    text = roleLabel,
+                    color = activeColor, // Use the active color for the label too
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
 
-        Divider(color = Color.White.copy(alpha = 0.08f))
-
-        ConversationBubble(
-            label = "我",
-            text = userDisplay,
-            isActive = isRecording,
-            indicatorColor = Color(0xFFEC7C38)
+        Text(
+            text = contentText,
+            color = Color.White,
+            fontSize = 16.sp,
+            lineHeight = 22.sp,
+            fontWeight = FontWeight.Medium
         )
     }
 }
