@@ -65,6 +65,14 @@ import {
   deleteQuestion,
   reorderQuestions,
 } from '../controllers/assessmentAdminController';
+import {
+  listUserPostsAdmin,
+  getUserPostAdmin,
+  updateUserPostStatusAdmin,
+  updateUserPostHotAdmin,
+  deleteUserPostAdmin,
+  updateUserPostAdmin,
+} from '../controllers/postAdminController';
 
 const router = express.Router();
 
@@ -513,6 +521,62 @@ router.delete('/assessments/:id', [
   param('id').isUUID().withMessage('测评ID格式错误'),
   validate
 ], deleteAssessment);
+
+// 用户帖子管理
+router.get('/posts', [
+  requirePermission('content:read'),
+  query('page').optional().isInt({ min: 1 }).withMessage('页码必须大于0'),
+  query('pageSize').optional().isInt({ min: 1, max: 100 }).withMessage('每页数量必须在1-100之间'),
+  query('status').optional().isString().withMessage('状态参数无效'),
+  query('isHot').optional().isBoolean().withMessage('热门参数必须是布尔值'),
+  validate
+], listUserPostsAdmin);
+
+router.get('/posts/:postId', [
+  requirePermission('content:read'),
+  param('postId').isUUID().withMessage('帖子ID格式错误'),
+  validate
+], getUserPostAdmin);
+
+router.patch('/posts/:postId/status', [
+  requirePermission('content:write'),
+  param('postId').isUUID().withMessage('帖子ID格式错误'),
+  body('status').optional().isString().custom((value) => {
+    const allowed = ['PUBLISHED', 'DRAFT', 'HIDDEN', 'DELETED', 'PENDING', 'REJECTED', 'BANNED'];
+    if (!allowed.includes(String(value).toUpperCase())) {
+      throw new Error('状态值无效');
+    }
+    return true;
+  }),
+  body('banUser').optional().isBoolean().withMessage('banUser 必须是布尔值'),
+  validate
+], updateUserPostStatusAdmin);
+
+router.patch('/posts/:postId/hot', [
+  requirePermission('content:write'),
+  param('postId').isUUID().withMessage('帖子ID格式错误'),
+  body('isHot').isBoolean().withMessage('热门参数必须是布尔值'),
+  validate
+], updateUserPostHotAdmin);
+
+router.delete('/posts/:postId', [
+  requirePermission('content:write'),
+  param('postId').isUUID().withMessage('帖子ID格式错误'),
+  validate
+], deleteUserPostAdmin);
+
+router.put('/posts/:postId', [
+  requirePermission('content:write'),
+  param('postId').isUUID().withMessage('帖子ID格式错误'),
+  body('title').optional().isLength({ min: 1, max: 200 }).withMessage('标题长度1-200'),
+  body('content').optional().isLength({ min: 1 }).withMessage('内容不能为空'),
+  body('coverImage').optional().isString().withMessage('封面地址需为字符串'),
+  body('images').optional(),
+  body('tags').optional(),
+  body('status').optional().isIn(['PUBLISHED', 'DRAFT', 'HIDDEN', 'DELETED', 'PENDING', 'REJECTED', 'BANNED']).withMessage('状态值无效'),
+  body('isHot').optional().isBoolean().withMessage('热门参数必须是布尔值'),
+  validate
+], updateUserPostAdmin);
 
 // 题目管理
 router.post('/assessments/:assessmentId/questions', [

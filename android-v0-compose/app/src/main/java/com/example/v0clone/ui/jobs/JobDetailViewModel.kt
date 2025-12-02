@@ -190,7 +190,8 @@ class JobDetailViewModel(
                     _events.emit(
                         JobDetailEvent.RequireInterview(
                             position = job?.title ?: "",
-                            category = job?.category ?: ""
+                            category = job?.category ?: "",
+                            jobId = job?.id
                         )
                     )
                 }
@@ -248,7 +249,7 @@ class JobDetailViewModel(
     }
 
     sealed class JobDetailEvent {
-        data class RequireInterview(val position: String, val category: String) : JobDetailEvent()
+        data class RequireInterview(val position: String, val category: String, val jobId: String?) : JobDetailEvent()
     }
 
     companion object {

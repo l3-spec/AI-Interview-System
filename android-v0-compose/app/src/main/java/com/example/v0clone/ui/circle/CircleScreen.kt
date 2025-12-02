@@ -175,10 +175,15 @@ private fun CircleScreen(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 140.dp)
+            contentPadding = PaddingValues(
+                start = 12.dp,
+                end = 12.dp,
+                bottom = 140.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item(key = "header-spacer") {
-                Spacer(modifier = Modifier.height(headerPlaceholderHeight + 12.dp))
+                Spacer(modifier = Modifier.height(headerPlaceholderHeight))
             }
 
             when {
@@ -198,7 +203,7 @@ private fun CircleScreen(
                             onRetry = onRetry,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 24.dp, vertical = 48.dp)
+                                .padding(vertical = 48.dp)
                         )
                     }
                 }
@@ -210,7 +215,7 @@ private fun CircleScreen(
                                 onRetry = onRetry,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                                    .padding(vertical = 8.dp)
                             )
                         }
                     }
@@ -227,7 +232,7 @@ private fun CircleScreen(
                             CircleEmptyState(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 24.dp, vertical = 48.dp)
+                                    .padding(vertical = 48.dp)
                             )
                         }
                     }
@@ -590,7 +595,9 @@ private fun CircleHeader(
             .onGloballyPositioned { onHeightChanged(it.size.height) }
             .background(
                 brush = Brush.verticalGradient(
-                    colors = listOf(HeroGradientStart, HeroGradientEnd)
+                    colors = listOf(HeroGradientStart, HeroGradientEnd),
+                    startY = 0f,
+                    endY = 520f
                 )
             )
             .padding(bottom = bottomPadding)
@@ -678,9 +685,7 @@ private fun CircleMasonryGrid(
     }
 
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Column(

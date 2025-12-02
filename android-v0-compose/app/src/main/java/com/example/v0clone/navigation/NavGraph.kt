@@ -294,16 +294,26 @@ fun AppNavHost(navController: NavHostController) {
                             launchSingleTop = true
                         }
                     },
-                    onStartInterview = { position, category ->
+                    onStartInterview = { position, category, jobId ->
                         val safePosition = position.ifBlank { "AI 面试岗位" }
                         val safeCategory = category.ifBlank { "通用岗位" }
                         if (hasSeenGuide) {
                             navController.currentBackStackEntry?.savedStateHandle?.set("selected_position", safePosition)
                             navController.currentBackStackEntry?.savedStateHandle?.set("selected_category", safeCategory)
+                            if (jobId.isNullOrBlank()) {
+                                navController.currentBackStackEntry?.savedStateHandle?.remove<String>("selected_job_id")
+                            } else {
+                                navController.currentBackStackEntry?.savedStateHandle?.set("selected_job_id", jobId)
+                            }
                             navController.navigate(Routes.DIGITAL_INTERVIEW) {
                                 launchSingleTop = true
                             }
                         } else {
+                            if (jobId.isNullOrBlank()) {
+                                navController.currentBackStackEntry?.savedStateHandle?.remove<String>("selected_job_id")
+                            } else {
+                                navController.currentBackStackEntry?.savedStateHandle?.set("selected_job_id", jobId)
+                            }
                             navController.navigate(
                                 "${Routes.GUIDE}/${URLEncoder.encode(safePosition, "UTF-8")}/${URLEncoder.encode(safeCategory, "UTF-8")}"
                             ) {
@@ -337,6 +347,7 @@ fun AppNavHost(navController: NavHostController) {
                         val categoryName = category.name.ifBlank { "互联网/AI" }
                         backStackEntry.savedStateHandle.set("selected_position", position.name)
                         backStackEntry.savedStateHandle.set("selected_category", categoryName)
+                        backStackEntry.savedStateHandle.set("selected_job_id", position.id)
                         navController.navigate(Routes.DIGITAL_INTERVIEW) {
                             launchSingleTop = true
                         }
@@ -351,6 +362,7 @@ fun AppNavHost(navController: NavHostController) {
             val position = encodedPosition?.let { URLDecoder.decode(it, "UTF-8") } ?: ""
             val category = encodedCategory?.let { URLDecoder.decode(it, "UTF-8") } ?: ""
             val aiEntry = navController.previousBackStackEntry
+            val selectedJobId = aiEntry?.savedStateHandle?.get<String>("selected_job_id")
             if (token.isNullOrEmpty()) {
                 LaunchedEffect(Unit) {
                     navController.navigate(LOGIN) {
@@ -361,6 +373,7 @@ fun AppNavHost(navController: NavHostController) {
                 InterviewGuideRoute(
                     position = position,
                     category = category,
+                    jobId = selectedJobId,
                     repository = aiInterviewRepository,
                     onBack = { navController.popBackStack() },
                     onContinue = { flowState ->
@@ -820,11 +833,20 @@ fun AppNavHost(navController: NavHostController) {
                     }
                 }
             } else {
-                val selectedPosition = remember {
-                    backStackEntry.savedStateHandle.get<String>("selected_position") ?: "产品经理"
+                val sourceEntry = navController.previousBackStackEntry
+                val selectedPosition = remember(sourceEntry) {
+                    sourceEntry?.savedStateHandle?.get<String>("selected_position")
+                        ?: backStackEntry.savedStateHandle.get<String>("selected_position")
+                        ?: "产品经理"
                 }
-                val selectedCategory = remember {
-                    backStackEntry.savedStateHandle.get<String>("selected_category") ?: "互联网/AI"
+                val selectedCategory = remember(sourceEntry) {
+                    sourceEntry?.savedStateHandle?.get<String>("selected_category")
+                        ?: backStackEntry.savedStateHandle.get<String>("selected_category")
+                        ?: "互联网/AI"
+                }
+                val selectedJobId = remember(sourceEntry) {
+                    sourceEntry?.savedStateHandle?.get<String>("selected_job_id")
+                        ?: backStackEntry.savedStateHandle.get<String>("selected_job_id")
                 }
                 var isLoading by remember { mutableStateOf(true) }
                 var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -836,6 +858,7 @@ fun AppNavHost(navController: NavHostController) {
                     errorMessage = null
                     sessionData = null
                     val request = CreateAiInterviewSessionRequest(
+                        jobId = selectedJobId,
                         jobTarget = selectedPosition,
                         jobCategory = selectedCategory.takeIf { it.isNotBlank() },
                         jobSubCategory = selectedPosition,

@@ -48,6 +48,7 @@ fun InterviewSessionRoute(
       val result = repository.sessionDetail(sessionId)
       result.onSuccess { detail ->
         flowState = AiInterviewFlowState(
+          jobId = detail.jobId,
           sessionId = detail.sessionId,
           jobTarget = detail.jobTarget,
           totalQuestions = detail.totalQuestions,

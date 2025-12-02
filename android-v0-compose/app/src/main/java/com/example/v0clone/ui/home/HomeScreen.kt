@@ -126,7 +126,12 @@ fun HomeScreen(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 120.dp)
+            contentPadding = PaddingValues(
+                start = 12.dp,
+                end = 12.dp,
+                bottom = 120.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item(key = "header-spacer") {
                 Spacer(modifier = Modifier.height(headerPlaceholderHeight))
@@ -157,7 +162,7 @@ fun HomeScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
+                            .padding(vertical = 16.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         CircularProgressIndicator(
@@ -174,7 +179,7 @@ fun HomeScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
+                            .padding(vertical = 16.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -222,7 +227,9 @@ private fun HomeHeader(
             .onGloballyPositioned { onHeightChanged(it.size.height) }
             .background(
                 brush = Brush.verticalGradient(
-                    colors = listOf(GradientTop, GradientBottom)
+                    colors = listOf(GradientTop, GradientBottom),
+                    startY = 0f,
+                    endY = 520f
                 )
             )
             .padding(bottom = bottomPadding)
@@ -288,9 +295,7 @@ private fun BannerCarousel(
     onBannerClick: (BannerData) -> Unit
 ) {
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 12.dp)
+        modifier = Modifier.fillMaxWidth()
     ) {
         // Banner卡片
         Box(
@@ -402,7 +407,7 @@ private fun BannerCarousel(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         cards.forEach { card ->
@@ -449,9 +454,7 @@ private fun MasonryGrid(
     }
 
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Column(

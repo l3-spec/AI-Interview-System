@@ -77,7 +77,7 @@ fun JobDetailRoute(
   onBack: () -> Unit,
   onJobClick: (String) -> Unit = {},
   onCompanyClick: (String) -> Unit = {},
-  onStartInterview: (position: String, category: String) -> Unit = { _, _ -> }
+  onStartInterview: (position: String, category: String, jobId: String?) -> Unit = { _, _, _ -> }
 ) {
   val viewModel: JobDetailViewModel = viewModel(
     factory = JobDetailViewModel.provideFactory(repository, aiInterviewRepository, jobId)
@@ -92,7 +92,7 @@ fun JobDetailRoute(
           val currentJob = viewModel.uiState.value.job
           val position = event.position.ifBlank { currentJob?.title ?: "" }
           val category = event.category.ifBlank { currentJob?.category ?: "" }
-          onStartInterview(position, category)
+          onStartInterview(position, category, event.jobId)
         }
       }
     }

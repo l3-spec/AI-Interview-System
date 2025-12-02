@@ -777,4 +777,94 @@ export const assessmentApi = {
   },
 };
 
+export interface UserPostAdmin {
+  id: string;
+  title: string;
+  content: string;
+  coverImage?: string | null;
+  images?: string[] | null;
+  tags: string[];
+  status: string;
+  isHot: boolean;
+  viewCount: number;
+  likeCount: number;
+  commentCount: number;
+  shareCount: number;
+  createdAt: string;
+  updatedAt: string;
+  user?: {
+    id: string;
+    name?: string | null;
+    email?: string | null;
+    isActive: boolean;
+  } | null;
+}
+
+const mapUserPostAdmin = (post: any): UserPostAdmin => ({
+  id: post.id,
+  title: post.title,
+  content: post.content,
+  coverImage: post.coverImage ?? null,
+  images: parseJsonArray<string>(post.images),
+  tags: parseJsonArray<string>(post.tags),
+  status: post.status,
+  isHot: Boolean(post.isHot),
+  viewCount: Number(post.viewCount ?? 0),
+  likeCount: Number(post.likeCount ?? 0),
+  commentCount: Number(post.commentCount ?? 0),
+  shareCount: Number(post.shareCount ?? 0),
+  createdAt: post.createdAt,
+  updatedAt: post.updatedAt,
+  user: post.user
+    ? {
+        id: post.user.id,
+        name: post.user.name,
+        email: post.user.email,
+        isActive: Boolean(post.user.isActive),
+      }
+    : null,
+});
+
+export const postAdminApi = {
+  getPosts: async (params?: Record<string, any>): Promise<ApiResponse<PaginationResult<UserPostAdmin>>> => {
+    const response = (await apiClient.get('/admin/posts', { params })) as ApiResponse<any>;
+    if (response?.success && response.data?.list) {
+      response.data = {
+        ...response.data,
+        list: (response.data.list as any[]).map(mapUserPostAdmin),
+      };
+    }
+    return response as ApiResponse<PaginationResult<UserPostAdmin>>;
+  },
+  getPostDetail: async (postId: string): Promise<ApiResponse<UserPostAdmin>> => {
+    const response = (await apiClient.get(`/admin/posts/${postId}`)) as ApiResponse<any>;
+    if (response?.success && response.data) {
+      response.data = mapUserPostAdmin(response.data);
+    }
+    return response as ApiResponse<UserPostAdmin>;
+  },
+  updateStatus: async (
+    postId: string,
+    payload: { status?: string; banUser?: boolean }
+  ): Promise<ApiResponse> => {
+    return await apiClient.patch(`/admin/posts/${postId}/status`, payload);
+  },
+  updateHot: async (postId: string, isHot: boolean): Promise<ApiResponse> => {
+    return await apiClient.patch(`/admin/posts/${postId}/hot`, { isHot });
+  },
+  deletePost: async (postId: string): Promise<ApiResponse> => {
+    return await apiClient.delete(`/admin/posts/${postId}`);
+  },
+  updatePost: async (
+    postId: string,
+    payload: Partial<UserPostAdmin> & { tags?: string[]; images?: string[] }
+  ): Promise<ApiResponse<UserPostAdmin>> => {
+    const response = (await apiClient.put(`/admin/posts/${postId}`, payload)) as ApiResponse<any>;
+    if (response?.success && response.data) {
+      response.data = mapUserPostAdmin(response.data);
+    }
+    return response as ApiResponse<UserPostAdmin>;
+  },
+};
+
 export default apiClient;

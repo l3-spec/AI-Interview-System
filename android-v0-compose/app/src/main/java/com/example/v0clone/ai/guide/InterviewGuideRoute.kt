@@ -98,7 +98,8 @@ private val GUIDE_STEPS = listOf(
         ),
         actionText = "开始答题",
         focusTarget = FocusTarget.Card,
-        pointerHeight = 62.dp
+        pointerHeight = 62.dp,
+        backgroundRes = R.drawable.guide_step_1
     ),
     GuideStep(
         instructions = listOf("你有 30 秒时间思考答案"),
@@ -109,7 +110,8 @@ private val GUIDE_STEPS = listOf(
         ),
         actionText = "开始答题",
         focusTarget = FocusTarget.Card,
-        pointerHeight = 62.dp
+        pointerHeight = 62.dp,
+        backgroundRes = R.drawable.guide_step_2
     ),
     GuideStep(
         instructions = listOf("如果你已准备好", "可点击下方按钮立即开始"),
@@ -121,7 +123,8 @@ private val GUIDE_STEPS = listOf(
         actionText = "开始答题",
         focusTarget = FocusTarget.Button,
         pointerHeight = 74.dp,
-        bodyBottomPadding = 210.dp
+        bodyBottomPadding = 210.dp,
+        backgroundRes = R.drawable.guide_step_3
     ),
     GuideStep(
         instructions = listOf("你将有 3 分钟的作答时间，", "请清晰阐述表达你的观点"),
@@ -131,7 +134,8 @@ private val GUIDE_STEPS = listOf(
         ),
         actionText = "结束答题",
         focusTarget = FocusTarget.Card,
-        pointerHeight = 62.dp
+        pointerHeight = 62.dp,
+        backgroundRes = R.drawable.guide_step_4
     ),
     GuideStep(
         instructions = listOf("如果你已完成回答", "可点击下方按钮结束本题"),
@@ -142,17 +146,8 @@ private val GUIDE_STEPS = listOf(
         actionText = "结束答题",
         focusTarget = FocusTarget.Button,
         pointerHeight = 74.dp,
-        bodyBottomPadding = 210.dp
-    ),
-    GuideStep(
-        instructions = listOf("我们已完成所有引导", "点击下方按钮，让我们开始面试吧"),
-        card = null,
-        actionText = "开始面试",
-        focusTarget = FocusTarget.Button,
-        showAcknowledge = false,
-        showHandPointer = true,
-        pointerHeight = 60.dp,
-        bodyBottomPadding = 190.dp
+        bodyBottomPadding = 210.dp,
+        backgroundRes = R.drawable.guide_step_5
     )
 )
 
@@ -160,6 +155,7 @@ private val GUIDE_STEPS = listOf(
 fun InterviewGuideRoute(
     position: String,
     category: String,
+    jobId: String? = null,
     repository: AiInterviewRepository,
     onBack: () -> Unit,
     onContinue: (AiInterviewFlowState) -> Unit
@@ -176,6 +172,7 @@ fun InterviewGuideRoute(
         errorMessage = null
         scope.launch {
             val request = CreateAiInterviewSessionRequest(
+                jobId = jobId,
                 jobTarget = position,
                 jobCategory = category.takeIf { it.isNotBlank() },
                 jobSubCategory = position,
@@ -184,6 +181,7 @@ fun InterviewGuideRoute(
             val result = repository.createSession(request)
             result.onSuccess { payload ->
                 val state = AiInterviewFlowState(
+                    jobId = payload.jobId ?: jobId,
                     sessionId = payload.sessionId,
                     jobTarget = position,
                     totalQuestions = payload.totalQuestions,

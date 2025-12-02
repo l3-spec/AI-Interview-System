@@ -14,6 +14,8 @@ import PermissionManagement from './pages/PermissionManagement';
 import BillingManagement from './pages/BillingManagement';
 import Settings from './pages/Settings';
 import HomeContentManagement from './pages/HomeContentManagement';
+import AssessmentManagement from './pages/AssessmentManagement';
+import PostManagement from './pages/PostManagement';
 import './App.css';
 
 const App: React.FC = () => {
@@ -33,6 +35,8 @@ const App: React.FC = () => {
             <Route path="jobs" element={<JobManagement />} />
             <Route path="job-dictionary" element={<JobDictionaryManagement />} />
             <Route path="home-content" element={<HomeContentManagement />} />
+            <Route path="posts" element={<PostManagement />} />
+            <Route path="assessments" element={<AssessmentManagement />} />
             <Route path="admins" element={<AdminManagement />} />
             <Route path="logs" element={<SystemLogs />} />
             <Route path="permissions" element={<PermissionManagement />} />

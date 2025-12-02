@@ -5,6 +5,7 @@ import com.google.gson.annotations.SerializedName
 import kotlinx.parcelize.Parcelize
 
 data class CreateAiInterviewSessionRequest(
+  val jobId: String? = null,
   val jobTarget: String,
   val jobCategory: String? = null,
   val jobSubCategory: String? = null,
@@ -14,6 +15,7 @@ data class CreateAiInterviewSessionRequest(
 )
 
 data class AiInterviewCreateSessionData(
+  val jobId: String? = null,
   val sessionId: String,
   val questions: List<AiInterviewQuestion>,
   val totalQuestions: Int,
@@ -47,7 +49,8 @@ data class AiInterviewSessionDetail(
   val totalQuestions: Int,
   val questions: List<AiInterviewQuestion>,
   val createdAt: String?,
-  val startedAt: String?
+  val startedAt: String?,
+  val jobId: String? = null
 ) : Parcelable
 
 data class NextAiInterviewQuestionResponse(
@@ -84,7 +87,8 @@ data class AiInterviewFlowState(
   val jobCategory: String? = null,
   val jobSubCategory: String? = null,
   val plannedDurationMinutes: Int? = null,
-  val prompt: String? = null
+  val prompt: String? = null,
+  val jobId: String? = null
 ) : Parcelable
 
 data class AiInterviewSessionsResponse(
@@ -108,7 +112,8 @@ data class AiInterviewSessionSummary(
   val reportUrl: String? = null,
   @SerializedName("reportReady")
   val reportReady: Boolean? = null,
-  val questions: List<AiInterviewSessionQuestionSummary> = emptyList()
+  val questions: List<AiInterviewSessionQuestionSummary> = emptyList(),
+  val jobId: String? = null
 )
 
 data class AiInterviewSessionQuestionSummary(

@@ -13,6 +13,7 @@ const prisma = new PrismaClient();
 
 interface CreateSessionParams {
   userId: string;
+  jobId?: string;
   jobTarget: string;
   companyTarget?: string;
   background?: string;
@@ -36,6 +37,7 @@ interface SessionQuestion {
 interface SessionData {
   sessionId: string;
   userId: string;
+  jobId?: string;
   jobTarget: string;
   jobCategory?: string;
   jobSubCategory?: string;
@@ -58,6 +60,7 @@ class AIInterviewService {
    */
   async createInterviewSession(params: CreateSessionParams): Promise<{
     success: boolean;
+    jobId?: string;
     sessionId?: string;
     message?: string;
     questions?: SessionQuestion[];
@@ -72,6 +75,7 @@ class AIInterviewService {
   }> {
     const {
       userId,
+      jobId,
       jobTarget,
       companyTarget,
       background,
@@ -80,6 +84,8 @@ class AIInterviewService {
       jobSubCategory,
     } = params;
 
+    const normalizedJobId =
+      typeof jobId === 'string' && jobId.trim().length > 0 ? jobId.trim() : undefined;
     const normalizedJobCategory =
       typeof jobCategory === 'string' && jobCategory.trim().length > 0 ? jobCategory.trim() : undefined;
     const normalizedJobSubCategory =
@@ -115,13 +121,13 @@ class AIInterviewService {
       const logCategory = normalizedJobCategory ?? '通用面试';
       const logSubCategory = normalizedJobSubCategory ?? jobTarget;
       console.log(
-        `开始创建AI面试会话: 用户${userId}, 职位${jobTarget}, 大类${logCategory}, 小类${logSubCategory}`
+        `开始创建AI面试会话: 用户${userId}, 岗位ID:${normalizedJobId ?? '无'}, 职位${jobTarget}, 大类${logCategory}, 小类${logSubCategory}`
       );
 
       const existingSession = await prisma.aIInterviewSession.findFirst({
         where: {
           userId,
-          jobTarget,
+          ...(normalizedJobId ? { jobId: normalizedJobId } : { jobTarget }),
           status: {
             in: ['PREPARING', 'IN_PROGRESS'],
           },
@@ -157,6 +163,7 @@ class AIInterviewService {
 
         return {
           success: true,
+          jobId: existingSession.jobId || normalizedJobId,
           sessionId: existingSession.id,
           message: '发现未完成的面试会话，继续为您恢复进度',
           questions: existingQuestions,
@@ -173,7 +180,7 @@ class AIInterviewService {
       const reusableSession = await prisma.aIInterviewSession.findFirst({
         where: {
           userId,
-          jobTarget,
+          ...(normalizedJobId ? { jobId: normalizedJobId } : { jobTarget }),
           jobCategory: normalizedJobCategory ?? null,
           jobSubCategory: normalizedJobSubCategory ?? null,
           status: {
@@ -208,6 +215,7 @@ class AIInterviewService {
           data: {
             id: sessionId,
             userId,
+            jobId: normalizedJobId,
             jobTarget,
             jobCategory: normalizedJobCategory,
             jobSubCategory: normalizedJobSubCategory,
@@ -255,6 +263,7 @@ class AIInterviewService {
 
         return {
           success: true,
+          jobId: normalizedJobId,
           sessionId,
           message: '已为您复用历史面试题',
           questions: sessionQuestions,
@@ -304,6 +313,7 @@ class AIInterviewService {
         data: {
           id: sessionId,
           userId,
+          jobId: normalizedJobId,
           jobTarget,
           jobCategory: normalizedJobCategory,
           jobSubCategory: normalizedJobSubCategory,
@@ -346,6 +356,7 @@ class AIInterviewService {
 
       return {
         success: true,
+        jobId: normalizedJobId,
         sessionId,
         message: '面试会话创建成功',
         questions: sessionQuestions,
@@ -440,6 +451,7 @@ class AIInterviewService {
       const sessionData: SessionData = {
         sessionId: session.id,
         userId: session.userId,
+        jobId: session.jobId || undefined,
         jobTarget: session.jobTarget,
         jobCategory: session.jobCategory || undefined,
         jobSubCategory: session.jobSubCategory || undefined,
@@ -696,6 +708,7 @@ class AIInterviewService {
       const sessionData: SessionData = {
         sessionId: unfinishedSession.id,
         userId: unfinishedSession.userId,
+        jobId: unfinishedSession.jobId || undefined,
         jobTarget: unfinishedSession.jobTarget,
         companyTarget: unfinishedSession.companyTarget || undefined,
         background: unfinishedSession.background || undefined,

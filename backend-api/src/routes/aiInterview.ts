@@ -120,6 +120,10 @@ router.post('/create-session',
       .withMessage('职位目标不能为空')
       .isLength({ min: 2, max: 100 })
       .withMessage('职位目标长度应在2-100个字符之间'),
+    body('jobId')
+      .optional()
+      .isUUID()
+      .withMessage('岗位ID格式错误'),
     body('jobCategory')
       .notEmpty()
       .withMessage('职位大类不能为空')
@@ -159,6 +163,7 @@ router.post('/create-session',
 
       const {
         jobTarget,
+        jobId,
         companyTarget,
         background,
         questionCount,
@@ -179,12 +184,13 @@ router.post('/create-session',
       const displayCategory = jobCategory ?? '通用面试';
       const displaySubCategory = jobSubCategory ?? jobTarget;
       console.log(
-        `收到AI面试会话创建请求: 用户${userId}, 职位${jobTarget}, 大类${displayCategory}, 小类${displaySubCategory}`
+        `收到AI面试会话创建请求: 用户${userId}, 岗位ID:${jobId ?? '无'}, 职位${jobTarget}, 大类${displayCategory}, 小类${displaySubCategory}`
       );
 
       // 创建面试会话
       const result = await aiInterviewService.createInterviewSession({
         userId,
+        jobId,
         jobTarget,
         companyTarget,
         background,
@@ -202,14 +208,15 @@ router.post('/create-session',
       }
 
       res.json({
-        success: true,
-        message: '面试会话创建成功',
-        data: {
-          sessionId: result.sessionId,
-          questions: result.questions,
-          totalQuestions: result.questions?.length || 0,
-          jobCategory: result.jobCategory,
-          jobSubCategory: result.jobSubCategory,
+          success: true,
+          message: '面试会话创建成功',
+          data: {
+            jobId: result.jobId,
+            sessionId: result.sessionId,
+            questions: result.questions,
+            totalQuestions: result.questions?.length || 0,
+            jobCategory: result.jobCategory,
+            jobSubCategory: result.jobSubCategory,
           prompt: result.prompt,
           plannedDuration: result.plannedDuration,
           resumed: result.resumed ?? false,

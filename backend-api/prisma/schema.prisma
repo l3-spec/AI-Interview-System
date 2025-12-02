@@ -331,6 +331,7 @@ model CompanyVerification {
 model AIInterviewSession {
   id              String    @id @default(uuid())
   userId          String    // 用户ID
+  jobId           String?   // 岗位ID（Job或字典岗位）
   jobTarget       String    // 目标职位
   jobCategory     String?   // 职位大类
   jobSubCategory  String?   // 职位小类
