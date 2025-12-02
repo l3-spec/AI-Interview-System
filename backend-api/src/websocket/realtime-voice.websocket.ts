@@ -259,7 +259,9 @@ export class RealtimeVoiceWebSocketServer {
           // 发送第一个欢迎问题
           // 构建个性化欢迎语
           const jobPositionText = jobPosition || '这个职位';
-          const welcomeText = `非常荣幸认识您，接下来让我来陪您完成面试过程。我们先聊聊：请简单介绍一下你自己，以及为什么想要应聘${jobPositionText}？`;
+          const welcomeText =
+            `非常荣幸认识您，我会陪您完成接下来的面试流程。` +
+            `我们先做个开场：请简单介绍一下您自己，并说明为什么想要应聘${jobPositionText}。`;
           console.log(`🎤 发送初始欢迎问题 - sessionId: ${sessionId}`);
           const welcomeHash = this.hashText(welcomeText);
           if (this.hasRecentWelcome(sessionId, welcomeHash)) {
