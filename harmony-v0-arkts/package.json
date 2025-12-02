@@ -1,0 +1,16 @@
+{
+  "name": "harmony-v0-arkts",
+  "version": "1.0.0",
+  "description": "This module hosts the HarmonyOS (ArkTS Stage model) port of the Android Compose AI Interview client that lives under `android-v0-compose/`. The project layout mirrors the default DevEco Studio template so it can be opened directly in the IDE and incrementally migrated page by page.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@ohos/hvigor-ohos-plugin": "^3.0.2"
+  }
+}

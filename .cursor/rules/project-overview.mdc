@@ -1,0 +1,35 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# AI Interview System - Project Overview
+
+## 🏗️ Architecture
+This is a complete AI-powered interview solution with three main components:
+
+- **Backend API**: [backend-api/](mdc:backend-api/) - Node.js + Express + TypeScript + MySQL + Prisma
+- **Admin Dashboard**: [admin-dashboard/](mdc:admin-dashboard/) - React + TypeScript + Ant Design + Vite  
+- **Android App**: [android-app/](mdc:android-app/) - Native Android application (existing)
+
+## 🎯 Core Features
+- **User Management**: Job seekers, companies, and admin users
+- **Job Management**: Company job posting and applicant management
+- **Interview System**: AI interviews, online/offline scheduling, video recording
+- **Assessment Reports**: AI-powered interview evaluation and scoring
+- **File Management**: Resume uploads, video storage, company logos
+
+## 🗄️ Database Schema
+Main entities defined in [backend-api/prisma/schema.prisma](mdc:backend-api/prisma/schema.prisma):
+- `User` - Job seekers
+- `Company` - Enterprise users  
+- `Job` - Job postings
+- `Interview` - Interview sessions
+- `InterviewReport` - AI assessment results
+- `InterviewInvitation` - Interview scheduling
+
+## 🚀 Quick Start
+Use [start-dev.sh](mdc:start-dev.sh) to launch the development environment or follow [README.md](mdc:README.md) for detailed setup instructions.
+
+## ☁️ Deployment
+Optimized for Aliyun cloud deployment - see [阿里云部署指南.md](mdc:阿里云部署指南.md) for production deployment guide.

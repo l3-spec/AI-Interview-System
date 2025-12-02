@@ -1,0 +1,14 @@
+<svg width="160" height="60" viewBox="0 0 160 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="160" height="60" rx="14" fill="white"/>
+  <g transform="translate(30 6)" fill="#E6002D">
+    <path d="M28 6C22 6 16 12 15 20C20 21 24 18 28 6Z"/>
+    <path d="M32 6C38 6 44 12 45 20C40 21 36 18 32 6Z"/>
+    <path d="M18 10C14 14 12 22 15 28C20 26 21 20 18 10Z"/>
+    <path d="M42 10C46 14 48 22 45 28C40 26 39 20 42 10Z"/>
+    <path d="M24 32C22 34 20 38 21 42C28 40 32 34 32 28C30 30 28 32 24 32Z"/>
+    <path d="M36 32C38 34 40 38 39 42C32 40 28 34 28 28C30 30 32 32 36 32Z"/>
+  </g>
+  <text x="50" y="52" fill="#E6002D" font-family="'Segoe UI', Arial, sans-serif" font-size="18" font-weight="600">
+    HUAWEI
+  </text>
+</svg>

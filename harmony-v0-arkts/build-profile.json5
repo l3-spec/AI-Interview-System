@@ -1,0 +1,28 @@
+{
+  "app": {
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "storeFile": "",
+          "storePassword": "",
+          "keyAlias": "",
+          "keyPassword": ""
+        }
+      }
+    ],
+    "buildMode": {
+      "debug": {
+        "compileOptions": {
+          "sourceMap": true
+        }
+      },
+      "release": {
+        "compileOptions": {
+          "sourceMap": false
+        }
+      }
+    }
+  }
+}

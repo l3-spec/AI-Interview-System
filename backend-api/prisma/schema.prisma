@@ -1,0 +1,774 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "darwin", "darwin-arm64"]
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// 用户表
+model User {
+  id          String    @id @default(uuid())
+  email       String    @unique
+  password    String
+  name        String
+  phone       String?
+  gender      String?   // "MALE" | "FEMALE" | "OTHER"
+  age         Int?
+  education   String?
+  experience  String?
+  skills      String?   // JSON string of skills array
+  avatar      String?
+  isActive    Boolean   @default(true)
+  isVerified  Boolean   @default(false)
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // 关联关系
+  interviews  Interview[]
+  feedbacks   Feedback[]
+  applications JobApplication[]
+  aiInterviews AIInterviewSession[]
+  digitalHumanSessions DigitalHumanSession[]
+  digitalHumanUploads DigitalHumanUpload[]
+  jobPreferences UserJobPreference[]
+  messages    UserMessage[]
+  posts       UserPost[]
+
+  @@map("users")
+}
+
+// 企业表
+model Company {
+  id          String    @id @default(uuid())
+  email       String    @unique
+  password    String
+  name        String
+  description String?   @db.Text
+  industry    String?
+  scale       String?   // "1-50" | "51-200" | "201-500" | "501-1000" | "1000+"
+  address     String?
+  website     String?
+  logo        String?
+  contact     String?
+  tagline     String?   @db.Text
+  focusArea   String?
+  themeColors String?   @db.Text // JSON array of gradient colors
+  stats       String?   @db.Text // JSON array of {label,value,accent}
+  highlights  String?   @db.Text // JSON array of strings
+  culture     String?   @db.Text // JSON array of strings
+  locations   String?   @db.Text // JSON array of strings
+  isVerified  Boolean   @default(false)
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
+  subscriptionEndDate DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // 关联关系
+  jobs        Job[]
+  interviews  Interview[]
+  verification CompanyVerification?
+  showcase    CompanyShowcase?
+
+  @@map("companies")
+}
+
+// 职位表
+model Job {
+  id          String    @id @default(uuid())
+  title       String
+  description String    @db.Text
+  requirements String   @db.Text
+  salary      String?
+  location    String?
+  responsibilities String?   @db.Text
+  level       String?        // 职位级别 (INTERN | JUNIOR | MIDDLE | SENIOR | LEAD | MANAGER)
+  skills      String?        // JSON 字符串数组
+  benefits    String?        @db.Text // 福利
+  type        String    // "FULL_TIME" | "PART_TIME" | "INTERN"
+  status      String    @default("ACTIVE") // "ACTIVE" | "CLOSED" | "DRAFT"
+  isPublished Boolean   @default(false)
+  experience  String?
+  education   String?
+  category    String?
+  isRemote    Boolean   @default(false)
+  badgeColor  String?
+  highlights  String?   @db.Text // JSON 字符串数组
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // 外键
+  dictionaryPositionId String?
+  dictionaryPosition   JobDictionaryPosition? @relation(fields: [dictionaryPositionId], references: [id], onDelete: SetNull)
+  companyId   String
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  // 关联关系
+  interviews  Interview[]
+  applications JobApplication[]
+  sections    JobSectionItem[]
+
+  @@map("jobs")
+  @@index([dictionaryPositionId], map: "idx_jobs_dictionary_position")
+}
+
+// 职位申请表
+model JobApplication {
+  id        String   @id @default(uuid())
+  status    String   @default("PENDING") // "PENDING" | "ACCEPTED" | "REJECTED"
+  message   String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 外键
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("job_applications")
+}
+
+// 职位字典一级分类
+model JobDictionaryCategory {
+  id          String                  @id @default(uuid())
+  code        String                  @unique
+  name        String
+  description String?
+  sortOrder   Int                     @default(0)
+  isActive    Boolean                 @default(true)
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+
+  positions   JobDictionaryPosition[]
+
+  @@map("job_dictionary_categories")
+}
+
+// 职位字典具体职岗
+model JobDictionaryPosition {
+  id          String                @id @default(uuid())
+  categoryId  String
+  code        String                @unique
+  name        String
+  description String?
+  sortOrder   Int                   @default(0)
+  isActive    Boolean               @default(true)
+  tags        Json?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  category    JobDictionaryCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  jobs        Job[]
+  userPreferences UserJobPreference[]
+
+  @@map("job_dictionary_positions")
+  @@index([categoryId], map: "idx_job_dictionary_positions_category")
+}
+
+model UserJobPreference {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  positionId String   @map("position_id")
+  sortOrder  Int      @default(0) @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user     User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  position JobDictionaryPosition @relation(fields: [positionId], references: [id], onDelete: Cascade)
+
+  @@map("user_job_preferences")
+  @@unique([userId, positionId], map: "uniq_user_job_preferences_user_position")
+  @@index([userId], map: "idx_user_job_preferences_user")
+}
+// 面试表
+model Interview {
+  id          String    @id @default(uuid())
+  status      String    @default("PENDING") // "PENDING" | "ONGOING" | "COMPLETED" | "CANCELLED"
+  startTime   DateTime?
+  endTime     DateTime?
+  duration    Int?      // 面试时长（分钟）
+  score       Float?    // 面试得分
+  feedback    String?   @db.Text
+  recording   String?   // 面试录像URL
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // 外键
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobId       String
+  job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  companyId   String
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  // 关联关系
+  questions   Question[]
+  feedbacks   Feedback[]
+  report      InterviewReport?
+
+  @@map("interviews")
+}
+
+// 面试问题表
+model Question {
+  id          String    @id @default(uuid())
+  content     String    @db.Text
+  type        String    // "BEHAVIOR" | "TECHNICAL" | "EXPERIENCE"
+  answer      String?   @db.Text
+  score       Float?
+  duration    Int?      // 回答时长（秒）
+  createdAt   DateTime  @default(now())
+
+  // 外键
+  interviewId String
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@map("questions")
+}
+
+// 面试反馈表
+model Feedback {
+  id          String    @id @default(uuid())
+  content     String    @db.Text
+  score       Float?
+  createdAt   DateTime  @default(now())
+
+  // 外键
+  interviewId String
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("feedbacks")
+}
+
+// 面试报告表
+model InterviewReport {
+  id          String    @id @default(uuid())
+  overallScore Float    // 总体评分
+  summary     String?   @db.Text
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // 外键
+  interviewId String    @unique
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@map("interview_reports")
+}
+
+// 管理员表
+model Admin {
+  id          String    @id @default(uuid())
+  email       String    @unique
+  password    String
+  name        String
+  role        String    @default("ADMIN") // "SUPER_ADMIN" | "ADMIN" | "MODERATOR"
+  permissions String?   // 权限列表，存储JSON字符串
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // 关联关系
+  logs        SystemLog[]
+  verificationReviews CompanyVerification[]
+
+  @@map("admins")
+}
+
+// 系统日志表
+model SystemLog {
+  id          String   @id @default(uuid())
+  action      String   // 操作类型
+  module      String   // 模块名称
+  description String   // 操作描述
+  targetId    String?  // 目标ID
+  targetType  String?  // 目标类型
+  ipAddress   String?  // IP地址
+  userAgent   String?  // 用户代理
+  result      String   @default("SUCCESS") // "SUCCESS" | "FAILED" | "WARNING"
+  errorMsg    String?  // 错误信息
+  createdAt   DateTime @default(now())
+
+  // 外键
+  adminId     String?
+  admin       Admin?   @relation(fields: [adminId], references: [id], onDelete: SetNull)
+
+  @@map("system_logs")
+}
+
+// 企业认证表
+model CompanyVerification {
+  id            String    @id @default(uuid())
+  status        String    @default("PENDING") // "PENDING" | "APPROVED" | "REJECTED"
+  businessLicense String  // 营业执照文件路径
+  legalPerson    String  // 法人代表姓名
+  registrationNumber String // 工商注册号/统一社会信用代码
+  reviewComments String?  @db.Text // 审核意见
+  reviewedAt    DateTime? // 审核时间
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // 外键
+  companyId     String    @unique
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  reviewedBy    String?
+  reviewer      Admin?    @relation(fields: [reviewedBy], references: [id], onDelete: SetNull)
+
+  @@map("company_verifications")
+}
+
+// AI面试会话表
+model AIInterviewSession {
+  id              String    @id @default(uuid())
+  userId          String    // 用户ID
+  jobTarget       String    // 目标职位
+  jobCategory     String?   // 职位大类
+  jobSubCategory  String?   // 职位小类
+  companyTarget   String?   // 目标公司
+  background      String?   // 用户背景信息
+  prompt          String?   @db.Text // 老炮面试提示词
+  status          String    @default("PREPARING") // "PREPARING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED"
+  currentQuestion Int       @default(0) // 当前问题索引
+  totalQuestions  Int       @default(0) // 总问题数
+  startedAt       DateTime? // 开始时间
+  completedAt     DateTime? // 完成时间
+  duration        Int?      // 面试时长(秒)
+  plannedDuration Int?      // 预估面试时长(分钟)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // 外键
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // 关联关系
+  questions       AIInterviewQuestion[]
+  audioFiles      AIInterviewAudio[]
+
+  @@map("ai_interview_sessions")
+}
+
+// AI面试问题表
+model AIInterviewQuestion {
+  id              String    @id @default(uuid())
+  questionIndex   Int       // 问题序号
+  questionText    String    // 问题内容
+  audioUrl        String?   // 问题语音文件URL
+  audioPath       String?   // 语音文件路径
+  answerText      String?   // 用户回答文本
+  answerVideoUrl  String?   // 用户回答视频URL
+  answerVideoPath String?   // 回答视频文件路径
+  answerDuration  Int?      // 回答时长(秒)
+  videoUrl        String?   // 题目视频URL（数字人）
+  status          String?   // PREPARING | READY | FAILED
+  createdAt       DateTime  @default(now())
+  answeredAt      DateTime? // 回答时间
+
+  // 外键
+  sessionId       String
+  session         AIInterviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("ai_interview_questions")
+}
+
+// AI面试音频文件表
+model AIInterviewAudio {
+  id            String   @id @default(uuid())
+  questionIndex Int      // 问题序号
+  fileName      String   // 文件名
+  filePath      String   // 文件路径
+  fileUrl       String?  // 文件URL
+  fileSize      Int      // 文件大小(bytes)
+  duration      Float?   // 音频时长(秒)
+  format        String   @default("mp3") // 音频格式
+  createdAt     DateTime @default(now())
+
+  // 外键
+  sessionId     String
+  session       AIInterviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("ai_interview_audio")
+}
+
+// 职位面试模板表
+model JobInterviewTemplate {
+  id             String   @id @default(uuid())
+  jobTitle       String   // 职位标题
+  category       String   // 职位分类 (如: 技术类、管理类、销售类等)
+  level          String   // 职位级别 (初级、中级、高级)
+  promptTemplate String   // AI提示词模板
+  questionCount  Int      @default(5) // 预设问题数量
+  keywords       String?  // 关键词(JSON格式存储)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("job_interview_templates")
+}
+
+// TTS服务使用记录表
+model TTSUsageRecord {
+  id          String   @id @default(uuid())
+  provider    String   // TTS服务提供商 (azure、aliyun、baidu等)
+  textLength  Int      // 转换文本长度
+  audioLength Float?   // 生成音频时长(秒)
+  cost        Float?   // 费用
+  sessionId   String?  // 关联的面试会话ID
+  status      String   @default("SUCCESS") // "SUCCESS" | "FAILED"
+  errorMsg    String?  // 错误信息
+  createdAt   DateTime @default(now())
+
+  @@map("tts_usage_records")
+}
+
+// 数字人会话表
+model DigitalHumanSession {
+  id          String   @id @default(uuid())
+  sessionId   String   @unique
+  userId      String
+  status      String   @default("ACTIVE") // "ACTIVE" | "COMPLETED" | "EXPIRED"
+  type        String   @default("audio-driven") // "audio-driven" | "video" | "text"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 外键
+  user        User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // 关联关系
+  interactions DigitalHumanInteraction[]
+
+  @@map("digital_human_sessions")
+}
+
+// 数字人交互记录表
+model DigitalHumanInteraction {
+  id        String   @id @default(uuid())
+  sessionId String
+  input     String?  // 用户输入
+  response  String   // 数字人响应
+  type      String   // "dialogue" | "listening" | "idle" | "custom"
+  audioUrl  String?  // 音频文件URL
+  videoUrl  String?  // 视频文件URL
+  duration  Int?     // 响应时长(秒)
+  createdAt DateTime @default(now())
+
+  // 外键
+  session   DigitalHumanSession @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
+
+  @@map("digital_human_interactions")
+}
+
+// 数字人文件上传表
+model DigitalHumanUpload {
+  id           String   @id @default(uuid())
+  filename     String   // 存储的文件名
+  originalName String   // 原始文件名
+  path         String   // 文件路径
+  mimetype     String   // 文件类型
+  size         Int      // 文件大小(bytes)
+  text         String?  // 关联的文本内容
+  type         String   // "custom" | "template" | "reaction"
+  userId       String
+  createdAt    DateTime @default(now())
+
+  // 外键
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("digital_human_uploads")
+}
+
+// ==================== 职业测评系统 ====================
+
+// 测评分类表
+model AssessmentCategory {
+  id          String       @id @default(uuid())
+  name        String       // 分类名称：自我评测、360度评测、职业素养评测
+  description String?      @db.Text
+  icon        String?      // 图标
+  sortOrder   Int          @default(0) @map("sort_order")
+  isActive    Boolean      @default(true) @map("is_active")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  // 关联关系
+  assessments Assessment[]
+
+  @@map("assessment_categories")
+}
+
+// 测评表
+model Assessment {
+  id                String   @id @default(uuid())
+  categoryId        String   @map("category_id")
+  title             String
+  description       String?  @db.Text
+  coverImage        String?  @map("cover_image")
+  durationMinutes   Int      @default(15) @map("duration_minutes") // 预计时长（分钟）
+  difficulty        String   @default("BEGINNER") // BEGINNER | INTERMEDIATE | ADVANCED
+  participantCount  Int      @default(0) @map("participant_count") // 参与人数
+  rating            Float    @default(0.0) // 平均评分
+  tags              String?  // JSON字符串数组，如 ["React", "Vue"]
+  status            String   @default("PUBLISHED") // DRAFT | PUBLISHED | ARCHIVED
+  isHot             Boolean  @default(false) @map("is_hot") // 是否热门
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  // 外键
+  category          AssessmentCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  // 关联关系
+  questions         AssessmentQuestion[]
+  records           UserAssessmentRecord[]
+
+  @@index([categoryId])
+  @@index([isHot])
+  @@map("assessments")
+}
+
+// 测评题目表
+model AssessmentQuestion {
+  id            String   @id @default(uuid())
+  assessmentId  String   @map("assessment_id")
+  questionText  String   @db.Text
+  questionType  String   @default("SINGLE_CHOICE") // SINGLE_CHOICE | MULTIPLE_CHOICE | TEXT
+  options       String?  @db.Text // JSON格式: [{"label": "A", "text": "选项内容", "score": 10}]
+  correctAnswer String?  @map("correct_answer")  // 正确答案（如有）
+  score         Int      @default(0) // 单题分值
+  sortOrder     Int      @map("sort_order")      @default(0)
+  createdAt     DateTime @default(now())
+
+  // 外键
+  assessment    Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@index([assessmentId])
+  @@map("assessment_questions")
+}
+
+// 用户测评记录表
+model UserAssessmentRecord {
+  id            String    @id @default(uuid())
+  userId        String   @map("user_id")
+  assessmentId  String   @map("assessment_id")
+  answers       String    @db.Text // JSON格式：[{"questionId": "xxx", "answer": ["A"], "score": 10}]
+  totalScore    Int      @map("total_score")       @default(0)
+  resultLevel   String?  @map("result_level")   // 结果等级：优秀、良好、及格、不及格
+  startedAt     DateTime  @map("started_at")  @default(now())
+  completedAt   DateTime? @map("completed_at")
+  duration      Int?      // 实际用时（秒）
+
+  // 外键
+  assessment    Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([assessmentId])
+  @@map("user_assessment_records")
+}
+
+// ==================== 消息中心 ====================
+
+model UserMessage {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  title          String
+  summary        String?  @db.Text
+  type           String   @default("SYSTEM")
+  status         String   @default("UNREAD")
+  unreadCount    Int      @default(0) @map("unread_count")
+  lastActivityAt DateTime @default(now()) @map("last_activity_at")
+  lastReadAt     DateTime? @map("last_read_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entries UserMessageEntry[]
+
+  @@index([userId])
+  @@index([type])
+  @@index([status])
+  @@index([lastActivityAt])
+  @@map("user_messages")
+}
+
+model UserMessageEntry {
+  id         String   @id @default(uuid())
+  messageId  String   @map("message_id")
+  senderType String   @default("SYSTEM") // USER | SYSTEM | SUPPORT
+  senderId   String?  @map("sender_id")
+  senderName String?  @map("sender_name")
+  content    String   @db.Text
+  metadata   String?  @db.Text // JSON字符串
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  message UserMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@map("user_message_entries")
+}
+
+// ==================== 内容社区系统 ====================
+
+// 用户帖子表（热门分享）
+model UserPost {
+  id          String   @id @default(uuid())
+  userId      String?  @map("user_id") // 可能为空（匿名帖子）
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  title       String
+  content     String   @db.Text
+  coverImage  String?  @map("cover_image")
+  images      String?  // JSON字符串数组
+  tags        String?  // JSON字符串数组
+  viewCount   Int      @default(0) @map("view_count")
+  likeCount   Int      @default(0) @map("like_count")
+  commentCount Int     @default(0) @map("comment_count")
+  shareCount  Int      @default(0) @map("share_count")
+  isHot       Boolean  @default(false) @map("is_hot") // 是否热门
+  status      String   @default("PUBLISHED") // DRAFT | PUBLISHED | HIDDEN | DELETED
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([isHot])
+  @@index([status])
+  @@index([createdAt])
+  @@index([userId])
+  @@map("user_posts")
+}
+
+// 大咖分享表
+model ExpertPost {
+  id            String   @id @default(uuid())
+  expertName    String   @map("expert_name") // 大咖姓名
+  expertTitle   String   @map("expert_title") // 大咖职位
+  expertCompany String   @map("expert_company") // 大咖公司
+  expertAvatar  String?  @map("expert_avatar")  // 大咖头像
+  title         String
+  content       String   @db.Text
+  coverImage    String?  @map("cover_image")
+  tags          String?  // JSON字符串数组
+  viewCount     Int      @default(0) @map("view_count")
+  likeCount     Int      @default(0) @map("like_count")
+  commentCount  Int      @default(0) @map("comment_count")
+  isTop         Boolean  @default(false) @map("is_top") // 是否置顶
+  publishedAt   DateTime? @map("published_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@index([isTop])
+  @@index([publishedAt])
+  @@map("expert_posts")
+}
+
+// 首页轮播图
+model HomeBanner {
+  id          String   @id @default(uuid())
+  title       String
+  subtitle    String
+  description String?  @db.Text
+  imageUrl    String   @map("image_url")
+  linkType    String?  @map("link_type")
+  linkId      String?  @map("link_id")
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([isActive])
+  @@index([sortOrder])
+  @@map("home_banners")
+}
+
+// 首页精选内容卡片
+model HomeFeaturedArticle {
+  id         String   @id @default(uuid())
+  title      String
+  summary    String?  @db.Text
+  imageUrl   String   @map("image_url")
+  author     String?
+  tags       String?  @db.Text
+  viewCount  Int      @default(0) @map("view_count")
+  category   String?
+  status     String   @default("PUBLISHED")
+  sortOrder  Int      @default(0) @map("sort_order")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([isActive])
+  @@map("home_featured_articles")
+}
+
+// 热门职岗推广表
+model PromotedJob {
+  id              String    @id @default(uuid())
+  jobId           String    @map("job_id") // 关联 Job 表
+  promotionType   String    @default("NORMAL") @map("promotion_type") // NORMAL | PREMIUM | FEATURED
+  displayFrequency Int      @default(10) @map("display_frequency") // 每N个内容插入一次
+  priority        Int       @default(0) // 优先级
+  startDate       DateTime  @map("start_date")
+  endDate         DateTime  @map("end_date")
+  isActive        Boolean   @default(true) @map("is_active")
+  impressionCount Int       @default(0) @map("impression_count") // 曝光次数
+  clickCount      Int       @default(0) @map("click_count") // 点击次数
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([jobId])
+  @@index([isActive])
+  @@index([startDate, endDate])
+  @@map("promoted_jobs")
+}
+
+// ==================== 企业展示与职岗分区 ====================
+
+model CompanyShowcase {
+  id          String   @id @default(uuid())
+  companyId   String   @unique @map("company_id")
+  role        String?
+  hiringCount Int      @default(0) @map("hiring_count")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("company_showcases")
+}
+
+model JobSection {
+  id        String   @id @default(uuid())
+  title     String
+  subtitle  String?  @db.Text
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  items     JobSectionItem[]
+
+  @@map("job_sections")
+}
+
+model JobSectionItem {
+  id        String   @id @default(uuid())
+  sectionId String   @map("section_id")
+  jobId     String   @map("job_id")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  section   JobSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  job       Job        @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([sectionId, jobId])
+  @@index([jobId])
+  @@map("job_section_items")
+}

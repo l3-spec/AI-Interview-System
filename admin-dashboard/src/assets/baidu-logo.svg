@@ -1,0 +1,15 @@
+<svg width="160" height="60" viewBox="0 0 160 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="160" height="60" rx="14" fill="white"/>
+  <g transform="translate(30 10)">
+    <circle cx="16" cy="10" r="6" fill="#2764FF"/>
+    <circle cx="32" cy="8" r="6" fill="#2764FF"/>
+    <circle cx="48" cy="10" r="6" fill="#2764FF"/>
+    <circle cx="40" cy="26" r="14" fill="#2764FF"/>
+    <circle cx="24" cy="26" r="14" fill="#2764FF"/>
+    <path d="M30 26C30 22 34 20 38 20C42 20 46 22 46 26C46 30 42 34 38 34C34 34 30 30 30 26Z" fill="white"/>
+    <path d="M20 20H28V34H20V20Z" fill="white"/>
+  </g>
+  <text x="72" y="52" fill="#F01224" font-family="'Segoe UI', Arial, sans-serif" font-size="18" font-weight="700">
+    Baidu
+  </text>
+</svg>

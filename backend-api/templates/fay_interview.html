@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI面试 - Fay数字人</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        .avatar-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 40px;
+        }
+
+        .avatar-container {
+            width: 400px;
+            height: 300px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 15px;
+            position: relative;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        .avatar-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 15px;
+        }
+
+        .avatar-placeholder {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            border-radius: 15px;
+            font-size: 18px;
+            text-align: center;
+        }
+
+        .character-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .character-btn {
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 25px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .character-btn.active,
+        .character-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .control-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 30px;
+        }
+
+        .status-bar {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-family: monospace;
+            font-size: 14px;
+        }
+
+        .chat-area {
+            flex: 1;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            overflow-y: auto;
+            max-height: 400px;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            padding: 10px 15px;
+            border-radius: 15px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+
+        .message.interviewer {
+            background: rgba(102, 126, 234, 0.8);
+            margin-left: 0;
+            margin-right: auto;
+        }
+
+        .message.user {
+            background: rgba(118, 75, 162, 0.8);
+            margin-left: auto;
+            margin-right: 0;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            border: none;
+            border-radius: 25px;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn.recording {
+            background: linear-gradient(45deg, #ff4757, #ff3838);
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .audio-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .volume-indicator {
+            width: 100px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .volume-level {
+            height: 100%;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.1s ease;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 3px solid white;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="avatar-section">
+            <h2>🎭 AI面试官</h2>
+            
+            <div class="character-selector">
+                <button class="character-btn active" data-character="tech_interviewer">技术面试官</button>
+                <button class="character-btn" data-character="hr_interviewer">HR面试官</button>
+                <button class="character-btn" data-character="pressure_interviewer">压力面试官</button>
+            </div>
+
+            <div class="avatar-container">
+                <div class="avatar-placeholder" id="avatar-display">
+                    🎯 Fay数字人准备就绪<br>
+                    <small>点击"开始面试"激活</small>
+                </div>
+            </div>
+
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <div>正在连接Fay数字人...</div>
+            </div>
+
+            <div class="audio-controls">
+                <button class="btn" id="startBtn">开始面试</button>
+                <button class="btn" id="stopBtn" disabled>结束面试</button>
+                <button class="btn" id="micBtn" disabled>🎤 开始录音</button>
+                <div class="volume-indicator">
+                    <div class="volume-level" id="volumeLevel"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="control-panel">
+            <div class="status-bar" id="statusBar">
+                🎯 状态：准备就绪 | 🔗 连接：未连接 | 👤 角色：技术面试官
+            </div>
+
+            <div class="chat-area" id="chatArea">
+                <div class="message interviewer">
+                    欢迎来到AI面试系统！请选择面试官并开始面试。
+                </div>
+            </div>
+
+            <div class="controls">
+                <button class="btn" id="testBtn">测试连接</button>
+                <button class="btn" id="clearBtn">清空对话</button>
+                <span id="connectionStatus">离线</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class FayInterviewManager {
+            constructor() {
+                this.websocket = null;
+                this.isConnected = false;
+                this.isInterviewing = false;
+                this.currentCharacter = 'tech_interviewer';
+                this.mediaRecorder = null;
+                this.audioStream = null;
+                
+                this.init();
+            }
+
+            init() {
+                this.bindEvents();
+                this.updateStatus('准备就绪');
+            }
+
+            bindEvents() {
+                // 角色选择
+                document.querySelectorAll('.character-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        this.selectCharacter(e.target.dataset.character);
+                    });
+                });
+
+                // 控制按钮
+                document.getElementById('startBtn').addEventListener('click', () => this.startInterview());
+                document.getElementById('stopBtn').addEventListener('click', () => this.stopInterview());
+                document.getElementById('micBtn').addEventListener('click', () => this.toggleRecording());
+                document.getElementById('testBtn').addEventListener('click', () => this.testConnection());
+                document.getElementById('clearBtn').addEventListener('click', () => this.clearChat());
+            }
+
+            selectCharacter(character) {
+                this.currentCharacter = character;
+                
+                // 更新UI
+                document.querySelectorAll('.character-btn').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                document.querySelector(`[data-character="${character}"]`).classList.add('active');
+                
+                this.updateStatus(`已选择${this.getCharacterName(character)}`);
+            }
+
+            getCharacterName(character) {
+                const names = {
+                    'tech_interviewer': '技术面试官',
+                    'hr_interviewer': 'HR面试官',
+                    'pressure_interviewer': '压力面试官'
+                };
+                return names[character] || '未知角色';
+            }
+
+            async startInterview() {
+                if (this.isInterviewing) return;
+
+                this.showLoading(true);
+                this.updateStatus('正在连接Fay数字人...');
+
+                try {
+                    // 连接WebSocket
+                    await this.connectWebSocket();
+                    
+                    // 发送开始面试命令
+                    this.sendMessage({
+                        type: 'start_interview',
+                        character: this.currentCharacter,
+                        questions: [
+                            "请简单自我介绍一下。",
+                            "你为什么想加入我们公司？",
+                            "你最大的职业成就是什么？",
+                            "你有什么问题要问我的吗？"
+                        ]
+                    });
+
+                    this.isInterviewing = true;
+                    this.updateControls();
+                    this.addMessage('面试开始，让我们开始吧！', 'interviewer');
+
+                } catch (error) {
+                    console.error('启动面试失败:', error);
+                    this.updateStatus('连接失败，使用模拟模式');
+                    this.startSimulatedInterview();
+                }
+
+                this.showLoading(false);
+            }
+
+            async connectWebSocket() {
+                return new Promise((resolve, reject) => {
+                    try {
+                        this.websocket = new WebSocket('ws://localhost:5001');
+                        
+                        this.websocket.onopen = () => {
+                            this.isConnected = true;
+                            this.updateConnectionStatus('已连接');
+                            resolve();
+                        };
+
+                        this.websocket.onmessage = (event) => {
+                            this.handleMessage(JSON.parse(event.data));
+                        };
+
+                        this.websocket.onclose = () => {
+                            this.isConnected = false;
+                            this.updateConnectionStatus('已断开');
+                        };
+
+                        this.websocket.onerror = (error) => {
+                            reject(error);
+                        };
+                    } catch (error) {
+                        reject(error);
+                    }
+                });
+            }
+
+            startSimulatedInterview() {
+                // 模拟面试流程
+                this.isInterviewing = true;
+                this.updateControls();
+                
+                const questions = [
+                    "请简单自我介绍一下。",
+                    "你为什么想加入我们公司？",
+                    "你最大的职业成就是什么？",
+                    "你有什么问题要问我的吗？"
+                ];
+
+                questions.forEach((question, index) => {
+                    setTimeout(() => {
+                        this.addMessage(question, 'interviewer');
+                    }, (index + 1) * 3000);
+                });
+            }
+
+            handleMessage(data) {
+                console.log('收到消息:', data);
+                
+                switch (data.type) {
+                    case 'ask_question':
+                        this.addMessage(data.question, 'interviewer');
+                        break;
+                    case 'response_feedback':
+                        this.addMessage(data.text, 'interviewer');
+                        break;
+                    case 'interview_finished':
+                        this.addMessage(data.message, 'interviewer');
+                        this.isInterviewing = false;
+                        this.updateControls();
+                        break;
+                }
+            }
+
+            stopInterview() {
+                this.isInterviewing = false;
+                this.updateControls();
+                this.addMessage('面试已结束，感谢您的参与！', 'interviewer');
+                
+                if (this.websocket && this.isConnected) {
+                    this.websocket.close();
+                    this.isConnected = false;
+                }
+            }
+
+            async toggleRecording() {
+                const micBtn = document.getElementById('micBtn');
+                
+                if (micBtn.textContent.includes('开始录音')) {
+                    await this.startRecording();
+                } else {
+                    await this.stopRecording();
+                }
+            }
+
+            async startRecording() {
+                try {
+                    this.audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    this.mediaRecorder = new MediaRecorder(this.audioStream);
+                    
+                    this.mediaRecorder.ondataavailable = (event) => {
+                        // 这里可以发送音频到后端
+                        console.log('录音数据:', event.data);
+                    };
+
+                    this.mediaRecorder.start();
+                    document.getElementById('micBtn').textContent = '⏹️ 停止录音';
+                    document.getElementById('micBtn').classList.add('recording');
+                    
+                    this.updateVolumeIndicator();
+                } catch (error) {
+                    console.error('无法访问麦克风:', error);
+                    alert('无法访问麦克风，请检查权限设置');
+                }
+            }
+
+            async stopRecording() {
+                if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+                    this.mediaRecorder.stop();
+                    this.audioStream.getTracks().forEach(track => track.stop());
+                }
+                
+                document.getElementById('micBtn').textContent = '🎤 开始录音';
+                document.getElementById('micBtn').classList.remove('recording');
+                document.getElementById('volumeLevel').style.width = '0%';
+            }
+
+            updateVolumeIndicator() {
+                if (!this.audioStream) return;
+                
+                const audioContext = new AudioContext();
+                const analyser = audioContext.createAnalyser();
+                const microphone = audioContext.createMediaStreamSource(this.audioStream);
+                microphone.connect(analyser);
+                
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                
+                const updateVolume = () => {
+                    if (!this.mediaRecorder || this.mediaRecorder.state === 'inactive') return;
+                    
+                    analyser.getByteFrequencyData(dataArray);
+                    const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                    const volume = Math.min(average * 2, 100);
+                    
+                    document.getElementById('volumeLevel').style.width = `${volume}%`;
+                    requestAnimationFrame(updateVolume);
+                };
+                
+                updateVolume();
+            }
+
+            sendMessage(data) {
+                if (this.websocket && this.isConnected) {
+                    this.websocket.send(JSON.stringify(data));
+                }
+            }
+
+            testConnection() {
+                this.updateStatus('测试连接中...');
+                
+                // 测试WebSocket连接
+                const testSocket = new WebSocket('ws://localhost:5001');
+                
+                testSocket.onopen = () => {
+                    this.updateStatus('连接成功！');
+                    this.updateConnectionStatus('已连接');
+                    testSocket.close();
+                };
+
+                testSocket.onerror = () => {
+                    this.updateStatus('连接失败，使用模拟模式');
+                    this.updateConnectionStatus('模拟模式');
+                };
+            }
+
+            clearChat() {
+                document.getElementById('chatArea').innerHTML = '';
+            }
+
+            addMessage(text, type) {
+                const chatArea = document.getElementById('chatArea');
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${type}`;
+                messageDiv.textContent = text;
+                
+                chatArea.appendChild(messageDiv);
+                chatArea.scrollTop = chatArea.scrollHeight;
+            }
+
+            updateStatus(status) {
+                const statusBar = document.getElementById('statusBar');
+                statusBar.textContent = `🎯 状态：${status} | 🔗 连接：${this.isConnected ? '已连接' : '未连接'} | 👤 角色：${this.getCharacterName(this.currentCharacter)}`;
+            }
+
+            updateConnectionStatus(status) {
+                document.getElementById('connectionStatus').textContent = status;
+            }
+
+            updateControls() {
+                const startBtn = document.getElementById('startBtn');
+                const stopBtn = document.getElementById('stopBtn');
+                const micBtn = document.getElementById('micBtn');
+
+                startBtn.disabled = this.isInterviewing;
+                stopBtn.disabled = !this.isInterviewing;
+                micBtn.disabled = !this.isInterviewing;
+            }
+
+            showLoading(show) {
+                const loading = document.getElementById('loading');
+                loading.className = show ? 'loading show' : 'loading';
+            }
+        }
+
+        // 初始化
+        const interviewManager = new FayInterviewManager();
+    </script>
+</body>
+</html>

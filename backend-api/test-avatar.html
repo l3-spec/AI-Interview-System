@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数字人测试页面</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 500px;
+            width: 100%;
+        }
+        
+        .title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 20px;
+        }
+        
+        .avatar-display {
+            width: 300px;
+            height: 400px;
+            margin: 0 auto 20px;
+            border: 3px solid #e9ecef;
+            border-radius: 15px;
+            background: #f8f9fa;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .robot-avatar {
+            width: 200px;
+            height: 200px;
+            position: relative;
+        }
+        
+        /* 机器人头部 */
+        .robot-avatar .head {
+            width: 120px;
+            height: 120px;
+            background: #FFE4B5;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 3px solid #DEB887;
+            transition: transform 0.1s ease;
+        }
+        
+        /* 机器人天线 */
+        .robot-avatar .antenna {
+            width: 4px;
+            height: 25px;
+            background: #4A90E2;
+            position: absolute;
+            top: 15%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border-radius: 2px;
+        }
+        
+        .robot-avatar .antenna::after {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: #4A90E2;
+            border-radius: 50%;
+            position: absolute;
+            top: -4px;
+            left: -2px;
+        }
+        
+        /* 机器人眼睛 */
+        .robot-avatar .eye {
+            width: 20px;
+            height: 20px;
+            background: #000;
+            border-radius: 50%;
+            position: absolute;
+            top: 45%;
+        }
+        
+        .robot-avatar .eye.left {
+            left: 35%;
+        }
+        
+        .robot-avatar .eye.right {
+            right: 35%;
+        }
+        
+        .robot-avatar .eye::after {
+            content: '';
+            width: 6px;
+            height: 6px;
+            background: white;
+            border-radius: 50%;
+            position: absolute;
+            top: 2px;
+            left: 2px;
+        }
+        
+        /* 机器人鼻子 */
+        .robot-avatar .nose {
+            width: 6px;
+            height: 6px;
+            background: #000;
+            border-radius: 50%;
+            position: absolute;
+            top: 55%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        
+        /* 机器人嘴巴 */
+        .robot-avatar .mouth {
+            width: 30px;
+            height: 15px;
+            border: 2px solid #000;
+            border-top: none;
+            border-radius: 0 0 30px 30px;
+            position: absolute;
+            top: 65%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            transition: all 0.1s ease;
+        }
+        
+        /* 机器人腮红 */
+        .robot-avatar .blush {
+            width: 15px;
+            height: 15px;
+            background: rgba(255, 182, 193, 0.6);
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+        }
+        
+        .robot-avatar .blush.left {
+            left: 25%;
+        }
+        
+        .robot-avatar .blush.right {
+            right: 25%;
+        }
+        
+        /* 机器人耳朵 */
+        .robot-avatar .ear {
+            width: 20px;
+            height: 20px;
+            background: #FFE4B5;
+            border-radius: 50%;
+            position: absolute;
+            top: 40%;
+            border: 2px solid #DEB887;
+        }
+        
+        .robot-avatar .ear.left {
+            left: 15%;
+        }
+        
+        .robot-avatar .ear.right {
+            right: 15%;
+        }
+        
+        /* 机器人身体 */
+        .robot-avatar .body {
+            width: 100px;
+            height: 80px;
+            background: #FFE4B5;
+            border-radius: 20px;
+            position: absolute;
+            top: 70%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 3px solid #DEB887;
+        }
+        
+        /* 机器人胸部面板 */
+        .robot-avatar .chest-panel {
+            width: 60px;
+            height: 40px;
+            background: #87CEEB;
+            border-radius: 10px;
+            position: absolute;
+            top: 75%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 2px solid #5F9EA0;
+            display: flex;
+            align-items: center;
+            justify-content: space-around;
+            padding: 5px;
+        }
+        
+        .robot-avatar .heart-icon {
+            width: 12px;
+            height: 12px;
+            background: white;
+            clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 50% 85%, 18% 100%, 0% 38%);
+        }
+        
+        .robot-avatar .menu-icon {
+            width: 12px;
+            height: 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        
+        .robot-avatar .menu-icon::before,
+        .robot-avatar .menu-icon::after,
+        .robot-avatar .menu-icon span {
+            content: '';
+            width: 100%;
+            height: 2px;
+            background: white;
+            border-radius: 1px;
+        }
+        
+        /* 机器人手臂 */
+        .robot-avatar .arm {
+            width: 15px;
+            height: 40px;
+            background: #FFE4B5;
+            border-radius: 8px;
+            position: absolute;
+            top: 75%;
+            border: 2px solid #DEB887;
+        }
+        
+        .robot-avatar .arm.left {
+            left: 25%;
+        }
+        
+        .robot-avatar .arm.right {
+            right: 25%;
+        }
+        
+        /* 机器人下半身 */
+        .robot-avatar .lower-body {
+            width: 80px;
+            height: 50px;
+            background: #87CEEB;
+            border-radius: 15px 15px 25px 25px;
+            position: absolute;
+            top: 90%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 3px solid #5F9EA0;
+        }
+        
+        /* 机器人脚 */
+        .robot-avatar .foot {
+            width: 20px;
+            height: 15px;
+            background: #FFE4B5;
+            border-radius: 10px;
+            position: absolute;
+            top: 95%;
+            border: 2px solid #DEB887;
+        }
+        
+        .robot-avatar .foot.left {
+            left: 35%;
+        }
+        
+        .robot-avatar .foot.right {
+            right: 35%;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            min-width: 120px;
+        }
+        
+        .btn:hover:not(:disabled) {
+            background: #0056b3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,123,255,0.3);
+        }
+        
+        .btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .btn.secondary {
+            background: #6c757d;
+        }
+        
+        .btn.secondary:hover:not(:disabled) {
+            background: #545b62;
+        }
+        
+        .btn.success {
+            background: #28a745;
+        }
+        
+        .btn.success:hover:not(:disabled) {
+            background: #1e7e34;
+        }
+        
+        .status {
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 15px;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .pulse {
+            animation: pulse 0.6s ease-in-out;
+        }
+        
+        @keyframes pulse {
+            0% { transform: translate(-50%, -50%) scale(1); }
+            50% { transform: translate(-50%, -50%) scale(1.1); }
+            100% { transform: translate(-50%, -50%) scale(1); }
+        }
+        
+        .antenna-blink {
+            animation: antenna-blink 0.5s ease-in-out;
+        }
+        
+        @keyframes antenna-blink {
+            0% { opacity: 1; }
+            50% { opacity: 0.3; }
+            100% { opacity: 1; }
+        }
+        
+        .panel-glow {
+            animation: panel-glow 1s ease-in-out;
+        }
+        
+        @keyframes panel-glow {
+            0% { box-shadow: 0 0 5px rgba(135, 206, 235, 0.5); }
+            50% { box-shadow: 0 0 15px rgba(135, 206, 235, 0.8); }
+            100% { box-shadow: 0 0 5px rgba(135, 206, 235, 0.5); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">🤖 机器人数字人测试页面</h1>
+        
+        <div class="avatar-display">
+            <div class="robot-avatar" id="robot-avatar">
+                <!-- 机器人头部 -->
+                <div class="head"></div>
+                <div class="antenna"></div>
+                <div class="eye left"></div>
+                <div class="eye right"></div>
+                <div class="nose"></div>
+                <div class="mouth"></div>
+                <div class="blush left"></div>
+                <div class="blush right"></div>
+                <div class="ear left"></div>
+                <div class="ear right"></div>
+                
+                <!-- 机器人身体 -->
+                <div class="body"></div>
+                <div class="chest-panel">
+                    <div class="heart-icon"></div>
+                    <div class="menu-icon">
+                        <span></span>
+                    </div>
+                </div>
+                <div class="arm left"></div>
+                <div class="arm right"></div>
+                <div class="lower-body"></div>
+                <div class="foot left"></div>
+                <div class="foot right"></div>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button id="startBtn" class="btn" onclick="startVoice()">
+                🎤 开始语音驱动
+            </button>
+            <button id="stopBtn" class="btn secondary" onclick="stopVoice()" disabled>
+                ⏹ 停止语音
+            </button>
+            <button id="testBtn" class="btn success" onclick="testAnimation()">
+                🎭 测试动画
+            </button>
+        </div>
+        
+        <div id="status" class="status info">
+            ✅ 机器人数字人系统已就绪，点击开始语音驱动
+        </div>
+    </div>
+
+    <script>
+        class RobotDigitalHuman {
+            constructor() {
+                this.isActive = false;
+                this.audioContext = null;
+                this.analyser = null;
+                this.animationId = null;
+                this.robotAvatar = document.getElementById('robot-avatar');
+                
+                console.log('🤖 机器人数字人系统初始化完成');
+            }
+            
+            async startVoice() {
+                if (this.isActive) return;
+                
+                try {
+                    this.updateStatus('🎤 正在启动语音驱动...', 'info');
+                    
+                    // 获取麦克风权限
+                    const stream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: { 
+                            echoCancellation: true, 
+                            noiseSuppression: true,
+                            autoGainControl: true
+                        }
+                    });
+                    
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const source = this.audioContext.createMediaStreamSource(stream);
+                    this.analyser = this.audioContext.createAnalyser();
+                    
+                    this.analyser.fftSize = 256;
+                    this.analyser.smoothingTimeConstant = 0.8;
+                    source.connect(this.analyser);
+                    
+                    this.isActive = true;
+                    this.startAnimation();
+                    this.updateButtonStates();
+                    
+                    this.updateStatus('🎤 语音驱动已启动，请说话...', 'success');
+                    console.log('✅ 语音驱动已启动');
+                    
+                } catch (error) {
+                    console.error('❌ 麦克风权限失败:', error);
+                    this.updateStatus('❌ 无法访问麦克风，请检查权限设置', 'error');
+                }
+            }
+            
+            stopVoice() {
+                if (!this.isActive) return;
+                
+                this.isActive = false;
+                
+                if (this.animationId) {
+                    cancelAnimationFrame(this.animationId);
+                    this.animationId = null;
+                }
+                
+                if (this.audioContext) {
+                    this.audioContext.close();
+                    this.audioContext = null;
+                }
+                
+                this.updateButtonStates();
+                this.updateStatus('⏹ 语音驱动已停止', 'info');
+                console.log('✅ 语音驱动已停止');
+            }
+            
+            startAnimation() {
+                if (!this.analyser) return;
+                
+                const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+                
+                const animate = () => {
+                    if (!this.isActive) return;
+                    
+                    this.analyser.getByteFrequencyData(dataArray);
+                    
+                    // 计算音量
+                    const volume = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                    const normalizedVolume = Math.min(volume / 128, 1);
+                    
+                    this.animateRobot(normalizedVolume);
+                    
+                    this.animationId = requestAnimationFrame(animate);
+                };
+                
+                animate();
+            }
+            
+            animateRobot(volume) {
+                const mouth = this.robotAvatar.querySelector('.mouth');
+                const head = this.robotAvatar.querySelector('.head');
+                const antenna = this.robotAvatar.querySelector('.antenna');
+                const chestPanel = this.robotAvatar.querySelector('.chest-panel');
+                
+                // 嘴型动画
+                if (mouth) {
+                    const height = 15 + volume * 10;
+                    mouth.style.height = height + 'px';
+                    mouth.style.borderRadius = `0 0 ${height}px ${height}px`;
+                }
+                
+                // 头部缩放动画
+                if (head) {
+                    const scale = 1 + volume * 0.05;
+                    head.style.transform = `translate(-50%, -50%) scale(${scale})`;
+                }
+                
+                // 天线闪烁效果
+                if (antenna && volume > 0.3) {
+                    antenna.classList.add('antenna-blink');
+                    setTimeout(() => {
+                        antenna.classList.remove('antenna-blink');
+                    }, 100);
+                }
+                
+                // 胸部面板发光效果
+                if (chestPanel && volume > 0.5) {
+                    chestPanel.classList.add('panel-glow');
+                    setTimeout(() => {
+                        chestPanel.classList.remove('panel-glow');
+                    }, 200);
+                }
+                
+                // 添加脉冲效果
+                if (volume > 0.5) {
+                    head.classList.add('pulse');
+                    setTimeout(() => {
+                        head.classList.remove('pulse');
+                    }, 100);
+                }
+            }
+            
+            testAnimation() {
+                console.log('🎭 开始测试动画...');
+                
+                let t = 0;
+                const testAnimate = () => {
+                    t += 0.1;
+                    const volume = (Math.sin(t) + 1) / 2;
+                    
+                    this.animateRobot(volume);
+                    
+                    setTimeout(testAnimate, 100);
+                };
+                testAnimate();
+                
+                this.updateStatus('🎭 测试动画运行中...', 'success');
+                setTimeout(() => {
+                    if (!this.isActive) {
+                        this.updateStatus('✅ 测试完成', 'success');
+                    }
+                }, 3000);
+            }
+            
+            updateStatus(message, type) {
+                const statusEl = document.getElementById('status');
+                statusEl.textContent = message;
+                statusEl.className = `status ${type}`;
+            }
+            
+            updateButtonStates() {
+                const startBtn = document.getElementById('startBtn');
+                const stopBtn = document.getElementById('stopBtn');
+                
+                startBtn.disabled = this.isActive;
+                stopBtn.disabled = !this.isActive;
+            }
+        }
+        
+        // 全局变量和函数
+        let robotDigitalHuman = null;
+        
+        function startVoice() {
+            if (!robotDigitalHuman) {
+                robotDigitalHuman = new RobotDigitalHuman();
+            }
+            robotDigitalHuman.startVoice();
+        }
+        
+        function stopVoice() {
+            if (robotDigitalHuman) {
+                robotDigitalHuman.stopVoice();
+            }
+        }
+        
+        function testAnimation() {
+            if (!robotDigitalHuman) {
+                robotDigitalHuman = new RobotDigitalHuman();
+            }
+            robotDigitalHuman.testAnimation();
+        }
+        
+        // 页面加载完成后初始化
+        window.addEventListener('load', () => {
+            console.log('🤖 机器人数字人测试页面加载完成');
+            robotDigitalHuman = new RobotDigitalHuman();
+        });
+    </script>
+</body>
+</html> 

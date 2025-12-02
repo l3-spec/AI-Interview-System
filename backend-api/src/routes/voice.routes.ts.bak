@@ -1,0 +1,123 @@
+import { Router } from 'express';
+import { volcOpenApiService } from '../services/volc-openapi.service';
+
+const router = Router();
+
+router.get('/config', async (req, res) => {
+  const trim = (value?: string | null) => value?.trim() ?? '';
+
+  const appId = trim(process.env.VOLC_APP_ID || process.env.RTC_APP_ID || process.env.VOLCENGINE_APP_ID);
+  const manualAppKey = trim(process.env.RTC_APP_KEY || process.env.VOLC_APP_KEY);
+  
+  // ASR Cluster 配置
+  const asrCluster =
+    trim(process.env.VOLC_CLUSTER || process.env.RTC_CLUSTER || process.env.RTC_REGION) ||
+    'volcengine_streaming_common';
+<<<<<<< Current (Your changes)
+  
+  // TTS Cluster 配置（独立配置，与ASR可以不同）
+  const ttsCluster = trim(process.env.VOLC_TTS_CLUSTER) || 'volcano_tts';
+  
+=======
+  const ttsCluster =
+    trim(process.env.VOLC_TTS_CLUSTER) ||
+    cluster ||
+    'volcano_tts';
+>>>>>>> Incoming (Background Agent changes)
+  const asrAddress = trim(process.env.VOLC_ASR_ADDRESS || process.env.VOLC_WS_ADDRESS) || 'wss://openspeech.bytedance.com';
+  const asrUri = trim(process.env.VOLC_ASR_URI) || '/api/v2/asr';
+  const ttsUri = trim(process.env.VOLC_TTS_URI) || '/api/v3/tts/bidirection';
+  const asrResourceId = trim(process.env.VOLC_ASR_RESOURCE_ID) || undefined;
+  const ttsResourceId = trim(process.env.VOLC_TTS_RESOURCE_ID) || undefined;
+  const asrReqParamsEnv = process.env.VOLC_ASR_REQ_PARAMS?.trim();
+  
+  // VAD 配置参数
+  const vadStartSilenceMs = process.env.VOLC_VAD_START_SILENCE_MS 
+    ? parseInt(process.env.VOLC_VAD_START_SILENCE_MS, 10) 
+    : undefined;
+  const vadEndSilenceMs = process.env.VOLC_VAD_END_SILENCE_MS 
+    ? parseInt(process.env.VOLC_VAD_END_SILENCE_MS, 10) 
+    : undefined;
+
+  const parseJsonObject = (value?: string): Record<string, any> | undefined => {
+    if (!value) {
+      return undefined;
+    }
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === 'object') {
+        return parsed as Record<string, any>;
+      }
+    } catch (error: unknown) {
+      const reason = error instanceof Error ? error.message : String(error);
+      console.warn('解析 VOLC_ASR_REQ_PARAMS 失败:', reason);
+    }
+    return undefined;
+  };
+
+  const asrReqParams = parseJsonObject(asrReqParamsEnv) ?? (asrResourceId ? { res_id: asrResourceId } : undefined);
+  if (asrReqParams && asrResourceId && !asrReqParams.res_id) {
+    asrReqParams.res_id = asrResourceId;
+  }
+
+  if (!appId) {
+    res.status(500).json({
+      success: false,
+      message: '火山引擎配置缺失：请在环境变量中设置 VOLC_APP_ID (或 RTC_APP_ID)',
+    });
+    return;
+  }
+
+  try {
+    const tokenResult = await volcOpenApiService.getToken();
+
+    const resolvedAppKey = manualAppKey || (tokenResult.source === 'api' ? tokenResult.rawToken : undefined);
+
+    const optionalFields: Record<string, unknown> = {
+      appKey: resolvedAppKey,
+      address: asrAddress,
+      uri: asrUri,
+      asrUri,
+      wsAddress: trim(process.env.VOLC_WS_ADDRESS) || asrAddress,
+      resourceId: asrResourceId,
+      asrResourceId,
+      asrCluster,
+      ttsUri,
+      ttsResourceId,
+      ttsCluster,
+      language: trim(process.env.VOLC_LANGUAGE) || undefined,
+      tokenSource: tokenResult.source,
+      tokenExpiresAt: tokenResult.expiresAt ? new Date(tokenResult.expiresAt).toISOString() : undefined,
+      reqParams: asrReqParams,
+      asrReqParams,
+      vadStartSilenceMs,
+      vadEndSilenceMs,
+    };
+
+    const data: Record<string, unknown> = {
+      appId,
+      token: tokenResult.token,
+      authorization: tokenResult.authorization,
+      cluster: asrCluster,  // ASR cluster
+      address: asrAddress,
+      uri: asrUri,
+    };
+    for (const [key, value] of Object.entries(optionalFields)) {
+      if (value !== undefined && value !== null) {
+        data[key] = value;
+      }
+    }
+
+    res.json({
+      success: true,
+      data,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: error.message || '获取火山引擎配置失败',
+    });
+  }
+});
+
+export default router;

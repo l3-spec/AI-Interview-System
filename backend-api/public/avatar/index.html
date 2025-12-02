@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>开源数字人演示</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 500px;
+            width: 100%;
+        }
+        
+        .title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 20px;
+        }
+        
+        .avatar-display {
+            width: 300px;
+            height: 400px;
+            margin: 0 auto 20px;
+            border: 3px solid #e9ecef;
+            border-radius: 15px;
+            background: #f8f9fa;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .avatar-canvas {
+            border: none;
+            border-radius: 12px;
+            background: transparent;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            min-width: 120px;
+        }
+        
+        .btn:hover:not(:disabled) {
+            background: #0056b3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,123,255,0.3);
+        }
+        
+        .btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .btn.secondary {
+            background: #6c757d;
+        }
+        
+        .btn.secondary:hover:not(:disabled) {
+            background: #545b62;
+        }
+        
+        .btn.success {
+            background: #28a745;
+        }
+        
+        .btn.success:hover:not(:disabled) {
+            background: #1e7e34;
+        }
+        
+        .status {
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 15px;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .debug-panel {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            text-align: left;
+            font-size: 12px;
+            color: #6c757d;
+            display: none;
+        }
+        
+        .debug-panel.show {
+            display: block;
+        }
+        
+        .debug-title {
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #495057;
+        }
+        
+        .server-info {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .fallback-avatar {
+            width: 200px;
+            height: 200px;
+            position: relative;
+        }
+        
+        /* 机器人头部 */
+        .fallback-avatar .head {
+            width: 120px;
+            height: 120px;
+            background: #FFE4B5;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 3px solid #DEB887;
+            transition: transform 0.1s ease;
+        }
+        
+        /* 机器人天线 */
+        .fallback-avatar .antenna {
+            width: 4px;
+            height: 25px;
+            background: #4A90E2;
+            position: absolute;
+            top: 15%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border-radius: 2px;
+        }
+        
+        .fallback-avatar .antenna::after {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: #4A90E2;
+            border-radius: 50%;
+            position: absolute;
+            top: -4px;
+            left: -2px;
+        }
+        
+        /* 机器人眼睛 */
+        .fallback-avatar .eye {
+            width: 20px;
+            height: 20px;
+            background: #000;
+            border-radius: 50%;
+            position: absolute;
+            top: 45%;
+        }
+        
+        .fallback-avatar .eye.left {
+            left: 35%;
+        }
+        
+        .fallback-avatar .eye.right {
+            right: 35%;
+        }
+        
+        .fallback-avatar .eye::after {
+            content: '';
+            width: 6px;
+            height: 6px;
+            background: white;
+            border-radius: 50%;
+            position: absolute;
+            top: 2px;
+            left: 2px;
+        }
+        
+        /* 机器人鼻子 */
+        .fallback-avatar .nose {
+            width: 6px;
+            height: 6px;
+            background: #000;
+            border-radius: 50%;
+            position: absolute;
+            top: 55%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        
+        /* 机器人嘴巴 */
+        .fallback-avatar .mouth {
+            width: 30px;
+            height: 15px;
+            border: 2px solid #000;
+            border-top: none;
+            border-radius: 0 0 30px 30px;
+            position: absolute;
+            top: 65%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            transition: all 0.1s ease;
+        }
+        
+        /* 机器人腮红 */
+        .fallback-avatar .blush {
+            width: 15px;
+            height: 15px;
+            background: rgba(255, 182, 193, 0.6);
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+        }
+        
+        .fallback-avatar .blush.left {
+            left: 25%;
+        }
+        
+        .fallback-avatar .blush.right {
+            right: 25%;
+        }
+        
+        /* 机器人耳朵 */
+        .fallback-avatar .ear {
+            width: 20px;
+            height: 20px;
+            background: #FFE4B5;
+            border-radius: 50%;
+            position: absolute;
+            top: 40%;
+            border: 2px solid #DEB887;
+        }
+        
+        .fallback-avatar .ear.left {
+            left: 15%;
+        }
+        
+        .fallback-avatar .ear.right {
+            right: 15%;
+        }
+        
+        /* 机器人身体 */
+        .fallback-avatar .body {
+            width: 100px;
+            height: 80px;
+            background: #FFE4B5;
+            border-radius: 20px;
+            position: absolute;
+            top: 70%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 3px solid #DEB887;
+        }
+        
+        /* 机器人胸部面板 */
+        .fallback-avatar .chest-panel {
+            width: 60px;
+            height: 40px;
+            background: #87CEEB;
+            border-radius: 10px;
+            position: absolute;
+            top: 75%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 2px solid #5F9EA0;
+            display: flex;
+            align-items: center;
+            justify-content: space-around;
+            padding: 5px;
+        }
+        
+        .fallback-avatar .heart-icon {
+            width: 12px;
+            height: 12px;
+            background: white;
+            clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 50% 85%, 18% 100%, 0% 38%);
+        }
+        
+        .fallback-avatar .menu-icon {
+            width: 12px;
+            height: 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        
+        .fallback-avatar .menu-icon::before,
+        .fallback-avatar .menu-icon::after,
+        .fallback-avatar .menu-icon span {
+            content: '';
+            width: 100%;
+            height: 2px;
+            background: white;
+            border-radius: 1px;
+        }
+        
+        /* 机器人手臂 */
+        .fallback-avatar .arm {
+            width: 15px;
+            height: 40px;
+            background: #FFE4B5;
+            border-radius: 8px;
+            position: absolute;
+            top: 75%;
+            border: 2px solid #DEB887;
+        }
+        
+        .fallback-avatar .arm.left {
+            left: 25%;
+        }
+        
+        .fallback-avatar .arm.right {
+            right: 25%;
+        }
+        
+        /* 机器人下半身 */
+        .fallback-avatar .lower-body {
+            width: 80px;
+            height: 50px;
+            background: #87CEEB;
+            border-radius: 15px 15px 25px 25px;
+            position: absolute;
+            top: 90%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 3px solid #5F9EA0;
+        }
+        
+        /* 机器人脚 */
+        .fallback-avatar .foot {
+            width: 20px;
+            height: 15px;
+            background: #FFE4B5;
+            border-radius: 10px;
+            position: absolute;
+            top: 95%;
+            border: 2px solid #DEB887;
+        }
+        
+        .fallback-avatar .foot.left {
+            left: 35%;
+        }
+        
+        .fallback-avatar .foot.right {
+            right: 35%;
+        }
+        
+        .pulse {
+            animation: pulse 0.6s ease-in-out;
+        }
+        
+        @keyframes pulse {
+            0% { transform: translate(-50%, -50%) scale(1); }
+            50% { transform: translate(-50%, -50%) scale(1.1); }
+            100% { transform: translate(-50%, -50%) scale(1); }
+        }
+        
+        .antenna-blink {
+            animation: antenna-blink 0.5s ease-in-out;
+        }
+        
+        @keyframes antenna-blink {
+            0% { opacity: 1; }
+            50% { opacity: 0.3; }
+            100% { opacity: 1; }
+        }
+        
+        .panel-glow {
+            animation: panel-glow 1s ease-in-out;
+        }
+        
+        @keyframes panel-glow {
+            0% { box-shadow: 0 0 5px rgba(135, 206, 235, 0.5); }
+            50% { box-shadow: 0 0 15px rgba(135, 206, 235, 0.8); }
+            100% { box-shadow: 0 0 5px rgba(135, 206, 235, 0.5); }
+        }
+    </style>
+</head>
+<body>
+    <div class="server-info">
+        服务器: <span id="server-ip">加载中...</span>
+    </div>
+    
+    <div class="container">
+        <h1 class="title">🤖 机器人数字人演示</h1>
+        
+        <div class="avatar-display" id="avatar-display">
+            <div class="fallback-avatar" id="fallback-avatar">
+                <!-- 机器人头部 -->
+                <div class="head"></div>
+                <div class="antenna"></div>
+                <div class="eye left"></div>
+                <div class="eye right"></div>
+                <div class="nose"></div>
+                <div class="mouth"></div>
+                <div class="blush left"></div>
+                <div class="blush right"></div>
+                <div class="ear left"></div>
+                <div class="ear right"></div>
+                
+                <!-- 机器人身体 -->
+                <div class="body"></div>
+                <div class="chest-panel">
+                    <div class="heart-icon"></div>
+                    <div class="menu-icon">
+                        <span></span>
+                    </div>
+                </div>
+                <div class="arm left"></div>
+                <div class="arm right"></div>
+                <div class="lower-body"></div>
+                <div class="foot left"></div>
+                <div class="foot right"></div>
+            </div>
+            <canvas id="avatar-canvas" class="avatar-canvas" width="300" height="400" style="display: none;"></canvas>
+        </div>
+        
+        <div class="controls">
+            <button id="startBtn" class="btn" onclick="startVoice()">
+                🎤 开始语音驱动
+            </button>
+            <button id="stopBtn" class="btn secondary" onclick="stopVoice()" disabled>
+                ⏹ 停止语音
+            </button>
+            <button id="testBtn" class="btn success" onclick="testAnimation()">
+                🎭 测试动画
+            </button>
+        </div>
+        
+        <div id="status" class="status info">
+            <span class="loading"></span> 正在初始化机器人数字人系统...
+        </div>
+        
+        <div id="debug" class="debug-panel">
+            <div class="debug-title">🔧 调试信息</div>
+            <div id="debug-content"></div>
+        </div>
+    </div>
+
+    <script>
+        class DigitalHuman {
+            constructor() {
+                this.isInitialized = false;
+                this.isActive = false;
+                this.audioContext = null;
+                this.analyser = null;
+                this.animationId = null;
+                this.useLive2D = false;
+                this.fallbackAvatar = document.getElementById('fallback-avatar');
+                this.canvas = document.getElementById('avatar-canvas');
+                this.display = document.getElementById('avatar-display');
+                
+                this.init();
+            }
+            
+            async init() {
+                try {
+                    this.updateStatus('🚀 正在初始化机器人数字人系统...', 'info');
+                    
+                    // 显示服务器信息
+                    this.showServerInfo();
+                    
+                    // 尝试加载Live2D
+                    await this.tryLoadLive2D();
+                    
+                    this.isInitialized = true;
+                    this.updateStatus('✅ 机器人数字人系统初始化完成！', 'success');
+                    this.enableButtons();
+                    
+                    console.log('✅ 机器人数字人系统初始化完成');
+                } catch (error) {
+                    console.error('❌ 初始化失败:', error);
+                    this.updateStatus('⚠️ 使用机器人头像方案', 'warning');
+                    this.showFallbackAvatar();
+                    this.isInitialized = true;
+                    this.enableButtons();
+                }
+            }
+            
+            async tryLoadLive2D() {
+                // 检查是否支持Live2D
+                if (typeof PIXI === 'undefined') {
+                    throw new Error('PIXI.js 未加载');
+                }
+                
+                // 尝试加载Live2D模型
+                try {
+                    const response = await fetch('/models/haru/haru.model3.json');
+                    if (!response.ok) {
+                        throw new Error('Live2D模型文件不存在');
+                    }
+                    
+                    // 这里可以添加Live2D初始化代码
+                    // 由于模型文件不完整，我们直接使用备用方案
+                    throw new Error('Live2D模型文件不完整');
+                    
+                } catch (error) {
+                    console.warn('Live2D加载失败，使用备用方案:', error);
+                    throw error;
+                }
+            }
+            
+            showFallbackAvatar() {
+                this.fallbackAvatar.style.display = 'block';
+                this.canvas.style.display = 'none';
+                this.useLive2D = false;
+            }
+            
+            async startVoice() {
+                if (this.isActive || !this.isInitialized) return;
+                
+                try {
+                    this.updateStatus('🎤 正在启动语音驱动...', 'info');
+                    
+                    // 获取麦克风权限
+                    const stream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: { 
+                            echoCancellation: true, 
+                            noiseSuppression: true,
+                            autoGainControl: true
+                        }
+                    });
+                    
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const source = this.audioContext.createMediaStreamSource(stream);
+                    this.analyser = this.audioContext.createAnalyser();
+                    
+                    this.analyser.fftSize = 256;
+                    this.analyser.smoothingTimeConstant = 0.8;
+                    source.connect(this.analyser);
+                    
+                    this.isActive = true;
+                    this.startAnimation();
+                    this.updateButtonStates();
+                    
+                    this.updateStatus('🎤 语音驱动已启动，请说话...', 'success');
+                    console.log('✅ 语音驱动已启动');
+                    
+                } catch (error) {
+                    console.error('❌ 麦克风权限失败:', error);
+                    this.updateStatus('❌ 无法访问麦克风，请检查权限设置', 'error');
+                }
+            }
+            
+            stopVoice() {
+                if (!this.isActive) return;
+                
+                this.isActive = false;
+                
+                if (this.animationId) {
+                    cancelAnimationFrame(this.animationId);
+                    this.animationId = null;
+                }
+                
+                if (this.audioContext) {
+                    this.audioContext.close();
+                    this.audioContext = null;
+                }
+                
+                this.updateButtonStates();
+                this.updateStatus('⏹ 语音驱动已停止', 'info');
+                console.log('✅ 语音驱动已停止');
+            }
+            
+            startAnimation() {
+                if (!this.analyser) return;
+                
+                const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+                
+                const animate = () => {
+                    if (!this.isActive) return;
+                    
+                    this.analyser.getByteFrequencyData(dataArray);
+                    
+                    // 计算音量
+                    const volume = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                    const normalizedVolume = Math.min(volume / 128, 1);
+                    
+                    // 驱动备用头像动画
+                    if (!this.useLive2D) {
+                        this.animateFallbackAvatar(normalizedVolume);
+                    }
+                    
+                    this.animationId = requestAnimationFrame(animate);
+                };
+                
+                animate();
+            }
+            
+            animateFallbackAvatar(volume) {
+                const mouth = this.fallbackAvatar.querySelector('.mouth');
+                const head = this.fallbackAvatar.querySelector('.head');
+                const antenna = this.fallbackAvatar.querySelector('.antenna');
+                const chestPanel = this.fallbackAvatar.querySelector('.chest-panel');
+                
+                // 嘴型动画
+                if (mouth) {
+                    const height = 15 + volume * 10;
+                    mouth.style.height = height + 'px';
+                    mouth.style.borderRadius = `0 0 ${height}px ${height}px`;
+                }
+                
+                // 头部缩放动画
+                if (head) {
+                    const scale = 1 + volume * 0.05;
+                    head.style.transform = `translate(-50%, -50%) scale(${scale})`;
+                }
+                
+                // 天线闪烁效果
+                if (antenna && volume > 0.3) {
+                    antenna.classList.add('antenna-blink');
+                    setTimeout(() => {
+                        antenna.classList.remove('antenna-blink');
+                    }, 100);
+                }
+                
+                // 胸部面板发光效果
+                if (chestPanel && volume > 0.5) {
+                    chestPanel.classList.add('panel-glow');
+                    setTimeout(() => {
+                        chestPanel.classList.remove('panel-glow');
+                    }, 200);
+                }
+                
+                // 添加脉冲效果
+                if (volume > 0.5) {
+                    head.classList.add('pulse');
+                    setTimeout(() => {
+                        head.classList.remove('pulse');
+                    }, 100);
+                }
+            }
+            
+            testAnimation() {
+                if (!this.isInitialized) return;
+                
+                console.log('🎭 开始测试动画...');
+                
+                let t = 0;
+                const testAnimate = () => {
+                    t += 0.1;
+                    const volume = (Math.sin(t) + 1) / 2;
+                    
+                    this.animateFallbackAvatar(volume);
+                    
+                    setTimeout(testAnimate, 100);
+                };
+                testAnimate();
+                
+                this.updateStatus('🎭 测试动画运行中...', 'success');
+                setTimeout(() => {
+                    if (!this.isActive) {
+                        this.updateStatus('✅ 测试完成', 'success');
+                    }
+                }, 3000);
+            }
+            
+            showServerInfo() {
+                const protocol = window.location.protocol;
+                const host = window.location.host;
+                document.getElementById('server-ip').textContent = host;
+            }
+            
+            updateStatus(message, type) {
+                const statusEl = document.getElementById('status');
+                statusEl.textContent = message;
+                statusEl.className = `status ${type}`;
+                
+                // 移除加载动画
+                const loading = statusEl.querySelector('.loading');
+                if (loading) {
+                    loading.remove();
+                }
+            }
+            
+            updateButtonStates() {
+                const startBtn = document.getElementById('startBtn');
+                const stopBtn = document.getElementById('stopBtn');
+                
+                startBtn.disabled = this.isActive;
+                stopBtn.disabled = !this.isActive;
+            }
+            
+            enableButtons() {
+                const startBtn = document.getElementById('startBtn');
+                const testBtn = document.getElementById('testBtn');
+                
+                startBtn.disabled = false;
+                testBtn.disabled = false;
+            }
+            
+            showDebugInfo() {
+                const debugEl = document.getElementById('debug');
+                const debugContent = document.getElementById('debug-content');
+                
+                debugEl.classList.add('show');
+                debugContent.innerHTML = `
+                    <strong>系统状态:</strong><br>
+                    • 初始化状态: ${this.isInitialized}<br>
+                    • 使用Live2D: ${this.useLive2D}<br>
+                    • 语音驱动状态: ${this.isActive}<br>
+                    • 音频上下文: ${this.audioContext ? '已创建' : '未创建'}<br>
+                    <br>
+                    <strong>浏览器信息:</strong><br>
+                    • 用户代理: ${navigator.userAgent}<br>
+                    • 音频支持: ${!!window.AudioContext || !!window.webkitAudioContext}<br>
+                    • WebRTC支持: ${!!navigator.mediaDevices}<br>
+                    <br>
+                    <strong>服务器信息:</strong><br>
+                    • 当前地址: ${window.location.href}<br>
+                    • 协议: ${window.location.protocol}<br>
+                    • 主机: ${window.location.host}
+                `;
+            }
+        }
+        
+        // 全局变量和函数
+        let digitalHuman = null;
+        
+        async function startVoice() {
+            if (!digitalHuman) {
+                digitalHuman = new DigitalHuman();
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+            digitalHuman.startVoice();
+        }
+        
+        function stopVoice() {
+            if (digitalHuman) {
+                digitalHuman.stopVoice();
+            }
+        }
+        
+        function testAnimation() {
+            if (!digitalHuman) {
+                digitalHuman = new DigitalHuman();
+                setTimeout(() => digitalHuman.testAnimation(), 1000);
+            } else {
+                digitalHuman.testAnimation();
+            }
+        }
+        
+        function toggleDebug() {
+            if (digitalHuman) {
+                digitalHuman.showDebugInfo();
+            }
+        }
+        
+        // 页面加载完成后初始化
+        window.addEventListener('load', () => {
+            console.log('🤖 机器人数字人系统开始加载...');
+            digitalHuman = new DigitalHuman();
+            
+            // 添加调试快捷键
+            document.addEventListener('keydown', (e) => {
+                if (e.ctrlKey && e.key === 'd') {
+                    e.preventDefault();
+                    toggleDebug();
+                }
+            });
+        });
+    </script>
+</body>
+</html>

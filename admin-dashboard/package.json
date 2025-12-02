@@ -1,0 +1,44 @@
+{
+  "name": "ai-interview-admin",
+  "version": "1.0.0",
+  "description": "AI面试系统后台管理",
+  "scripts": {
+    "dev": "node scripts/run-vite.js dev",
+    "build": "tsc && node scripts/run-vite.js build",
+    "preview": "node scripts/run-vite.js preview",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "lint:fix": "eslint . --ext ts,tsx --fix"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.14.2",
+    "antd": "^5.8.4",
+    "@ant-design/icons": "^5.2.5",
+    "axios": "^1.4.0",
+    "dayjs": "^1.11.9",
+    "recharts": "^2.7.2",
+    "react-query": "^3.39.3",
+    "zustand": "^4.3.9",
+    "react-player": "^2.12.0",
+    "socket.io-client": "^4.7.2",
+    "js-cookie": "^3.0.5",
+    "react-highlight-words": "^0.20.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.15",
+    "@types/react-dom": "^18.2.7",
+    "@types/js-cookie": "^3.0.3",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "@vitejs/plugin-react": "^4.0.3",
+    "eslint": "^8.45.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.3",
+    "typescript": "^5.0.2",
+    "vite": "^4.4.5"
+  },
+  "keywords": ["ai", "interview", "admin", "dashboard"],
+  "author": "AI Interview Team",
+  "license": "MIT"
+} 

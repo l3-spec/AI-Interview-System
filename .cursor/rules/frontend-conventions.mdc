@@ -1,0 +1,83 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Frontend Admin Dashboard Conventions
+
+## 📁 Directory Structure
+```
+admin-dashboard/
+├── src/
+│   ├── components/      # Reusable UI components
+│   ├── pages/          # Page-level components
+│   ├── hooks/          # Custom React hooks
+│   ├── services/       # API service functions
+│   ├── stores/         # State management (Zustand)
+│   ├── utils/          # Utility functions
+│   └── App.tsx         # Main application component
+└── package.json        # Dependencies and scripts
+```
+
+## 🛠️ Tech Stack
+- **Framework**: React 18 with TypeScript
+- **Build Tool**: Vite for fast development and building
+- **UI Library**: Ant Design for component library
+- **State Management**: Zustand for global state
+- **HTTP Client**: Axios for API requests
+- **Data Fetching**: React Query for server state management
+- **Charts**: Recharts for data visualization
+- **Video Player**: React Player for interview video playback
+
+## 📦 Key Dependencies
+From [admin-dashboard/package.json](mdc:admin-dashboard/package.json):
+- `react` & `react-dom` - Core React
+- `antd` & `@ant-design/icons` - UI components and icons
+- `react-router-dom` - Client-side routing
+- `axios` - HTTP client
+- `zustand` - State management
+- `react-query` - Server state management
+- `recharts` - Data visualization
+- `dayjs` - Date manipulation
+
+## 🎨 UI/UX Guidelines
+- **Design System**: Follow Ant Design principles
+- **Responsive**: Mobile-first responsive design
+- **Theme**: Apple-inspired clean and elegant design
+- **Accessibility**: WCAG 2.1 AA compliance
+- **Performance**: Lazy loading and code splitting
+
+## 🔧 Development Scripts
+```bash
+npm run dev      # Start development server
+npm run build    # Build for production
+npm run preview  # Preview production build
+npm run lint     # Run ESLint
+npm run lint:fix # Fix ESLint issues
+```
+
+## 🌐 API Integration
+- **Base URL**: Configure via VITE_API_BASE_URL environment variable
+- **Authentication**: JWT token stored in localStorage/cookies
+- **Error Handling**: Global error boundary and notification system
+- **Loading States**: Consistent loading indicators across components
+
+## 📱 Key Features
+- **Dashboard**: Overview statistics and quick actions
+- **Job Management**: Create, edit, and manage job postings
+- **Interview Management**: View interview videos and assessment reports
+- **Candidate Management**: Review applications and schedule interviews
+- **Company Profile**: Manage company information and settings
+
+## 🎯 Component Patterns
+- Use functional components with hooks
+- Implement proper TypeScript interfaces
+- Follow Ant Design component composition
+- Use React.memo for performance optimization
+- Implement proper error boundaries
+
+## 🔐 Security
+- Input sanitization and validation
+- Secure token storage and refresh
+- Protected routes with authentication
+- Role-based access control (company vs admin)

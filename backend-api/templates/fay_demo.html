@@ -1,0 +1,373 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎭 Fay数字人Demo</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: white;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            gap: 30px;
+        }
+        .digital-human-section {
+            flex: 2;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 20px;
+            padding: 30px;
+            text-align: center;
+        }
+        .digital-human-avatar {
+            width: 300px;
+            height: 300px;
+            border-radius: 50%;
+            margin: 0 auto 20px;
+            background: linear-gradient(135deg, #4ecdc4, #44a08d);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 120px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
+        }
+        .digital-human-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 50%;
+        }
+        .digital-human-avatar.speaking {
+            animation: speak 0.5s ease-in-out infinite;
+            box-shadow: 0 20px 60px rgba(78, 205, 196, 0.6);
+        }
+        @keyframes speak {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        .control-section {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 30px;
+            backdrop-filter: blur(10px);
+        }
+        .btn {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 15px;
+            background: linear-gradient(45deg, #4ecdc4, #44a08d);
+            color: white;
+        }
+        .btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(78, 205, 196, 0.4);
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .btn-danger {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a52);
+        }
+        .status {
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-weight: bold;
+            background: rgba(78, 205, 196, 0.2);
+            border: 1px solid #4ecdc4;
+        }
+        .status.error {
+            background: rgba(220, 53, 69, 0.2);
+            border: 1px solid #dc3545;
+        }
+        .status.processing {
+            background: rgba(255, 193, 7, 0.2);
+            border: 1px solid #ffc107;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-size: 14px;
+            margin-bottom: 15px;
+            resize: vertical;
+        }
+        .debug-info {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            max-width: 300px;
+        }
+    </style>
+</head>
+<body>
+    <div class="debug-info">
+        <div><strong>🔧 Fay数字人Demo</strong></div>
+        <div id="debugStatus">初始化中...</div>
+        <div id="debugSession">无会话</div>
+        <div id="debugTime"></div>
+    </div>
+
+    <div class="container">
+        <div class="digital-human-section">
+            <h2>🎭 Fay数字人展示</h2>
+            <div class="digital-human-avatar" id="digitalHumanAvatar">
+                <img src="/static/avatars/tech_interviewer.png" alt="数字人" />
+            </div>
+            <div id="status" class="status">等待开始...</div>
+        </div>
+
+        <div class="control-section">
+            <h3>🎮 控制面板</h3>
+            
+            <div>
+                <label>选择角色:</label>
+                <select id="characterSelect" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); color: white; margin-bottom: 15px;">
+                    <option value="tech_interviewer">技术面试官</option>
+                    <option value="hr_interviewer">HR面试官</option>
+                    <option value="pressure_interviewer">压力面试官</option>
+                </select>
+            </div>
+            
+            <div>
+                <label>文本输入:</label>
+                <textarea id="textInput" placeholder="输入要数字人说的文本..." rows="4"></textarea>
+            </div>
+
+            <button type="button" onclick="testConnection()" class="btn">
+                🔗 测试连接
+            </button>
+
+            <button type="button" onclick="startSession()" class="btn">
+                🚀 开始会话
+            </button>
+
+            <button type="button" onclick="speak()" class="btn">
+                📝 数字人说话
+            </button>
+
+            <button type="button" onclick="endSession()" class="btn btn-danger">
+                🔚 结束会话
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let currentSession = null;
+        
+        // 调试信息
+        function updateDebug() {
+            document.getElementById('debugTime').textContent = new Date().toLocaleTimeString();
+        }
+        
+        function showStatus(message, type = '') {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+            console.log('状态:', message);
+        }
+        
+        // 测试连接
+        async function testConnection() {
+            console.log('🔗 测试连接按钮被点击');
+            showStatus('🔄 测试连接中...', 'processing');
+            
+            try {
+                const response = await fetch('/api/health');
+                const data = await response.json();
+                console.log('API响应:', data);
+                
+                if (data.success) {
+                    showStatus('✅ 连接正常');
+                    document.getElementById('debugStatus').textContent = '连接正常';
+                } else {
+                    throw new Error(data.error || '连接失败');
+                }
+            } catch (error) {
+                console.error('连接测试失败:', error);
+                showStatus(`❌ 连接失败: ${error.message}`, 'error');
+                document.getElementById('debugStatus').textContent = '连接失败';
+            }
+        }
+        
+        // 开始会话
+        async function startSession() {
+            console.log('🚀 开始会话按钮被点击');
+            const characterId = document.getElementById('characterSelect').value;
+            showStatus('🔄 正在开始会话...', 'processing');
+            
+            try {
+                const response = await fetch('/api/start_session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        character_id: characterId
+                    })
+                });
+                
+                const data = await response.json();
+                console.log('开始会话响应:', data);
+                
+                if (data.success) {
+                    currentSession = data.session_id;
+                    showStatus('✅ 会话已开始');
+                    document.getElementById('debugSession').textContent = `会话: ${currentSession}`;
+                    
+                    // 更新数字人形象
+                    const avatar = document.getElementById('digitalHumanAvatar');
+                    avatar.querySelector('img').src = data.character.avatar;
+                } else {
+                    throw new Error(data.error || '开始会话失败');
+                }
+            } catch (error) {
+                console.error('开始会话失败:', error);
+                showStatus(`❌ 开始会话失败: ${error.message}`, 'error');
+            }
+        }
+        
+        // 数字人说话
+        async function speak() {
+            console.log('📝 数字人说话按钮被点击');
+            const text = document.getElementById('textInput').value;
+            
+            if (!text) {
+                showStatus('❌ 请输入文本', 'error');
+                return;
+            }
+            
+            if (!currentSession) {
+                showStatus('❌ 请先开始会话', 'error');
+                return;
+            }
+            
+            showStatus('📝 数字人正在说话...', 'processing');
+            
+            const avatar = document.getElementById('digitalHumanAvatar');
+            avatar.classList.add('speaking');
+            
+            try {
+                const response = await fetch('/api/speak', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        text: text,
+                        session_id: currentSession
+                    })
+                });
+                
+                const data = await response.json();
+                console.log('说话响应:', data);
+                
+                if (data.success) {
+                    showStatus('✅ 数字人说话成功');
+                } else {
+                    throw new Error(data.error || '说话失败');
+                }
+            } catch (error) {
+                console.error('数字人说话失败:', error);
+                showStatus(`❌ 说话失败: ${error.message}`, 'error');
+            } finally {
+                setTimeout(() => {
+                    avatar.classList.remove('speaking');
+                }, 2000);
+            }
+        }
+        
+        // 结束会话
+        async function endSession() {
+            console.log('🔚 结束会话按钮被点击');
+            
+            if (!currentSession) {
+                showStatus('❌ 没有活跃会话', 'error');
+                return;
+            }
+            
+            showStatus('🔄 正在结束会话...', 'processing');
+            
+            try {
+                const response = await fetch('/api/end_session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: currentSession
+                    })
+                });
+                
+                const data = await response.json();
+                console.log('结束会话响应:', data);
+                
+                if (data.success) {
+                    currentSession = null;
+                    showStatus('✅ 会话已结束');
+                    document.getElementById('debugSession').textContent = '无会话';
+                } else {
+                    throw new Error(data.error || '结束会话失败');
+                }
+            } catch (error) {
+                console.error('结束会话失败:', error);
+                showStatus(`❌ 结束会话失败: ${error.message}`, 'error');
+            }
+        }
+        
+        // WebSocket事件监听
+        socket.on('connect', () => {
+            console.log('🔌 WebSocket已连接');
+        });
+        
+        socket.on('digital_human_speak', (data) => {
+            console.log('🎭 数字人说话:', data);
+            showStatus(`🎭 数字人: ${data.text}`);
+        });
+        
+        socket.on('session_ended', (data) => {
+            console.log('🔚 会话结束:', data);
+            showStatus('🔚 会话已结束');
+        });
+        
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🎭 Fay数字人Demo加载完成');
+            showStatus('✅ 系统就绪');
+            document.getElementById('debugStatus').textContent = '系统就绪';
+            
+            // 更新调试信息
+            setInterval(updateDebug, 1000);
+            
+            // 自动测试连接
+            setTimeout(testConnection, 1000);
+        });
+    </script>
+</body>
+</html>

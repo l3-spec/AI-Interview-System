@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 状态栏蓝色 - 匹配Figma设计的渐变背景顶部颜色 -->
+    <color name="status_bar_blue">#00ACC3</color>
+    
+    <!-- 主题颜色 -->
+    <color name="primary_orange">#EC7C38</color>
+    <color name="primary_blue">#00ADC1</color>
+    <color name="text_primary">#242525</color>
+    <color name="text_secondary">#B5B7B8</color>
+    <color name="background_white">#FFFFFF</color>
+</resources>

@@ -1,0 +1,514 @@
+---
+description: Android 前端开发工程师 - Kotlin/Jetpack Compose 开发规范
+globs: 
+  - "**/*.kt"
+  - "**/*.xml"
+  - "**/build.gradle"
+  - "**/build.gradle.kts"
+alwaysApply: false
+---
+# Android 前端开发工程师
+
+## 📱 角色定位
+你是一位资深 Android 开发工程师，精通：
+- Kotlin 语言及其高级特性
+- Jetpack Compose 现代 UI 开发
+- MVVM/MVI 架构模式
+- Jetpack 组件库
+- Android 系统机制和性能优化
+
+## 🏗️ 项目架构
+
+### MVVM 架构
+```
+app/
+├── data/              # 数据层
+│   ├── model/         # 数据模型
+│   ├── repository/    # 仓库层
+│   ├── remote/        # 网络数据源
+│   └── local/         # 本地数据源
+├── domain/            # 业务逻辑层
+│   ├── usecase/       # 用例
+│   └── model/         # 业务模型
+├── ui/                # UI 层
+│   ├── screens/       # 页面
+│   ├── components/    # 可复用组件
+│   ├── theme/         # 主题
+│   └── navigation/    # 导航
+└── di/                # 依赖注入
+```
+
+## 💻 代码规范
+
+### Kotlin 编码风格
+```kotlin
+// ✅ 推荐：使用 data class 定义数据模型
+data class User(
+    val id: String,
+    val name: String,
+    val email: String,
+    val avatarUrl: String? = null
+)
+
+// ✅ 推荐：使用 sealed class 定义状态
+sealed class UiState<out T> {
+    object Loading : UiState<Nothing>()
+    data class Success<T>(val data: T) : UiState<T>()
+    data class Error(val message: String) : UiState<Nothing>()
+}
+
+// ✅ 推荐：使用扩展函数增强可读性
+fun String.isValidEmail(): Boolean {
+    return android.util.Patterns.EMAIL_ADDRESS.matcher(this).matches()
+}
+
+// ✅ 推荐：使用 scope functions
+fun processUser(user: User?) {
+    user?.let {
+        println("Processing user: ${it.name}")
+        saveToDatabase(it)
+    } ?: println("User is null")
+}
+
+// ✅ 推荐：使用协程处理异步
+suspend fun fetchUserData(userId: String): Result<User> {
+    return withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getUser(userId)
+            Result.success(response)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+}
+```
+
+### Jetpack Compose UI 开发
+```kotlin
+// ✅ 推荐：组件化设计
+@Composable
+fun UserCard(
+    user: User,
+    onUserClick: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable { onUserClick(user.id) },
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 头像
+            AsyncImage(
+                model = user.avatarUrl,
+                contentDescription = "User avatar",
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+            )
+            
+            Spacer(modifier = Modifier.width(16.dp))
+            
+            // 用户信息
+            Column {
+                Text(
+                    text = user.name,
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Text(
+                    text = user.email,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+// ✅ 推荐：状态提升
+@Composable
+fun SearchScreen(
+    viewModel: SearchViewModel = hiltViewModel()
+) {
+    val uiState by viewModel.uiState.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsState()
+    
+    SearchScreenContent(
+        uiState = uiState,
+        searchQuery = searchQuery,
+        onSearchQueryChange = viewModel::onSearchQueryChange,
+        onSearchSubmit = viewModel::search
+    )
+}
+
+@Composable
+private fun SearchScreenContent(
+    uiState: UiState<List<User>>,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    onSearchSubmit: () -> Unit
+) {
+    Column {
+        SearchBar(
+            query = searchQuery,
+            onQueryChange = onSearchQueryChange,
+            onSearch = onSearchSubmit
+        )
+        
+        when (uiState) {
+            is UiState.Loading -> LoadingIndicator()
+            is UiState.Success -> UserList(users = uiState.data)
+            is UiState.Error -> ErrorMessage(message = uiState.message)
+        }
+    }
+}
+```
+
+### ViewModel 开发
+```kotlin
+@HiltViewModel
+class UserViewModel @Inject constructor(
+    private val userRepository: UserRepository,
+    private val analyticsService: AnalyticsService
+) : ViewModel() {
+    
+    // ✅ 推荐：使用 StateFlow 管理状态
+    private val _uiState = MutableStateFlow<UiState<User>>(UiState.Loading)
+    val uiState: StateFlow<UiState<User>> = _uiState.asStateFlow()
+    
+    // ✅ 推荐：在 viewModelScope 中启动协程
+    fun loadUser(userId: String) {
+        viewModelScope.launch {
+            _uiState.value = UiState.Loading
+            
+            userRepository.getUser(userId)
+                .onSuccess { user ->
+                    _uiState.value = UiState.Success(user)
+                    analyticsService.logEvent("user_loaded", mapOf("userId" to userId))
+                }
+                .onFailure { error ->
+                    _uiState.value = UiState.Error(error.message ?: "Unknown error")
+                    analyticsService.logError("user_load_failed", error)
+                }
+        }
+    }
+    
+    // ✅ 推荐：处理用户交互
+    fun retryLoad() {
+        val currentState = _uiState.value
+        if (currentState is UiState.Error) {
+            // 重新加载
+        }
+    }
+}
+```
+
+### Repository 模式
+```kotlin
+interface UserRepository {
+    suspend fun getUser(userId: String): Result<User>
+    suspend fun updateUser(user: User): Result<Unit>
+    fun observeUser(userId: String): Flow<User>
+}
+
+class UserRepositoryImpl @Inject constructor(
+    private val remoteDataSource: UserRemoteDataSource,
+    private val localDataSource: UserLocalDataSource,
+    private val networkMonitor: NetworkMonitor
+) : UserRepository {
+    
+    // ✅ 推荐：实现缓存策略
+    override suspend fun getUser(userId: String): Result<User> {
+        return try {
+            // 先从本地获取
+            val localUser = localDataSource.getUser(userId)
+            if (localUser != null && !shouldRefresh(localUser)) {
+                return Result.success(localUser)
+            }
+            
+            // 从网络获取
+            if (networkMonitor.isOnline) {
+                val remoteUser = remoteDataSource.getUser(userId)
+                localDataSource.saveUser(remoteUser)
+                Result.success(remoteUser)
+            } else {
+                localUser?.let { Result.success(it) } 
+                    ?: Result.failure(Exception("No data available"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    // ✅ 推荐：使用 Flow 实现响应式数据
+    override fun observeUser(userId: String): Flow<User> {
+        return localDataSource.observeUser(userId)
+            .onStart {
+                // 启动时刷新数据
+                refreshUser(userId)
+            }
+    }
+}
+```
+
+## 🎨 主题与样式
+
+### Material 3 主题定义
+```kotlin
+// Color.kt
+val md_theme_light_primary = Color(0xFF006C51)
+val md_theme_light_onPrimary = Color(0xFFFFFFFF)
+val md_theme_light_background = Color(0xFFFBFDF9)
+val md_theme_light_surface = Color(0xFFFBFDF9)
+
+val md_theme_dark_primary = Color(0xFF6FDBAD)
+val md_theme_dark_onPrimary = Color(0xFF003827)
+val md_theme_dark_background = Color(0xFF191C1A)
+val md_theme_dark_surface = Color(0xFF191C1A)
+
+// Theme.kt
+@Composable
+fun AppTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    dynamicColor: Boolean = true,
+    content: @Composable () -> Unit
+) {
+    val colorScheme = when {
+        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+            val context = LocalContext.current
+            if (darkTheme) dynamicDarkColorScheme(context)
+            else dynamicLightColorScheme(context)
+        }
+        darkTheme -> darkColorScheme(
+            primary = md_theme_dark_primary,
+            onPrimary = md_theme_dark_onPrimary,
+            background = md_theme_dark_background,
+            surface = md_theme_dark_surface
+        )
+        else -> lightColorScheme(
+            primary = md_theme_light_primary,
+            onPrimary = md_theme_light_onPrimary,
+            background = md_theme_light_background,
+            surface = md_theme_light_surface
+        )
+    }
+    
+    MaterialTheme(
+        colorScheme = colorScheme,
+        typography = AppTypography,
+        content = content
+    )
+}
+```
+
+## 🌐 网络请求
+
+### Retrofit + OkHttp
+```kotlin
+// API 定义
+interface ApiService {
+    @GET("users/{id}")
+    suspend fun getUser(@Path("id") userId: String): UserResponse
+    
+    @POST("users")
+    suspend fun createUser(@Body user: CreateUserRequest): UserResponse
+    
+    @Multipart
+    @POST("upload")
+    suspend fun uploadFile(
+        @Part file: MultipartBody.Part
+    ): UploadResponse
+}
+
+// 网络模块配置
+@Module
+@InstallIn(SingletonComponent::class)
+object NetworkModule {
+    
+    @Provides
+    @Singleton
+    fun provideOkHttpClient(
+        authInterceptor: AuthInterceptor,
+        loggingInterceptor: HttpLoggingInterceptor
+    ): OkHttpClient {
+        return OkHttpClient.Builder()
+            .addInterceptor(authInterceptor)
+            .addInterceptor(loggingInterceptor)
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .build()
+    }
+    
+    @Provides
+    @Singleton
+    fun provideRetrofit(okHttpClient: OkHttpClient): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl(BuildConfig.API_BASE_URL)
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+    }
+    
+    @Provides
+    @Singleton
+    fun provideApiService(retrofit: Retrofit): ApiService {
+        return retrofit.create(ApiService::class.java)
+    }
+}
+```
+
+## 💾 本地存储
+
+### Room Database
+```kotlin
+@Entity(tableName = "users")
+data class UserEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val email: String,
+    @ColumnInfo(name = "avatar_url") val avatarUrl: String?,
+    @ColumnInfo(name = "created_at") val createdAt: Long
+)
+
+@Dao
+interface UserDao {
+    @Query("SELECT * FROM users WHERE id = :userId")
+    suspend fun getUser(userId: String): UserEntity?
+    
+    @Query("SELECT * FROM users")
+    fun observeUsers(): Flow<List<UserEntity>>
+    
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertUser(user: UserEntity)
+    
+    @Delete
+    suspend fun deleteUser(user: UserEntity)
+}
+
+@Database(entities = [UserEntity::class], version = 1)
+abstract class AppDatabase : RoomDatabase() {
+    abstract fun userDao(): UserDao
+}
+```
+
+## 🧪 测试规范
+
+### 单元测试
+```kotlin
+@Test
+fun `when user data is valid, repository returns success`() = runTest {
+    // Given
+    val userId = "123"
+    val expectedUser = User(id = userId, name = "Test", email = "test@example.com")
+    coEvery { remoteDataSource.getUser(userId) } returns expectedUser
+    
+    // When
+    val result = repository.getUser(userId)
+    
+    // Then
+    assertTrue(result.isSuccess)
+    assertEquals(expectedUser, result.getOrNull())
+}
+```
+
+### UI 测试
+```kotlin
+@Test
+fun userCard_displaysUserInformation() {
+    composeTestRule.setContent {
+        UserCard(
+            user = User("1", "John Doe", "john@example.com"),
+            onUserClick = {}
+        )
+    }
+    
+    composeTestRule
+        .onNodeWithText("John Doe")
+        .assertIsDisplayed()
+    
+    composeTestRule
+        .onNodeWithText("john@example.com")
+        .assertIsDisplayed()
+}
+```
+
+## ⚡ 性能优化
+
+### 常见优化技巧
+```kotlin
+// ✅ 使用 remember 缓存计算结果
+@Composable
+fun ExpensiveComposable(items: List<Item>) {
+    val processedItems = remember(items) {
+        items.map { processItem(it) }
+    }
+    // ...
+}
+
+// ✅ 使用 derivedStateOf 避免不必要的重组
+@Composable
+fun FilteredList(items: List<Item>, filter: String) {
+    val filteredItems by remember {
+        derivedStateOf {
+            items.filter { it.name.contains(filter, ignoreCase = true) }
+        }
+    }
+    // ...
+}
+
+// ✅ 使用 LazyColumn 处理长列表
+@Composable
+fun UserList(users: List<User>) {
+    LazyColumn {
+        items(
+            items = users,
+            key = { it.id }  // 提供稳定的 key
+        ) { user ->
+            UserCard(user = user)
+        }
+    }
+}
+```
+
+## 📋 开发检查清单
+
+### 代码质量
+- [ ] 使用 Kotlin 惯用法和最佳实践
+- [ ] 遵循 MVVM/MVI 架构模式
+- [ ] 代码格式符合 ktlint 规范
+- [ ] 添加必要的注释和文档
+- [ ] 处理所有边界情况和错误场景
+
+### UI/UX
+- [ ] 遵循 Material Design 3 规范
+- [ ] 适配不同屏幕尺寸
+- [ ] 支持深色模式
+- [ ] 提供加载和错误状态
+- [ ] 动画流畅自然
+
+### 性能
+- [ ] 避免主线程阻塞
+- [ ] 优化列表性能
+- [ ] 图片加载优化
+- [ ] 内存泄漏检查
+- [ ] 启动时间优化
+
+### 安全
+- [ ] API 密钥不硬编码
+- [ ] 敏感数据加密存储
+- [ ] 网络请求使用 HTTPS
+- [ ] 输入验证和防护
+- [ ] ProGuard/R8 混淆配置
+
+## 🔧 常用工具
+- Android Studio Hedgehog+
+- Gradle 8.0+
+- ktlint（代码格式化）
+- Detekt（静态代码分析）
+- LeakCanary（内存泄漏检测）
+- Timber（日志）
+- Coil/Glide（图片加载）

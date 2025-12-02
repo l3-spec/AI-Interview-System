@@ -1,0 +1,47 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "OpenAvatarChat", "OpenAvatarChat", "{B05D2053-6B08-E17D-75B4-D0ADB42D185F}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{A5B19715-B446-A162-FD42-527084C62067}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "handlers", "handlers", "{F64E4DB9-06C8-DEED-4347-A904821C0F56}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "vad", "vad", "{E5B232CA-A606-567B-0E75-B2489C6D9B83}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "silerovad", "silerovad", "{4A97F5B9-E9FF-73DD-0E1E-EBB9DF885182}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "silero_vad", "silero_vad", "{0FDB780A-0967-C6CA-C922-E64588985CDA}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "examples", "examples", "{C3E6423E-9059-461A-6689-F4D3DF9C1B4F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VadDotNet", "OpenAvatarChat\src\handlers\vad\silerovad\silero_vad\examples\csharp\VadDotNet.csproj", "{AB6A156E-31CE-18CB-F65A-F7F86FD94F6A}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{AB6A156E-31CE-18CB-F65A-F7F86FD94F6A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AB6A156E-31CE-18CB-F65A-F7F86FD94F6A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AB6A156E-31CE-18CB-F65A-F7F86FD94F6A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AB6A156E-31CE-18CB-F65A-F7F86FD94F6A}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{A5B19715-B446-A162-FD42-527084C62067} = {B05D2053-6B08-E17D-75B4-D0ADB42D185F}
+		{F64E4DB9-06C8-DEED-4347-A904821C0F56} = {A5B19715-B446-A162-FD42-527084C62067}
+		{E5B232CA-A606-567B-0E75-B2489C6D9B83} = {F64E4DB9-06C8-DEED-4347-A904821C0F56}
+		{4A97F5B9-E9FF-73DD-0E1E-EBB9DF885182} = {E5B232CA-A606-567B-0E75-B2489C6D9B83}
+		{0FDB780A-0967-C6CA-C922-E64588985CDA} = {4A97F5B9-E9FF-73DD-0E1E-EBB9DF885182}
+		{C3E6423E-9059-461A-6689-F4D3DF9C1B4F} = {0FDB780A-0967-C6CA-C922-E64588985CDA}
+		{AB6A156E-31CE-18CB-F65A-F7F86FD94F6A} = {C3E6423E-9059-461A-6689-F4D3DF9C1B4F}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {51F691CE-7B26-48A7-87AD-813AAEBCDAB7}
+	EndGlobalSection
+EndGlobal

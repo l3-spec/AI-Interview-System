@@ -1,0 +1,11 @@
+<svg width="160" height="60" viewBox="0 0 160 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="160" height="60" rx="14" fill="white"/>
+  <path d="M32 24C40 14 58 12 72 20" stroke="#FF6A00" stroke-width="6" stroke-linecap="round"/>
+  <path d="M78 20C88 12 108 16 116 26" stroke="#FF6A00" stroke-width="6" stroke-linecap="round"/>
+  <text x="26" y="42" fill="#FF6A00" font-family="'Segoe UI', Arial, sans-serif" font-size="28" font-weight="700" letter-spacing="0.5">
+    Alibaba
+  </text>
+  <text x="28" y="52" fill="#FF9A3C" font-family="'Segoe UI', Arial, sans-serif" font-size="12" letter-spacing="4">
+    GROUP
+  </text>
+</svg>

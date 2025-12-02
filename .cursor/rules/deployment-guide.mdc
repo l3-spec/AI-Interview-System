@@ -1,0 +1,112 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Deployment and Environment Setup
+
+## 🚀 Quick Development Start
+Use the automated script: [start-dev.sh](mdc:start-dev.sh)
+```bash
+chmod +x start-dev.sh
+./start-dev.sh
+```
+
+## 🛠️ Manual Development Setup
+
+### Prerequisites
+- Node.js >= 16.0.0
+- MySQL >= 8.0
+- Redis >= 6.0
+- Git
+
+### Backend Setup
+```bash
+cd backend-api
+npm install
+cp env.example .env          # Configure environment variables
+npx prisma generate          # Generate Prisma client
+npx prisma migrate dev       # Run database migrations
+npm run dev                  # Start development server
+```
+
+### Frontend Setup  
+```bash
+cd admin-dashboard
+npm install
+npm run dev                  # Start development server
+```
+
+## 🔧 Environment Configuration
+
+### Backend Environment ([backend-api/env.example](mdc:backend-api/env.example))
+```bash
+# Database
+DATABASE_URL="mysql://username:password@localhost:3306/ai_interview_db"
+
+# Authentication
+JWT_SECRET="your-secure-secret-key"
+JWT_EXPIRE="7d"
+
+# Services
+REDIS_URL="redis://localhost:6379"
+SMTP_HOST="smtp.gmail.com"
+SMTP_PORT=587
+
+# File uploads
+UPLOAD_DIR="uploads"
+MAX_FILE_SIZE=100MB
+```
+
+### Frontend Environment
+```bash
+VITE_API_BASE_URL=http://localhost:3000/api
+VITE_UPLOAD_URL=http://localhost:3000/uploads
+```
+
+## 🐳 Docker Deployment
+Use [docker-compose.yml](mdc:docker-compose.yml) for containerized deployment:
+```bash
+docker-compose up -d        # Start all services
+docker-compose logs -f      # View logs
+docker-compose down         # Stop services
+```
+
+### Services Included
+- **MySQL**: Database with persistent storage
+- **Redis**: Caching layer
+- **Backend API**: Node.js application
+- **Admin Dashboard**: React frontend
+- **Nginx**: Reverse proxy and static file serving
+
+## 🔒 Security Checklist
+- [ ] Change all default passwords
+- [ ] Configure firewall rules
+- [ ] Set up SSL certificates
+- [ ] Enable database backups
+- [ ] Configure log rotation
+- [ ] Set up monitoring alerts
+
+## 🚦 Service Management
+
+### PM2 Process Management
+```bash
+pm2 start ecosystem.config.js    # Start application
+pm2 restart ai-interview-api     # Restart API
+pm2 logs                         # View logs
+pm2 status                       # Check status
+pm2 monit                        # Monitor resources
+```
+
+### Database Management
+```bash
+npx prisma migrate deploy        # Production migrations
+npx prisma db seed              # Initialize data
+npx prisma studio               # Database GUI
+```
+
+## 📋 Maintenance Tasks
+- **Daily**: Check service status and logs
+- **Weekly**: Monitor disk space and performance
+- **Monthly**: Update dependencies and security patches
+- **Quarterly**: Review and optimize database performance

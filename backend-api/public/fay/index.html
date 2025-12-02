@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fay数字人面试系统</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .container {
+            flex: 1;
+            display: flex;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            gap: 20px;
+        }
+        
+        .digital-human {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 30px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .control-panel {
+            width: 350px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 30px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .fay-display {
+            width: 100%;
+            height: 400px;
+            background: #000;
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .fay-avatar {
+            width: 200px;
+            height: 200px;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 24px;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        .character-selector {
+            margin-bottom: 20px;
+        }
+        
+        .character-selector select {
+            width: 100%;
+            padding: 10px;
+            border-radius: 10px;
+            border: none;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            font-size: 16px;
+        }
+        
+        .chat-area {
+            height: 200px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 15px;
+            overflow-y: auto;
+            margin-bottom: 15px;
+            color: white;
+        }
+        
+        .input-area {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .input-area input {
+            flex: 1;
+            padding: 10px;
+            border-radius: 10px;
+            border: none;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+        
+        .input-area button {
+            padding: 10px 20px;
+            border-radius: 10px;
+            border: none;
+            background: #4ecdc4;
+            color: white;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        .input-area button:hover {
+            background: #45b7b8;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+        
+        .status-connected {
+            background: #4ecdc4;
+        }
+        
+        .status-disconnected {
+            background: #ff6b6b;
+        }
+        
+        .voice-controls {
+            margin-top: 20px;
+            text-align: center;
+        }
+        
+        .voice-btn {
+            padding: 15px 30px;
+            margin: 5px;
+            border-radius: 25px;
+            border: none;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            transition: transform 0.3s;
+        }
+        
+        .voice-btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .voice-btn:active {
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎭 Fay数字人面试系统</h1>
+        <p>AI驱动的实时数字人面试体验</p>
+        <div>
+            <span class="status-indicator" id="connection-status"></span>
+            <span id="connection-text">连接中...</span>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="digital-human">
+            <h2>数字人展示</h2>
+            <div class="fay-display">
+                <div class="fay-avatar" id="fay-avatar">🤖</div>
+            </div>
+            
+            <div class="character-selector">
+                <label>选择角色：</label>
+                <select id="character-select">
+                    <option value="tech_interviewer">技术面试官</option>
+                    <option value="hr_interviewer">HR面试官</option>
+                    <option value="pressure_interviewer">压力面试官</option>
+                </select>
+            </div>
+            
+            <div class="voice-controls">
+                <button class="voice-btn" onclick="startInterview()">开始面试</button>
+                <button class="voice-btn" onclick="testVoice()">测试语音</button>
+            </div>
+        </div>
+        
+        <div class="control-panel">
+            <h3>实时对话</h3>
+            <div class="chat-area" id="chat-area">
+                <div>等待连接...</div>
+            </div>
+            
+            <div class="input-area">
+                <input type="text" id="question-input" placeholder="输入面试问题..." />
+                <button onclick="sendQuestion()">发送</button>
+            </div>
+            
+            <div style="margin-top: 20px;">
+                <h4>快速测试</h4>
+                <button class="voice-btn" onclick="quickTest('自我介绍')">自我介绍</button>
+                <button class="voice-btn" onclick="quickTest('技术栈')">技术问题</button>
+                <button class="voice-btn" onclick="quickTest('职业规划')">职业规划</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let socket;
+        let currentCharacter = 'tech_interviewer';
+        
+        // 初始化连接
+        function initConnection() {
+            socket = io('ws://localhost:3001');
+            
+            socket.on('connect', () => {
+                updateConnectionStatus(true);
+                addMessage('系统', '已连接到Fay数字人系统');
+                socket.emit('join_interview', {userId: 'demo_user'});
+            });
+            
+            socket.on('disconnect', () => {
+                updateConnectionStatus(false);
+                addMessage('系统', '连接已断开');
+            });
+            
+            socket.on('interview_response', (data) => {
+                addMessage('Fay', data.response);
+                animateAvatar();
+            });
+            
+            socket.on('voice_ready', (data) => {
+                addMessage('系统', '语音合成完成');
+                playAudio(data.audioUrl);
+            });
+            
+            socket.on('user_joined', (data) => {
+                addMessage('系统', '新用户加入面试');
+            });
+        }
+        
+        function updateConnectionStatus(connected) {
+            const status = document.getElementById('connection-status');
+            const text = document.getElementById('connection-text');
+            
+            if (connected) {
+                status.className = 'status-indicator status-connected';
+                text.textContent = '已连接';
+            } else {
+                status.className = 'status-indicator status-disconnected';
+                text.textContent = '未连接';
+            }
+        }
+        
+        function addMessage(sender, message) {
+            const chatArea = document.getElementById('chat-area');
+            const messageDiv = document.createElement('div');
+            messageDiv.innerHTML = `<strong>${sender}:</strong> ${message}<br>`;
+            chatArea.appendChild(messageDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+        
+        function animateAvatar() {
+            const avatar = document.getElementById('fay-avatar');
+            avatar.style.animation = 'none';
+            setTimeout(() => {
+                avatar.style.animation = 'pulse 2s infinite';
+            }, 100);
+        }
+        
+        function sendQuestion() {
+            const input = document.getElementById('question-input');
+            const question = input.value.trim();
+            
+            if (question && socket.connected) {
+                addMessage('你', question);
+                socket.emit('send_question', {
+                    question: question,
+                    character: currentCharacter
+                });
+                input.value = '';
+            }
+        }
+        
+        function startInterview() {
+            if (socket.connected) {
+                currentCharacter = document.getElementById('character-select').value;
+                socket.emit('start_session', {
+                    character: currentCharacter,
+                    questions: [
+                        '请自我介绍一下',
+                        '你为什么想加入我们公司',
+                        '你的最大优势是什么'
+                    ]
+                });
+                addMessage('系统', `开始${currentCharacter}面试模式`);
+            }
+        }
+        
+        function testVoice() {
+            if (socket.connected) {
+                socket.emit('voice_synthesis', {
+                    text: '你好，我是AI面试官，很高兴见到你！',
+                    voice: 'zh-CN-XiaoxiaoNeural'
+                });
+            }
+        }
+        
+        function quickTest(type) {
+            const questions = {
+                '自我介绍': '请简单自我介绍一下',
+                '技术栈': '请介绍一下你的技术栈',
+                '职业规划': '你未来3年的职业规划是什么'
+            };
+            
+            if (questions[type]) {
+                document.getElementById('question-input').value = questions[type];
+                sendQuestion();
+            }
+        }
+        
+        function playAudio(url) {
+            if (url) {
+                const audio = new Audio(url);
+                audio.play().catch(e => console.log('音频播放失败:', e));
+            }
+        }
+        
+        // 键盘事件
+        document.getElementById('question-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendQuestion();
+            }
+        });
+        
+        // 初始化
+        initConnection();
+    </script>
+</body>
+</html>

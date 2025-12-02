@@ -1,0 +1,20 @@
+<svg width="160" height="60" viewBox="0 0 160 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="160" height="60" rx="14" fill="white"/>
+  <g transform="translate(26 8)">
+    <circle cx="26" cy="14" r="10" fill="#1B6CFF"/>
+    <ellipse cx="26" cy="34" rx="14" ry="10" fill="#1B6CFF"/>
+    <rect x="13" y="40" width="26" height="6" rx="3" fill="#1B6CFF"/>
+    <circle cx="10" cy="12" r="4" fill="#1B6CFF"/>
+    <circle cx="42" cy="12" r="4" fill="#1B6CFF"/>
+    <rect x="8" y="10" width="6" height="12" rx="3" fill="#1B6CFF"/>
+    <rect x="38" y="10" width="6" height="12" rx="3" fill="#1B6CFF"/>
+    <circle cx="22" cy="12" r="2" fill="white"/>
+    <circle cx="30" cy="12" r="2" fill="white"/>
+    <circle cx="22" cy="12" r="1.2" fill="#1B6CFF"/>
+    <circle cx="30" cy="12" r="1.2" fill="#1B6CFF"/>
+    <path d="M22 22C24 24 28 24 30 22" stroke="white" stroke-width="2" stroke-linecap="round"/>
+  </g>
+  <text x="70" y="50" fill="#1B6CFF" font-family="'Segoe UI', Arial, sans-serif" font-size="18" font-weight="600">
+    Ant Group
+  </text>
+</svg>

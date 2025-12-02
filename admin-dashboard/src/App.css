@@ -1,0 +1,182 @@
+.app {
+  min-height: 100vh;
+}
+
+/* 自定义滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* 通用类 */
+.text-center {
+  text-align: center;
+}
+
+.mt-16 {
+  margin-top: 16px;
+}
+
+.mb-16 {
+  margin-bottom: 16px;
+}
+
+.p-16 {
+  padding: 16px;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.interview-room-layout {
+  width: 100vw;
+  height: 100vh;
+  background: #05060e;
+  overflow: hidden;
+}
+
+/* 设置页面样式 */
+.settings-page {
+  background: #f8fafc;
+  min-height: 100vh;
+}
+
+.settings-page .ant-card {
+  transition: all 0.3s ease;
+}
+
+.settings-page .ant-card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
+}
+
+.settings-page .ant-form-item-label > label {
+  font-weight: 500;
+  color: #374151;
+}
+
+.settings-page .ant-input,
+.settings-page .ant-input-number,
+.settings-page .ant-select-selector {
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  transition: all 0.2s ease;
+}
+
+.settings-page .ant-input:focus,
+.settings-page .ant-input-focused,
+.settings-page .ant-select-focused .ant-select-selector {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.settings-page .ant-btn-primary {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  border-radius: 6px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.settings-page .ant-btn-primary:hover {
+  background: #2563eb;
+  border-color: #2563eb;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+}
+
+.settings-page .ant-upload {
+  border-radius: 6px;
+}
+
+.settings-page .ant-upload-drag {
+  border: 2px dashed #d1d5db;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.settings-page .ant-upload-drag:hover {
+  border-color: #3b82f6;
+  background: #f8fafc;
+}
+
+.settings-page .ant-tag {
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.settings-page .ant-descriptions-bordered .ant-descriptions-item-label {
+  background: #f9fafb;
+  font-weight: 500;
+  color: #374151;
+}
+
+.settings-page .ant-alert {
+  border-radius: 6px;
+  border: none;
+}
+
+.settings-page .ant-alert-error {
+  background: #fef2f2;
+  border-left: 4px solid #ef4444;
+}
+
+.settings-page .ant-alert-success {
+  background: #f0fdf4;
+  border-left: 4px solid #22c55e;
+}
+
+.settings-page .ant-alert-warning {
+  background: #fffbeb;
+  border-left: 4px solid #f59e0b;
+}
+
+/* 登录错误提示动画 */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-2px); }
+  20%, 40%, 60%, 80% { transform: translateX(2px); }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.error-message {
+  animation: fadeInUp 0.3s ease-out, shake 0.5s ease-in-out 0.3s;
+}
+
+/* 登录弹窗样式优化 */
+.login-modal {
+  animation: fadeInUp 0.3s ease-out;
+}
+
+.login-modal-overlay {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

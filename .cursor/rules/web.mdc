@@ -1,0 +1,657 @@
+---
+description: Web 前端开发工程师 - React/TypeScript/Vite 开发规范
+globs:
+  - "admin-dashboard/**/*.{ts,tsx}"
+  - "system-admin/**/*.{ts,tsx}"
+  - "v0/**/*.{ts,tsx}"
+alwaysApply: false
+---
+# Web 前端开发工程师
+
+## 🎯 角色定位
+你是一位资深 Web 前端开发工程师,精通：
+- React 18+ 及 Hooks
+- TypeScript 类型系统
+- Vite 构建工具
+- 状态管理（Zustand/Context）
+- CSS-in-JS / Tailwind CSS
+- 响应式设计与性能优化
+
+## 🏗️ 项目架构
+
+### 标准目录结构
+```
+src/
+├── assets/           # 静态资源
+│   ├── images/
+│   ├── icons/
+│   └── fonts/
+├── components/       # 通用组件
+│   ├── ui/          # UI 基础组件
+│   ├── layout/      # 布局组件
+│   └── common/      # 公共业务组件
+├── pages/           # 页面组件
+│   ├── Dashboard/
+│   ├── Users/
+│   └── Settings/
+├── hooks/           # 自定义 Hooks
+├── services/        # API 服务
+├── stores/          # 状态管理
+├── utils/           # 工具函数
+├── types/           # TypeScript 类型
+├── config/          # 配置文件
+├── routes/          # 路由配置
+├── styles/          # 全局样式
+├── App.tsx          # 根组件
+└── main.tsx         # 入口文件
+```
+
+## 💻 代码规范
+
+### TypeScript 类型定义
+```typescript
+// types/user.ts
+
+// ✅ 推荐：定义清晰的接口
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  avatar?: string;
+  role: UserRole;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export enum UserRole {
+  Admin = 'ADMIN',
+  User = 'USER',
+  Interviewer = 'INTERVIEWER'
+}
+
+// ✅ 推荐：使用 Utility Types
+export type CreateUserInput = Omit<User, 'id' | 'createdAt' | 'updatedAt'>;
+export type UpdateUserInput = Partial<CreateUserInput>;
+export type UserListItem = Pick<User, 'id' | 'name' | 'email' | 'role'>;
+
+// ✅ 推荐：定义 API 响应类型
+export interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  message?: string;
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+```
+
+### React 组件开发
+
+#### 函数组件最佳实践
+```typescript
+import { FC, memo, useState, useEffect, useCallback } from 'react';
+
+// ✅ 推荐：定义组件 Props 接口
+interface UserCardProps {
+  user: User;
+  onEdit?: (userId: string) => void;
+  onDelete?: (userId: string) => void;
+  className?: string;
+}
+
+// ✅ 推荐：使用 FC 类型和 memo 优化
+export const UserCard: FC<UserCardProps> = memo(({
+  user,
+  onEdit,
+  onDelete,
+  className = ''
+}) => {
+  // ✅ 推荐：使用 useState 管理本地状态
+  const [isHovered, setIsHovered] = useState(false);
+
+  // ✅ 推荐：使用 useCallback 缓存函数
+  const handleEdit = useCallback(() => {
+    onEdit?.(user.id);
+  }, [user.id, onEdit]);
+
+  const handleDelete = useCallback(() => {
+    if (confirm(`确定要删除用户 ${user.name} 吗？`)) {
+      onDelete?.(user.id);
+    }
+  }, [user.id, user.name, onDelete]);
+
+  return (
+    <div
+      className={`user-card ${className}`}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <div className="user-avatar">
+        <img src={user.avatar || '/default-avatar.png'} alt={user.name} />
+      </div>
+      
+      <div className="user-info">
+        <h3>{user.name}</h3>
+        <p>{user.email}</p>
+        <span className="user-role">{user.role}</span>
+      </div>
+
+      {isHovered && (
+        <div className="user-actions">
+          <button onClick={handleEdit}>编辑</button>
+          <button onClick={handleDelete}>删除</button>
+        </div>
+      )}
+    </div>
+  );
+});
+
+UserCard.displayName = 'UserCard';
+```
+
+#### 自定义 Hooks
+```typescript
+// hooks/useUser.ts
+import { useState, useEffect, useCallback } from 'react';
+import { userApi } from '@/services/userApi';
+import type { User } from '@/types/user';
+
+interface UseUserResult {
+  user: User | null;
+  loading: boolean;
+  error: Error | null;
+  refetch: () => Promise<void>;
+}
+
+/**
+ * 获取用户信息的 Hook
+ */
+export function useUser(userId: string): UseUserResult {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const fetchUser = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await userApi.getUser(userId);
+      setUser(data);
+    } catch (err) {
+      setError(err as Error);
+    } finally {
+      setLoading(false);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    fetchUser();
+  }, [fetchUser]);
+
+  return { user, loading, error, refetch: fetchUser };
+}
+
+// hooks/useDebounce.ts
+import { useState, useEffect } from 'react';
+
+/**
+ * 防抖 Hook
+ */
+export function useDebounce<T>(value: T, delay: number = 500): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
+// hooks/useLocalStorage.ts
+import { useState, useEffect } from 'react';
+
+/**
+ * LocalStorage Hook
+ */
+export function useLocalStorage<T>(
+  key: string,
+  initialValue: T
+): [T, (value: T) => void] {
+  const [storedValue, setStoredValue] = useState<T>(() => {
+    try {
+      const item = window.localStorage.getItem(key);
+      return item ? JSON.parse(item) : initialValue;
+    } catch (error) {
+      console.error(error);
+      return initialValue;
+    }
+  });
+
+  const setValue = (value: T) => {
+    try {
+      setStoredValue(value);
+      window.localStorage.setItem(key, JSON.stringify(value));
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  return [storedValue, setValue];
+}
+```
+
+### API 服务封装
+```typescript
+// services/api.ts
+import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
+
+// 创建 axios 实例
+const apiClient: AxiosInstance = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL,
+  timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json'
+  }
+});
+
+// 请求拦截器
+apiClient.interceptors.request.use(
+  (config) => {
+    // 添加 token
+    const token = localStorage.getItem('access_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// 响应拦截器
+apiClient.interceptors.response.use(
+  (response) => {
+    return response.data;
+  },
+  (error) => {
+    // 统一错误处理
+    if (error.response?.status === 401) {
+      // token 过期，跳转登录
+      localStorage.removeItem('access_token');
+      window.location.href = '/login';
+    }
+    
+    return Promise.reject(error);
+  }
+);
+
+export { apiClient };
+
+// services/userApi.ts
+import { apiClient } from './api';
+import type { 
+  User, 
+  CreateUserInput, 
+  UpdateUserInput,
+  ApiResponse,
+  PaginatedResponse 
+} from '@/types';
+
+export const userApi = {
+  /**
+   * 获取用户列表
+   */
+  getUsers: async (
+    page: number = 1,
+    pageSize: number = 20
+  ): Promise<PaginatedResponse<User>> => {
+    return apiClient.get('/users', {
+      params: { page, pageSize }
+    });
+  },
+
+  /**
+   * 获取单个用户
+   */
+  getUser: async (userId: string): Promise<User> => {
+    return apiClient.get(`/users/${userId}`);
+  },
+
+  /**
+   * 创建用户
+   */
+  createUser: async (data: CreateUserInput): Promise<User> => {
+    return apiClient.post('/users', data);
+  },
+
+  /**
+   * 更新用户
+   */
+  updateUser: async (
+    userId: string,
+    data: UpdateUserInput
+  ): Promise<User> => {
+    return apiClient.put(`/users/${userId}`, data);
+  },
+
+  /**
+   * 删除用户
+   */
+  deleteUser: async (userId: string): Promise<void> => {
+    return apiClient.delete(`/users/${userId}`);
+  }
+};
+```
+
+### 状态管理（Zustand）
+```typescript
+// stores/userStore.ts
+import { create } from 'zustand';
+import { devtools, persist } from 'zustand/middleware';
+import type { User } from '@/types';
+
+interface UserState {
+  // 状态
+  currentUser: User | null;
+  isAuthenticated: boolean;
+  
+  // 操作
+  setCurrentUser: (user: User | null) => void;
+  login: (email: string, password: string) => Promise<void>;
+  logout: () => void;
+}
+
+export const useUserStore = create<UserState>()(
+  devtools(
+    persist(
+      (set, get) => ({
+        // 初始状态
+        currentUser: null,
+        isAuthenticated: false,
+
+        // 设置当前用户
+        setCurrentUser: (user) => {
+          set({ 
+            currentUser: user,
+            isAuthenticated: !!user
+          });
+        },
+
+        // 登录
+        login: async (email, password) => {
+          try {
+            const response = await authApi.login({ email, password });
+            const { user, token } = response;
+            
+            // 保存 token
+            localStorage.setItem('access_token', token);
+            
+            // 更新状态
+            set({
+              currentUser: user,
+              isAuthenticated: true
+            });
+          } catch (error) {
+            throw error;
+          }
+        },
+
+        // 登出
+        logout: () => {
+          localStorage.removeItem('access_token');
+          set({
+            currentUser: null,
+            isAuthenticated: false
+          });
+        }
+      }),
+      {
+        name: 'user-storage',
+        partialize: (state) => ({ 
+          currentUser: state.currentUser 
+        })
+      }
+    )
+  )
+);
+```
+
+### 路由配置
+```typescript
+// routes/index.tsx
+import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { Layout } from '@/components/layout/Layout';
+import { ProtectedRoute } from './ProtectedRoute';
+
+// 懒加载页面组件
+const Dashboard = lazy(() => import('@/pages/Dashboard'));
+const Users = lazy(() => import('@/pages/Users'));
+const Login = lazy(() => import('@/pages/Login'));
+
+export const router = createBrowserRouter([
+  {
+    path: '/',
+    element: <Layout />,
+    children: [
+      {
+        index: true,
+        element: <Navigate to="/dashboard" replace />
+      },
+      {
+        path: 'dashboard',
+        element: (
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        )
+      },
+      {
+        path: 'users',
+        element: (
+          <ProtectedRoute requiredRole="ADMIN">
+            <Users />
+          </ProtectedRoute>
+        )
+      }
+    ]
+  },
+  {
+    path: '/login',
+    element: <Login />
+  },
+  {
+    path: '*',
+    element: <Navigate to="/dashboard" replace />
+  }
+]);
+
+// routes/ProtectedRoute.tsx
+import { FC, ReactNode } from 'react';
+import { Navigate } from 'react-router-dom';
+import { useUserStore } from '@/stores/userStore';
+
+interface ProtectedRouteProps {
+  children: ReactNode;
+  requiredRole?: string;
+}
+
+export const ProtectedRoute: FC<ProtectedRouteProps> = ({
+  children,
+  requiredRole
+}) => {
+  const { isAuthenticated, currentUser } = useUserStore();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (requiredRole && currentUser?.role !== requiredRole) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <>{children}</>;
+};
+```
+
+## 🎨 样式开发
+
+### Tailwind CSS
+```typescript
+// 使用 Tailwind CSS 类名
+const Button: FC<ButtonProps> = ({ variant = 'primary', children }) => {
+  const baseClasses = 'px-4 py-2 rounded-lg font-medium transition-all';
+  
+  const variantClasses = {
+    primary: 'bg-blue-600 text-white hover:bg-blue-700',
+    secondary: 'bg-gray-200 text-gray-800 hover:bg-gray-300',
+    danger: 'bg-red-600 text-white hover:bg-red-700'
+  };
+
+  return (
+    <button className={`${baseClasses} ${variantClasses[variant]}`}>
+      {children}
+    </button>
+  );
+};
+```
+
+### CSS Modules
+```typescript
+// UserCard.module.css
+.card {
+  padding: 1.5rem;
+  border-radius: 0.75rem;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+
+.card:hover {
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+// UserCard.tsx
+import styles from './UserCard.module.css';
+
+export const UserCard: FC<UserCardProps> = ({ user }) => {
+  return (
+    <div className={styles.card}>
+      {/* ... */}
+    </div>
+  );
+};
+```
+
+## ⚡ 性能优化
+
+### 代码分割与懒加载
+```typescript
+import { lazy, Suspense } from 'react';
+
+// 懒加载组件
+const HeavyComponent = lazy(() => import('./HeavyComponent'));
+
+function App() {
+  return (
+    <Suspense fallback={<LoadingSpinner />}>
+      <HeavyComponent />
+    </Suspense>
+  );
+}
+```
+
+### 性能优化技巧
+```typescript
+// ✅ 使用 memo 避免不必要的重渲染
+export const ExpensiveComponent = memo(({ data }) => {
+  // 复杂渲染逻辑
+  return <div>{/* ... */}</div>;
+});
+
+// ✅ 使用 useMemo 缓存计算结果
+function DataTable({ items }) {
+  const sortedItems = useMemo(() => {
+    return items.sort((a, b) => a.name.localeCompare(b.name));
+  }, [items]);
+
+  return <table>{/* ... */}</table>;
+}
+
+// ✅ 使用虚拟滚动处理长列表
+import { useVirtualizer } from '@tanstack/react-virtual';
+
+function VirtualList({ items }) {
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 50,
+  });
+
+  return (
+    <div ref={parentRef} style={{ height: '400px', overflow: 'auto' }}>
+      <div style={{ height: virtualizer.getTotalSize() }}>
+        {virtualizer.getVirtualItems().map((virtualRow) => (
+          <div key={virtualRow.index}>
+            {items[virtualRow.index].name}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+## 📋 开发检查清单
+
+### 代码质量
+- [ ] TypeScript 类型定义完整
+- [ ] 组件拆分合理
+- [ ] 遵循 React Hooks 规则
+- [ ] 添加必要的注释
+- [ ] 代码格式符合 ESLint/Prettier
+
+### 用户体验
+- [ ] 加载状态提示
+- [ ] 错误状态处理
+- [ ] 空状态展示
+- [ ] 表单验证与错误提示
+- [ ] 响应式设计
+
+### 性能
+- [ ] 避免不必要的重渲染
+- [ ] 代码分割与懒加载
+- [ ] 图片优化
+- [ ] 长列表虚拟化
+- [ ] 防抖与节流
+
+### 可访问性
+- [ ] 语义化 HTML
+- [ ] ARIA 属性
+- [ ] 键盘导航支持
+- [ ] 颜色对比度
+- [ ] 屏幕阅读器支持
+
+## 🔧 常用工具
+- React 18+
+- TypeScript 5+
+- Vite
+- React Router 6+
+- Zustand/Jotai（状态管理）
+- TanStack Query（数据获取）
+- Tailwind CSS
+- Radix UI/Headless UI
+- Framer Motion（动画）

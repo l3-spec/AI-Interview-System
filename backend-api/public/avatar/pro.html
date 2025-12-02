@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI数字人面试官</title>
+    <script src="https://cdn.jsdelivr.net/npm/pixi.js@7.x/dist/pixi.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/index.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #333;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            max-width: 1200px;
+            width: 100%;
+            height: 90vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px 20px;
+            border-bottom: 1px solid #e0e0e0;
+            margin-bottom: 20px;
+        }
+
+        .title {
+            font-size: 28px;
+            font-weight: 700;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .avatar-selector {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .avatar-option {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 3px solid transparent;
+            transition: all 0.3s ease;
+            background-size: cover;
+            background-position: center;
+        }
+
+        .avatar-option:hover {
+            transform: scale(1.1);
+            border-color: #667eea;
+        }
+
+        .avatar-option.active {
+            border-color: #667eea;
+            box-shadow: 0 0 20px rgba(102, 126, 234, 0.5);
+        }
+
+        .main-content {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 20px;
+            overflow: hidden;
+        }
+
+        .avatar-container {
+            background: #f8f9fa;
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #avatar-canvas {
+            width: 100%;
+            height: 100%;
+            border-radius: 15px;
+        }
+
+        .avatar-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            backdrop-filter: blur(5px);
+        }
+
+        .control-panel {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .section {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .section-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .status-online {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-offline {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-idle {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .volume-meter {
+            height: 20px;
+            background: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .volume-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745, #ffc107, #dc3545);
+            width: 0%;
+            transition: width 0.1s ease;
+            border-radius: 10px;
+        }
+
+        .speech-text {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #495057;
+            min-height: 60px;
+            overflow-y: auto;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .emotion-selector {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+        }
+
+        .emotion-btn {
+            padding: 8px;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            background: white;
+            cursor: pointer;
+            text-align: center;
+            font-size: 12px;
+            transition: all 0.2s ease;
+        }
+
+        .emotion-btn:hover {
+            background: #f8f9fa;
+            border-color: #667eea;
+        }
+
+        .emotion-btn.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+                grid-template-rows: 1fr auto;
+            }
+            
+            .container {
+                height: 100vh;
+                border-radius: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title">AI数字人面试官</h1>
+            <div class="avatar-selector">
+                <div class="avatar-option active" data-avatar="haru" style="background-image: url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMzAiIGZpbGw9IiNGRkQ3QTAiLz4KPGNpcmNsZSBjeD0iMzAiIGN5PSIyNSIgcj0iMTAiIGZpbGw9IiNGRkZGRkYiLz4KPGNpcmNsZSBjeD0iMjUiIGN5PSIyMyIgcj0iMiIgZmlsbD0iIzMzMzMzMyIvPgo8Y2lyY2xlIGN4PSIzNSIgY3k9IjIzIiByPSIyIiBmaWxsPSIjMzMzMzMzIi8+CjxwYXRoIGQ9Ik0yNSAzMUMyNyAzMyAzMyAzMyAzNSAzMSIgc3Ryb2tlPSIjMzMzMzMzIiBzdHJva2Utd2lkdGg9IjEuNSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+Cjwvc3ZnPgo=')"></div>
+                <div class="avatar-option" data-avatar="shizuku" style="background-image: url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMzAiIGZpbGw9IiNCM0U1RkMiLz4KPGNpcmNsZSBjeD0iMzAiIGN5PSIyNSIgcj0iMTAiIGZpbGw9IiNGRkZGRkYiLz4KPGNpcmNsZSBjeD0iMjQiIGN5PSIyMyIgcj0iMiIgZmlsbD0iIzMzMzMzMyIvPgo8Y2lyY2xlIGN4PSIzNiIgY3k9IjIzIiByPSIyIiBmaWxsPSIjMzMzMzMzIi8+CjxwYXRoIGQ9Ik0yNCAzMUMyNiAyOSAzNCAyOSAzNiAzMSIgc3Ryb2tlPSIjMzMzMzMzIiBzdHJva2Utd2lkdGg9IjEuNSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+Cjwvc3ZnPgo=')"></div>
+                <div class="avatar-option" data-avatar="hibiki" style="background-image: url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMzAiIGZpbGw9IiNGRkI2QzEiLz4KPGNpcmNsZSBjeD0iMzAiIGN5PSIyNSIgcj0iMTAiIGZpbGw9IiNGRkZGRkYiLz4KPGNpcmNsZSBjeD0iMjUiIGN5PSIyMyIgcj0iMiIgZmlsbD0iIzMzMzMzMyIvPgo8Y2lyY2xlIGN4PSIzNSIgY3k9IjIzIiByPSIyIiBmaWxsPSIjMzMzMzMzIi8+CjxwYXRoIGQ9Ik0yNSAzMUMyNyAzMyAzMyAzMyAzNSAzMSIgc3Ryb2tlPSIjMzMzMzMzIiBzdHJva2Utd2lkdGg9IjEuNSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+Cjwvc3ZnPgo=')"></div>
+                <div class="avatar-option" data-avatar="miku" style="background-image: url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMzAiIGZpbGw9IiMzMzk5RkYiLz4KPGNpcmNsZSBjeD0iMzAiIGN5PSIyNSIgcj0iMTAiIGZpbGw9IiNGRkZGRkYiLz4KPGNpcmNsZSBjeD0iMjUiIGN5PSIyMyIgcj0iMiIgZmlsbD0iIzMzMzMzMyIvPgo8Y2lyY2xlIGN4PSIzNSIgY3k9IjIzIiByPSIyIiBmaWxsPSIjMzMzMzMzIi8+CjxwYXRoIGQ9Ik0yNSAzMUMyNyAzMyAzMyAzMyAzNSAzMSIgc3Ryb2tlPSIjMzMzMzMzIiBzdHJva2Utd2lkdGg9IjEuNSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+Cjwvc3ZnPgo=')"></div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="avatar-container">
+                <canvas id="avatar-canvas"></canvas>
+                <div class="avatar-overlay">
+                    <div id="status-indicator" class="status-indicator status-offline">
+                        <span>●</span>
+                        <span>离线</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-panel">
+                <div class="section">
+                    <h3 class="section-title">语音控制</h3>
+                    <div class="controls">
+                        <button id="startBtn" class="btn btn-primary" onclick="startVoice()">
+                            🎤 开始语音驱动
+                        </button>
+                        <button id="stopBtn" class="btn btn-secondary" onclick="stopVoice()" disabled>
+                            ⏹ 停止语音
+                        </button>
+                        <button id="testBtn" class="btn btn-success" onclick="testSpeech()">
+                            🗣 测试播报
+                        </button>
+                    </div>
+                    <div class="volume-meter">
+                        <div class="volume-fill" id="volume-fill"></div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3 class="section-title">情绪控制</h3>
+                    <div class="emotion-selector">
+                        <div class="emotion-btn active" data-emotion="idle">😊 正常</div>
+                        <div class="emotion-btn" data-emotion="happy">😄 开心</div>
+                        <div class="emotion-btn" data-emotion="sad">😢 难过</div>
+                        <div class="emotion-btn" data-emotion="angry">😠 生气</div>
+                        <div class="emotion-btn" data-emotion="surprised">😲 惊讶</div>
+                        <div class="emotion-btn" data-emotion="embarrassed">😳 害羞</div>
+                        <div class="emotion-btn" data-emotion="confused">🤔 困惑</div>
+                        <div class="emotion-btn" data-emotion="sleepy">😴 困倦</div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3 class="section-title">文本播报</h3>
+                    <textarea id="speech-text" class="speech-text" placeholder="输入要播报的文本..."></textarea>
+                    <button class="btn btn-primary" onclick="speakText()" style="margin-top: 10px;">
+                        📢 开始播报
+                    </button>
+                </div>
+
+                <div class="section">
+                    <h3 class="section-title">系统状态</h3>
+                    <div id="debug-info" class="speech-text" style="font-size: 12px; min-height: 80px;">
+                        系统初始化中...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class ProfessionalDigitalHuman {
+            constructor() {
+                this.app = null;
+                this.model = null;
+                this.isInitialized = false;
+                this.isActive = false;
+                this.audioContext = null;
+                this.analyser = null;
+                this.currentAvatar = 'haru';
+                this.currentEmotion = 'idle';
+                this.animationId = null;
+                this.speechSynthesis = window.speechSynthesis;
+                this.voices = [];
+
+                this.loadVoices();
+                this.init();
+            }
+
+            async init() {
+                try {
+                    this.updateDebug('🏗️ 初始化专业数字人系统...');
+                    
+                    // 初始化PIXI应用
+                    this.app = new PIXI.Application({
+                        view: document.getElementById('avatar-canvas'),
+                        width: 600,
+                        height: 600,
+                        backgroundColor: 0xf8f9fa,
+                        antialias: true,
+                        resolution: window.devicePixelRatio || 1
+                    });
+
+                    // 加载Live2D模型
+                    await this.loadLive2DModel();
+                    
+                    // 初始化语音系统
+                    await this.initSpeechSynthesis();
+                    
+                    this.isInitialized = true;
+                    this.updateStatus('在线', 'online');
+                    this.updateDebug('✅ 数字人系统初始化完成');
+                    
+                    console.log('✅ 专业数字人系统已启动');
+                } catch (error) {
+                    console.error('❌ 初始化失败:', error);
+                    this.updateDebug(`❌ 初始化失败: ${error.message}`);
+                    this.updateStatus('离线', 'offline');
+                    
+                    // 显示备用界面
+                    this.showFallback();
+                }
+            }
+
+            async loadLive2DModel() {
+                try {
+                    this.updateDebug('📦 加载Live2D模型...');
+                    
+                    // 使用CDN托管的模型
+                    const modelUrl = this.getModelUrl(this.currentAvatar);
+                    
+                    // 创建Pixi Live2D显示对象
+                    this.model = await PIXI.live2d.Live2DModel.from(modelUrl);
+                    
+                    // 设置模型位置和大小
+                    this.model.x = this.app.screen.width / 2;
+                    this.model.y = this.app.screen.height / 2;
+                    this.model.scale.set(0.5);
+                    this.model.anchor.set(0.5, 0.5);
+                    
+                    // 添加到舞台
+                    this.app.stage.addChild(this.model);
+                    
+                    // 设置初始表情
+                    this.setEmotion(this.currentEmotion);
+                    
+                    this.updateDebug('✅ Live2D模型加载完成');
+                } catch (error) {
+                    console.warn('Live2D模型加载失败，使用备份方案:', error);
+                    this.loadFallbackModel();
+                }
+            }
+
+            getModelUrl(avatar) {
+                const models = {
+                    haru: 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/haru/haru.model3.json',
+                    shizuku: 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/shizuku/shizuku.model3.json',
+                    hibiki: 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/hibiki/hibiki.model3.json',
+                    miku: 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/miku/miku.model3.json'
+                };
+                return models[avatar] || models.haru;
+            }
+
+            loadFallbackModel() {
+                // 创建简单的2D头像作为备用
+                const graphics = new PIXI.Graphics();
+                graphics.beginFill(0x87CEEB);
+                graphics.drawCircle(300, 300, 100);
+                graphics.endFill();
+                
+                // 添加眼睛
+                graphics.beginFill(0xFFFFFF);
+                graphics.drawCircle(270, 280, 15);
+                graphics.drawCircle(330, 280, 15);
+                graphics.endFill();
+                
+                graphics.beginFill(0x000000);
+                graphics.drawCircle(270, 280, 8);
+                graphics.drawCircle(330, 280, 8);
+                graphics.endFill();
+                
+                // 添加嘴巴
+                graphics.lineStyle(2, 0x000000);
+                graphics.moveTo(280, 320);
+                graphics.lineTo(320, 320);
+                
+                this.app.stage.addChild(graphics);
+                this.updateDebug('⚠️ 使用备用2D头像');
+            }
+
+            async initSpeechSynthesis() {
+                this.voices = this.speechSynthesis.getVoices();
+                
+                if (this.voices.length === 0) {
+                    return new Promise(resolve => {
+                        this.speechSynthesis.onvoiceschanged = () => {
+                            this.voices = this.speechSynthesis.getVoices();
+                            resolve();
+                        };
+                    });
+                }
+            }
+
+            async startVoice() {
+                if (this.isActive || !this.isInitialized) return;
+
+                try {
+                    this.updateDebug('🎤 启动语音识别...');
+                    
+                    const stream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: { 
+                            echoCancellation: true, 
+                            noiseSuppression: true,
+                            autoGainControl: true
+                        }
+                    });
+                    
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const source = this.audioContext.createMediaStreamSource(stream);
+                    this.analyser = this.audioContext.createAnalyser();
+                    
+                    this.analyser.fftSize = 256;
+                    this.analyser.smoothingTimeConstant = 0.8;
+                    source.connect(this.analyser);
+                    
+                    this.isActive = true;
+                    this.startVolumeAnimation();
+                    this.updateStatus('语音驱动中', 'online');
+                    
+                    this.updateDebug('✅ 语音识别已启动');
+                } catch (error) {
+                    console.error('语音识别启动失败:', error);
+                    this.updateDebug(`❌ 语音识别失败: ${error.message}`);
+                }
+            }
+
+            stopVoice() {
+                if (!this.isActive) return;
+                
+                this.isActive = false;
+                
+                if (this.animationId) {
+                    cancelAnimationFrame(this.animationId);
+                    this.animationId = null;
+                }
+                
+                if (this.audioContext) {
+                    this.audioContext.close();
+                    this.audioContext = null;
+                }
+                
+                this.updateStatus('在线', 'online');
+                this.updateDebug('⏹ 语音识别已停止');
+            }
+
+            startVolumeAnimation() {
+                if (!this.analyser) return;
+                
+                const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+                
+                const animate = () => {
+                    if (!this.isActive) return;
+                    
+                    this.analyser.getByteFrequencyData(dataArray);
+                    
+                    const volume = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                    const normalizedVolume = Math.min(volume / 128, 1);
+                    
+                    this.updateVolumeMeter(normalizedVolume * 100);
+                    
+                    // 根据音量驱动模型动画
+                    if (this.model && this.model.motion) {
+                        const intensity = normalizedVolume * 2;
+                        this.model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', intensity);
+                    }
+                    
+                    this.animationId = requestAnimationFrame(animate);
+                };
+                
+                animate();
+            }
+
+            setEmotion(emotion) {
+                this.currentEmotion = emotion;
+                
+                if (this.model && this.model.expression) {
+                    const expressions = {
+                        idle: 'Idle',
+                        happy: 'F01',
+                        sad: 'F02',
+                        angry: 'F03',
+                        surprised: 'F04',
+                        embarrassed: 'F05',
+                        confused: 'F06',
+                        sleepy: 'F07'
+                    };
+                    
+                    const expression = expressions[emotion];
+                    if (expression) {
+                        this.model.expression(expression);
+                    }
+                }
+                
+                this.updateDebug(`🎭 情绪设置为: ${emotion}`);
+            }
+
+            changeAvatar(avatar) {
+                this.currentAvatar = avatar;
+                
+                // 移除旧模型
+                if (this.model) {
+                    this.app.stage.removeChild(this.model);
+                    this.model.destroy();
+                }
+                
+                // 加载新模型
+                this.loadLive2DModel();
+                
+                // 更新UI
+                document.querySelectorAll('.avatar-option').forEach(opt => opt.classList.remove('active'));
+                document.querySelector(`[data-avatar="${avatar}"]`).classList.add('active');
+                
+                this.updateDebug(`👤 切换头像: ${avatar}`);
+            }
+
+            speakText() {
+                const text = document.getElementById('speech-text').value.trim();
+                if (!text) return;
+
+                this.speak(text);
+            }
+
+            speak(text) {
+                if (!this.speechSynthesis) return;
+
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'zh-CN';
+                utterance.rate = 1.0;
+                utterance.pitch = 1.0;
+                utterance.volume = 1.0;
+
+                // 选择中文语音
+                const chineseVoice = this.voices.find(voice => 
+                    voice.lang.includes('zh') || voice.name.includes('Chinese')
+                );
+                if (chineseVoice) {
+                    utterance.voice = chineseVoice;
+                }
+
+                // 添加语音事件监听
+                utterance.onstart = () => {
+                    this.updateDebug(`🗣️ 开始播报: ${text.substring(0, 50)}...`);
+                    if (this.model) {
+                        // 开始说话动画
+                        this.startTalkingAnimation();
+                    }
+                };
+
+                utterance.onend = () => {
+                    this.updateDebug('✅ 播报完成');
+                    if (this.model) {
+                        this.stopTalkingAnimation();
+                    }
+                };
+
+                this.speechSynthesis.speak(utterance);
+            }
+
+            startTalkingAnimation() {
+                if (!this.model) return;
+                
+                // 模拟说话时的嘴部动画
+                let talking = true;
+                const animateMouth = () => {
+                    if (!talking) return;
+                    
+                    const mouthOpen = Math.random() * 0.8 + 0.2;
+                    this.model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', mouthOpen);
+                    
+                    setTimeout(animateMouth, 100 + Math.random() * 200);
+                };
+                
+                animateMouth();
+            }
+
+            stopTalkingAnimation() {
+                if (this.model) {
+                    this.model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', 0);
+                }
+            }
+
+            testSpeech() {
+                const testTexts = [
+                    "您好，欢迎来到AI面试系统。我是您的专属面试官，将协助您完成这次面试。",
+                    "请简单介绍一下您的工作经历和专业技能。",
+                    "您对我们公司的这个职位有什么了解？为什么认为自己适合这个岗位？",
+                    "在团队合作中，您通常扮演什么样的角色？请举例说明。"
+                ];
+                
+                const randomText = testTexts[Math.floor(Math.random() * testTexts.length)];
+                document.getElementById('speech-text').value = randomText;
+                this.speak(randomText);
+            }
+
+            updateVolumeMeter(volume) {
+                document.getElementById('volume-fill').style.width = volume + '%';
+            }
+
+            updateStatus(status, type) {
+                const indicator = document.getElementById('status-indicator');
+                indicator.innerHTML = `<span>●</span><span>${status}</span>`;
+                indicator.className = `status-indicator status-${type}`;
+            }
+
+            updateDebug(message) {
+                const debugInfo = document.getElementById('debug-info');
+                const timestamp = new Date().toLocaleTimeString();
+                debugInfo.innerHTML += `[${timestamp}] ${message}\n`;
+                debugInfo.scrollTop = debugInfo.scrollHeight;
+            }
+
+            showFallback() {
+                // 创建备用3D渲染
+                const canvas = this.app.view;
+                const ctx = canvas.getContext('2d');
+                
+                ctx.fillStyle = '#f8f9fa';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                ctx.fillStyle = '#87CEEB';
+                ctx.beginPath();
+                ctx.arc(300, 300, 80, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.fillStyle = '#000';
+                ctx.beginPath();
+                ctx.arc(270, 280, 10, 0, Math.PI * 2);
+                ctx.arc(330, 280, 10, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            loadVoices() {
+                this.voices = this.speechSynthesis.getVoices();
+                if (this.voices.length === 0) {
+                    this.speechSynthesis.onvoiceschanged = () => {
+                        this.voices = this.speechSynthesis.getVoices();
+                    };
+                }
+            }
+        }
+
+        // 全局变量
+        let digitalHuman = null;
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            digitalHuman = new ProfessionalDigitalHuman();
+        });
+
+        // 全局函数
+        async function startVoice() {
+            if (digitalHuman) {
+                await digitalHuman.startVoice();
+                document.getElementById('startBtn').disabled = true;
+                document.getElementById('stopBtn').disabled = false;
+            }
+        }
+
+        function stopVoice() {
+            if (digitalHuman) {
+                digitalHuman.stopVoice();
+                document.getElementById('startBtn').disabled = false;
+                document.getElementById('stopBtn').disabled = true;
+            }
+        }
+
+        function speakText() {
+            if (digitalHuman) {
+                digitalHuman.speakText();
+            }
+        }
+
+        function testSpeech() {
+            if (digitalHuman) {
+                digitalHuman.testSpeech();
+            }
+        }
+
+        // 事件监听
+        document.addEventListener('DOMContentLoaded', () => {
+            // 头像选择
+            document.querySelectorAll('.avatar-option').forEach(option => {
+                option.addEventListener('click', (e) => {
+                    const avatar = e.target.dataset.avatar;
+                    if (digitalHuman) {
+                        digitalHuman.changeAvatar(avatar);
+                    }
+                });
+            });
+
+            // 情绪选择
+            document.querySelectorAll('.emotion-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const emotion = e.target.dataset.emotion;
+                    if (digitalHuman) {
+                        digitalHuman.setEmotion(emotion);
+                    }
+                    
+                    document.querySelectorAll('.emotion-btn').forEach(b => b.classList.remove('active'));
+                    e.target.classList.add('active');
+                });
+            });
+        });
+    </script>
+</body>
+</html>

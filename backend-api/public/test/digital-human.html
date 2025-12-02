@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🤖 数字人实时语音测试系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 900px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            color: #667eea;
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .status-panel {
+            background: #f7fafc;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .status-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .status-label {
+            font-weight: 600;
+            color: #4a5568;
+        }
+
+        .status-value {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.connected {
+            background: #48bb78;
+        }
+
+        .status-indicator.disconnected {
+            background: #f56565;
+            animation: none;
+        }
+
+        .status-indicator.processing {
+            background: #ed8936;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .conversation-panel {
+            background: #f7fafc;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+            min-height: 300px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            padding: 15px;
+            border-radius: 10px;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.user {
+            background: #e6fffa;
+            border-left: 4px solid #38b2ac;
+        }
+
+        .message.digital-human {
+            background: #fef5e7;
+            border-left: 4px solid #dd6b20;
+        }
+
+        .message.system {
+            background: #ebf8ff;
+            border-left: 4px solid #4299e1;
+            text-align: center;
+        }
+
+        .message-role {
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #2d3748;
+        }
+
+        .message-text {
+            color: #4a5568;
+            line-height: 1.6;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        button {
+            flex: 1;
+            padding: 15px 30px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-connect {
+            background: #48bb78;
+            color: white;
+        }
+
+        .btn-connect:hover:not(:disabled) {
+            background: #38a169;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(72, 187, 120, 0.4);
+        }
+
+        .btn-disconnect {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn-disconnect:hover:not(:disabled) {
+            background: #e53e3e;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(245, 101, 101, 0.4);
+        }
+
+        .btn-record {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-record:hover:not(:disabled) {
+            background: #5a67d8;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-record.recording {
+            background: #ed8936;
+            animation: recordPulse 1.5s infinite;
+        }
+
+        @keyframes recordPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(237, 137, 54, 0.7); }
+            50% { box-shadow: 0 0 0 10px rgba(237, 137, 54, 0); }
+        }
+
+        .config-panel {
+            background: #f7fafc;
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .config-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .config-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .config-field {
+            flex: 1;
+        }
+
+        .config-field label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #4a5568;
+            font-size: 14px;
+        }
+
+        .config-field input,
+        .config-field select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .config-field input:focus,
+        .config-field select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .audio-visualizer {
+            height: 60px;
+            background: #2d3748;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+            padding: 10px;
+        }
+
+        .visualizer-bar {
+            width: 4px;
+            background: #667eea;
+            border-radius: 2px;
+            transition: height 0.1s;
+        }
+
+        .footer {
+            text-align: center;
+            color: #a0aec0;
+            font-size: 12px;
+            margin-top: 30px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 AI 数字人实时语音测试</h1>
+            <p>STAR-LINK Digital Human Testing System v1.0</p>
+        </div>
+
+        <!-- 状态面板 -->
+        <div class="status-panel">
+            <div class="status-row">
+                <span class="status-label">连接状态</span>
+                <div class="status-value">
+                    <span class="status-indicator disconnected" id="connectionIndicator"></span>
+                    <span id="connectionStatus">未连接</span>
+                </div>
+            </div>
+            <div class="status-row">
+                <span class="status-label">会话ID</span>
+                <div class="status-value">
+                    <span id="sessionId">-</span>
+                </div>
+            </div>
+            <div class="status-row">
+                <span class="status-label">处理状态</span>
+                <div class="status-value">
+                    <span id="processingStatus">空闲</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 音频可视化 -->
+        <div class="audio-visualizer" id="audioVisualizer">
+            <!-- 动态生成音频条 -->
+        </div>
+
+        <!-- 对话面板 -->
+        <div class="conversation-panel" id="conversationPanel">
+            <div class="message system">
+                <div class="message-text">👋 欢迎使用数字人测试系统！点击"连接"开始测试</div>
+            </div>
+        </div>
+
+        <!-- 控制按钮 -->
+        <div class="controls">
+            <button class="btn-connect" id="connectBtn" onclick="connect()">
+                🔌 连接服务
+            </button>
+            <button class="btn-disconnect" id="disconnectBtn" onclick="disconnect()" disabled>
+                🔌 断开连接
+            </button>
+            <button class="btn-record" id="recordBtn" onclick="toggleRecording()" disabled>
+                🎤 开始录音
+            </button>
+        </div>
+
+        <!-- 配置面板 -->
+        <div class="config-panel">
+            <div class="config-row">
+                <div class="config-field">
+                    <label>WebSocket 地址</label>
+                    <input type="text" id="wsUrl" value="ws://localhost:3001" placeholder="ws://localhost:3001">
+                </div>
+                <div class="config-field">
+                    <label>职位</label>
+                    <input type="text" id="jobPosition" value="软件工程师" placeholder="软件工程师">
+                </div>
+            </div>
+            <div class="config-row">
+                <div class="config-field">
+                    <label>用户ID</label>
+                    <input type="text" id="userId" value="test-user" placeholder="test-user">
+                </div>
+                <div class="config-field">
+                    <label>采样率</label>
+                    <select id="sampleRate">
+                        <option value="16000" selected>16000 Hz</option>
+                        <option value="48000">48000 Hz</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            Powered by STAR-LINK AI Interview System | WebSocket + ASR + LLM + TTS
+        </div>
+    </div>
+
+    <script>
+        let socket = null;
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let isRecording = false;
+        let isConnected = false;
+        let sessionId = null;
+        let audioContext = null;
+        let analyser = null;
+
+        // 初始化音频可视化
+        function initAudioVisualizer() {
+            const visualizer = document.getElementById('audioVisualizer');
+            visualizer.innerHTML = '';
+            for (let i = 0; i < 50; i++) {
+                const bar = document.createElement('div');
+                bar.className = 'visualizer-bar';
+                bar.style.height = '10px';
+                visualizer.appendChild(bar);
+            }
+        }
+
+        // 更新音频可视化
+        function updateVisualizer(dataArray) {
+            const bars = document.querySelectorAll('.visualizer-bar');
+            bars.forEach((bar, index) => {
+                const value = dataArray[index] || 0;
+                const height = Math.max(10, (value / 255) * 50);
+                bar.style.height = height + 'px';
+            });
+        }
+
+        // 连接 WebSocket
+        function connect() {
+            const wsUrl = document.getElementById('wsUrl').value;
+            const jobPosition = document.getElementById('jobPosition').value;
+            const userId = document.getElementById('userId').value;
+
+            try {
+                socket = io(wsUrl, {
+                    transports: ['websocket', 'polling'],
+                });
+
+                socket.on('connect', () => {
+                    console.log('✅ WebSocket 已连接');
+                    isConnected = true;
+                    sessionId = 'test-session-' + Date.now();
+                    
+                    updateConnectionStatus('connected', '已连接');
+                    
+                    // 初始化会话
+                    socket.emit('init_session', {
+                        sessionId: sessionId,
+                        userId: userId,
+                        jobPosition: jobPosition,
+                    });
+                    
+                    addMessage('system', '✅ 已连接到服务器，准备开始语音交互');
+                    
+                    document.getElementById('connectBtn').disabled = true;
+                    document.getElementById('disconnectBtn').disabled = false;
+                    document.getElementById('recordBtn').disabled = false;
+                });
+
+                socket.on('disconnect', () => {
+                    console.log('❌ WebSocket 已断开');
+                    isConnected = false;
+                    updateConnectionStatus('disconnected', '已断开');
+                    addMessage('system', '❌ 连接已断开');
+                });
+
+                socket.on('error', (error) => {
+                    console.error('WebSocket 错误:', error);
+                    addMessage('system', `❌ 错误: ${error.message || '未知错误'}`);
+                });
+
+                socket.on('voice_response', (data) => {
+                    console.log('收到语音响应:', data);
+                    updateProcessingStatus('播放回复');
+                    addMessage('digital-human', data.text);
+                    
+                    // 播放音频
+                    if (data.audioUrl) {
+                        playAudio(data.audioUrl);
+                    }
+                });
+
+                socket.on('audio_partial_result', (data) => {
+                    console.log('收到临时识别结果:', data);
+                    updateProcessingStatus(`识别中: ${data.text}`);
+                });
+
+            } catch (error) {
+                console.error('连接失败:', error);
+                addMessage('system', `❌ 连接失败: ${error.message}`);
+            }
+        }
+
+        // 断开连接
+        function disconnect() {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+            }
+            
+            isConnected = false;
+            updateConnectionStatus('disconnected', '未连接');
+            
+            document.getElementById('connectBtn').disabled = false;
+            document.getElementById('disconnectBtn').disabled = true;
+            document.getElementById('recordBtn').disabled = true;
+            
+            if (isRecording) {
+                stopRecording();
+            }
+        }
+
+        // 切换录音
+        async function toggleRecording() {
+            if (isRecording) {
+                stopRecording();
+            } else {
+                await startRecording();
+            }
+        }
+
+        // 开始录音
+        async function startRecording() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                // 设置音频上下文和分析器
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 128;
+                source.connect(analyser);
+                
+                // 开始可视化
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                function animate() {
+                    if (isRecording) {
+                        analyser.getByteFrequencyData(dataArray);
+                        updateVisualizer(dataArray);
+                        requestAnimationFrame(animate);
+                    }
+                }
+                animate();
+                
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+                
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    const reader = new FileReader();
+                    
+                    reader.onloadend = () => {
+                        const base64Audio = reader.result.split(',')[1];
+                        
+                        // 发送音频数据
+                        socket.emit('audio_data', {
+                            audio: base64Audio,
+                            sessionId: sessionId,
+                            sampleRate: parseInt(document.getElementById('sampleRate').value),
+                            isFinal: true,
+                        });
+                        
+                        updateProcessingStatus('处理中...');
+                    };
+                    
+                    reader.readAsDataURL(audioBlob);
+                };
+                
+                mediaRecorder.start();
+                isRecording = true;
+                
+                document.getElementById('recordBtn').textContent = '⏹️ 停止录音';
+                document.getElementById('recordBtn').classList.add('recording');
+                
+                addMessage('system', '🎤 开始录音...');
+                
+            } catch (error) {
+                console.error('录音失败:', error);
+                addMessage('system', `❌ 录音失败: ${error.message}`);
+            }
+        }
+
+        // 停止录音
+        function stopRecording() {
+            if (mediaRecorder && isRecording) {
+                mediaRecorder.stop();
+                mediaRecorder.stream.getTracks().forEach(track => track.stop());
+                isRecording = false;
+                
+                document.getElementById('recordBtn').textContent = '🎤 开始录音';
+                document.getElementById('recordBtn').classList.remove('recording');
+                
+                addMessage('user', '（语音输入）');
+            }
+        }
+
+        // 播放音频
+        function playAudio(audioUrl) {
+            const audio = new Audio(audioUrl);
+            audio.play().catch(error => {
+                console.error('播放音频失败:', error);
+            });
+            
+            audio.onended = () => {
+                updateProcessingStatus('空闲');
+            };
+        }
+
+        // 添加消息
+        function addMessage(role, text) {
+            const panel = document.getElementById('conversationPanel');
+            const message = document.createElement('div');
+            message.className = `message ${role}`;
+            
+            let roleText = '';
+            if (role === 'user') roleText = '👤 我';
+            else if (role === 'digital-human') roleText = '🤖 STAR-LINK';
+            else roleText = '📢 系统';
+            
+            message.innerHTML = `
+                ${role !== 'system' ? `<div class="message-role">${roleText}</div>` : ''}
+                <div class="message-text">${text}</div>
+            `;
+            
+            panel.appendChild(message);
+            panel.scrollTop = panel.scrollHeight;
+        }
+
+        // 更新连接状态
+        function updateConnectionStatus(status, text) {
+            const indicator = document.getElementById('connectionIndicator');
+            indicator.className = `status-indicator ${status}`;
+            document.getElementById('connectionStatus').textContent = text;
+            document.getElementById('sessionId').textContent = sessionId || '-';
+        }
+
+        // 更新处理状态
+        function updateProcessingStatus(text) {
+            document.getElementById('processingStatus').textContent = text;
+        }
+
+        // 初始化
+        initAudioVisualizer();
+    </script>
+    
+    <!-- 引入 Socket.IO 客户端 -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</body>
+</html>
+

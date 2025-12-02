@@ -1,0 +1,30 @@
+{
+  "name": "airi-simple-server",
+  "version": "1.0.0",
+  "description": "AIRI数字人简化版服务器",
+  "main": "airi-simple-server.js",
+  "scripts": {
+    "start": "node airi-simple-server.js",
+    "dev": "nodemon airi-simple-server.js",
+    "install-deps": "npm install express cors"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "keywords": [
+    "airi",
+    "digital-human",
+    "ai",
+    "interview",
+    "voice-chat"
+  ],
+  "author": "AIRI Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

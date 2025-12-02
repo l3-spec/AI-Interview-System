@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live2D模型测试</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .model-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .model-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .model-preview {
+            width: 100%;
+            height: 200px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 15px;
+        }
+        .btn {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            margin: 5px;
+            transition: all 0.3s ease;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-family: monospace;
+        }
+        .status.success {
+            background: rgba(76, 175, 80, 0.3);
+            border: 1px solid #4caf50;
+        }
+        .status.error {
+            background: rgba(244, 67, 54, 0.3);
+            border: 1px solid #f44336;
+        }
+        .status.loading {
+            background: rgba(255, 193, 7, 0.3);
+            border: 1px solid #ffc107;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Live2D模型本地测试</h1>
+            <p>测试本地Live2D模型是否正确加载</p>
+        </div>
+
+        <div class="model-grid">
+            <div class="model-card">
+                <h3>Haru 春-职场精英</h3>
+                <div class="model-preview" id="haru-preview">
+                    <div>点击测试加载</div>
+                </div>
+                <div id="haru-status" class="status loading">等待测试...</div>
+                <button class="btn" onclick="testModel('haru')">测试加载</button>
+                <button class="btn" onclick="viewModel('haru')">查看文件</button>
+            </div>
+
+            <div class="model-card">
+                <h3>Shizuku 水滴-温柔面试官</h3>
+                <div class="model-preview" id="shizuku-preview">
+                    <div>点击测试加载</div>
+                </div>
+                <div id="shizuku-status" class="status loading">等待测试...</div>
+                <button class="btn" onclick="testModel('shizuku')">测试加载</button>
+                <button class="btn" onclick="viewModel('shizuku')">查看文件</button>
+            </div>
+
+            <div class="model-card">
+                <h3>Hibiki 响动-专业顾问</h3>
+                <div class="model-preview" id="hibiki-preview">
+                    <div>点击测试加载</div>
+                </div>
+                <div id="hibiki-status" class="status loading">等待测试...</div>
+                <button class="btn" onclick="testModel('hibiki')">测试加载</button>
+                <button class="btn" onclick="viewModel('hibiki')">查看文件</button>
+            </div>
+
+            <div class="model-card">
+                <h3>Miku 初音-科技助手</h3>
+                <div class="model-preview" id="miku-preview">
+                    <div>点击测试加载</div>
+                </div>
+                <div id="miku-status" class="status loading">等待测试...</div>
+                <button class="btn" onclick="testModel('miku')">测试加载</button>
+                <button class="btn" onclick="viewModel('miku')">查看文件</button>
+            </div>
+        </div>
+
+        <div style="text-align: center; margin-top: 30px;">
+            <button class="btn" onclick="testAllModels()">测试所有模型</button>
+            <button class="btn" onclick="window.location.href='/avatar/production.html'">进入数字人页面</button>
+        </div>
+    </div>
+
+    <script>
+        const models = {
+            haru: '/models/haru/haru.model3.json',
+            shizuku: '/models/shizuku/shizuku.model3.json',
+            hibiki: '/models/hibiki/hibiki.model3.json',
+            miku: '/models/miku/miku.model3.json'
+        };
+
+        async function testModel(modelName) {
+            const statusEl = document.getElementById(`${modelName}-status`);
+            const previewEl = document.getElementById(`${modelName}-preview`);
+            
+            statusEl.className = 'status loading';
+            statusEl.textContent = '正在测试...';
+            previewEl.innerHTML = '<div>⏳ 测试中...</div>';
+
+            try {
+                const response = await fetch(models[modelName]);
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // 检查必要的文件是否存在
+                    const requiredFiles = [
+                        data.FileReferences.Moc,
+                        ...data.FileReferences.Textures,
+                        data.FileReferences.Physics,
+                        data.FileReferences.Pose
+                    ];
+                    
+                    let missingFiles = [];
+                    for (const file of requiredFiles) {
+                        const fileUrl = `/models/${modelName}/${file}`;
+                        const fileResponse = await fetch(fileUrl, {method: 'HEAD'});
+                        if (!fileResponse.ok) {
+                            missingFiles.push(file);
+                        }
+                    }
+                    
+                    if (missingFiles.length === 0) {
+                        statusEl.className = 'status success';
+                        statusEl.textContent = '✅ 模型文件完整，可以正常使用';
+                        previewEl.innerHTML = '<div>🎭 模型配置正确</div>';
+                    } else {
+                        statusEl.className = 'status error';
+                        statusEl.textContent = `⚠️ 缺少文件: ${missingFiles.join(', ')}`;
+                        previewEl.innerHTML = '<div>❌ 文件不完整</div>';
+                    }
+                } else {
+                    statusEl.className = 'status error';
+                    statusEl.textContent = `❌ 模型配置文件不存在 (${response.status})`;
+                    previewEl.innerHTML = '<div>❌ 配置错误</div>';
+                }
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = `❌ 网络错误: ${error.message}`;
+                previewEl.innerHTML = '<div>❌ 加载失败</div>';
+            }
+        }
+
+        function viewModel(modelName) {
+            window.open(models[modelName], '_blank');
+        }
+
+        async function testAllModels() {
+            const modelNames = Object.keys(models);
+            for (const model of modelNames) {
+                await testModel(model);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
+
+        // 页面加载时自动测试
+        window.addEventListener('load', () => {
+            setTimeout(testAllModels, 1000);
+        });
+    </script>
+</body>
+</html>

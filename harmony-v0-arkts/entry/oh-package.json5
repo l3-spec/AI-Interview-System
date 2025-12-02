@@ -1,0 +1,8 @@
+{
+  "name": "@ai-interview/entry",
+  "version": "1.0.0",
+  "description": "HarmonyOS entry module for the AI Interview app",
+  "main": "src/main/ets/entryability/EntryAbility.ets",
+  "license": "MIT",
+  "dependencies": {}
+}

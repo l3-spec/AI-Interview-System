@@ -1,0 +1,11 @@
+{
+  "module": {
+    "name": "entry",
+    "build": {
+      "types": [
+        "debug",
+        "release"
+      ]
+    }
+  }
+}

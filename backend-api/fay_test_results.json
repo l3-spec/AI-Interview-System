@@ -1,0 +1,34 @@
+{
+  "timestamp": "2025-07-28 21:16:01",
+  "tests": {
+    "rest_api": {
+      "health_check": {
+        "success": false,
+        "error": "HTTPConnectionPool(host='localhost', port=3001): Max retries exceeded with url: /health (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7fe65277a6a0>: Failed to establish a new connection: [Errno 8] nodename nor servname provided, or not known'))"
+      },
+      "fay_health": {
+        "success": false,
+        "error": "HTTPConnectionPool(host='localhost', port=3001): Max retries exceeded with url: /api/fay/health (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7fe65277a730>: Failed to establish a new connection: [Errno 8] nodename nor servname provided, or not known'))"
+      },
+      "fay_characters": {
+        "success": false,
+        "error": "HTTPConnectionPool(host='localhost', port=3001): Max retries exceeded with url: /api/fay/characters (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7fe65277a640>: Failed to establish a new connection: [Errno 8] nodename nor servname provided, or not known'))"
+      },
+      "fay_test": {
+        "success": false,
+        "error": "HTTPConnectionPool(host='localhost', port=3001): Max retries exceeded with url: /api/fay/test (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7fe65277a820>: Failed to establish a new connection: [Errno 8] nodename nor servname provided, or not known'))"
+      }
+    },
+    "websocket": {
+      "success": false,
+      "error": "received 1011 (internal error); then sent 1011 (internal error)",
+      "connected": false
+    }
+  },
+  "summary": {
+    "total": 2,
+    "passed": 0,
+    "failed": 2,
+    "success_rate": 0.0
+  }
+}

@@ -1,0 +1,116 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Database Schema and API Patterns
+
+## 🗄️ Database Configuration
+- **Provider**: MySQL 8.0
+- **ORM**: Prisma with TypeScript support
+- **Schema**: [backend-api/prisma/schema.prisma](mdc:backend-api/prisma/schema.prisma)
+- **Connection**: MySQL connection string in DATABASE_URL environment variable
+
+## 📊 Core Data Models
+
+### User Management
+- `User` - Job seekers with profile, skills, and experience
+- `Company` - Enterprise users with verification status
+- `Admin` - System administrators with role-based permissions
+
+### Job System
+- `Job` - Job postings with requirements, location, and status
+- `JobApplication` - User applications to jobs with status tracking
+
+### Interview System  
+- `Interview` - Interview sessions (AI, online, offline)
+- `InterviewQuestion` - Individual questions and answers with AI scoring
+- `InterviewReport` - Comprehensive AI evaluation reports
+- `InterviewInvitation` - Interview scheduling and invitations
+
+## 🔗 Key Relationships
+- Companies → Jobs (one-to-many)
+- Jobs → Applications (one-to-many) 
+- Users → Applications (one-to-many)
+- Interviews → Reports (one-to-one)
+- Interviews → Questions (one-to-many)
+
+## 📡 API Endpoint Patterns
+
+### Authentication Endpoints
+```
+POST /api/auth/register/user      # User registration
+POST /api/auth/register/company   # Company registration  
+POST /api/auth/login/user         # User login
+POST /api/auth/login/company      # Company login
+POST /api/auth/login/admin        # Admin login
+GET  /api/auth/me                 # Current user info
+POST /api/auth/logout             # Logout
+```
+
+### RESTful Resource Patterns
+```
+GET    /api/jobs                  # List jobs (with pagination/filtering)
+POST   /api/jobs                  # Create job (company only)
+GET    /api/jobs/:id              # Get job details
+PUT    /api/jobs/:id              # Update job (company only)
+DELETE /api/jobs/:id              # Delete job (company only)
+POST   /api/jobs/:id/apply        # Apply to job (user only)
+```
+
+### Interview Management
+```
+GET    /api/interviews            # List interviews
+POST   /api/interviews/invite     # Send interview invitation
+GET    /api/interviews/:id        # Get interview details
+PUT    /api/interviews/:id        # Update interview status
+GET    /api/interviews/:id/report # Get assessment report
+```
+
+## 🔐 Access Control Patterns
+- **Public**: Registration, login endpoints
+- **User Only**: Job applications, interview participation
+- **Company Only**: Job management, interview invitations
+- **Admin Only**: System management, user verification
+- **Company/Admin**: Interview reports, candidate management
+
+## ✅ Validation Patterns
+All request validation using Joi schemas in [backend-api/src/utils/validation.ts](mdc:backend-api/src/utils/validation.ts):
+- Input sanitization and type checking
+- Email format validation
+- Password strength requirements
+- UUID format validation for IDs
+- Date validation for scheduling
+
+## 📝 Error Response Format
+```json
+{
+  "success": false,
+  "message": "Human-readable error message",
+  "errors": [
+    {
+      "field": "email",
+      "message": "Invalid email format"
+    }
+  ],
+  "timestamp": "2023-01-01T00:00:00.000Z"
+}
+```
+
+## ✨ Success Response Format
+```json
+{
+  "success": true,
+  "message": "Operation completed successfully",
+  "data": {
+    // Response payload
+  }
+}
+```
+
+## 🚀 Performance Optimizations
+- Database indexes on frequently queried fields (email, companyId, userId)
+- Pagination for list endpoints (default 10 items, max 100)
+- Field selection to avoid over-fetching
+- Redis caching for frequently accessed data
+- Connection pooling for database connections

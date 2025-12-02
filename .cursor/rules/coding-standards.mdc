@@ -1,0 +1,234 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Coding Standards and Best Practices
+
+## 🎯 General Principles
+- **Code Quality**: Write clean, readable, and maintainable code
+- **Documentation**: Comment complex logic and provide clear function/class descriptions
+- **Error Handling**: Always include proper error handling and user-friendly messages
+- **Security**: Follow security best practices, especially for authentication and data validation
+- **Performance**: Consider performance implications and optimize where needed
+
+## 📝 TypeScript Standards
+
+### Type Definitions
+- Use explicit types for function parameters and return values
+- Define interfaces for data structures and API responses
+- Avoid `any` type - use `unknown` or specific unions instead
+- Use strict TypeScript configuration
+
+### Naming Conventions
+```typescript
+// Interfaces and Types
+interface UserProfile { }
+type JobStatus = 'ACTIVE' | 'PAUSED' | 'CLOSED';
+
+// Functions and Variables
+const getUserById = (id: string) => { };
+const isUserActive = true;
+
+// Constants
+const MAX_FILE_SIZE = 100 * 1024 * 1024;
+const API_ENDPOINTS = { };
+```
+
+## 🔧 Backend Code Standards
+
+### Controller Pattern
+```typescript
+import { asyncHandler } from '../middleware/errorHandler';
+
+export const getJobs = asyncHandler(async (req: Request, res: Response) => {
+  // Validation
+  const { error, value } = schema.validate(req.query);
+  if (error) {
+    throw new AppError(error.details[0].message, 400);
+  }
+
+  // Business logic
+  const jobs = await jobService.getJobs(value);
+
+  // Response
+  res.json({
+    success: true,
+    data: jobs
+  });
+});
+```
+
+### Error Handling
+```typescript
+// Custom error class usage
+throw new AppError('User not found', 404);
+
+// Async error wrapping
+export const someHandler = asyncHandler(async (req, res) => {
+  // Your async code here
+});
+```
+
+### Database Queries
+```typescript
+// Use Prisma for type-safe database operations
+const user = await prisma.user.findUnique({
+  where: { id },
+  select: {
+    id: true,
+    email: true,
+    name: true,
+    // Explicit field selection
+  }
+});
+
+// Include related data when needed
+const jobWithCompany = await prisma.job.findMany({
+  include: {
+    company: {
+      select: { name: true, logo: true }
+    }
+  }
+});
+```
+
+## ⚛️ Frontend Code Standards
+
+### Component Structure
+```typescript
+import React from 'react';
+import { Button, Card } from 'antd';
+
+interface JobCardProps {
+  job: Job;
+  onApply: (jobId: string) => void;
+}
+
+const JobCard: React.FC<JobCardProps> = ({ job, onApply }) => {
+  const handleApply = () => {
+    onApply(job.id);
+  };
+
+  return (
+    <Card title={job.title}>
+      {/* Component content */}
+      <Button onClick={handleApply}>Apply</Button>
+    </Card>
+  );
+};
+
+export default JobCard;
+```
+
+### API Service Functions
+```typescript
+// Centralized API calls
+export const jobService = {
+  getJobs: (params: JobQueryParams) => 
+    api.get<JobListResponse>('/jobs', { params }),
+    
+  createJob: (data: CreateJobRequest) =>
+    api.post<Job>('/jobs', data),
+    
+  updateJob: (id: string, data: UpdateJobRequest) =>
+    api.put<Job>(`/jobs/${id}`, data)
+};
+```
+
+### State Management
+```typescript
+// Zustand store pattern
+interface AuthStore {
+  user: User | null;
+  token: string | null;
+  login: (credentials: LoginRequest) => Promise<void>;
+  logout: () => void;
+}
+
+export const useAuthStore = create<AuthStore>((set) => ({
+  user: null,
+  token: null,
+  login: async (credentials) => {
+    // Implementation
+  },
+  logout: () => set({ user: null, token: null })
+}));
+```
+
+## 📊 Data Validation
+
+### Backend Validation
+```typescript
+// Use Joi schemas from validation.ts
+const { error, value } = createJobSchema.validate(req.body);
+if (error) {
+  throw new AppError(error.details[0].message, 400);
+}
+```
+
+### Frontend Validation
+```typescript
+// Ant Design form validation
+const [form] = Form.useForm();
+
+const validateMessages = {
+  required: '${label} is required!',
+  types: {
+    email: '${label} is not a valid email!',
+  },
+};
+```
+
+## 🔐 Security Best Practices
+
+### Authentication
+- Always validate JWT tokens on protected routes
+- Use secure password hashing (bcryptjs)
+- Implement proper session management
+- Set appropriate token expiration times
+
+### Input Validation
+- Validate all user inputs on both client and server
+- Sanitize data before database operations
+- Use parameterized queries (Prisma handles this)
+- Implement rate limiting on sensitive endpoints
+
+### File Upload Security
+```typescript
+// Validate file types and sizes
+const allowedTypes = ['.jpg', '.png', '.pdf'];
+const maxSize = 10 * 1024 * 1024; // 10MB
+
+if (!allowedTypes.includes(fileExtension)) {
+  throw new AppError('Invalid file type', 400);
+}
+```
+
+## 🧪 Testing Guidelines
+- Write unit tests for business logic
+- Integration tests for API endpoints
+- Component tests for React components
+- Use meaningful test descriptions
+- Aim for high test coverage on critical paths
+
+## 📦 Code Organization
+- Group related functionality together
+- Keep functions small and focused (single responsibility)
+- Use consistent file naming conventions
+- Organize imports: external libraries first, then internal modules
+- Export components and utilities from index files
+
+## 🚀 Performance Considerations
+- Use React.memo for expensive components
+- Implement pagination for large data sets
+- Optimize database queries with proper indexing
+- Use lazy loading for routes and components
+- Minimize bundle size with code splitting
+
+## 📖 Documentation
+- Comment complex business logic
+- Use JSDoc for function documentation
+- Keep README files updated
+- Document API endpoints with Swagger
+- Maintain deployment and setup documentation

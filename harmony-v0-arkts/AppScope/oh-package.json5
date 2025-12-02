@@ -1,0 +1,7 @@
+{
+  "name": "@ai-interview/app",
+  "version": "1.0.0",
+  "description": "HarmonyOS app scope for the AI Interview application",
+  "license": "MIT",
+  "dependencies": {}
+}

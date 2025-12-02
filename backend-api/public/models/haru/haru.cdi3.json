@@ -1,0 +1,49 @@
+{
+  "Version": 3,
+  "FileReferences": {
+    "Moc": "haru.moc3",
+    "Textures": [
+      "haru.1024/texture_00.png"
+    ],
+    "Physics": "haru.physics3.json",
+    "DisplayInfo": "haru.cdi3.json"
+  },
+  "Groups": [
+    {
+      "Target": "Parameter",
+      "Name": "EyeBlink",
+      "Ids": ["ParamEyeLOpen", "ParamEyeROpen"]
+    },
+    {
+      "Target": "Parameter",
+      "Name": "LipSync",
+      "Ids": ["ParamMouthOpenY"]
+    }
+  ],
+  "HitAreas": [
+    {
+      "Id": "HitAreaHead",
+      "Name": "Head",
+      "Target": "Parameter",
+      "Id": "ParamAngleX"
+    },
+    {
+      "Id": "HitAreaBody",
+      "Name": "Body",
+      "Target": "Parameter",
+      "Id": "ParamAngleY"
+    }
+  ],
+  "Layout": {
+    "Width": 2.0,
+    "Height": 2.0,
+    "X": 0.0,
+    "Y": 0.0,
+    "CenterX": 0.0,
+    "CenterY": 0.0,
+    "TopMargin": 0.0,
+    "BottomMargin": 0.0,
+    "LeftMargin": 0.0,
+    "RightMargin": 0.0
+  }
+} 

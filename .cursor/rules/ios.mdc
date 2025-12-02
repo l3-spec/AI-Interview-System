@@ -1,0 +1,473 @@
+---
+description: iOS 前端开发工程师 - Swift/SwiftUI 开发规范
+globs:
+  - "**/*.swift"
+alwaysApply: false
+---
+# iOS 前端开发工程师
+
+## 📱 角色定位
+你是一位资深 iOS 开发工程师，精通：
+- Swift 语言及其高级特性
+- SwiftUI 现代化 UI 框架
+- Combine 响应式编程
+- MVVM 架构模式
+- UIKit 与 SwiftUI 混合开发
+
+## 🏗️ 项目架构
+
+### MVVM 架构
+```
+MyApp/
+├── App/
+│   ├── MyApp.swift          # 应用入口
+│   └── ContentView.swift    # 根视图
+├── Models/                  # 数据模型
+│   ├── User.swift
+│   └── Interview.swift
+├── ViewModels/              # 视图模型
+│   ├── UserViewModel.swift
+│   └── InterviewViewModel.swift
+├── Views/                   # 视图层
+│   ├── Screens/            # 页面
+│   └── Components/         # 可复用组件
+├── Services/               # 服务层
+│   ├── APIService.swift
+│   └── StorageService.swift
+├── Utilities/              # 工具类
+│   ├── Extensions/
+│   └── Helpers/
+└── Resources/              # 资源文件
+    ├── Assets.xcassets
+    └── Localizable.strings
+```
+
+## 💻 代码规范
+
+### Swift 编码风格
+```swift
+// ✅ 推荐：使用 struct 定义数据模型
+struct User: Codable, Identifiable {
+    let id: String
+    let email: String
+    let name: String
+    let avatarURL: String?
+    let role: UserRole
+    let createdAt: Date
+    
+    enum CodingKeys: String, CodingKey {
+        case id, email, name, role
+        case avatarURL = "avatar_url"
+        case createdAt = "created_at"
+    }
+}
+
+enum UserRole: String, Codable {
+    case admin = "ADMIN"
+    case user = "USER"
+    case interviewer = "INTERVIEWER"
+}
+
+// ✅ 推荐：使用协议定义接口
+protocol UserServiceProtocol {
+    func fetchUser(id: String) async throws -> User
+    func updateUser(_ user: User) async throws -> User
+    func deleteUser(id: String) async throws
+}
+
+// ✅ 推荐：使用 async/await 处理异步
+class UserService: UserServiceProtocol {
+    func fetchUser(id: String) async throws -> User {
+        let url = URL(string: "\(APIConfig.baseURL)/users/\(id)")!
+        let (data, response) = try await URLSession.shared.data(from: url)
+        
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw APIError.invalidResponse
+        }
+        
+        return try JSONDecoder().decode(User.self, from: data)
+    }
+}
+```
+
+### SwiftUI 视图开发
+```swift
+// ✅ 推荐：组件化设计
+struct UserCard: View {
+    let user: User
+    let onTap: () -> Void
+    
+    var body: some View {
+        HStack(spacing: 16) {
+            // 头像
+            AsyncImage(url: URL(string: user.avatarURL ?? "")) { image in
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } placeholder: {
+                Image(systemName: "person.circle.fill")
+                    .resizable()
+            }
+            .frame(width: 48, height: 48)
+            .clipShape(Circle())
+            
+            // 用户信息
+            VStack(alignment: .leading, spacing: 4) {
+                Text(user.name)
+                    .font(.headline)
+                
+                Text(user.email)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                Text(user.role.rawValue)
+                    .font(.caption)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(Color.blue.opacity(0.2))
+                    .cornerRadius(4)
+            }
+            
+            Spacer()
+        }
+        .padding()
+        .background(Color(.systemBackground))
+        .cornerRadius(12)
+        .shadow(radius: 2)
+        .onTapGesture(perform: onTap)
+    }
+}
+
+// ✅ 推荐：使用 @StateObject 和 @ObservedObject
+struct UserListView: View {
+    @StateObject private var viewModel = UserListViewModel()
+    @State private var searchText = ""
+    
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                LazyVStack(spacing: 12) {
+                    ForEach(viewModel.filteredUsers) { user in
+                        UserCard(user: user) {
+                            viewModel.selectUser(user)
+                        }
+                    }
+                }
+                .padding()
+            }
+            .searchable(text: $searchText)
+            .navigationTitle("用户列表")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: viewModel.addUser) {
+                        Image(systemName: "plus")
+                    }
+                }
+            }
+            .task {
+                await viewModel.loadUsers()
+            }
+            .refreshable {
+                await viewModel.refresh()
+            }
+        }
+    }
+}
+```
+
+### ViewModel 开发
+```swift
+@MainActor
+class UserListViewModel: ObservableObject {
+    @Published var users: [User] = []
+    @Published var isLoading = false
+    @Published var error: Error?
+    
+    private let userService: UserServiceProtocol
+    
+    init(userService: UserServiceProtocol = UserService()) {
+        self.userService = userService
+    }
+    
+    // 加载用户列表
+    func loadUsers() async {
+        isLoading = true
+        defer { isLoading = false }
+        
+        do {
+            users = try await userService.fetchUsers()
+        } catch {
+            self.error = error
+        }
+    }
+    
+    // 刷新
+    func refresh() async {
+        await loadUsers()
+    }
+    
+    // 选择用户
+    func selectUser(_ user: User) {
+        // 导航到详情页
+    }
+    
+    // 添加用户
+    func addUser() {
+        // 显示添加用户表单
+    }
+}
+```
+
+## 🌐 网络请求
+
+### URLSession + async/await
+```swift
+class APIService {
+    static let shared = APIService()
+    
+    private let baseURL = "https://api.example.com"
+    private let decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }()
+    
+    // 通用请求方法
+    func request<T: Decodable>(
+        _ endpoint: String,
+        method: HTTPMethod = .get,
+        body: Data? = nil
+    ) async throws -> T {
+        guard let url = URL(string: baseURL + endpoint) else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = method.rawValue
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // 添加认证 token
+        if let token = TokenManager.shared.accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        
+        if let body = body {
+            request.httpBody = body
+        }
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+        
+        switch httpResponse.statusCode {
+        case 200...299:
+            return try decoder.decode(T.self, from: data)
+        case 401:
+            throw APIError.unauthorized
+        case 404:
+            throw APIError.notFound
+        default:
+            throw APIError.serverError(httpResponse.statusCode)
+        }
+    }
+}
+
+enum HTTPMethod: String {
+    case get = "GET"
+    case post = "POST"
+    case put = "PUT"
+    case delete = "DELETE"
+}
+
+enum APIError: LocalizedError {
+    case invalidURL
+    case invalidResponse
+    case unauthorized
+    case notFound
+    case serverError(Int)
+    
+    var errorDescription: String? {
+        switch self {
+        case .invalidURL:
+            return "无效的 URL"
+        case .invalidResponse:
+            return "无效的响应"
+        case .unauthorized:
+            return "未授权，请重新登录"
+        case .notFound:
+            return "资源未找到"
+        case .serverError(let code):
+            return "服务器错误: \(code)"
+        }
+    }
+}
+```
+
+## 💾 本地存储
+
+### UserDefaults
+```swift
+@propertyWrapper
+struct UserDefault<T> {
+    let key: String
+    let defaultValue: T
+    
+    var wrappedValue: T {
+        get {
+            UserDefaults.standard.object(forKey: key) as? T ?? defaultValue
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: key)
+        }
+    }
+}
+
+class SettingsManager {
+    @UserDefault(key: "isDarkMode", defaultValue: false)
+    static var isDarkMode: Bool
+    
+    @UserDefault(key: "notificationsEnabled", defaultValue: true)
+    static var notificationsEnabled: Bool
+}
+```
+
+### CoreData / SwiftData
+```swift
+import SwiftData
+
+@Model
+class UserEntity {
+    @Attribute(.unique) var id: String
+    var email: String
+    var name: String
+    var avatarURL: String?
+    var createdAt: Date
+    
+    init(id: String, email: String, name: String, avatarURL: String? = nil) {
+        self.id = id
+        self.email = email
+        self.name = name
+        self.avatarURL = avatarURL
+        self.createdAt = Date()
+    }
+}
+```
+
+## 🎨 UI 设计规范
+
+### 设计系统
+```swift
+// 颜色
+extension Color {
+    static let primary = Color("Primary")
+    static let secondary = Color("Secondary")
+    static let accent = Color("Accent")
+    static let textPrimary = Color("TextPrimary")
+    static let textSecondary = Color("TextSecondary")
+    static let background = Color("Background")
+}
+
+// 字体
+extension Font {
+    static let largeTitle = Font.system(size: 34, weight: .bold)
+    static let title1 = Font.system(size: 28, weight: .semibold)
+    static let title2 = Font.system(size: 22, weight: .semibold)
+    static let headline = Font.system(size: 17, weight: .semibold)
+    static let body = Font.system(size: 17, weight: .regular)
+    static let caption = Font.system(size: 12, weight: .regular)
+}
+
+// 间距
+enum Spacing {
+    static let xs: CGFloat = 4
+    static let sm: CGFloat = 8
+    static let md: CGFloat = 16
+    static let lg: CGFloat = 24
+    static let xl: CGFloat = 32
+}
+
+// 圆角
+enum CornerRadius {
+    static let sm: CGFloat = 4
+    static let md: CGFloat = 8
+    static let lg: CGFloat = 12
+    static let xl: CGFloat = 16
+}
+```
+
+## ⚡ 性能优化
+
+```swift
+// ✅ 使用 LazyVStack/LazyHStack
+LazyVStack {
+    ForEach(items) { item in
+        ItemView(item: item)
+    }
+}
+
+// ✅ 使用 @ViewBuilder 优化条件渲染
+@ViewBuilder
+func makeView() -> some View {
+    if condition {
+        ViewA()
+    } else {
+        ViewB()
+    }
+}
+
+// ✅ 避免在 body 中进行复杂计算
+struct ContentView: View {
+    let items: [Item]
+    
+    // 使用计算属性
+    private var sortedItems: [Item] {
+        items.sorted { $0.name < $1.name }
+    }
+    
+    var body: some View {
+        List(sortedItems) { item in
+            Text(item.name)
+        }
+    }
+}
+```
+
+## 📋 开发检查清单
+
+### 代码质量
+- [ ] Swift 代码符合官方规范
+- [ ] 遵循 MVVM 架构
+- [ ] 使用 async/await 处理异步
+- [ ] 错误处理完善
+- [ ] 添加必要注释
+
+### UI/UX
+- [ ] 遵循 Human Interface Guidelines
+- [ ] 适配不同设备尺寸
+- [ ] 支持深色模式
+- [ ] 动画流畅自然
+- [ ] 提供加载和错误状态
+
+### 性能
+- [ ] 避免主线程阻塞
+- [ ] 使用 Lazy 容器
+- [ ] 图片加载优化
+- [ ] 内存管理得当
+
+### 安全
+- [ ] 敏感数据加密
+- [ ] Keychain 存储凭证
+- [ ] HTTPS 网络请求
+- [ ] 输入验证
+
+## 🔧 常用工具
+- Xcode 15+
+- Swift 5.9+
+- SwiftUI
+- Combine
+- Alamofire（网络）
+- Kingfisher（图片加载）
+- SwiftLint（代码检查）

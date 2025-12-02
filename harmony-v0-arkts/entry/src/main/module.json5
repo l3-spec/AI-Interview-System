@@ -1,0 +1,25 @@
+{
+  "module": {
+    "type": "entry",
+    "name": "entry",
+    "srcEntry": "EntryAbility",
+    "description": "$string:entry_desc",
+    "mainElement": "EntryAbility",
+    "pages": "$profile:main_pages",
+    "deviceTypes": [
+      "phone",
+      "tablet"
+    ],
+    "abilities": [
+      {
+        "name": "EntryAbility",
+        "srcEntry": "./ets/entryability/EntryAbility.ets",
+        "icon": "$media:app_icon",
+        "label": "$string:entry_label",
+        "description": "$string:entry_desc",
+        "startWindowIcon": "$media:app_icon",
+        "startWindowBackground": "$color:start_window_background"
+      }
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "ai-interview-harmony",
+  "version": "1.0.0",
+  "description": "HarmonyOS port of the AI Interview application",
+  "author": "AI Interview System",
+  "tags": [
+    "harmony",
+    "arkts",
+    "ai-interview"
+  ],
+  "license": "MIT",
+  "dependencies": {}
+}

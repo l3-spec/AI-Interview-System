@@ -1,0 +1,9 @@
+<svg width="160" height="60" viewBox="0 0 160 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="160" height="60" rx="14" fill="white"/>
+  <g transform="translate(30 10)">
+    <path d="M20 12C20 6 25 2 32 2H48V18C48 31 37 40 24 40C11 40 0 29 0 16V2H12V16C12 23 17 28 24 28C31 28 36 23 36 16V12H20Z" fill="#FF8200"/>
+  </g>
+  <text x="72" y="52" fill="#FF8200" font-family="'Segoe UI', Arial, sans-serif" font-size="18" font-weight="600">
+    Didi
+  </text>
+</svg>

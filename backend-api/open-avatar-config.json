@@ -1,0 +1,52 @@
+{
+  "name": "Open-LLM-VTuber 集成方案",
+  "description": "免费开源的2D数字人，支持实时语音驱动",
+  "steps": [
+    {
+      "step": 1,
+      "title": "安装核心依赖",
+      "commands": [
+        "npm install pixi-live2d-display",
+        "npm install pixi.js",
+        "npm install @pixi/sound"
+      ]
+    },
+    {
+      "step": 2,
+      "title": "下载Live2D模型",
+      "resources": [
+        "https://github.com/guansss/pixi-live2d-display/tree/master/samples/assets",
+        "https://github.com/open-llm-vtuber/open-llm-vtuber/tree/main/assets/models"
+      ]
+    },
+    {
+      "step": 3,
+      "title": "基础集成代码",
+      "file": "avatar-renderer.js",
+      "content": "\nimport { Live2DModel } from 'pixi-live2d-display';\nimport * as PIXI from 'pixi.js';\n\nclass AvatarRenderer {\n  constructor(canvasId) {\n    this.app = new PIXI.Application({\n      view: document.getElementById(canvasId),\n      width: 300,\n      height: 400,\n      backgroundColor: 0x2c3e50\n    });\n    \n    this.model = null;\n    this.audioContext = new AudioContext();\n    this.analyser = null;\n  }\n\n  async loadModel(modelPath) {\n    this.model = await Live2DModel.from(modelPath);\n    this.app.stage.addChild(this.model);\n    this.model.scale.set(0.3);\n    this.model.x = 150;\n    this.model.y = 200;\n  }\n\n  startVoiceSync() {\n    navigator.mediaDevices.getUserMedia({ audio: true })\n      .then(stream => {\n        const source = this.audioContext.createMediaStreamSource(stream);\n        this.analyser = this.audioContext.createAnalyser();\n        this.analyser.fftSize = 256;\n        \n        source.connect(this.analyser);\n        this.animateMouth();\n      });\n  }\n\n  animateMouth() {\n    const dataArray = new Uint8Array(this.analyser.frequencyBinCount);\n    \n    const animate = () => {\n      this.analyser.getByteFrequencyData(dataArray);\n      \n      // 计算音量并映射到嘴型参数\n      const volume = dataArray.reduce((a, b) => a + b) / dataArray.length;\n      const mouthOpen = Math.min(volume / 128, 1);\n      \n      if (this.model) {\n        this.model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', mouthOpen);\n      }\n      \n      requestAnimationFrame(animate);\n    };\n    \n    animate();\n  }\n}\n\nexport default AvatarRenderer;\n"
+    }
+  ],
+  "demo": {
+    "html": "\n<!DOCTYPE html>\n<html>\n<head>\n    <title>开源数字人演示</title>\n    <script src=\"https://cdn.jsdelivr.net/npm/pixi.js@7.x/dist/pixi.min.js\"></script>\n    <script src=\"https://cdn.jsdelivr.net/npm/pixi-live2d-display/dist/index.min.js\"></script>\n</head>\n<body>\n    <canvas id=\"avatar-canvas\" width=\"300\" height=\"400\"></canvas>\n    <button onclick=\"startVoice()\">开始语音驱动</button>\n    \n    <script type=\"module\">\n        import AvatarRenderer from './avatar-renderer.js';\n        \n        const avatar = new AvatarRenderer('avatar-canvas');\n        await avatar.loadModel('./models/haru/haru.model3.json');\n        \n        window.startVoice = () => avatar.startVoiceSync();\n    </script>\n</body>\n</html>\n"
+  },
+  "models": [
+    {
+      "name": "Haru (免费Live2D模型)",
+      "url": "https://github.com/guansss/pixi-live2d-display/tree/master/samples/assets/haru",
+      "license": "免费商用"
+    },
+    {
+      "name": "开源动漫角色合集",
+      "url": "https://github.com/open-llm-vtuber/models",
+      "license": "Creative Commons"
+    }
+  ],
+  "features": [
+    "实时语音驱动嘴型",
+    "2D卡通形象",
+    "零API费用",
+    "浏览器直接运行",
+    "可自定义形象",
+    "支持移动端"
+  ]
+}

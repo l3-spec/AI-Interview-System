@@ -1,0 +1,13 @@
+<svg width="160" height="60" viewBox="0 0 160 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="160" height="60" rx="14" fill="white"/>
+  <g transform="translate(24 10)">
+    <path d="M20 28C14 26 10 20 12 14C14 6 22 2 34 4C46 6 56 14 60 24C52 32 36 34 20 28Z" fill="#C0C4CC"/>
+    <path d="M38 16C40 18 44 18 46 16" stroke="#8C9099" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="32" cy="18" r="2" fill="#5B5F67"/>
+    <circle cx="42" cy="18" r="2" fill="#5B5F67"/>
+    <path d="M34 24C36 26 40 26 42 24" stroke="#5B5F67" stroke-width="2" stroke-linecap="round"/>
+  </g>
+  <text x="72" y="52" fill="#C9151E" font-family="'Segoe UI', Arial, sans-serif" font-size="18" font-weight="700">
+    JD.com
+  </text>
+</svg>

@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI面试系统 - 首页</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(180deg, #FFD6BA 0%, #E3F2FD 100%);
+            min-height: 100vh;
+            padding-bottom: 80px;
+        }
+
+        /* 顶部导航栏 */
+        .header {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: linear-gradient(180deg, rgba(255, 214, 186, 0.95) 0%, rgba(255, 214, 186, 0.9) 100%);
+            backdrop-filter: blur(10px);
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .header-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #262626;
+        }
+
+        .search-container {
+            flex: 1;
+            margin: 0 12px;
+            position: relative;
+        }
+
+        .search-input {
+            width: 100%;
+            height: 40px;
+            padding: 0 16px 0 40px;
+            background: white;
+            border: none;
+            border-radius: 20px;
+            font-size: 14px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        }
+
+        .search-input::placeholder {
+            color: #BFBFBF;
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 20px;
+            height: 20px;
+            color: #8C8C8C;
+        }
+
+        .search-btn {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #FF8C42 0%, #E67528 100%);
+            border: none;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(255, 140, 66, 0.3);
+        }
+
+        /* Banner轮播 */
+        .banner-container {
+            padding: 16px;
+        }
+
+        .banner-card {
+            position: relative;
+            height: 200px;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+        }
+
+        .banner-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .banner-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 20px;
+            background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
+            color: white;
+        }
+
+        .banner-label {
+            font-size: 12px;
+            color: #FFD6BA;
+            margin-bottom: 8px;
+        }
+
+        .banner-title {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            line-height: 1.3;
+        }
+
+        .banner-subtitle {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        /* 轮播指示器 */
+        .banner-indicators {
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+            margin-top: 12px;
+        }
+
+        .indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.5);
+            transition: all 0.3s;
+        }
+
+        .indicator.active {
+            width: 24px;
+            background: #FF8C42;
+        }
+
+        /* 内容区域 */
+        .content {
+            padding: 0 16px 16px;
+        }
+
+        /* 卡片网格 */
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .content-card {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+            transition: all 0.3s ease;
+        }
+
+        .content-card:active {
+            transform: scale(0.98);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+        }
+
+        .card-image {
+            width: 100%;
+            height: 120px;
+            object-fit: cover;
+        }
+
+        .card-body {
+            padding: 12px;
+        }
+
+        .card-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #262626;
+            margin-bottom: 8px;
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .card-tags {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+
+        .tag {
+            padding: 3px 10px;
+            background: rgba(255, 140, 66, 0.1);
+            color: #FF8C42;
+            font-size: 12px;
+            border-radius: 12px;
+            font-weight: 500;
+        }
+
+        .card-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-top: 8px;
+            border-top: 1px solid #F0F0F0;
+        }
+
+        .author {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: #595959;
+            font-size: 12px;
+        }
+
+        .avatar {
+            width: 20px;
+            height: 20px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #FF8C42, #E67528);
+        }
+
+        .views {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            color: #8C8C8C;
+            font-size: 12px;
+        }
+
+        /* 底部导航栏 */
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 70px;
+            background: white;
+            box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.08);
+            display: flex;
+            align-items: center;
+            justify-content: space-around;
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            color: #8C8C8C;
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+
+        .nav-item.active {
+            color: #FF8C42;
+        }
+
+        .nav-icon {
+            width: 24px;
+            height: 24px;
+        }
+
+        .nav-label {
+            font-size: 11px;
+        }
+
+        /* AI面试按钮 */
+        .ai-button {
+            position: relative;
+            margin-top: -35px;
+        }
+
+        .ai-button-circle {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #FF8C42 0%, #E67528 100%);
+            border-radius: 30px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 6px 20px rgba(255, 140, 66, 0.4);
+            border: 4px solid white;
+        }
+
+        .ai-icon {
+            font-size: 24px;
+            margin-bottom: 2px;
+        }
+
+        .ai-text {
+            font-size: 10px;
+            color: white;
+            font-weight: 600;
+        }
+
+        /* 图标样式 */
+        .icon {
+            display: inline-block;
+        }
+
+        /* 加载动画 */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .content-card {
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        .content-card:nth-child(1) { animation-delay: 0.1s; }
+        .content-card:nth-child(2) { animation-delay: 0.2s; }
+        .content-card:nth-child(3) { animation-delay: 0.3s; }
+        .content-card:nth-child(4) { animation-delay: 0.4s; }
+    </style>
+</head>
+<body>
+    <!-- 顶部导航 -->
+    <div class="header">
+        <div class="header-title">首页</div>
+        <div class="search-container">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+            </svg>
+            <input type="text" class="search-input" placeholder="搜索">
+        </div>
+        <button class="search-btn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+            </svg>
+        </button>
+    </div>
+
+    <!-- Banner轮播 -->
+    <div class="banner-container">
+        <div class="banner-card">
+            <img class="banner-image" src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&q=80" alt="Banner">
+            <div class="banner-overlay">
+                <div class="banner-label">最受欢迎的帖子</div>
+                <div class="banner-title">如何在AI时代提升职场竞争力</div>
+                <div class="banner-subtitle">探索人工智能时代下的职业发展新趋势</div>
+            </div>
+        </div>
+        <div class="banner-indicators">
+            <div class="indicator"></div>
+            <div class="indicator"></div>
+            <div class="indicator active"></div>
+            <div class="indicator"></div>
+            <div class="indicator"></div>
+        </div>
+    </div>
+
+    <!-- 内容卡片 -->
+    <div class="content">
+        <div class="card-grid">
+            <!-- 卡片1 -->
+            <div class="content-card">
+                <img class="card-image" src="https://images.unsplash.com/photo-1531482615713-2afd69097998?w=400&q=80" alt="职业转型">
+                <div class="card-body">
+                    <div class="card-title">AI时代下的职业转型指南</div>
+                    <div class="card-tags">
+                        <span class="tag">#AI</span>
+                        <span class="tag">#职业转型</span>
+                    </div>
+                    <div class="card-footer">
+                        <div class="author">
+                            <div class="avatar"></div>
+                            <span>未来职场</span>
+                        </div>
+                        <div class="views">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                            <span>729</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 卡片2 -->
+            <div class="content-card">
+                <img class="card-image" src="https://images.unsplash.com/photo-1552664730-d307ca884978?w=400&q=80" alt="产品经理">
+                <div class="card-body">
+                    <div class="card-title">从0到1：产品经理成长路径</div>
+                    <div class="card-tags">
+                        <span class="tag">#产品经理</span>
+                        <span class="tag">#职业规划</span>
+                    </div>
+                    <div class="card-footer">
+                        <div class="author">
+                            <div class="avatar"></div>
+                            <span>产品老司机</span>
+                        </div>
+                        <div class="views">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                            <span>856</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 卡片3 -->
+            <div class="content-card">
+                <img class="card-image" src="https://images.unsplash.com/photo-1515378791036-0648a3ef77b2?w=400&q=80" alt="技术面试">
+                <div class="card-body">
+                    <div class="card-title">技术面试高频题解析</div>
+                    <div class="card-tags">
+                        <span class="tag">#面试技巧</span>
+                        <span class="tag">#技术</span>
+                    </div>
+                    <div class="card-footer">
+                        <div class="author">
+                            <div class="avatar"></div>
+                            <span>技术大牛</span>
+                        </div>
+                        <div class="views">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                            <span>1.2k</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 卡片4 -->
+            <div class="content-card">
+                <img class="card-image" src="https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=400&q=80" alt="简历优化">
+                <div class="card-body">
+                    <div class="card-title">HR最看重的简历要点</div>
+                    <div class="card-tags">
+                        <span class="tag">#简历</span>
+                        <span class="tag">#求职</span>
+                    </div>
+                    <div class="card-footer">
+                        <div class="author">
+                            <div class="avatar"></div>
+                            <span>HR小姐姐</span>
+                        </div>
+                        <div class="views">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                            <span>945</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 卡片5 -->
+            <div class="content-card">
+                <img class="card-image" src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400&q=80" alt="沟通技巧">
+                <div class="card-body">
+                    <div class="card-title">职场沟通的艺术</div>
+                    <div class="card-tags">
+                        <span class="tag">#沟通</span>
+                        <span class="tag">#软技能</span>
+                    </div>
+                    <div class="card-footer">
+                        <div class="author">
+                            <div class="avatar"></div>
+                            <span>职场达人</span>
+                        </div>
+                        <div class="views">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                            <span>678</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 卡片6 -->
+            <div class="content-card">
+                <img class="card-image" src="https://images.unsplash.com/photo-1553877522-43269d4ea984?w=400&q=80" alt="职业规划">
+                <div class="card-body">
+                    <div class="card-title">5年职业规划实战经验</div>
+                    <div class="card-tags">
+                        <span class="tag">#规划</span>
+                        <span class="tag">#成长</span>
+                    </div>
+                    <div class="card-footer">
+                        <div class="author">
+                            <div class="avatar"></div>
+                            <span>生涯导师</span>
+                        </div>
+                        <div class="views">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                            <span>892</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 底部导航栏 -->
+    <div class="bottom-nav">
+        <a href="#" class="nav-item active">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                <polyline points="9 22 9 12 15 12 15 22"></polyline>
+            </svg>
+            <span class="nav-label">首页</span>
+        </a>
+
+        <a href="#" class="nav-item">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+            </svg>
+            <span class="nav-label">职岗</span>
+        </a>
+
+        <div class="nav-item ai-button">
+            <div class="ai-button-circle">
+                <div class="ai-icon">🤖</div>
+                <div class="ai-text">AI面</div>
+            </div>
+        </div>
+
+        <a href="#" class="nav-item">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+                <line x1="9" y1="9" x2="9.01" y2="9"></line>
+                <line x1="15" y1="9" x2="15.01" y2="9"></line>
+            </svg>
+            <span class="nav-label">职圈</span>
+        </a>
+
+        <a href="#" class="nav-item">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+            <span class="nav-label">我的</span>
+        </a>
+    </div>
+
+    <script>
+        // 简单的交互效果
+        document.querySelectorAll('.content-card').forEach(card => {
+            card.addEventListener('click', function() {
+                console.log('卡片被点击');
+                // 这里可以添加跳转到详情页的逻辑
+            });
+        });
+
+        // 底部导航切换
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', function(e) {
+                if (!this.classList.contains('ai-button')) {
+                    e.preventDefault();
+                    document.querySelectorAll('.nav-item').forEach(nav => {
+                        nav.classList.remove('active');
+                    });
+                    this.classList.add('active');
+                }
+            });
+        });
+
+        // AI面试按钮点击
+        document.querySelector('.ai-button').addEventListener('click', function(e) {
+            e.preventDefault();
+            alert('🤖 即将进入AI面试页面...\n\n这里会跳转到AI面试准备页面');
+            // 实际项目中这里应该路由到 AI 面试页面
+        });
+
+        // 搜索功能
+        document.querySelector('.search-btn').addEventListener('click', function() {
+            const searchValue = document.querySelector('.search-input').value;
+            if (searchValue.trim()) {
+                console.log('搜索:', searchValue);
+                // 这里可以添加搜索逻辑
+            }
+        });
+
+        // Banner 轮播自动切换（简单演示）
+        let currentIndex = 2;
+        setInterval(() => {
+            const indicators = document.querySelectorAll('.indicator');
+            indicators[currentIndex].classList.remove('active');
+            currentIndex = (currentIndex + 1) % indicators.length;
+            indicators[currentIndex].classList.add('active');
+        }, 3000);
+    </script>
+</body>
+</html>
+
+

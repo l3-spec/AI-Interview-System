@@ -1,0 +1,52 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Backend API Development Conventions
+
+## 📁 Directory Structure
+```
+backend-api/
+├── src/
+│   ├── controllers/     # Request handlers
+│   ├── middleware/      # Express middleware
+│   ├── routes/         # API route definitions  
+│   ├── utils/          # Utility functions
+│   ├── config/         # Configuration files
+│   └── index.ts        # Main entry point
+├── prisma/             # Database schema and migrations
+└── uploads/            # File upload directory
+```
+
+## 🔧 Key Files
+- **Main Entry**: [backend-api/src/index.ts](mdc:backend-api/src/index.ts) - Express server setup
+- **Configuration**: [backend-api/src/config/index.ts](mdc:backend-api/src/config/index.ts) - Environment variables and app config
+- **Database Schema**: [backend-api/prisma/schema.prisma](mdc:backend-api/prisma/schema.prisma) - Prisma data models
+- **Environment Example**: [backend-api/env.example](mdc:backend-api/env.example) - Required environment variables
+
+## 🛡️ Middleware Stack
+1. **Authentication**: [backend-api/src/middleware/auth.ts](mdc:backend-api/src/middleware/auth.ts) - JWT token validation
+2. **Error Handling**: [backend-api/src/middleware/errorHandler.ts](mdc:backend-api/src/middleware/errorHandler.ts) - Global error management
+3. **Rate Limiting**: [backend-api/src/middleware/rateLimiter.ts](mdc:backend-api/src/middleware/rateLimiter.ts) - API rate limiting
+4. **Request Logging**: [backend-api/src/middleware/requestLogger.ts](mdc:backend-api/src/middleware/requestLogger.ts) - Request/response logging
+
+## 📡 API Routes
+- **Authentication**: [backend-api/src/routes/auth.ts](mdc:backend-api/src/routes/auth.ts) - Login/register endpoints
+- **Main Router**: [backend-api/src/routes/index.ts](mdc:backend-api/src/routes/index.ts) - Route aggregation
+
+## ✅ Validation
+Data validation using Joi schemas in [backend-api/src/utils/validation.ts](mdc:backend-api/src/utils/validation.ts)
+
+## 🗄️ Database
+- **Provider**: MySQL with Prisma ORM
+- **Connection**: Configure DATABASE_URL in .env file
+- **Migrations**: Run `npx prisma migrate dev` for schema changes
+- **Seeding**: Use `npm run seed` to initialize data
+
+## 🔐 Security
+- JWT token authentication for all protected routes
+- Password hashing with bcryptjs
+- Rate limiting on sensitive endpoints (login, registration)
+- Input validation on all endpoints
+- CORS configuration for cross-origin requests
