@@ -350,8 +350,13 @@ class OSSController {
         return res.status(400).json({ success: false, error_message: '未收到文件' });
       }
 
+      // 允许客户端自定义存储路径，未指定时回退到默认 uploads/ 目录
+      const objectKey =
+        (req.body as any)?.objectKey ||
+        (req.query as any)?.objectKey;
+
       // 将临时文件上传到OSS
-      const result = await ossService.uploadLocalFile(file.path);
+      const result = await ossService.uploadLocalFile(file.path, objectKey);
 
       res.json({
         success: true,

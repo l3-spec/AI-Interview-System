@@ -1,6 +1,7 @@
 package com.xlwl.AiMian.navigation
 
 import android.app.Application
+import android.util.Log
 import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -40,6 +41,7 @@ import com.google.gson.Gson
 import com.xlwl.AiMian.ai.guide.InterviewGuideRoute
 import com.xlwl.AiMian.data.api.AiInterviewApi
 import com.xlwl.AiMian.data.api.ApiService
+import com.xlwl.AiMian.data.api.OssApi
 import com.xlwl.AiMian.ai.prep.PrepRoute
 import com.xlwl.AiMian.ai.session.InterviewSessionRoute
 import com.xlwl.AiMian.data.api.AuthApi
@@ -61,6 +63,7 @@ import com.xlwl.AiMian.data.model.User
 import com.xlwl.AiMian.data.model.AssessmentDetail
 import com.xlwl.AiMian.data.model.AssessmentResult
 import com.xlwl.AiMian.navigation.Routes.LOGIN
+import com.xlwl.AiMian.data.repository.OssRepository
 import com.xlwl.AiMian.ui.auth.LoginScreen
 import com.xlwl.AiMian.ui.auth.LoginFlowScreen
 import com.xlwl.AiMian.ui.auth.RegisterScreen
@@ -110,7 +113,9 @@ fun AppNavHost(navController: NavHostController) {
     val apiService = remember(client) { RetrofitClient.createService(ApiService::class.java, client) }
     val jobDictionaryApi = remember(client) { RetrofitClient.createService(JobDictionaryApi::class.java, client) }
     val aiInterviewApi = remember(client) { RetrofitClient.createService(AiInterviewApi::class.java, client) }
+    val ossApi = remember(client) { RetrofitClient.createService(OssApi::class.java, client) }
     val aiInterviewRepository = remember(aiInterviewApi) { AiInterviewRepository(aiInterviewApi) }
+    val ossRepository = remember(ossApi) { OssRepository(ossApi) }
     val authRepo = remember(authApi) { AuthRepository(authApi) }
     val contentRepo = remember(apiService) { ContentRepository(apiService) }
     val messageRepo = remember(apiService) { MessageRepository(apiService) }
@@ -721,6 +726,7 @@ fun AppNavHost(navController: NavHostController) {
                     sessionId = sessionId,
                     initialState = initialFlowState,
                     repository = aiInterviewRepository,
+                    ossRepository = ossRepository,
                     onClose = {
                         val popped = navController.popBackStack(Routes.HOME, false)
                         if (!popped) {
@@ -951,7 +957,22 @@ fun AppNavHost(navController: NavHostController) {
                             DigitalInterviewScreen(
                                 uiState = uiState,
                                 onStartAnswer = { viewModel.onStartAnswer() },
-                                onRetry = { viewModel.retryConnection() }
+                                onRetry = { viewModel.retryConnection() },
+                                onInterviewComplete = { sessionId ->
+                                    coroutineScope.launch {
+                                        runCatching {
+                                            if (sessionId.isNotBlank()) {
+                                                aiInterviewRepository.complete(sessionId)
+                                            }
+                                        }.onFailure { error ->
+                                            Log.w("DigitalInterview", "标记面试完成失败", error)
+                                        }
+                                    }
+                                    navController.navigate(Routes.PROFILE_RESUME_REPORT) {
+                                        popUpTo(Routes.HOME) { inclusive = false }
+                                        launchSingleTop = true
+                                    }
+                                }
                             )
                         }
                         else -> {

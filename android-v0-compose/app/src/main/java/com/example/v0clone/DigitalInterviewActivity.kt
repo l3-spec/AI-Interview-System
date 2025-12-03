@@ -68,7 +68,8 @@ class DigitalInterviewActivity : ComponentActivity() {
                     DigitalInterviewScreen(
                         uiState = uiState,
                         onStartAnswer = { viewModel.onStartAnswer() },
-                        onRetry = { viewModel.retryConnection() }
+                        onRetry = { viewModel.retryConnection() },
+                        onInterviewComplete = { finish() }
                     )
                 }
             }

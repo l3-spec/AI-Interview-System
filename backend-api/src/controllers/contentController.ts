@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import type { Express } from 'express';
 import { PrismaClient } from '@prisma/client';
 import path from 'path';
+import { ossService } from '../services/ossService';
 
 const prisma = new PrismaClient();
 
@@ -399,7 +400,41 @@ export const createUserPost = async (req: Request, res: Response) => {
 
     const tags = parseTagsInput(req.body.tags);
     const imageFiles = Array.isArray(req.files) ? (req.files as Express.Multer.File[]) : [];
-    const imageUrls = imageFiles.map((file) => normalizeUploadPath(file.path));
+    const ossEnabled =
+      !!process.env.OSS_ACCESS_KEY_ID &&
+      !!process.env.OSS_ACCESS_KEY_SECRET &&
+      !!process.env.OSS_BUCKET;
+
+    let imageUrls: string[] = [];
+
+    if (imageFiles.length > 0) {
+      if (ossEnabled) {
+        try {
+          imageUrls = await Promise.all(
+            imageFiles.map(async (file) => {
+              const safeName = file.originalname
+                .replace(/\s+/g, '_')
+                .replace(/[^a-zA-Z0-9._-]/g, '');
+              const ext = path.extname(safeName) || path.extname(file.originalname);
+              const baseName = safeName.replace(ext, '') || file.filename.replace(ext, '');
+              const objectKey = `posts/${req.user?.id ?? 'anonymous'}/${Date.now()}_${baseName}${ext}`;
+              const { url } = await ossService.uploadLocalFile(file.path, objectKey);
+              return url;
+            })
+          );
+        } catch (error) {
+          console.error('上传帖子图片到OSS失败:', error);
+          return res.status(500).json({
+            success: false,
+            message: '图片上传失败，请稍后重试',
+            error: error instanceof Error ? error.message : 'OSS上传失败',
+          });
+        }
+      } else {
+        imageUrls = imageFiles.map((file) => normalizeUploadPath(file.path));
+      }
+    }
+
     const coverImage = imageUrls.length > 0 ? imageUrls[0] : null;
 
     const created = await prisma.userPost.create({

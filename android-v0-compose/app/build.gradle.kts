@@ -165,8 +165,10 @@ dependencies {
     implementation("androidx.camera:camera-camera2:$cameraXVersion")
     implementation("androidx.camera:camera-lifecycle:$cameraXVersion")
     implementation("androidx.camera:camera-view:$cameraXVersion")
+    implementation("androidx.camera:camera-video:$cameraXVersion")
     implementation("com.infobip:google-webrtc:1.0.45036")
     implementation(project(":duix-sdk"))
+    implementation("com.aliyun.dpa:oss-android-sdk:2.9.13")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

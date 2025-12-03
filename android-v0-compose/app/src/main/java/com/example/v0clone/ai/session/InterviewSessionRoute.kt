@@ -1,5 +1,6 @@
 package com.xlwl.AiMian.ai.session
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -15,24 +16,34 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.xlwl.AiMian.ai.DigitalInterviewScreen
 import com.xlwl.AiMian.ai.DigitalInterviewUiState
+import com.xlwl.AiMian.ai.video.InterviewVideoRecorder
 import com.xlwl.AiMian.data.model.AiInterviewFlowState
+import com.xlwl.AiMian.data.model.AiInterviewSubmitAnswerRequest
+import com.xlwl.AiMian.data.model.OssUploadCompleteRequest
 import com.xlwl.AiMian.data.repository.AiInterviewRepository
+import com.xlwl.AiMian.data.repository.OssRepository
+import java.io.File
+import kotlinx.coroutines.launch
 
 @Composable
 fun InterviewSessionRoute(
   sessionId: String,
   initialState: AiInterviewFlowState?,
   repository: AiInterviewRepository,
+  ossRepository: OssRepository,
   onClose: () -> Unit,
   onBack: () -> Unit
 ) {
@@ -77,7 +88,9 @@ fun InterviewSessionRoute(
     flowState != null -> {
       SessionScreen(
         state = flowState!!,
-        onStartAnswer = onClose
+        repository = repository,
+        ossRepository = ossRepository,
+        onClose = onClose
       )
     }
 
@@ -88,31 +101,109 @@ fun InterviewSessionRoute(
 @Composable
 private fun SessionScreen(
   state: AiInterviewFlowState,
-  onStartAnswer: () -> Unit
+  repository: AiInterviewRepository,
+  ossRepository: OssRepository,
+  onClose: () -> Unit
 ) {
-  val currentQuestion = remember(state.sessionId, state.questions) {
-    state.questions.minByOrNull { it.questionIndex }
+  val context = LocalContext.current
+  val coroutineScope = rememberCoroutineScope()
+  val sortedQuestions = remember(state.sessionId, state.questions) {
+    state.questions.sortedBy { it.questionIndex }
   }
+  var currentIndex by remember(state.sessionId) { mutableIntStateOf(0) }
+  var isSubmitting by remember(state.sessionId) { mutableStateOf(false) }
+  var statusMessage by remember(state.sessionId) { mutableStateOf<String?>(null) }
+  var errorMessage by remember(state.sessionId) { mutableStateOf<String?>(null) }
+  val videoRecorder = remember { InterviewVideoRecorder(context) }
 
-  val uiState = remember(state.sessionId, currentQuestion) {
+  val currentQuestion = sortedQuestions.getOrNull(currentIndex)
+  val currentDisplayIndex = (currentQuestion?.questionIndex ?: currentIndex) + 1
+
+  val uiState = remember(state.sessionId, currentIndex, isSubmitting, statusMessage) {
     DigitalInterviewUiState(
       sessionId = state.sessionId,
       position = state.jobTarget,
-      questionText = currentQuestion?.questionText ?: "数字人正在准备题目",
-      currentQuestion = (currentQuestion?.questionIndex ?: 0) + 1,
+      questionText = currentQuestion?.questionText ?: "正在获取题目",
+      currentQuestion = currentDisplayIndex,
       totalQuestions = state.totalQuestions,
       initialCountdownSeconds = 180,
       timeRemaining = 180,
       isSpeaking = false,
-      isLoading = false,
-      statusMessage = "请前往全屏数字人面试页面体验沉浸式沟通"
+      isLoading = isSubmitting,
+      statusMessage = statusMessage
     )
+  }
+
+  LaunchedEffect(errorMessage) {
+    errorMessage?.let {
+      Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+    }
   }
 
   DigitalInterviewScreen(
     uiState = uiState,
-    onStartAnswer = onStartAnswer,
-    onRetry = {}
+    onStartAnswer = { errorMessage = null },
+    onRetry = { errorMessage = null },
+    onInterviewComplete = { onClose() },
+    videoRecorder = videoRecorder,
+    onRecordingFinished = { file: File, durationMs: Long ->
+      coroutineScope.launch {
+        val questionIndex = currentQuestion?.questionIndex ?: currentIndex
+        isSubmitting = true
+        statusMessage = "正在上传第${currentDisplayIndex}题视频…"
+        errorMessage = null
+
+        val objectKey = "interview-videos/${state.sessionId}/${System.currentTimeMillis()}_${questionIndex}.mp4"
+        val uploadResult = ossRepository.uploadVideo(file, objectKey)
+        uploadResult.onSuccess { result ->
+          val url = result.url ?: ""
+          if (url.isBlank()) {
+            errorMessage = "未获取到视频地址"
+            statusMessage = null
+            return@onSuccess
+          }
+
+          ossRepository.notifyUploadComplete(
+            OssUploadCompleteRequest(
+              sessionId = state.sessionId,
+              questionIndex = questionIndex,
+              ossUrl = url,
+              fileSize = file.length(),
+              duration = durationMs
+            )
+          )
+
+          val submitResult = repository.submitAnswer(
+            AiInterviewSubmitAnswerRequest(
+              sessionId = state.sessionId,
+              questionIndex = questionIndex,
+              answerVideoUrl = url,
+              answerDuration = (durationMs / 1000).toInt().coerceAtLeast(1)
+            )
+          )
+
+          submitResult.onSuccess {
+            file.delete()
+            if (currentIndex >= sortedQuestions.lastIndex) {
+              repository.complete(state.sessionId)
+              statusMessage = "已提交全部题目，面试完成"
+              onClose()
+            } else {
+              currentIndex += 1
+              statusMessage = "已提交第${currentDisplayIndex}题，准备下一题"
+            }
+          }.onFailure { throwable ->
+            statusMessage = null
+            errorMessage = throwable.message ?: "提交答案失败，请重试"
+          }
+        }.onFailure { throwable ->
+          statusMessage = null
+          errorMessage = throwable.message ?: "视频上传失败，请重试"
+        }
+
+        isSubmitting = false
+      }
+    }
   )
 }
 

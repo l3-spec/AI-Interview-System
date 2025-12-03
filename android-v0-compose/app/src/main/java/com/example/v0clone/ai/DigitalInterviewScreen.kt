@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.view.WindowManager
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -60,6 +61,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.movableContentOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -94,7 +96,10 @@ import com.xlwl.AiMian.ai.realtime.ConnectionState
 import com.xlwl.AiMian.ai.realtime.RealtimeVoiceManager
 import com.xlwl.AiMian.config.AppConfig
 import com.xlwl.AiMian.duix.DuixViewHost
+import com.xlwl.AiMian.ai.video.InterviewVideoRecorder
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
+import java.io.File
 import kotlin.math.roundToInt
 
 /**
@@ -104,7 +109,10 @@ import kotlin.math.roundToInt
 fun DigitalInterviewScreen(
     uiState: DigitalInterviewUiState,
     onStartAnswer: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    onInterviewComplete: (sessionId: String) -> Unit = {},
+    videoRecorder: InterviewVideoRecorder? = null,
+    onRecordingFinished: ((File, Long) -> Unit)? = null
 ) {
     val context = LocalContext.current
     var hasCameraPermission by remember { mutableStateOf(false) }
@@ -112,6 +120,7 @@ fun DigitalInterviewScreen(
     var isCameraEnabled by remember { mutableStateOf(false) }
     var showPermissionDialog by remember { mutableStateOf(false) }
     val voiceManager = remember { RealtimeVoiceManager(context.applicationContext) }
+    val coroutineScope = rememberCoroutineScope()
     var duixReady by remember { mutableStateOf(false) }
     var duixStatus by remember { mutableStateOf<String?>("正在准备数字人…") }
     val duixBaseConfigUrl = remember { AppConfig.duixBaseConfigUrl }
@@ -132,6 +141,9 @@ fun DigitalInterviewScreen(
         val originalNavColor = window?.navigationBarColor
         val originalLightStatus = controller?.isAppearanceLightStatusBars
         val originalLightNav = controller?.isAppearanceLightNavigationBars
+        val wasKeepingScreenOn = window?.attributes?.flags?.let { flags ->
+            flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0
+        } ?: false
 
         if (window != null && controller != null) {
             WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -144,6 +156,9 @@ fun DigitalInterviewScreen(
             controller.hide(WindowInsetsCompat.Type.systemBars())
         }
 
+        // Keep the screen awake while the interview is active to avoid dimming during long sessions
+        window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
         onDispose {
             if (window != null && controller != null) {
                 controller.show(WindowInsetsCompat.Type.systemBars())
@@ -152,12 +167,22 @@ fun DigitalInterviewScreen(
                 originalLightStatus?.let { controller.isAppearanceLightStatusBars = it }
                 originalLightNav?.let { controller.isAppearanceLightNavigationBars = it }
             }
+
+            if (window != null && !wasKeepingScreenOn) {
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
         }
     }
 
     DisposableEffect(Unit) {
         onDispose {
             voiceManager.cleanup()
+        }
+    }
+
+    DisposableEffect(videoRecorder) {
+        onDispose {
+            videoRecorder?.release()
         }
     }
     LaunchedEffect(Unit) {
@@ -170,9 +195,11 @@ fun DigitalInterviewScreen(
     val isProcessing by voiceManager.isProcessing.collectAsState()
     val partialTranscript by voiceManager.partialTranscript.collectAsState()
     val latestDigitalHumanText by voiceManager.latestDigitalHumanText.collectAsState()
+    val interviewCompleted by voiceManager.interviewCompleted.collectAsState()
     val conversation by voiceManager.conversation.collectAsState()
     val digitalHumanReady = duixReady
     val digitalHumanStatus = duixStatus
+    var hasReportedCompletion by rememberSaveable(uiState.sessionId) { mutableStateOf(false) }
 
     // 调试日志
     LaunchedEffect(uiState) {
@@ -251,6 +278,13 @@ fun DigitalInterviewScreen(
         }
     }
 
+    LaunchedEffect(interviewCompleted, uiState.sessionId) {
+        if (interviewCompleted && !hasReportedCompletion) {
+            hasReportedCompletion = true
+            onInterviewComplete(uiState.sessionId)
+        }
+    }
+
     val prefs = remember { context.previewPreferences }
     var previewRatio by rememberSaveable(stateSaver = OffsetSaver) {
         mutableStateOf(Offset(0.75f, 0.08f))
@@ -284,6 +318,12 @@ fun DigitalInterviewScreen(
 
     val toggleRecording: () -> Unit = {
         when {
+            interviewCompleted -> {
+                Toast.makeText(context, "面试已结束", Toast.LENGTH_SHORT).show()
+            }
+            !hasCameraPermission -> {
+                showPermissionDialog = true
+            }
             !hasMicrophonePermission -> {
                 showPermissionDialog = true
             }
@@ -303,9 +343,19 @@ fun DigitalInterviewScreen(
 
                 if (isRecording) {
                     voiceManager.stopRecording()
+                    coroutineScope.launch {
+                        val result = videoRecorder?.stopRecording()
+                        if (result != null) {
+                            onRecordingFinished?.invoke(result.file, result.durationMillis)
+                        }
+                    }
                     Toast.makeText(context, "录音已结束", Toast.LENGTH_SHORT).show()
                 } else {
                     onStartAnswer()
+                    videoRecorder?.startRecording(
+                        uiState.sessionId.ifBlank { "session" },
+                        (uiState.currentQuestion - 1).coerceAtLeast(0)
+                    )
                     voiceManager.startRecording()
                     Toast.makeText(context, "开始录音，请作答", Toast.LENGTH_SHORT).show()
                 }
@@ -332,6 +382,7 @@ fun DigitalInterviewScreen(
             duixBaseConfigUrl = duixBaseConfigUrl,
             duixModelUrl = duixModelUrl,
             voiceManager = voiceManager,
+            videoRecorder = videoRecorder,
             onDuixReadyChanged = { ready ->
                 duixReady = ready
                 duixStatus = if (ready) null else "数字人初始化中…"
@@ -365,6 +416,7 @@ fun DigitalInterviewScreen(
                 isDigitalHumanSpeaking = isDigitalHumanSpeaking,
                 isRecording = isRecording,
                 isProcessing = isProcessing,
+                interviewCompleted = interviewCompleted,
                 connectionState = connectionState,
                 partialTranscript = partialTranscript,
                 latestDigitalHumanText = latestDigitalHumanText,
@@ -408,6 +460,10 @@ fun DigitalInterviewScreen(
                     }
                 }
             }
+        }
+
+        if (interviewCompleted) {
+            InterviewCompletedOverlay(statusMessage = digitalHumanStatus)
         }
 
         // 第四层：教育引导层（最顶层，zIndex 3f）
@@ -470,6 +526,7 @@ private fun InterviewStage(
     duixBaseConfigUrl: String,
     duixModelUrl: String,
     voiceManager: RealtimeVoiceManager,
+    videoRecorder: InterviewVideoRecorder?,
     onDuixReadyChanged: (Boolean) -> Unit,
     onDigitalHumanStatus: (String) -> Unit
 ) {
@@ -552,15 +609,22 @@ private fun InterviewStage(
             }
         }
 
-        // Define movable content for User Camera
-        val userCameraContent = remember {
-            movableContentOf { hasCam: Boolean, hasMic: Boolean, isCamEnabled: Boolean, onReqPerm: () -> Unit ->
+        // Define movable content for User Camera (capture latest state via remember keys)
+        val userCameraContent = remember(
+            hasCameraPermission,
+            hasMicrophonePermission,
+            isCameraEnabled,
+            onRequestPermissions,
+            videoRecorder
+        ) {
+            movableContentOf {
                 UserPreviewTile(
                     modifier = Modifier.fillMaxSize(),
-                    hasCameraPermission = hasCam,
-                    hasMicrophonePermission = hasMic,
-                    isCameraEnabled = isCamEnabled,
-                    onRequestPermissions = onReqPerm
+                    hasCameraPermission = hasCameraPermission,
+                    hasMicrophonePermission = hasMicrophonePermission,
+                    isCameraEnabled = isCameraEnabled,
+                    onRequestPermissions = onRequestPermissions,
+                    videoRecorder = videoRecorder
                 )
             }
         }
@@ -576,12 +640,7 @@ private fun InterviewStage(
             if (!isSwapped) {
                 digitalHumanContent()
             } else {
-                userCameraContent(
-                    hasCameraPermission,
-                    hasMicrophonePermission,
-                    isCameraEnabled,
-                    onRequestPermissions
-                )
+                userCameraContent()
             }
         }
 
@@ -602,12 +661,7 @@ private fun InterviewStage(
 
         Box(modifier = previewModifier) {
             if (!isSwapped) {
-                userCameraContent(
-                    hasCameraPermission,
-                    hasMicrophonePermission,
-                    isCameraEnabled,
-                    onRequestPermissions
-                )
+                userCameraContent()
             } else {
                 digitalHumanContent()
             }
@@ -642,6 +696,7 @@ private fun BottomSection(
     isDigitalHumanSpeaking: Boolean,
     isRecording: Boolean,
     isProcessing: Boolean,
+    interviewCompleted: Boolean,
     connectionState: ConnectionState,
     partialTranscript: String,
     latestDigitalHumanText: String?,
@@ -669,13 +724,14 @@ private fun BottomSection(
 
         val isVoiceConnected = connectionState == ConnectionState.CONNECTED
         val buttonText = when {
+            interviewCompleted -> "面试已结束"
             !isDigitalHumanReady -> "正在唤起DUIX数字人…"
             !isVoiceConnected -> "连接语音服务中…"
             isProcessing -> "数字人应答中…"
             isRecording -> "停止聆听"
             else -> "开始答题"
         }
-        val buttonEnabled = isVoiceConnected && !isProcessing && isDigitalHumanReady
+        val buttonEnabled = isVoiceConnected && !isProcessing && isDigitalHumanReady && !interviewCompleted
 
         StartAnswerButton(
             text = buttonText,
@@ -818,6 +874,38 @@ private fun ConversationPanel(
     }
 }
 
+@Composable
+private fun InterviewCompletedOverlay(statusMessage: String?) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.75f))
+            .zIndex(4f),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            CircularProgressIndicator(color = Color.White)
+            Text(
+                text = "面试已结束，正在为你整理结果…",
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            statusMessage?.takeIf { it.isNotBlank() }?.let { hint ->
+                Text(
+                    text = hint,
+                    color = Color.White.copy(alpha = 0.8f),
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+}
+
 
 
 @Composable
@@ -896,7 +984,8 @@ private fun UserPreviewTile(
     hasCameraPermission: Boolean,
     hasMicrophonePermission: Boolean,
     isCameraEnabled: Boolean,
-    onRequestPermissions: () -> Unit
+    onRequestPermissions: () -> Unit,
+    videoRecorder: InterviewVideoRecorder? = null
 ) {
     Box(
         modifier = modifier
@@ -904,7 +993,10 @@ private fun UserPreviewTile(
             .background(Color.Black.copy(alpha = 0.45f))
     ) {
         if (hasCameraPermission && isCameraEnabled) {
-            UserCameraPreview(modifier = Modifier.matchParentSize())
+            UserCameraPreview(
+                modifier = Modifier.matchParentSize(),
+                videoRecorder = videoRecorder
+            )
         } else {
             Column(
                 modifier = Modifier.matchParentSize(),
@@ -1007,7 +1099,10 @@ private fun formatTime(seconds: Int): String {
 }
 
 @Composable
-fun UserCameraPreview(modifier: Modifier = Modifier) {
+fun UserCameraPreview(
+    modifier: Modifier = Modifier,
+    videoRecorder: InterviewVideoRecorder? = null
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val previewView = remember {
@@ -1017,32 +1112,40 @@ fun UserCameraPreview(modifier: Modifier = Modifier) {
     }
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
 
-    DisposableEffect(lifecycleOwner) {
-        val executor = ContextCompat.getMainExecutor(context)
-        val listener = Runnable {
-            try {
-                val cameraProvider = cameraProviderFuture.get()
-                val preview = Preview.Builder().build().apply {
-                    setSurfaceProvider(previewView.surfaceProvider)
-                }
-                val cameraSelector = CameraSelector.Builder()
-                    .requireLensFacing(CameraSelector.LENS_FACING_FRONT)
-                    .build()
-
-                cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview)
-            } catch (exception: Exception) {
-                Log.e("UserCameraPreview", "Failed to bind camera preview", exception)
-            }
+    LaunchedEffect(videoRecorder, lifecycleOwner) {
+        if (videoRecorder != null) {
+            videoRecorder.bindPreview(lifecycleOwner, previewView)
         }
+    }
 
-        cameraProviderFuture.addListener(listener, executor)
+    if (videoRecorder == null) {
+        DisposableEffect(lifecycleOwner) {
+            val executor = ContextCompat.getMainExecutor(context)
+            val listener = Runnable {
+                try {
+                    val cameraProvider = cameraProviderFuture.get()
+                    val preview = Preview.Builder().build().apply {
+                        setSurfaceProvider(previewView.surfaceProvider)
+                    }
+                    val cameraSelector = CameraSelector.Builder()
+                        .requireLensFacing(CameraSelector.LENS_FACING_FRONT)
+                        .build()
 
-        onDispose {
-            try {
-                cameraProviderFuture.get().unbindAll()
-            } catch (exception: Exception) {
-                Log.w("UserCameraPreview", "Failed to release camera preview", exception)
+                    cameraProvider.unbindAll()
+                    cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview)
+                } catch (exception: Exception) {
+                    Log.e("UserCameraPreview", "Failed to bind camera preview", exception)
+                }
+            }
+
+            cameraProviderFuture.addListener(listener, executor)
+
+            onDispose {
+                try {
+                    cameraProviderFuture.get().unbindAll()
+                } catch (exception: Exception) {
+                    Log.w("UserCameraPreview", "Failed to release camera preview", exception)
+                }
             }
         }
     }

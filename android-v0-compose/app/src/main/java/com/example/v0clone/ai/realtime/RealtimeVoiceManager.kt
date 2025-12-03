@@ -312,8 +312,20 @@ class RealtimeVoiceManager(private val context: Context) {
     private val _latestDigitalHumanText = MutableStateFlow<String?>(null)
     val latestDigitalHumanText: StateFlow<String?> = _latestDigitalHumanText.asStateFlow()
 
+    private val _interviewCompleted = MutableStateFlow(false)
+    val interviewCompleted: StateFlow<Boolean> = _interviewCompleted.asStateFlow()
+
     private val _errors = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val errors: SharedFlow<String> = _errors.asSharedFlow()
+
+    private val completionKeywords = listOf(
+        "面试结束",
+        "结束面试",
+        "本次面试到此结束",
+        "interview finished",
+        "interview is over",
+        "session completed"
+    )
 
     // 可选的数字人音频分发（用于DUIX推送PCM/WAV）
     private var duixAudioSink: ((String) -> Unit)? = null
@@ -366,6 +378,9 @@ class RealtimeVoiceManager(private val context: Context) {
             currentJobPosition = jobPosition
             currentBackground = background
             _connectionState.value = ConnectionState.CONNECTING
+            _interviewCompleted.value = false
+            playedTextHashes.clear()
+            currentPlayingTextHash = null
 
             val options = IO.Options().apply {
                 forceNew = true
@@ -447,7 +462,12 @@ class RealtimeVoiceManager(private val context: Context) {
      */
     fun startRecording() {
         Log.d(TAG, "startRecording被调用 - vadEnabled=$vadEnabled, isRecording=$isRecording, connectionState=${_connectionState.value}, sessionId=$currentSessionId")
-        
+
+        if (_interviewCompleted.value) {
+            Log.w(TAG, "面试已结束，忽略录音请求")
+            return
+        }
+
         if (isRecording) {
             Log.w(TAG, "正在录音，忽略重复请求")
             return
@@ -575,7 +595,8 @@ class RealtimeVoiceManager(private val context: Context) {
         // 清理防重复播放标记
         playedTextHashes.clear()
         currentPlayingTextHash = null
-        
+        _interviewCompleted.value = false
+
         scope.cancel()
     }
 
@@ -767,6 +788,9 @@ class RealtimeVoiceManager(private val context: Context) {
             val text = data.optString("text", "")
             val ttsMode = data.optString("ttsMode", if (audioUrl.isNullOrBlank()) "client" else "server")
             val userText = data.optString("userText", "")
+            val isCompletedFlag = data.optBoolean("isCompleted", false) ||
+                data.optString("status").equals("completed", ignoreCase = true) ||
+                data.optString("event").equals("completed", ignoreCase = true)
 
             Log.i(TAG, "收到语音响应 - text=$text, ttsMode=$ttsMode, audioUrl=$audioUrl")
 
@@ -804,6 +828,13 @@ class RealtimeVoiceManager(private val context: Context) {
             appendMessage(ConversationMessage(role = ConversationRole.DIGITAL_HUMAN, text = text))
             _latestDigitalHumanText.value = text
 
+            val completionHint = isCompletedFlag || completionKeywords.any { keyword ->
+                text.contains(keyword, ignoreCase = true)
+            }
+            if (completionHint) {
+                markInterviewCompleted("voice-response")
+            }
+
             if (ttsMode.equals("client", ignoreCase = true)) {
                 Log.i(TAG, "使用客户端TTS播放 - textHash=$textHash")
                 playClientSideTts(text, textHash)
@@ -826,8 +857,13 @@ class RealtimeVoiceManager(private val context: Context) {
     private fun handleStatus(data: JSONObject) {
         val processing = data.optBoolean("isProcessing", false)
         val speaking = data.optBoolean("isDigitalHumanSpeaking", false)
+        val completed = data.optBoolean("isCompleted", false) ||
+            data.optString("status").equals("completed", ignoreCase = true)
         _isProcessing.value = processing
         _isDigitalHumanSpeaking.value = speaking
+        if (completed) {
+            markInterviewCompleted("status-event")
+        }
     }
 
     private fun handleError(payload: Any?) {
@@ -837,6 +873,13 @@ class RealtimeVoiceManager(private val context: Context) {
             else -> payload?.toString()
         } ?: "未知错误"
         _errors.tryEmit(message)
+    }
+
+    private fun markInterviewCompleted(reason: String? = null) {
+        if (_interviewCompleted.value) return
+        Log.i(TAG, "标记面试已完成${reason?.let { "：$it" } ?: ""}")
+        _interviewCompleted.value = true
+        stopRecordingInternal()
     }
 
     private fun playClientSideTts(text: String, textHash: String?) {
@@ -948,7 +991,7 @@ class RealtimeVoiceManager(private val context: Context) {
                     }
                     
                     // VAD模式下自动重新开始录音，实现实时互动
-                    if (vadEnabled && _connectionState.value == ConnectionState.CONNECTED) {
+                    if (!_interviewCompleted.value && vadEnabled && _connectionState.value == ConnectionState.CONNECTED) {
                         scope.launch {
                             delay(500) // 短暂延迟，避免立即开始录音
                             Log.i(TAG, "TTS播放完成，VAD模式自动重新开始录音")
