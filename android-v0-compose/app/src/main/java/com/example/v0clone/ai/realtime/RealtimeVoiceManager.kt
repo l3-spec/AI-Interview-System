@@ -59,6 +59,10 @@ class RealtimeVoiceManager(private val context: Context) {
         private const val MAX_RECORDING_DURATION_MS = 60000  // 最长录音60秒
         private const val VISUALIZER_MAX_RETRY = 5
         private const val VISUALIZER_RETRY_DELAY_MS = 150L
+        private const val MOUTH_MAX_OPENNESS = 0.6f
+        private const val MOUTH_AMPLIFICATION = 2.2f
+        private const val MOUTH_SMOOTHING_ALPHA = 0.18f
+        private const val MOUTH_MIN_UPDATE_INTERVAL_MS = 60L
     }
 
     private suspend fun preparePlayableAudio(sourcePath: String): String? = withContext(Dispatchers.IO) {
@@ -1134,6 +1138,8 @@ class RealtimeVoiceManager(private val context: Context) {
     }
 
     private var lastMouthUpdate = 0L
+    private var lastMouthFrameAt = 0L
+    private var smoothedMouthOpenness = 0f
     private var mouthUpdateCount = 0
     
     private fun updateDigitalHumanMouth(waveform: ByteArray) {
@@ -1154,25 +1160,30 @@ class RealtimeVoiceManager(private val context: Context) {
             }
             
             val rms = sqrt(sum / waveform.size)
-            // 使用更合理的映射：将RMS值映射到0-1范围，并添加平滑处理
-            // RMS通常在0-0.3之间，我们将其映射到0-0.8的嘴型范围
-            val mouthOpenness = (rms * 3f).coerceIn(0f, 0.8f)  // 调整放大倍数，避免过度开口
+            // 使用更柔和的映射与节流，降低晃动频率与幅度
+            val now = System.currentTimeMillis()
+            if (now - lastMouthFrameAt < MOUTH_MIN_UPDATE_INTERVAL_MS) {
+                return
+            }
+            lastMouthFrameAt = now
+
+            val targetOpenness = (rms * MOUTH_AMPLIFICATION).coerceIn(0f, MOUTH_MAX_OPENNESS)
+            smoothedMouthOpenness += (targetOpenness - smoothedMouthOpenness) * MOUTH_SMOOTHING_ALPHA
             
             // 更新数字人嘴型
             val controller = digitalHumanController
             if (controller != null) {
-                controller.updateMouthOpenness(mouthOpenness)
+                controller.updateMouthOpenness(smoothedMouthOpenness)
                 
                 mouthUpdateCount++
-                val now = System.currentTimeMillis()
                 
                 // 第一次更新时打印详细信息
                 if (mouthUpdateCount == 1) {
-                    Log.i(TAG, "🎉 数字人嘴型首次更新 - rms=$rms, mouthOpenness=$mouthOpenness, waveformSize=${waveform.size}")
+                    Log.i(TAG, "🎉 数字人嘴型首次更新 - rms=$rms, target=$targetOpenness, smoothed=$smoothedMouthOpenness, waveformSize=${waveform.size}")
                     lastMouthUpdate = now
                 } else if (now - lastMouthUpdate > 1000) {
                     // 之后每秒打印一次
-                    Log.d(TAG, "数字人嘴型更新 #$mouthUpdateCount - rms=$rms, mouthOpenness=$mouthOpenness, waveformSize=${waveform.size}")
+                    Log.d(TAG, "数字人嘴型更新 #$mouthUpdateCount - rms=$rms, target=$targetOpenness, smoothed=$smoothedMouthOpenness, waveformSize=${waveform.size}")
                     lastMouthUpdate = now
                 }
             } else {

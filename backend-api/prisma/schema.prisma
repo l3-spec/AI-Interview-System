@@ -114,6 +114,7 @@ model Job {
   interviews  Interview[]
   applications JobApplication[]
   sections    JobSectionItem[]
+  promotedJobs PromotedJob[]
 
   @@map("jobs")
   @@index([dictionaryPositionId], map: "idx_jobs_dictionary_position")
@@ -722,6 +723,8 @@ model PromotedJob {
   clickCount      Int       @default(0) @map("click_count") // 点击次数
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  job             Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@index([jobId])
   @@index([isActive])

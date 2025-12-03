@@ -131,7 +131,7 @@ fun HomeScreen(
                 end = 12.dp,
                 bottom = 120.dp
             ),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             item(key = "header-spacer") {
                 Spacer(modifier = Modifier.height(headerPlaceholderHeight))
@@ -219,7 +219,7 @@ private fun HomeHeader(
     val fieldHeight = lerp(42.dp, 38.dp, progress)
     val searchIconSize = lerp(18.dp, 16.dp, progress)
     val rowSpacing = lerp(14.dp, 10.dp, progress)
-    val bottomPadding = lerp(14.dp, 10.dp, progress)
+    val bottomPadding = lerp(8.dp, 6.dp, progress)
 
     Column(
         modifier = modifier
