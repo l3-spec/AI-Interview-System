@@ -72,6 +72,7 @@ fun V0App() {
     val token by authManager.tokenFlow.collectAsState(initial = null)
     val hideBottomBar = currentRoute.startsWith(Routes.GUIDE) ||
         currentRoute == Routes.LOGIN ||
+        currentRoute == Routes.CREATE_POST ||
         currentRoute == Routes.REGISTER ||
         currentRoute == Routes.AI ||
         currentRoute == Routes.DIGITAL_INTERVIEW ||

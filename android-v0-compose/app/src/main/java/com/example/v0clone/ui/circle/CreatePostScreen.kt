@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalLayoutApi::class)
+
 package com.xlwl.AiMian.ui.circle
 
 import android.content.ContentResolver
@@ -8,15 +10,16 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -25,13 +28,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -68,9 +72,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -90,6 +92,7 @@ private const val TITLE_MAX_LENGTH = 30
 private const val MAX_IMAGES = 6
 private val PlaceholderColor = Color(0xFFB5B7B8)
 private val AccentOrange = Color(0xFFEC7C38)
+private val ImagePlaceholder = Color(0xFFEBEBEB)
 
 data class SelectedImage(
     val uri: Uri,
@@ -137,7 +140,7 @@ fun CreatePostRoute(
     )
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 private fun CreatePostScreen(
     uiState: CreatePostUiState,
@@ -156,6 +159,7 @@ private fun CreatePostScreen(
     val tagSuggestions = remember {
         listOf("#AI", "#职业转型", "#Offer分享")
     }
+    val scrollState = rememberScrollState()
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia()
@@ -257,13 +261,13 @@ private fun CreatePostScreen(
                 .fillMaxSize()
                 .background(Color.White)
                 .padding(innerPadding)
+                .verticalScroll(scrollState)
         ) {
             TitleSection(
                 title = title,
                 onTitleChange = { if (it.length <= TITLE_MAX_LENGTH) title = it },
                 counter = "${title.length}/$TITLE_MAX_LENGTH"
             )
-            Divider(color = PlaceholderColor.copy(alpha = 0.3f), thickness = 0.5.dp)
             ContentSection(
                 content = content,
                 onContentChange = { content = it }
@@ -348,38 +352,51 @@ private fun TitleSection(
     onTitleChange: (String) -> Unit,
     counter: String
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+    Column(
+        modifier = Modifier.fillMaxWidth()
     ) {
-        BasicTextField(
-            value = title,
-            onValueChange = onTitleChange,
-            textStyle = MaterialTheme.typography.bodyLarge.copy(
-                fontSize = 16.sp,
-                color = Color.Black
-            ),
-            decorationBox = { inner ->
-                if (title.isEmpty()) {
-                    Text(
-                        text = "好的标题会让更多人看到哦~",
-                        color = PlaceholderColor,
-                        style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp)
-                    )
-                }
-                inner()
-            },
-            modifier = Modifier.weight(1f)
-        )
-        Spacer(modifier = Modifier.width(12.dp))
-        Text(
-            text = counter,
-            style = MaterialTheme.typography.bodySmall.copy(
-                color = PlaceholderColor
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Start
+        ) {
+            BasicTextField(
+                value = title,
+                onValueChange = onTitleChange,
+                singleLine = true,
+                textStyle = TextStyle(
+                    fontSize = 14.sp,
+                    color = Color.Black,
+                    lineHeight = 22.sp
+                ),
+                decorationBox = { inner ->
+                    if (title.isEmpty()) {
+                        Text(
+                            text = "好的标题会让更多人看到哦~",
+                            color = PlaceholderColor,
+                            fontSize = 14.sp,
+                            lineHeight = 22.sp
+                        )
+                    }
+                    inner()
+                },
+                modifier = Modifier.weight(1f)
             )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = counter,
+                style = TextStyle(
+                    color = PlaceholderColor,
+                    fontSize = 14.sp,
+                    lineHeight = 22.sp
+                )
+            )
+        }
+        Divider(
+            color = PlaceholderColor.copy(alpha = 0.6f),
+            thickness = 0.25.dp
         )
     }
 }
@@ -392,20 +409,22 @@ private fun ContentSection(
     BasicTextField(
         value = content,
         onValueChange = onContentChange,
-        textStyle = MaterialTheme.typography.bodyLarge.copy(
-            fontSize = 15.sp,
-            color = Color.Black
+        textStyle = TextStyle(
+            fontSize = 14.sp,
+            color = Color.Black,
+            lineHeight = 22.sp
         ),
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 150.dp)
+            .heightIn(min = 220.dp)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         decorationBox = { inner ->
             if (content.isEmpty()) {
                 Text(
                     text = "此刻你想和大家分享什么......",
                     color = PlaceholderColor,
-                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 14.sp)
+                    fontSize = 14.sp,
+                    lineHeight = 22.sp
                 )
             }
             inner()
@@ -419,35 +438,22 @@ private fun PhotoSection(
     onAddClick: () -> Unit,
     onRemove: (SelectedImage) -> Unit
 ) {
-    Column(
+    LazyRow(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .padding(horizontal = 16.dp, vertical = 20.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(end = 16.dp)
     ) {
-        Text(
-            text = "图片",
-            style = MaterialTheme.typography.titleSmall.copy(
-                fontWeight = FontWeight.Medium,
-                color = Color.Black
-            ),
-            modifier = Modifier.padding(bottom = 12.dp)
-        )
-        LazyRow(
-            contentPadding = PaddingValues(end = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(images.size) { index ->
-                val image = images[index]
-                ImageThumbnail(
-                    image = image,
-                    onRemove = { onRemove(image) }
-                )
-            }
-            if (images.size < MAX_IMAGES) {
-                item {
-                    AddImageCard(onClick = onAddClick)
-                }
-            }
+        if (images.size < MAX_IMAGES) {
+            item { AddImageCard(onClick = onAddClick) }
+        }
+        items(images.size) { index ->
+            val image = images[index]
+            ImageThumbnail(
+                image = image,
+                onRemove = { onRemove(image) }
+            )
         }
     }
 }
@@ -459,20 +465,23 @@ private fun TagSection(
     onAddTag: () -> Unit,
     onToggleTag: (String) -> Unit
 ) {
+    val additionalTags = selectedTags.filterNot { suggestions.contains(it) }
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        Row(
+        FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             TagChip(
                 label = "#话题",
                 isActive = false,
-                onClick = onAddTag
+                onClick = onAddTag,
+                emphasize = true
             )
+            TagDivider()
             suggestions.forEach { suggestion ->
                 TagChip(
                     label = suggestion,
@@ -480,17 +489,13 @@ private fun TagSection(
                     onClick = { onToggleTag(suggestion) }
                 )
             }
-        }
-        if (selectedTags.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = selectedTags.joinToString(" "),
-                style = MaterialTheme.typography.bodySmall.copy(
-                    color = AccentOrange
-                ),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
+            additionalTags.forEach { customTag ->
+                TagChip(
+                    label = customTag,
+                    isActive = true,
+                    onClick = { onToggleTag(customTag) }
+                )
+            }
         }
     }
 }
@@ -499,27 +504,44 @@ private fun TagSection(
 private fun TagChip(
     label: String,
     isActive: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    emphasize: Boolean = false
 ) {
+    val textColor = when {
+        isActive -> AccentOrange
+        emphasize -> Color.Black
+        else -> PlaceholderColor
+    }
+    val borderColor = if (isActive) AccentOrange else PlaceholderColor
+    val backgroundColor = if (isActive) AccentOrange.copy(alpha = 0.12f) else Color.White
+
     Surface(
         shape = RoundedCornerShape(25.dp),
-        border = BorderStroke(
-            width = 0.5.dp,
-            color = if (isActive) AccentOrange else PlaceholderColor
-        ),
-        color = if (isActive) AccentOrange.copy(alpha = 0.12f) else Color.White,
+        border = BorderStroke(width = 0.5.dp, color = borderColor),
+        color = backgroundColor,
         modifier = Modifier.clickable(onClick = onClick)
     ) {
         Text(
             text = label,
             style = MaterialTheme.typography.bodySmall.copy(
-                color = if (isActive) AccentOrange else Color.Black,
-                fontSize = 12.sp
+                color = textColor,
+                fontSize = 12.sp,
+                fontWeight = if (emphasize) FontWeight.Medium else FontWeight.Normal
             ),
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
             textAlign = TextAlign.Center
         )
     }
+}
+
+@Composable
+private fun TagDivider() {
+    Box(
+        modifier = Modifier
+            .width(0.5.dp)
+            .height(17.dp)
+            .background(PlaceholderColor.copy(alpha = 0.6f))
+    )
 }
 
 @Composable
@@ -528,34 +550,22 @@ private fun AddImageCard(
 ) {
     Card(
         modifier = Modifier
-            .size(120.dp)
+            .size(110.dp)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFF6F7FB)
-        ),
-        border = BorderStroke(1.dp, PlaceholderColor.copy(alpha = 0.4f))
+            containerColor = ImagePlaceholder
+        )
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Outlined.Image,
-                contentDescription = null,
+                imageVector = Icons.Outlined.Add,
+                contentDescription = "添加图片",
                 tint = PlaceholderColor,
-                modifier = Modifier.size(32.dp)
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "添加图片",
-                style = MaterialTheme.typography.bodySmall.copy(
-                    color = PlaceholderColor
-                ),
-                textAlign = TextAlign.Center
+                modifier = Modifier.size(28.dp)
             )
         }
     }
@@ -568,8 +578,8 @@ private fun ImageThumbnail(
 ) {
     Box(
         modifier = Modifier
-            .size(120.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .size(110.dp)
+            .clip(RoundedCornerShape(12.dp))
     ) {
         AsyncImage(
             model = image.uri,

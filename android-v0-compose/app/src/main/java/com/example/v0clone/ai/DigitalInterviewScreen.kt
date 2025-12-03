@@ -412,10 +412,19 @@ fun DigitalInterviewScreen(
 
         // 第四层：教育引导层（最顶层，zIndex 3f）
         if (showEducationOverlay) {
-            InterviewEducationOverlay(
-                onDismiss = { showEducationOverlay = false },
-                modifier = Modifier.zIndex(3f)
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.8f))
+                    .clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = null
+                    ) { showEducationOverlay = false }
+                    .zIndex(3f),
+                contentAlignment = Alignment.Center
+            ) {
+                // 教育引导内容已按需求移除，保持空态遮罩
+            }
         }
     }
 
@@ -1073,66 +1082,3 @@ private fun SharedPreferences.savePreviewRatio(offset: Offset) {
 
 private const val PREF_PREVIEW_X = "preview_ratio_x"
 private const val PREF_PREVIEW_Y = "preview_ratio_y"
-
-@Composable
-private fun InterviewEducationOverlay(
-    onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.8f))
-            .clickable(
-                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                indication = null
-            ) { onDismiss() },
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(24.dp)
-        ) {
-            // "I know" Button
-            Button(
-                onClick = onDismiss,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEC7C38)),
-                shape = RoundedCornerShape(24.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 32.dp, vertical = 12.dp)
-            ) {
-                Text(
-                    text = "我知道啦",
-                    color = Color.White,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            // Dashed Line
-            androidx.compose.foundation.Canvas(
-                modifier = Modifier
-                    .height(80.dp)
-                    .width(2.dp)
-            ) {
-                val pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
-                drawLine(
-                    color = Color.White.copy(alpha = 0.8f),
-                    start = Offset(size.width / 2, 0f),
-                    end = Offset(size.width / 2, size.height),
-                    pathEffect = pathEffect,
-                    strokeWidth = 2.dp.toPx()
-                )
-            }
-
-            // Text
-            Text(
-                text = "请认真听题，AI\n面试官将随机提问",
-                color = Color.White,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                lineHeight = 32.sp
-            )
-        }
-    }
-}
