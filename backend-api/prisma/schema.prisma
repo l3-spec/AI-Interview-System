@@ -518,6 +518,7 @@ model Assessment {
   participantCount  Int      @default(0) @map("participant_count") // 参与人数
   rating            Float    @default(0.0) // 平均评分
   tags              String?  // JSON字符串数组，如 ["React", "Vue"]
+  guidelines        String?  @db.Text // JSON格式数组，展示在测试说明中
   status            String   @default("PUBLISHED") // DRAFT | PUBLISHED | ARCHIVED
   isHot             Boolean  @default(false) @map("is_hot") // 是否热门
   createdAt         DateTime @default(now()) @map("created_at")
@@ -625,8 +626,8 @@ model UserPost {
   title       String
   content     String   @db.Text
   coverImage  String?  @map("cover_image")
-  images      String?  // JSON字符串数组
-  tags        String?  // JSON字符串数组
+  images      String?  @db.Text // JSON字符串数组，存储OSS URLs
+  tags        String?  @db.Text // JSON字符串数组
   viewCount   Int      @default(0) @map("view_count")
   likeCount   Int      @default(0) @map("like_count")
   commentCount Int     @default(0) @map("comment_count")

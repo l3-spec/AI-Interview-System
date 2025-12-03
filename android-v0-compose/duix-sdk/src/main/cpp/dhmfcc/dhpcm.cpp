@@ -8,6 +8,7 @@
 #ifdef USE_HELPER    
 #include "dhdatahelper.h"
 #endif
+#include <math.h>
 
 
 
@@ -93,10 +94,29 @@ int PcmItem::fillPcm(uint64_t sessid,uint64_t tickinx,jmat_t* premat,jmat_t* mat
     int blank = dlen - pcm_block;
     int offset = m_minoff + STREAM_MFCC_FILL;
     short* ps = (short*)mat->data;
+    
+    // Threshold for silence (adjustable)
+    float silence_threshold = 0.04f;
+
     for(int k=0;k<pcm_block;k++){
       float* pbuf = (float*)jmat_row(m_pcm,k+offset);
+      
+      // Calculate RMS for this frame (40ms)
+      double frame_sum_sq = 0.0;
       for(int m=0;m<STREAM_BASE_SAMP;m++){
-        *pbuf++ = *ps++/32768.f;
+         float sample = ps[m] / 32768.f;
+         frame_sum_sq += sample * sample;
+      }
+      float frame_rms = sqrt(frame_sum_sq / STREAM_BASE_SAMP);
+      bool is_frame_silence = frame_rms < silence_threshold;
+
+      for(int m=0;m<STREAM_BASE_SAMP;m++){
+        if (is_frame_silence) {
+            *pbuf++ = 0.0f;
+            ps++; 
+        } else {
+            *pbuf++ = *ps++/32768.f;
+        }
       }
     }
     if(blank){

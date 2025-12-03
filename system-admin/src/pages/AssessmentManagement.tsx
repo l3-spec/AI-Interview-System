@@ -186,9 +186,17 @@ const AssessmentManagement: React.FC = () => {
   const handleAssessmentSubmit = async () => {
     try {
       const values = await assessmentForm.validateFields();
+      const { guidelinesText, ...restValues } = values;
+      const guidelineLines = guidelinesText
+        ? guidelinesText
+            .split('\n')
+            .map((line: string) => line.trim())
+            .filter((line: string) => line.length > 0)
+        : [];
       const payload = {
-        ...values,
-        tags: values.tags ? (Array.isArray(values.tags) ? values.tags : values.tags.split(',').map((t: string) => t.trim())) : [],
+        ...restValues,
+        guidelines: guidelineLines,
+        tags: restValues.tags ? (Array.isArray(restValues.tags) ? restValues.tags : restValues.tags.split(',').map((t: string) => t.trim())) : [],
       };
 
       if (editingAssessmentId) {
@@ -232,6 +240,7 @@ const AssessmentManagement: React.FC = () => {
           durationMinutes: detail.durationMinutes,
           difficulty: detail.difficulty,
           tags: detail.tags || [],
+          guidelinesText: (detail.guidelines || []).join('\n'),
           status: detail.status,
           isHot: detail.isHot,
         });
@@ -252,6 +261,18 @@ const AssessmentManagement: React.FC = () => {
       if (response.success && response.data) {
         setCurrentAssessment(response.data);
         setQuestions(response.data.questions || []);
+        assessmentForm.setFieldsValue({
+          categoryId: response.data.categoryId,
+          title: response.data.title,
+          description: response.data.description || '',
+          coverImage: response.data.coverImage || '',
+          durationMinutes: response.data.durationMinutes,
+          difficulty: response.data.difficulty,
+          tags: response.data.tags || [],
+          guidelinesText: (response.data.guidelines || []).join('\n'),
+          status: response.data.status,
+          isHot: response.data.isHot,
+        });
         setActiveTab('questions');
         setAssessmentFormVisible(true);
       }
@@ -742,6 +763,12 @@ const AssessmentManagement: React.FC = () => {
               <Form.Item name="description" label="描述">
                 <TextArea rows={4} placeholder="请输入测评描述" />
               </Form.Item>
+              <Form.Item name="guidelinesText" label="测评指南（每行一条展示要点）">
+                <TextArea
+                  rows={4}
+                  placeholder="示例：\n测试没有具体时间限制\n尽量避免重复做同一题，选择第一直觉"
+                />
+              </Form.Item>
               <Form.Item name="coverImage" label="封面图片">
                 <Input.Group compact>
                   <Input
@@ -1048,4 +1075,3 @@ const AssessmentManagement: React.FC = () => {
 };
 
 export default AssessmentManagement;
-

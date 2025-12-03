@@ -111,6 +111,9 @@ export const authenticateToken = async (
   }
 };
 
+// 兼容旧代码中的 auth 命名
+export const auth = authenticateToken;
+
 /**
  * 检查用户类型中间件
  */
@@ -155,12 +158,29 @@ export const requireUser = requireUserType(['user']);
 export const requireCompanyOrAdmin = requireUserType(['company', 'admin']);
 
 /**
- * 认证中间件
- * 暂时跳过认证，允许所有请求通过
+ * 可选认证：有 token 则解析，失败或无 token 不阻断请求
  */
-export const auth = (req: Request, res: Response, next: NextFunction) => {
-  // 在开发阶段暂时跳过认证
-  // 实际项目中应该验证JWT token
+export const optionalAuthenticate = async (
+  req: Request,
+  _res: Response,
+  next: NextFunction
+) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.split(' ')[1];
+  if (!token) {
+    return next();
+  }
+
+  try {
+    const decoded = jwt.verify(token, config.jwt.secret) as any;
+    req.user = {
+      id: decoded.id,
+      email: decoded.email,
+      type: decoded.type,
+    };
+  } catch (error) {
+    console.warn('可选认证解析失败:', error instanceof Error ? error.message : error);
+  }
   next();
 };
 

@@ -20,7 +20,8 @@ import {
   Typography,
   Badge,
   Tooltip,
-  DatePicker
+  DatePicker,
+  Radio
 } from 'antd';
 import {
   PlusOutlined,
@@ -41,13 +42,18 @@ const { TextArea } = Input;
 const { Title, Text } = Typography;
 const { Option } = Select;
 
+type BannerLinkTargetType = 'none' | 'app' | 'web';
+
 interface BannerFormState {
   title: string;
   subtitle: string;
   description: string;
   imageUrl: string;
-  linkType: string;
-  linkId: string;
+  linkTargetType: BannerLinkTargetType;
+  appLinkType: string;
+  customAppLinkType?: string;
+  appLinkTarget: string;
+  webUrl: string;
   sortOrder: number;
   isActive: boolean;
 }
@@ -67,11 +73,26 @@ const defaultBannerForm: BannerFormState = {
   subtitle: '',
   description: '',
   imageUrl: '',
-  linkType: '',
-  linkId: '',
+  linkTargetType: 'app',
+  appLinkType: 'job',
+  customAppLinkType: '',
+  appLinkTarget: '',
+  webUrl: '',
   sortOrder: 0,
   isActive: true,
 };
+
+const appLinkOptions = [
+  { value: 'job', label: '职位详情（job）' },
+  { value: 'assessment', label: '测评详情（assessment）' },
+  { value: 'post', label: '帖子详情（post）' },
+  { value: 'company', label: '企业主页（company）' },
+  { value: 'custom', label: '自定义跳转类型' },
+];
+
+const builtInAppLinkTypes = appLinkOptions
+  .filter((option) => option.value !== 'custom')
+  .map((option) => option.value);
 
 const defaultPromotionForm: PromotionFormState = {
   jobId: '',
@@ -109,6 +130,43 @@ const HomeContentManagement: React.FC = () => {
   const [promotionForm] = Form.useForm<PromotionFormState>();
   const [editingPromotionId, setEditingPromotionId] = useState<string | null>(null);
 
+  const isValidHttpUrl = (value?: string | null) => {
+    if (!value) {
+      return false;
+    }
+    try {
+      const url = new URL(value);
+      return url.protocol === 'http:' || url.protocol === 'https:';
+    } catch (error) {
+      return false;
+    }
+  };
+
+  const resolveBannerLinkTarget = (banner: HomeBanner): BannerLinkTargetType => {
+    if ((banner.linkType === 'external' && banner.linkId) || isValidHttpUrl(banner.linkId)) {
+      return 'web';
+    }
+    if (banner.linkType || banner.linkId) {
+      return 'app';
+    }
+    return 'none';
+  };
+
+  const getAppTargetPlaceholder = (linkType?: string) => {
+    switch (linkType) {
+      case 'job':
+        return '请输入职位ID或编码，如 job-senior-fe';
+      case 'assessment':
+        return '请输入测评ID';
+      case 'post':
+        return '请输入帖子ID';
+      case 'company':
+        return '请输入企业ID';
+      default:
+        return '例如 /path 或自定义参数';
+    }
+  };
+
   const bannerTotalPages = useMemo(() => Math.max(Math.ceil(bannerTotal / bannerPageSize), 1), [bannerTotal, bannerPageSize]);
   const promotionTotalPages = useMemo(() => Math.max(Math.ceil(promotionTotal / promotionPageSize), 1), [promotionTotal, promotionPageSize]);
 
@@ -123,7 +181,7 @@ const HomeContentManagement: React.FC = () => {
       
       // 搜索关键词
       if (bannerSearchKeyword.trim()) {
-        params.search = bannerSearchKeyword.trim();
+        params.keyword = bannerSearchKeyword.trim();
       }
       
       // 状态筛选
@@ -182,14 +240,28 @@ const HomeContentManagement: React.FC = () => {
   const handleBannerSubmit = async () => {
     try {
       const values = await bannerForm.validateFields();
+      const selectedAppLinkType = values.appLinkType === 'custom'
+        ? values.customAppLinkType?.trim()
+        : values.appLinkType?.trim();
+
+      let linkType: string | null = null;
+      let linkId: string | null = null;
+
+      if (values.linkTargetType === 'app') {
+        linkType = selectedAppLinkType || null;
+        linkId = values.appLinkTarget?.trim() || null;
+      } else if (values.linkTargetType === 'web') {
+        linkType = 'external';
+        linkId = values.webUrl?.trim() || null;
+      }
       
       const payload = {
         title: values.title.trim(),
         subtitle: values.subtitle.trim(),
         description: values.description?.trim() || undefined,
         imageUrl: values.imageUrl.trim(),
-        linkType: values.linkType?.trim() || undefined,
-        linkId: values.linkId?.trim() || undefined,
+        linkType: linkType ?? null,
+        linkId: linkId ?? null,
         sortOrder: Number(values.sortOrder) || 0,
         isActive: values.isActive,
       };
@@ -227,13 +299,22 @@ const HomeContentManagement: React.FC = () => {
   // 编辑 Banner
   const handleEditBanner = (banner: HomeBanner) => {
     setEditingBannerId(banner.id);
+
+    const linkTargetType = resolveBannerLinkTarget(banner);
+    const isCustomType = Boolean(banner.linkType && !builtInAppLinkTypes.includes(banner.linkType));
+
     bannerForm.setFieldsValue({
       title: banner.title,
       subtitle: banner.subtitle,
       description: banner.description || '',
       imageUrl: banner.imageUrl,
-      linkType: banner.linkType || '',
-      linkId: banner.linkId || '',
+      linkTargetType,
+      appLinkType: linkTargetType === 'app'
+        ? (isCustomType ? 'custom' : banner.linkType || defaultBannerForm.appLinkType)
+        : defaultBannerForm.appLinkType,
+      customAppLinkType: linkTargetType === 'app' && isCustomType ? banner.linkType : '',
+      appLinkTarget: linkTargetType === 'app' ? banner.linkId || '' : '',
+      webUrl: linkTargetType === 'web' ? banner.linkId || '' : '',
       sortOrder: banner.sortOrder ?? 0,
       isActive: banner.isActive,
     });
@@ -423,23 +504,36 @@ const HomeContentManagement: React.FC = () => {
       ),
     },
     {
-      title: '链接信息',
+      title: '跳转',
       key: 'link',
-      width: 150,
-      render: (_, record) => (
-        <div>
-          {record.linkType ? (
-            <>
-              <Tag color="blue">{record.linkType}</Tag>
-              <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
+      width: 200,
+      render: (_, record) => {
+        const targetType = resolveBannerLinkTarget(record);
+
+        if (targetType === 'none') {
+          return <Text type="secondary">-</Text>;
+        }
+
+        if (targetType === 'web') {
+          return (
+            <div>
+              <Tag color="purple">网页链接</Tag>
+              <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4, wordBreak: 'break-all' }}>
                 {record.linkId || '-'}
               </div>
-            </>
-          ) : (
-            <Text type="secondary">-</Text>
-          )}
-        </div>
-      ),
+            </div>
+          );
+        }
+
+        return (
+          <div>
+            <Tag color="blue">App · {record.linkType || '跳转'}</Tag>
+            <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4, wordBreak: 'break-all' }}>
+              {record.linkId || '-'}
+            </div>
+          </div>
+        );
+      },
     },
     {
       title: '状态',
@@ -981,26 +1075,90 @@ const HomeContentManagement: React.FC = () => {
             </Form.Item>
           )}
 
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                name="linkType"
-                label="链接类型"
-                rules={[{ max: 50, message: '链接类型不超过50字符' }]}
-              >
-                <Input placeholder="例如: job/detail" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                name="linkId"
-                label="链接目标"
-                rules={[{ max: 100, message: '链接目标不超过100字符' }]}
-              >
-                <Input placeholder="例如: job-id" />
-              </Form.Item>
-            </Col>
-          </Row>
+          <Form.Item
+            name="linkTargetType"
+            label="跳转配置"
+            rules={[{ required: true, message: '请选择跳转方式' }]}
+          >
+            <Radio.Group buttonStyle="solid">
+              <Radio.Button value="app">App 内跳转</Radio.Button>
+              <Radio.Button value="web">网页链接</Radio.Button>
+              <Radio.Button value="none">不跳转</Radio.Button>
+            </Radio.Group>
+          </Form.Item>
+
+          <Form.Item shouldUpdate={(prev, next) => prev.linkTargetType !== next.linkTargetType || prev.appLinkType !== next.appLinkType}>
+            {({ getFieldValue }) => {
+              const targetType = getFieldValue('linkTargetType');
+              const appLinkType = getFieldValue('appLinkType');
+              const showCustomType = targetType === 'app' && appLinkType === 'custom';
+
+              if (targetType === 'app') {
+                return (
+                  <>
+                    <Row gutter={16}>
+                      <Col span={12}>
+                        <Form.Item
+                          name="appLinkType"
+                          label="App 内位置"
+                          rules={[{ required: true, message: '请选择跳转位置' }]}
+                          extra="选择 App 内的落地页面类型"
+                        >
+                          <Select
+                            options={appLinkOptions}
+                            placeholder="请选择落地页"
+                          />
+                        </Form.Item>
+                      </Col>
+                      {showCustomType && (
+                        <Col span={12}>
+                          <Form.Item
+                            name="customAppLinkType"
+                            label="自定义跳转类型"
+                            rules={[
+                              { required: true, message: '请输入跳转类型' },
+                              { max: 50, message: '跳转类型不超过50字符' },
+                            ]}
+                          >
+                            <Input placeholder="例如: custom-page" />
+                          </Form.Item>
+                        </Col>
+                      )}
+                    </Row>
+                    <Form.Item
+                      name="appLinkTarget"
+                      label="跳转参数"
+                      rules={[
+                        { required: true, message: '请输入跳转参数' },
+                        { max: 200, message: '跳转参数不超过200字符' },
+                      ]}
+                      extra="例如职位ID、帖子ID或自定义路径参数，App 内将按类型解析跳转"
+                    >
+                      <Input placeholder={getAppTargetPlaceholder(showCustomType ? '' : appLinkType)} />
+                    </Form.Item>
+                  </>
+                );
+              }
+
+              if (targetType === 'web') {
+                return (
+                  <Form.Item
+                    name="webUrl"
+                    label="网页 URL"
+                    rules={[
+                      { required: true, message: '请输入网页链接' },
+                      { type: 'url', message: '请输入有效的URL地址' },
+                    ]}
+                    extra="H5/外部页面链接，例如活动落地页"
+                  >
+                    <Input placeholder="https://example.com/landing" />
+                  </Form.Item>
+                );
+              }
+
+              return null;
+            }}
+          </Form.Item>
 
           <Row gutter={16}>
             <Col span={12}>

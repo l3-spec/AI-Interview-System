@@ -291,6 +291,7 @@ export const listAssessments = async (req: Request, res: Response) => {
     const formattedAssessments = assessments.map((assessment: any) => ({
       ...assessment,
       tags: assessment.tags ? parseJsonArray(assessment.tags) : [],
+      guidelines: assessment.guidelines ? parseJsonArray(assessment.guidelines) : [],
       questionCount: assessment._count.questions,
       recordCount: assessment._count.records,
     }));
@@ -341,6 +342,7 @@ export const getAssessmentDetail = async (req: Request, res: Response) => {
     const formattedAssessment = {
       ...assessment,
       tags: assessment.tags ? parseJsonArray(assessment.tags) : [],
+      guidelines: assessment.guidelines ? parseJsonArray(assessment.guidelines) : [],
       questions: assessment.questions.map((q: any) => ({
         ...q,
         options: q.options ? JSON.parse(q.options) : [],
@@ -371,6 +373,7 @@ export const createAssessment = async (req: Request, res: Response) => {
       durationMinutes = 15,
       difficulty = 'BEGINNER',
       tags = [],
+      guidelines = [],
       status = 'DRAFT',
       isHot = false,
     } = req.body;
@@ -388,6 +391,7 @@ export const createAssessment = async (req: Request, res: Response) => {
         durationMinutes: parseNumber(durationMinutes, 15),
         difficulty: difficulty || 'BEGINNER',
         tags: Array.isArray(tags) ? JSON.stringify(tags) : JSON.stringify([]),
+        guidelines: Array.isArray(guidelines) ? JSON.stringify(guidelines) : null,
         status: status || 'DRAFT',
         isHot: parseBoolean(isHot) ?? false,
       },
@@ -398,6 +402,7 @@ export const createAssessment = async (req: Request, res: Response) => {
       data: {
         ...assessment,
         tags: parseJsonArray(assessment.tags),
+        guidelines: parseJsonArray(assessment.guidelines),
       },
       message: '测评创建成功',
     });
@@ -422,6 +427,7 @@ export const updateAssessment = async (req: Request, res: Response) => {
       durationMinutes,
       difficulty,
       tags,
+      guidelines,
       status,
       isHot,
     } = req.body;
@@ -434,6 +440,7 @@ export const updateAssessment = async (req: Request, res: Response) => {
     if (durationMinutes !== undefined) updateData.durationMinutes = parseNumber(durationMinutes, 15);
     if (difficulty !== undefined) updateData.difficulty = difficulty;
     if (tags !== undefined) updateData.tags = Array.isArray(tags) ? JSON.stringify(tags) : JSON.stringify([]);
+    if (guidelines !== undefined) updateData.guidelines = Array.isArray(guidelines) ? JSON.stringify(guidelines) : null;
     if (status !== undefined) updateData.status = status;
     if (isHot !== undefined) updateData.isHot = parseBoolean(isHot);
 
@@ -447,6 +454,7 @@ export const updateAssessment = async (req: Request, res: Response) => {
       data: {
         ...assessment,
         tags: parseJsonArray(assessment.tags),
+        guidelines: parseJsonArray(assessment.guidelines),
       },
       message: '测评更新成功',
     });
@@ -646,4 +654,3 @@ export const reorderQuestions = async (req: Request, res: Response) => {
     res.status(500).json({ success: false, message: '服务器错误', error: error.message });
   }
 };
-

@@ -98,6 +98,35 @@ const buildUserHeadline = (user: {
   return '';
 };
 
+const getOSSUrl = (value?: string | null) => {
+  if (!value) return null;
+  if (/^https?:\/\//i.test(value)) return value;
+  // treat value as object key for OSS
+  if (
+    process.env.OSS_BUCKET &&
+    process.env.OSS_REGION &&
+    (value.startsWith('post-covers/') || value.startsWith('posts/'))
+  ) {
+    return ossService.generateFileUrl(value);
+  }
+  return normalizeUploadPath(value);
+};
+
+// 将图片 key 列表压缩到数据库字段可接受的长度（兼容较小 varchar）
+const compactImageKeys = (keys: string[], maxLen: number = 190): string | null => {
+  if (keys.length === 0) return null;
+  const result: string[] = [];
+  let currentLen = 2; // for []
+  for (const key of keys) {
+    // 预估追加后长度（含逗号和引号）
+    const extra = (result.length === 0 ? 0 : 1) + key.length + 2;
+    if (currentLen + extra > maxLen) break;
+    result.push(key);
+    currentLen += extra;
+  }
+  return result.length ? JSON.stringify(result) : null;
+};
+
 const mapUserPostResponse = (post: any) => {
   const { user, images, tags, coverImage, ...rest } = post;
   const imageList =
@@ -115,8 +144,8 @@ const mapUserPostResponse = (post: any) => {
 
   return {
     ...rest,
-    coverImage: coverImage ? normalizeMediaPath(coverImage) : null,
-    images: imageList.map((item: string) => normalizeMediaPath(item) ?? item),
+    coverImage: getOSSUrl(coverImage),
+    images: imageList.map((item: string) => getOSSUrl(item) ?? item),
     tags: tagList,
     author: user
       ? {
@@ -174,11 +203,22 @@ export const getUserPosts = async (req: Request, res: Response) => {
     const take = parseInt(pageSize as string);
 
     const where: any = {
-      status: 'PUBLISHED',
+      OR: [
+        { status: 'PUBLISHED' },
+        req.user
+          ? {
+              userId: req.user.id,
+              status: {
+                not: 'DELETED',
+              },
+            }
+          : undefined,
+      ].filter(Boolean),
     };
 
     if (isHot === 'true') {
-      where.isHot = true;
+      // 热门仅对已发布内容
+      where.OR = [{ status: 'PUBLISHED', isHot: true }];
     }
 
     const [posts, total] = await Promise.all([
@@ -429,8 +469,8 @@ export const createUserPost = async (req: Request, res: Response) => {
               const baseName = safeName.replace(ext, '') || file.filename.replace(ext, '');
               const timestamp = Date.now();
               const objectKey = `post-covers/${timestamp}_${baseName || 'image'}${ext}`;
-              const { url } = await ossService.uploadLocalFile(file.path, objectKey);
-              return url;
+              const { objectKey: storedKey } = await ossService.uploadLocalFile(file.path, objectKey);
+              return storedKey; // DB 存 objectKey
             })
           );
         } catch (error) {

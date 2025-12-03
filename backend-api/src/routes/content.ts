@@ -9,14 +9,14 @@ import {
   createUserPost,
   getMyPosts,
 } from '../controllers/contentController';
-import { authenticateToken, requireUser } from '../middleware/auth';
+import { authenticateToken, optionalAuthenticate, requireUser } from '../middleware/auth';
 import { uploadMultiple } from '../middleware/upload';
 
 const router = Router();
 
 // 用户分享路由
-router.get('/posts', getUserPosts);
-router.get('/posts/:id', getUserPostDetail);
+router.get('/posts', optionalAuthenticate, getUserPosts);
+router.get('/posts/:id', optionalAuthenticate, getUserPostDetail);
 router.post(
   '/posts',
   authenticateToken,

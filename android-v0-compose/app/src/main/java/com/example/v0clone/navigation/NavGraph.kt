@@ -583,6 +583,9 @@ fun AppNavHost(navController: NavHostController) {
                     onBack = { navController.popBackStack() },
                     onCategorySelected = { category ->
                         navController.navigate("${Routes.PROFILE_ASSESSMENT_CATEGORY}/${URLEncoder.encode(category.id, "UTF-8")}/${URLEncoder.encode(category.name, "UTF-8")}")
+                    },
+                    onAssessmentSelected = { assessment ->
+                        navController.navigate("${Routes.PROFILE_ASSESSMENT_DETAIL}/${URLEncoder.encode(assessment.id, "UTF-8")}")
                     }
                 )
             }

@@ -496,6 +496,7 @@ router.post('/assessments', [
   body('durationMinutes').optional().isInt({ min: 1, max: 300 }).withMessage('时长必须在1-300分钟之间'),
   body('difficulty').optional().isIn(['BEGINNER', 'INTERMEDIATE', 'ADVANCED']).withMessage('难度参数无效'),
   body('tags').optional().isArray().withMessage('标签必须是数组'),
+  body('guidelines').optional().isArray().withMessage('测评指南必须是数组'),
   body('status').optional().isIn(['DRAFT', 'PUBLISHED', 'ARCHIVED']).withMessage('状态参数无效'),
   body('isHot').optional().isBoolean().withMessage('热门状态必须是布尔值'),
   validate
@@ -511,6 +512,7 @@ router.put('/assessments/:id', [
   body('durationMinutes').optional().isInt({ min: 1, max: 300 }).withMessage('时长必须在1-300分钟之间'),
   body('difficulty').optional().isIn(['BEGINNER', 'INTERMEDIATE', 'ADVANCED']).withMessage('难度参数无效'),
   body('tags').optional().isArray().withMessage('标签必须是数组'),
+  body('guidelines').optional().isArray().withMessage('测评指南必须是数组'),
   body('status').optional().isIn(['DRAFT', 'PUBLISHED', 'ARCHIVED']).withMessage('状态参数无效'),
   body('isHot').optional().isBoolean().withMessage('热门状态必须是布尔值'),
   validate

@@ -710,6 +710,7 @@ export interface Assessment {
   participantCount: number;
   rating: number;
   tags: string[];
+  guidelines?: string[];
   status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
   isHot: boolean;
   createdAt: string;

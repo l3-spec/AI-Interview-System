@@ -25,6 +25,7 @@ data class Assessment(
     val participantCount: Int,
     val rating: Float,
     val tags: List<String>,
+    val guidelines: List<String> = emptyList(),
     val category: CategoryInfo,
     val questionCount: Int? = null
 )
@@ -47,6 +48,7 @@ data class AssessmentDetail(
     val participantCount: Int,
     val rating: Float,
     val tags: List<String>,
+    val guidelines: List<String> = emptyList(),
     val category: CategoryInfo,
     val questions: List<AssessmentQuestion>
 )
@@ -110,4 +112,3 @@ data class UserAssessmentRecord(
     val duration: Int?,
     val assessment: Assessment
 )
-

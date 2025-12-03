@@ -15,21 +15,41 @@ export const getAssessmentCategories = async (req: Request, res: Response) => {
       include: {
         assessments: {
           where: { status: 'PUBLISHED' },
-          select: {
-            id: true,
-            title: true,
-            coverImage: true,
-            participantCount: true,
-            rating: true,
+          orderBy: [
+            { isHot: 'desc' },
+            { participantCount: 'desc' },
+          ],
+          include: {
+            category: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            _count: {
+              select: {
+                questions: true,
+              },
+            },
           },
           take: 3, // 每个分类只返回前3个
         },
       },
     });
 
+    const formattedCategories = categories.map((category: any) => ({
+      ...category,
+      assessments: category.assessments.map((assessment: any) => ({
+        ...assessment,
+        tags: assessment.tags ? JSON.parse(assessment.tags) : [],
+        guidelines: assessment.guidelines ? JSON.parse(assessment.guidelines) : [],
+        questionCount: assessment._count?.questions ?? 0,
+      })),
+    }));
+
     res.json({
       success: true,
-      data: categories,
+      data: formattedCategories,
     });
   } catch (error: any) {
     console.error('获取测评分类失败:', error);
@@ -89,11 +109,15 @@ export const getAssessmentsByCategory = async (req: Request, res: Response) => {
     ]);
 
     // 解析 tags JSON 字符串
-    const formattedAssessments = assessments.map((assessment) => ({
+    const formattedAssessments = assessments.map((assessment) => {
+      const rawGuidelines = (assessment as any).guidelines;
+      return {
       ...assessment,
       tags: assessment.tags ? JSON.parse(assessment.tags) : [],
+      guidelines: rawGuidelines ? JSON.parse(rawGuidelines) : [],
       questionCount: assessment._count.questions,
-    }));
+    };
+    });
 
     res.json({
       success: true,
@@ -146,9 +170,11 @@ export const getAssessmentDetail = async (req: Request, res: Response) => {
     }
 
     // 解析 JSON 字符串
+    const rawGuidelines = (assessment as any).guidelines;
     const formattedAssessment = {
       ...assessment,
       tags: assessment.tags ? JSON.parse(assessment.tags) : [],
+      guidelines: rawGuidelines ? JSON.parse(rawGuidelines) : [],
       questions: assessment.questions.map((q) => ({
         ...q,
         options: q.options ? JSON.parse(q.options) : [],
@@ -364,4 +390,3 @@ export const getAssessmentRecordDetail = async (req: Request, res: Response) => 
     });
   }
 };
-
