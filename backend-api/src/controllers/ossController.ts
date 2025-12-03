@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { ossService } from '../services/ossService';
 import { interviewService } from '../services/interviewService';
+import { aiInterviewService } from '../services/aiInterviewService';
 
 /**
  * OSS控制器
@@ -101,29 +102,47 @@ class OSSController {
         });
       }
 
-      // 验证面试会话是否存在
+      // 验证面试会话是否存在（兼容旧的本地会话与AI面试会话）
       const session = await interviewService.getSession(sessionId);
-      if (!session) {
+      const aiSession = await aiInterviewService.getInterviewSession(sessionId);
+      if (!session && !aiSession.success) {
         return res.status(404).json({
           success: false,
           error_message: '面试会话不存在'
         });
       }
 
-      // 保存视频上传信息
+      const parsedQuestionIndex = parseInt(questionIndex);
+      const normalizedQuestionIndex = Number.isNaN(parsedQuestionIndex) ? 0 : parsedQuestionIndex;
+      const parsedDuration = duration ? parseInt(duration) : undefined;
+
+      // 保存视频上传信息（旧逻辑）
       await interviewService.saveVideoSegment(sessionId, {
-        questionIndex: parseInt(questionIndex),
+        questionIndex: normalizedQuestionIndex,
         videoUrl: ossUrl,
         fileName: this.extractFileName(ossUrl),
         fileSize: parseInt(fileSize) || 0,
         uploadedAt: new Date()
       });
 
+      // 将视频URL绑定到AI面试题目，便于后续异步分析
+      if (!Number.isNaN(parsedQuestionIndex) && parsedQuestionIndex >= 0) {
+        const attachResult = await aiInterviewService.attachAnswerVideo(
+          sessionId,
+          parsedQuestionIndex,
+          ossUrl,
+          parsedDuration
+        );
+        if (!attachResult.success) {
+          console.warn(`AI面试视频绑定失败: 会话=${sessionId}, 题目=${parsedQuestionIndex}, 错误=${attachResult.error}`);
+        }
+      }
+
       // 如果是完整面试视频（questionIndex = -1），更新面试会话
-      if (questionIndex === -1) {
+      if (parsedQuestionIndex === -1) {
         await interviewService.updateSession(sessionId, {
           videoUrl: ossUrl,
-          duration: duration ? parseInt(duration) : undefined,
+          duration: parsedDuration,
           status: 'completed',
           completedAt: new Date()
         });
@@ -196,6 +215,16 @@ class OSSController {
           fileSize: parseInt(size) || 0,
           uploadedAt: new Date()
         });
+
+        // 同步写入AI面试题目，确保视频链接落库
+        const attachResult = await aiInterviewService.attachAnswerVideo(
+          sessionId,
+          questionIndex,
+          fileUrl
+        );
+        if (!attachResult.success) {
+          console.warn(`AI面试上传回调绑定失败: 会话=${sessionId}, 题目=${questionIndex}, 错误=${attachResult.error}`);
+        }
       }
 
       res.json({

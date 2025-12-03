@@ -254,7 +254,7 @@ export const getMyPosts = async (req: Request, res: Response) => {
     const where = {
       userId: req.user.id,
       status: {
-        in: ['PUBLISHED', 'DRAFT', 'HIDDEN'],
+        in: ['PUBLISHED', 'DRAFT', 'HIDDEN', 'PENDING'],
       },
     };
 
@@ -333,15 +333,25 @@ export const getUserPostDetail = async (req: Request, res: Response) => {
       });
     }
 
-    // 增加浏览量
-    await prisma.userPost.update({
-      where: { id },
-      data: {
-        viewCount: {
-          increment: 1,
+    const isOwner = req.user && post.userId && req.user.id === post.userId;
+    if (post.status !== 'PUBLISHED' && !isOwner) {
+      return res.status(404).json({
+        success: false,
+        message: '帖子不存在',
+      });
+    }
+
+    // 增加浏览量（仅对已发布帖子）
+    if (post.status === 'PUBLISHED') {
+      await prisma.userPost.update({
+        where: { id },
+        data: {
+          viewCount: {
+            increment: 1,
+          },
         },
-      },
-    });
+      });
+    }
 
     const formattedPost = mapUserPostResponse(post);
 
@@ -415,9 +425,10 @@ export const createUserPost = async (req: Request, res: Response) => {
               const safeName = file.originalname
                 .replace(/\s+/g, '_')
                 .replace(/[^a-zA-Z0-9._-]/g, '');
-              const ext = path.extname(safeName) || path.extname(file.originalname);
+              const ext = path.extname(safeName) || path.extname(file.originalname) || '';
               const baseName = safeName.replace(ext, '') || file.filename.replace(ext, '');
-              const objectKey = `posts/${req.user?.id ?? 'anonymous'}/${Date.now()}_${baseName}${ext}`;
+              const timestamp = Date.now();
+              const objectKey = `post-covers/${timestamp}_${baseName || 'image'}${ext}`;
               const { url } = await ossService.uploadLocalFile(file.path, objectKey);
               return url;
             })
@@ -445,7 +456,7 @@ export const createUserPost = async (req: Request, res: Response) => {
         coverImage,
         images: imageUrls.length > 0 ? JSON.stringify(imageUrls) : null,
         tags: tags.length > 0 ? JSON.stringify(tags) : null,
-        status: 'PUBLISHED',
+        status: 'PENDING',
         isHot: false,
       },
       include: {

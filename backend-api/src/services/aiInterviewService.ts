@@ -631,6 +631,44 @@ class AIInterviewService {
   }
 
   /**
+   * 将上传的视频URL绑定到指定题目，便于后续异步分析
+   */
+  async attachAnswerVideo(
+    sessionId: string,
+    questionIndex: number,
+    videoUrl: string,
+    durationMs?: number
+  ): Promise<{ success: boolean; message?: string; error?: string }> {
+    try {
+      const updateResult = await prisma.aIInterviewQuestion.updateMany({
+        where: { sessionId, questionIndex },
+        data: {
+          answerVideoUrl: videoUrl,
+          answerDuration: durationMs ? Math.max(1, Math.round(durationMs / 1000)) : undefined,
+          answeredAt: new Date(),
+        },
+      });
+
+      if (updateResult.count === 0) {
+        return { success: false, error: '面试题目不存在' };
+      }
+
+      await prisma.aIInterviewSession.update({
+        where: { id: sessionId },
+        data: { updatedAt: new Date() },
+      });
+
+      return { success: true, message: '已绑定面试视频链接' };
+    } catch (error) {
+      console.error('绑定面试视频链接失败:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '绑定面试视频链接失败',
+      };
+    }
+  }
+
+  /**
    * 完成面试会话
    */
   async completeInterviewSession(sessionId: string): Promise<{
