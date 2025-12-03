@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
@@ -116,6 +117,7 @@ fun DigitalInterviewScreen(
     val duixBaseConfigUrl = remember { AppConfig.duixBaseConfigUrl }
     val duixModelUrl = remember { AppConfig.duixModelUrl }
     val activity = context as? Activity
+    var showEducationOverlay by rememberSaveable { mutableStateOf(true) }
 
     // 沉浸式处理：进入数字人面试页时隐藏系统栏，退出时恢复
     DisposableEffect(activity) {
@@ -407,6 +409,14 @@ fun DigitalInterviewScreen(
                 }
             }
         }
+
+        // 第四层：教育引导层（最顶层，zIndex 3f）
+        if (showEducationOverlay) {
+            InterviewEducationOverlay(
+                onDismiss = { showEducationOverlay = false },
+                modifier = Modifier.zIndex(3f)
+            )
+        }
     }
 
     if (showPermissionDialog && (!hasCameraPermission || !hasMicrophonePermission)) {
@@ -637,12 +647,7 @@ private fun BottomSection(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
-        QuestionStatusCard(
-            isSpeaking = isDigitalHumanSpeaking,
-            questionText = uiState.questionText,
-            timeRemaining = uiState.timeRemaining,
-            statusMessage = statusMessage
-        )
+
 
         ConversationPanel(
             partialTranscript = partialTranscript,
@@ -723,66 +728,7 @@ private fun QuestionTagChip(
     }
 }
 
-@Composable
-private fun QuestionStatusCard(
-    isSpeaking: Boolean,
-    questionText: String,
-    timeRemaining: Int,
-    statusMessage: String?
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color.Black.copy(alpha = 0.2f))
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = when {
-                    isSpeaking -> "面试官提问中..."
-                    !statusMessage.isNullOrBlank() -> statusMessage
-                    else -> "数字人正在等待你的回答"
-                },
-                color = Color.White,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium
-            )
 
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                AnimatedRecordingIndicator(
-                    isSpeaking = isSpeaking,
-                    activeColor = if (isSpeaking) Color(0xFF43C1C9) else Color.White.copy(alpha = 0.4f),
-                    modifier = Modifier.size(8.dp)
-                )
-                Text(
-                    text = formatTime(timeRemaining),
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-        }
-
-        Text(
-            text = questionText.ifBlank { "面试官正在准备题目，请稍候…" },
-            color = Color.White,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.SemiBold,
-            lineHeight = 22.sp,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
-}
 
 @Composable
 private fun ConversationPanel(
@@ -863,41 +809,7 @@ private fun ConversationPanel(
     }
 }
 
-@Composable
-private fun ConversationBubble(
-    label: String,
-    text: String,
-    isActive: Boolean,
-    indicatorColor: Color
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (label.isNotBlank()) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                AnimatedRecordingIndicator(
-                    modifier = Modifier.size(10.dp),
-                    isSpeaking = isActive,
-                    activeColor = indicatorColor
-                )
-                Text(
-                    text = label,
-                    color = Color.White.copy(alpha = 0.85f),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-        }
 
-        Text(
-            text = text,
-            color = Color.White,
-            fontSize = 15.sp,
-            lineHeight = 20.sp
-        )
-    }
-}
 
 @Composable
 private fun DigitalHumanPlaceholder(
@@ -1161,3 +1073,66 @@ private fun SharedPreferences.savePreviewRatio(offset: Offset) {
 
 private const val PREF_PREVIEW_X = "preview_ratio_x"
 private const val PREF_PREVIEW_Y = "preview_ratio_y"
+
+@Composable
+private fun InterviewEducationOverlay(
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.8f))
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null
+            ) { onDismiss() },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            // "I know" Button
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEC7C38)),
+                shape = RoundedCornerShape(24.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 32.dp, vertical = 12.dp)
+            ) {
+                Text(
+                    text = "我知道啦",
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            // Dashed Line
+            androidx.compose.foundation.Canvas(
+                modifier = Modifier
+                    .height(80.dp)
+                    .width(2.dp)
+            ) {
+                val pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                drawLine(
+                    color = Color.White.copy(alpha = 0.8f),
+                    start = Offset(size.width / 2, 0f),
+                    end = Offset(size.width / 2, size.height),
+                    pathEffect = pathEffect,
+                    strokeWidth = 2.dp.toPx()
+                )
+            }
+
+            // Text
+            Text(
+                text = "请认真听题，AI\n面试官将随机提问",
+                color = Color.White,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                lineHeight = 32.sp
+            )
+        }
+    }
+}

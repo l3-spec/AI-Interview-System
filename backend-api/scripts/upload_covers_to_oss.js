@@ -27,30 +27,45 @@ const fileUrl = (key) => {
 };
 
 (async () => {
-  const files = fs.existsSync(localDir) ? fs.readdirSync(localDir).filter((f) => f.endsWith('.png')) : [];
+  const files = fs.existsSync(localDir)
+    ? fs
+        .readdirSync(localDir)
+        .filter((f) => ['.png', '.jpg', '.jpeg', '.webp'].includes(path.extname(f).toLowerCase()))
+        .sort()
+    : [];
   if (!files.length) {
     console.log('本地未找到封面文件');
     return;
   }
+
+  const posts = await prisma.userPost.findMany({
+    select: { id: true, title: true },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  if (!posts.length) {
+    console.log('无帖子记录可更新');
+    return;
+  }
+
   let uploaded = 0;
-  for (const file of files) {
+  for (let i = 0; i < files.length && i < posts.length; i++) {
+    const file = files[i];
+    const post = posts[i];
     const localPath = path.join(localDir, file);
     const objectKey = `post-covers/${file}`;
     try {
-      await client.put(objectKey, localPath, {
-        headers: { 'x-oss-object-acl': 'public-read' },
-      });
-      // 再次显式设置ACL为public-read，避免默认私有
+      await client.put(objectKey, localPath, { headers: { 'x-oss-object-acl': 'public-read' } });
       await client.putACL(objectKey, 'public-read');
       const url = fileUrl(objectKey);
-      await prisma.userPost.updateMany({ where: { coverImage: { contains: file } }, data: { coverImage: url } });
+      await prisma.userPost.update({ where: { id: post.id }, data: { coverImage: url } });
       uploaded++;
-      console.log(`uploaded ${file} -> ${url}`);
+      console.log(`uploaded ${file} -> ${url} | post: ${post.title}`);
     } catch (err) {
       console.error(`上传失败 ${file}:`, err.message || err);
     }
   }
-  console.log(`完成，上传 ${uploaded} 张封面`);
+  console.log(`完成，上传并更新 ${uploaded} 张封面`);
 })()
   .catch((e) => {
     console.error(e);

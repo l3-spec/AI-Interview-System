@@ -230,9 +230,9 @@ const PostManagement: React.FC = () => {
           record.coverImage ? (
             <Image
               src={record.coverImage.startsWith('http') ? record.coverImage : `${config.API_BASE_URL}${record.coverImage}`}
-              width={64}
-              height={40}
-              style={{ objectFit: 'cover', borderRadius: 6 }}
+              width={70}
+              height={100}
+              style={{ objectFit: 'cover', borderRadius: 8 }}
               fallback="data:image/gif;base64,R0lGODlhAQABAAAAACw="
             />
           ) : (
@@ -419,7 +419,9 @@ const PostManagement: React.FC = () => {
                           ? detailPost.coverImage
                           : `${config.API_BASE_URL}${detailPost.coverImage}`
                       }
-                      width={220}
+                      width={260}
+                      height={360}
+                      style={{ objectFit: 'cover', borderRadius: 10 }}
                       fallback="data:image/gif;base64,R0lGODlhAQABAAAAACw="
                     />
                   </div>
@@ -443,7 +445,9 @@ const PostManagement: React.FC = () => {
                         <Image
                           key={img}
                           src={img.startsWith('http') ? img : `${config.API_BASE_URL}${img}`}
-                          width={140}
+                          width={160}
+                          height={220}
+                          style={{ objectFit: 'cover', borderRadius: 8 }}
                           fallback="data:image/gif;base64,R0lGODlhAQABAAAAACw="
                         />
                       ))}
@@ -488,7 +492,9 @@ const PostManagement: React.FC = () => {
               {coverUrl && (
                 <Image
                   src={coverUrl.startsWith('http') ? coverUrl : `${config.API_BASE_URL}${coverUrl}`}
-                  width={160}
+                  width={180}
+                  height={240}
+                  style={{ objectFit: 'cover', borderRadius: 8 }}
                   fallback="data:image/gif;base64,R0lGODlhAQABAAAAACw="
                 />
               )}
@@ -512,6 +518,8 @@ const PostManagement: React.FC = () => {
                     <Image
                       src={img.startsWith('http') ? img : `${config.API_BASE_URL}${img}`}
                       width={120}
+                      height={180}
+                      style={{ objectFit: 'cover', borderRadius: 6 }}
                       fallback="data:image/gif;base64,R0lGODlhAQABAAAAACw="
                     />
                     <Button

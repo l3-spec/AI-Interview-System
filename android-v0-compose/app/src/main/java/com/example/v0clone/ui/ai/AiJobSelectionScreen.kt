@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -35,10 +34,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -107,6 +108,9 @@ fun AiJobSelectionScreen(
     var categories by remember { mutableStateOf<List<JobDictionaryCategory>>(emptyList()) }
     var activeCategoryId by remember { mutableStateOf<String?>(null) }
     val selectedPositions = remember { mutableStateListOf<JobDictionaryPosition>() }
+    var resumeData by remember { mutableStateOf<Pair<JobDictionaryCategory, JobDictionaryPosition>?>(null) }
+    var showResumeDialog by remember { mutableStateOf(false) }
+    var hasHandledResume by remember { mutableStateOf(false) }
 
     val loadData = remember(repository, preferenceRepository, lastSelectedPositionId, lastSelectedCategoryId) {
         suspend {
@@ -115,43 +119,41 @@ fun AiJobSelectionScreen(
             val dictionaryResult = runCatching { repository.fetchDictionary() }
             dictionaryResult.onSuccess { fetched ->
                 categories = fetched
-                if (activeCategoryId == null) {
-                    activeCategoryId = lastSelectedCategoryId ?: fetched.firstOrNull()?.id
+                selectedPositions.clear()
+
+                var targetId = lastSelectedPositionId
+                if (targetId.isNullOrBlank()) {
+                    val preferenceResult = preferenceRepository.fetchPreferences()
+                    preferenceResult.onSuccess { dto ->
+                        targetId = dto.positions
+                            .sortedBy { it.sortOrder }
+                            .firstOrNull()
+                            ?.id
+                    }.onFailure { throwable ->
+                        if (errorMessage == null) {
+                            errorMessage = throwable.message ?: "加载已选职岗失败"
+                        }
+                    }
                 }
 
-                selectedPositions.clear()
-                if (fetched.isNotEmpty()) {
-                    var targetId = lastSelectedPositionId
-                    if (targetId.isNullOrBlank()) {
-                        val preferenceResult = preferenceRepository.fetchPreferences()
-                        preferenceResult.onSuccess { dto ->
-                            targetId = dto.positions
-                                .sortedBy { it.sortOrder }
-                                .firstOrNull()
-                                ?.id
-                        }.onFailure { throwable ->
-                            if (errorMessage == null) {
-                                errorMessage = throwable.message ?: "加载已选职岗失败"
-                            }
-                        }
+                val matchedResume = if (!targetId.isNullOrBlank()) {
+                    fetched.firstNotNullOfOrNull { category ->
+                        category.positions.firstOrNull { it.id == targetId }
+                            ?.let { category to it }
                     }
+                } else {
+                    null
+                }
 
-                    if (!targetId.isNullOrBlank()) {
-                        val match = fetched.firstNotNullOfOrNull { category ->
-                            category.positions.firstOrNull { it.id == targetId }
-                                ?.let { category to it }
-                        }
-                        if (match != null) {
-                            val (category, position) = match
-                            activeCategoryId = category.id
-                            selectedPositions.add(position)
-                        }
-                    } else if (!lastSelectedCategoryId.isNullOrBlank()) {
-                        val categoryExists = fetched.any { it.id == lastSelectedCategoryId }
-                        if (categoryExists) {
-                            activeCategoryId = lastSelectedCategoryId
-                        }
-                    }
+                resumeData = matchedResume
+                if (matchedResume != null && !hasHandledResume) {
+                    showResumeDialog = true
+                }
+
+                activeCategoryId = when {
+                    !lastSelectedCategoryId.isNullOrBlank() && fetched.any { it.id == lastSelectedCategoryId } -> lastSelectedCategoryId
+                    matchedResume != null -> matchedResume.first.id
+                    else -> fetched.firstOrNull()?.id
                 }
             }.onFailure { throwable ->
                 categories = emptyList()
@@ -208,7 +210,7 @@ fun AiJobSelectionScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(bottom = 24.dp)
+                    .padding(bottom = 12.dp)
             ) {
                 CategorySidebar(
                     categories = categories,
@@ -254,7 +256,7 @@ fun AiJobSelectionScreen(
                         else -> {
                             LazyVerticalGrid(
                                 modifier = Modifier.fillMaxSize(),
-                                columns = GridCells.Fixed(3),
+                                columns = GridCells.Fixed(2),
                                 verticalArrangement = Arrangement.spacedBy(12.dp),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 contentPadding = PaddingValues(bottom = 16.dp, end = 12.dp)
@@ -265,12 +267,19 @@ fun AiJobSelectionScreen(
                                         position = position,
                                         selected = isSelected,
                                         onClick = {
-                                            if (isSelected) {
-                                                selectedPositions.clear()
-                                            } else {
-                                                selectedPositions.clear()
-                                                selectedPositions.add(position)
+                                            val category = categories.firstOrNull { it.id == position.categoryId }
+                                                ?: activeCategory
+                                            if (category == null) {
+                                                Toast.makeText(
+                                                    context,
+                                                    "未找到该职岗所属分类",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                                return@PositionCard
                                             }
+                                            selectedPositions.clear()
+                                            selectedPositions.add(position)
+                                            onStartInterview(position, category)
                                         }
                                     )
                                 }
@@ -281,27 +290,22 @@ fun AiJobSelectionScreen(
             }
         }
 
-        StartInterviewBar(
-            modifier = Modifier.align(Alignment.BottomCenter),
-            selectionCount = selectedPositions.size,
-            onReset = {
-                searchQuery = ""
-                selectedPositions.clear()
-            },
-            onStart = {
-                val position = selectedPositions.firstOrNull()
-                if (position == null) {
-                    Toast.makeText(context, "请先选择一个职岗", Toast.LENGTH_SHORT).show()
-                    return@StartInterviewBar
+        if (showResumeDialog && resumeData != null) {
+            val (category, position) = resumeData!!
+            ResumeInterviewDialog(
+                positionName = position.name,
+                onContinue = {
+                    hasHandledResume = true
+                    showResumeDialog = false
+                    onStartInterview(position, category)
+                },
+                onCancel = {
+                    hasHandledResume = true
+                    showResumeDialog = false
+                    resumeData = null
                 }
-                val category = categories.firstOrNull { it.id == position.categoryId }
-                if (category == null) {
-                    Toast.makeText(context, "未找到该职岗所属分类", Toast.LENGTH_SHORT).show()
-                    return@StartInterviewBar
-                }
-                onStartInterview(position, category)
-            }
-        )
+            )
+        }
     }
 }
 
@@ -318,7 +322,7 @@ private fun TopSection(
             .fillMaxWidth()
             .background(GradientTop)
             .statusBarsPadding()
-            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp)
+            .padding(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 10.dp)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically
@@ -345,7 +349,7 @@ private fun TopSection(
             )
         }
 
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(2.dp))
 
         SearchField(
             value = searchQuery,
@@ -543,6 +547,7 @@ private fun PositionCard(
 ) {
     val background = if (selected) CardSelectedBackground else CardBackground
     val textColor = if (selected) AccentCyan else CardTextDefault
+    val displayName = position.name.formatPositionLabel(maxChars = 8)
 
     Box(
         modifier = Modifier
@@ -560,7 +565,7 @@ private fun PositionCard(
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = position.name,
+            text = displayName,
             color = textColor,
             fontSize = 12.sp,
             fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
@@ -619,82 +624,33 @@ private fun ErrorMessage(
 }
 
 @Composable
-private fun StartInterviewBar(
-    modifier: Modifier = Modifier,
-    selectionCount: Int,
-    onReset: () -> Unit,
-    onStart: () -> Unit
+private fun ResumeInterviewDialog(
+    positionName: String,
+    onContinue: () -> Unit,
+    onCancel: () -> Unit
 ) {
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .navigationBarsPadding(),
-        color = Color.White,
-        shadowElevation = 0.dp
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text(text = "继续未完成面试？", fontSize = 16.sp, fontWeight = FontWeight.SemiBold) },
+        text = {
             Text(
-                text = "最多可选择 1 个职岗",
-                color = SidebarInactive,
-                fontSize = 12.sp
+                text = "检测到你已选择 \"$positionName\" 的面试，是否继续？",
+                fontSize = 14.sp,
+                color = Color.Black
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Surface(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(44.dp),
-                    color = Color(0xFFF5F5F5),
-                    shape = RoundedCornerShape(40.dp),
-                    shadowElevation = 0.dp
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onReset() }
-                            .padding(vertical = 10.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "重置",
-                            color = SidebarInactive,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-
-                val enableStart = selectionCount == 1
-                Button(
-                    onClick = onStart,
-                    enabled = enableStart,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (enableStart) AccentOrange else AccentOrange.copy(alpha = 0.4f),
-                        contentColor = Color.White,
-                        disabledContainerColor = AccentOrange.copy(alpha = 0.4f),
-                        disabledContentColor = Color.White.copy(alpha = 0.7f)
-                    ),
-                    shape = RoundedCornerShape(40.dp),
-                    modifier = Modifier
-                        .weight(2.06f)
-                        .height(44.dp),
-                    contentPadding = PaddingValues(vertical = 10.dp)
-                ) {
-                    Text(
-                        text = "开始面试",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
+        },
+        confirmButton = {
+            TextButton(onClick = onContinue) {
+                Text(text = "继续面试", color = AccentCyan, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onCancel) {
+                Text(text = "重新选择", color = SidebarInactive, fontSize = 14.sp, fontWeight = FontWeight.Medium)
             }
         }
-    }
+    )
 }
+
+private fun String.formatPositionLabel(maxChars: Int): String =
+    if (length > maxChars) take(maxChars) + "..." else this
