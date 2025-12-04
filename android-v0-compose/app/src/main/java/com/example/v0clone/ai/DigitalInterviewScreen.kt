@@ -596,7 +596,7 @@ private fun InterviewStage(
                         modifier = Modifier
                             .matchParentSize()
                             .scale(1.05f)
-                            .offset(x = 32.dp),
+                            .offset(x = 10.dp),
                         onReadyChanged = onDuixReadyChanged,
                         onStatusChanged = { status ->
                             onDigitalHumanStatus(status)
