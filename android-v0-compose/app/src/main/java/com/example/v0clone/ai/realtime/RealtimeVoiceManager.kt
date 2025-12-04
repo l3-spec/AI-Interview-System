@@ -59,10 +59,6 @@ class RealtimeVoiceManager(private val context: Context) {
         private const val MAX_RECORDING_DURATION_MS = 60000  // 最长录音60秒
         private const val VISUALIZER_MAX_RETRY = 5
         private const val VISUALIZER_RETRY_DELAY_MS = 150L
-        private const val MOUTH_MAX_OPENNESS = 0.6f
-        private const val MOUTH_AMPLIFICATION = 2.2f
-        private const val MOUTH_SMOOTHING_ALPHA = 0.18f
-        private const val MOUTH_MIN_UPDATE_INTERVAL_MS = 60L
     }
 
     private suspend fun preparePlayableAudio(sourcePath: String): String? = withContext(Dispatchers.IO) {
@@ -792,6 +788,7 @@ class RealtimeVoiceManager(private val context: Context) {
             val text = data.optString("text", "")
             val ttsMode = data.optString("ttsMode", if (audioUrl.isNullOrBlank()) "client" else "server")
             val userText = data.optString("userText", "")
+            val willSpeak = text.isNotBlank() || !audioUrl.isNullOrBlank()
             val isCompletedFlag = data.optBoolean("isCompleted", false) ||
                 data.optString("status").equals("completed", ignoreCase = true) ||
                 data.optString("event").equals("completed", ignoreCase = true)
@@ -823,6 +820,12 @@ class RealtimeVoiceManager(private val context: Context) {
                 currentPlayingTextHash = textHash
             }
 
+            if (willSpeak) {
+                // 确保数字人说话期间麦克风关闭，避免自问自答
+                stopRecordingInternal()
+                _isDigitalHumanSpeaking.value = true
+            }
+
             _partialTranscript.value = ""
             _isProcessing.value = false
 
@@ -848,13 +851,17 @@ class RealtimeVoiceManager(private val context: Context) {
             } else {
                 Log.w(TAG, "未提供可播放的音频数据")
                 // 如果没有音频数据，清除播放标记
+                _isDigitalHumanSpeaking.value = false
                 currentPlayingTextHash = null
+                tryAutoStartRecordingIfIdle()
             }
         } catch (e: Exception) {
             Log.e(TAG, "处理语音响应失败", e)
             _errors.tryEmit(e.message ?: "处理语音响应失败")
             // 出错时清除播放标记
+            _isDigitalHumanSpeaking.value = false
             currentPlayingTextHash = null
+            tryAutoStartRecordingIfIdle()
         }
     }
 
@@ -884,6 +891,15 @@ class RealtimeVoiceManager(private val context: Context) {
         Log.i(TAG, "标记面试已完成${reason?.let { "：$it" } ?: ""}")
         _interviewCompleted.value = true
         stopRecordingInternal()
+        val farewell = "您太棒了，感谢完成这次愉快的面聊，我们会尽快完成后续的评测工作，报告会在“我的”“简历报告”里展示，请稍晚些查看该报告。"
+        appendMessage(
+            ConversationMessage(
+                role = ConversationRole.DIGITAL_HUMAN,
+                text = farewell
+            )
+        )
+        _latestDigitalHumanText.value = farewell
+        playClientSideTts(farewell, farewell.hashCode().toString())
     }
 
     private fun playClientSideTts(text: String, textHash: String?) {
@@ -905,7 +921,9 @@ class RealtimeVoiceManager(private val context: Context) {
                 Log.e(TAG, "客户端TTS失败", e)
                 _errors.tryEmit(e.message ?: "语音播放失败")
                 // TTS失败时清除播放标记
+                _isDigitalHumanSpeaking.value = false
                 currentPlayingTextHash = null
+                tryAutoStartRecordingIfIdle()
             }
         }
     }
@@ -923,7 +941,9 @@ class RealtimeVoiceManager(private val context: Context) {
                 playPreparedAudio(downloaded.absolutePath, textHash, digitalHumanText)
             } else {
                 Log.e(TAG, "下载远程音频失败，无法播放 - url=$url")
+                _isDigitalHumanSpeaking.value = false
                 currentPlayingTextHash = null
+                tryAutoStartRecordingIfIdle()
             }
         }
     }
@@ -932,7 +952,9 @@ class RealtimeVoiceManager(private val context: Context) {
         val preparedPath = preparePlayableAudio(path)
         if (preparedPath == null) {
             Log.e(TAG, "音频预处理失败，无法播放 - path=$path")
+            _isDigitalHumanSpeaking.value = false
             currentPlayingTextHash = null
+            tryAutoStartRecordingIfIdle()
             return
         }
 
@@ -1001,6 +1023,8 @@ class RealtimeVoiceManager(private val context: Context) {
                             Log.i(TAG, "TTS播放完成，VAD模式自动重新开始录音")
                             startRecording()
                         }
+                    } else {
+                        tryAutoStartRecordingIfIdle()
                     }
                 }
                 
@@ -1010,6 +1034,7 @@ class RealtimeVoiceManager(private val context: Context) {
                     releaseVisualizer()
                     // 出错时清除播放标记
                     currentPlayingTextHash = null
+                    tryAutoStartRecordingIfIdle()
                     true
                 }
                 
@@ -1018,7 +1043,21 @@ class RealtimeVoiceManager(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "播放音频失败", e)
             _errors.tryEmit(e.message ?: "播放音频失败")
+            _isDigitalHumanSpeaking.value = false
+            tryAutoStartRecordingIfIdle()
         }
+    }
+
+    private fun tryAutoStartRecordingIfIdle() {
+        if (_interviewCompleted.value) return
+        if (!vadEnabled) return
+        if (_connectionState.value != ConnectionState.CONNECTED) return
+        if (_isRecordingFlow.value) return
+        if (_isProcessing.value) return
+        if (_isDigitalHumanSpeaking.value) return
+
+        Log.i(TAG, "尝试在空闲状态下自动重启录音")
+        startRecording()
     }
 
     private fun setupAudioVisualizer(retryAttempts: Int = VISUALIZER_MAX_RETRY) {
@@ -1138,8 +1177,6 @@ class RealtimeVoiceManager(private val context: Context) {
     }
 
     private var lastMouthUpdate = 0L
-    private var lastMouthFrameAt = 0L
-    private var smoothedMouthOpenness = 0f
     private var mouthUpdateCount = 0
     
     private fun updateDigitalHumanMouth(waveform: ByteArray) {
@@ -1160,30 +1197,24 @@ class RealtimeVoiceManager(private val context: Context) {
             }
             
             val rms = sqrt(sum / waveform.size)
-            // 使用更柔和的映射与节流，降低晃动频率与幅度
-            val now = System.currentTimeMillis()
-            if (now - lastMouthFrameAt < MOUTH_MIN_UPDATE_INTERVAL_MS) {
-                return
-            }
-            lastMouthFrameAt = now
-
-            val targetOpenness = (rms * MOUTH_AMPLIFICATION).coerceIn(0f, MOUTH_MAX_OPENNESS)
-            smoothedMouthOpenness += (targetOpenness - smoothedMouthOpenness) * MOUTH_SMOOTHING_ALPHA
+            // 使用更合理的映射：将RMS值映射到0-1范围，并添加平滑处理
+            // RMS通常在0-0.3之间，我们将其映射到0-0.8的嘴型范围
+            val mouthOpenness = (rms * 3f).coerceIn(0f, 0.8f)  // 调整放大倍数，避免过度开口
             
             // 更新数字人嘴型
             val controller = digitalHumanController
             if (controller != null) {
-                controller.updateMouthOpenness(smoothedMouthOpenness)
+                controller.updateMouthOpenness(mouthOpenness)
                 
                 mouthUpdateCount++
-                
+                val now = System.currentTimeMillis()
                 // 第一次更新时打印详细信息
                 if (mouthUpdateCount == 1) {
-                    Log.i(TAG, "🎉 数字人嘴型首次更新 - rms=$rms, target=$targetOpenness, smoothed=$smoothedMouthOpenness, waveformSize=${waveform.size}")
+                    Log.i(TAG, "🎉 数字人嘴型首次更新 - rms=$rms, mouthOpenness=$mouthOpenness, waveformSize=${waveform.size}")
                     lastMouthUpdate = now
                 } else if (now - lastMouthUpdate > 1000) {
                     // 之后每秒打印一次
-                    Log.d(TAG, "数字人嘴型更新 #$mouthUpdateCount - rms=$rms, target=$targetOpenness, smoothed=$smoothedMouthOpenness, waveformSize=${waveform.size}")
+                    Log.d(TAG, "数字人嘴型更新 #$mouthUpdateCount - rms=$rms, mouthOpenness=$mouthOpenness, waveformSize=${waveform.size}")
                     lastMouthUpdate = now
                 }
             } else {

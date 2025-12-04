@@ -9,6 +9,17 @@ import retrofit2.http.*
  * API 服务接口
  */
 interface ApiService {
+
+    // ==================== 应用版本 ====================
+
+    /**
+     * 获取最新应用版本信息
+     */
+    @GET("public/app-version")
+    suspend fun getAppVersion(
+        @Query("platform") platform: String = "ANDROID",
+        @Query("currentVersionCode") currentVersionCode: Int? = null
+    ): ApiResponse<AppVersionInfo?>
     
     // ==================== 测评相关 ====================
     

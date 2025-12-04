@@ -15,6 +15,7 @@ import AdminManagement from '../pages/AdminManagement';
 import HomeContentManagement from '../pages/HomeContentManagement';
 import AssessmentManagement from '../pages/AssessmentManagement';
 import PostManagement from '../pages/PostManagement';
+import AppVersionManagement from '../pages/AppVersionManagement';
 
 export const AppRoutes: React.FC = () => {
   const { isAuthenticated } = useAuth();
@@ -40,6 +41,7 @@ export const AppRoutes: React.FC = () => {
         <Route path="posts" element={<PostManagement />} />
         <Route path="assessments" element={<AssessmentManagement />} />
         <Route path="admins" element={<AdminManagement />} />
+        <Route path="app-versions" element={<AppVersionManagement />} />
         <Route path="logs" element={<SystemLogs />} />
         <Route path="permissions" element={<PermissionManagement />} />
         <Route path="billing" element={<BillingManagement />} />

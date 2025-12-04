@@ -43,6 +43,7 @@ const SystemLayout: React.FC = () => {
     { path: '/home-content', label: '首页内容', icon: '🎯' },
     { path: '/posts', label: '帖子管理', icon: '📰' },
     { path: '/assessments', label: '职业测评', icon: '📝' },
+    { path: '/app-versions', label: '版本管理', icon: '📱' },
     { path: '/admins', label: '管理员', icon: '🔑' },
     { path: '/logs', label: '系统日志', icon: '📋' },
     { path: '/permissions', label: '权限管理', icon: '🔐' },

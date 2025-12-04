@@ -343,10 +343,21 @@ export const getAssessmentDetail = async (req: Request, res: Response) => {
       ...assessment,
       tags: assessment.tags ? parseJsonArray(assessment.tags) : [],
       guidelines: assessment.guidelines ? parseJsonArray(assessment.guidelines) : [],
-      questions: assessment.questions.map((q: any) => ({
-        ...q,
-        options: q.options ? JSON.parse(q.options) : [],
-      })),
+      questions: assessment.questions.map((q: any) => {
+        let parsedOptions: any[] = [];
+        if (q.options) {
+          try {
+            parsedOptions = JSON.parse(q.options);
+          } catch (err) {
+            console.warn('解析题目选项失败，使用空数组回退', { questionId: q.id, err });
+            parsedOptions = [];
+          }
+        }
+        return {
+          ...q,
+          options: parsedOptions,
+        };
+      }),
     };
 
     res.json({

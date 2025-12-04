@@ -73,6 +73,12 @@ import {
   deleteUserPostAdmin,
   updateUserPostAdmin,
 } from '../controllers/postAdminController';
+import {
+  listAppVersions,
+  createAppVersion,
+  updateAppVersion,
+  activateAppVersion,
+} from '../controllers/appVersionController';
 
 const router = express.Router();
 
@@ -154,6 +160,46 @@ router.get('/logs', [
   query('endDate').optional().isISO8601().withMessage('结束日期格式错误'),
   validate
 ], getSystemLogs);
+
+// 应用版本管理
+router.get('/app-versions', [
+  requireRole(['SUPER_ADMIN', 'ADMIN']),
+  query('platform').optional().isIn(['ANDROID', 'IOS']).withMessage('平台参数无效'),
+  query('page').optional().isInt({ min: 1 }).withMessage('页码必须大于0'),
+  query('pageSize').optional().isInt({ min: 1, max: 100 }).withMessage('每页数量必须在1-100之间'),
+  validate
+], listAppVersions);
+
+router.post('/app-versions', [
+  requireRole(['SUPER_ADMIN', 'ADMIN']),
+  body('platform').optional().isIn(['ANDROID', 'IOS']).withMessage('平台参数无效'),
+  body('versionName').isLength({ min: 1, max: 50 }).withMessage('版本号不能为空，且不超过50字符'),
+  body('versionCode').isInt({ min: 1 }).withMessage('版本号必须为正整数'),
+  body('downloadUrl').isURL().withMessage('下载链接格式错误'),
+  body('releaseNotes').optional().isString().withMessage('更新内容格式错误'),
+  body('isMandatory').optional().isBoolean().withMessage('是否强制更新格式错误'),
+  body('isActive').optional().isBoolean().withMessage('是否生效格式错误'),
+  validate
+], createAppVersion);
+
+router.put('/app-versions/:id', [
+  requireRole(['SUPER_ADMIN', 'ADMIN']),
+  param('id').isUUID().withMessage('版本ID格式错误'),
+  body('platform').optional().isIn(['ANDROID', 'IOS']).withMessage('平台参数无效'),
+  body('versionName').optional().isLength({ min: 1, max: 50 }).withMessage('版本号不能为空，且不超过50字符'),
+  body('versionCode').optional().isInt({ min: 1 }).withMessage('版本号必须为正整数'),
+  body('downloadUrl').optional().isURL().withMessage('下载链接格式错误'),
+  body('releaseNotes').optional().isString().withMessage('更新内容格式错误'),
+  body('isMandatory').optional().isBoolean().withMessage('是否强制更新格式错误'),
+  body('isActive').optional().isBoolean().withMessage('是否生效格式错误'),
+  validate
+], updateAppVersion);
+
+router.post('/app-versions/:id/activate', [
+  requireRole(['SUPER_ADMIN', 'ADMIN']),
+  param('id').isUUID().withMessage('版本ID格式错误'),
+  validate
+], activateAppVersion);
 
 // 管理员管理
 router.get('/admins', [
@@ -475,7 +521,7 @@ router.get('/assessments', [
   requirePermission('content:read'),
   query('page').optional().isInt({ min: 1 }).withMessage('页码必须大于0'),
   query('pageSize').optional().isInt({ min: 1, max: 100 }).withMessage('每页数量必须在1-100之间'),
-  query('categoryId').optional().isUUID().withMessage('分类ID格式错误'),
+  query('categoryId').optional().isString().withMessage('分类ID格式错误'),
   query('status').optional().isIn(['DRAFT', 'PUBLISHED', 'ARCHIVED']).withMessage('状态参数无效'),
   query('difficulty').optional().isIn(['BEGINNER', 'INTERMEDIATE', 'ADVANCED']).withMessage('难度参数无效'),
   validate
@@ -483,13 +529,13 @@ router.get('/assessments', [
 
 router.get('/assessments/:id', [
   requirePermission('content:read'),
-  param('id').isUUID().withMessage('测评ID格式错误'),
+  param('id').isString().trim().notEmpty().withMessage('测评ID格式错误'),
   validate
 ], getAssessmentDetail);
 
 router.post('/assessments', [
   requirePermission('content:write'),
-  body('categoryId').isUUID().withMessage('分类ID格式错误'),
+  body('categoryId').isString().trim().notEmpty().withMessage('分类ID格式错误'),
   body('title').isLength({ min: 1, max: 200 }).withMessage('标题不能为空且不超过200字符'),
   body('description').optional().isLength({ max: 2000 }).withMessage('描述不超过2000字符'),
   body('coverImage').optional().isURL().withMessage('封面图片URL格式错误'),
@@ -504,8 +550,8 @@ router.post('/assessments', [
 
 router.put('/assessments/:id', [
   requirePermission('content:write'),
-  param('id').isUUID().withMessage('测评ID格式错误'),
-  body('categoryId').optional().isUUID().withMessage('分类ID格式错误'),
+  param('id').isString().trim().notEmpty().withMessage('测评ID格式错误'),
+  body('categoryId').optional().isString().trim().notEmpty().withMessage('分类ID格式错误'),
   body('title').optional().isLength({ min: 1, max: 200 }).withMessage('标题不能为空且不超过200字符'),
   body('description').optional().isLength({ max: 2000 }).withMessage('描述不超过2000字符'),
   body('coverImage').optional().isURL().withMessage('封面图片URL格式错误'),
@@ -520,7 +566,7 @@ router.put('/assessments/:id', [
 
 router.delete('/assessments/:id', [
   requirePermission('content:write'),
-  param('id').isUUID().withMessage('测评ID格式错误'),
+  param('id').isString().trim().notEmpty().withMessage('测评ID格式错误'),
   validate
 ], deleteAssessment);
 
@@ -583,7 +629,7 @@ router.put('/posts/:postId', [
 // 题目管理
 router.post('/assessments/:assessmentId/questions', [
   requirePermission('content:write'),
-  param('assessmentId').isUUID().withMessage('测评ID格式错误'),
+  param('assessmentId').isString().trim().notEmpty().withMessage('测评ID格式错误'),
   body('questionText').isLength({ min: 1 }).withMessage('题目内容不能为空'),
   body('questionType').optional().isIn(['SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'TEXT']).withMessage('题目类型参数无效'),
   body('options').optional().isArray().withMessage('选项必须是数组'),
@@ -595,7 +641,7 @@ router.post('/assessments/:assessmentId/questions', [
 
 router.put('/assessments/questions/:id', [
   requirePermission('content:write'),
-  param('id').isUUID().withMessage('题目ID格式错误'),
+  param('id').isString().trim().notEmpty().withMessage('题目ID格式错误'),
   body('questionText').optional().isLength({ min: 1 }).withMessage('题目内容不能为空'),
   body('questionType').optional().isIn(['SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'TEXT']).withMessage('题目类型参数无效'),
   body('options').optional().isArray().withMessage('选项必须是数组'),
@@ -607,13 +653,13 @@ router.put('/assessments/questions/:id', [
 
 router.delete('/assessments/questions/:id', [
   requirePermission('content:write'),
-  param('id').isUUID().withMessage('题目ID格式错误'),
+  param('id').isString().trim().notEmpty().withMessage('题目ID格式错误'),
   validate
 ], deleteQuestion);
 
 router.post('/assessments/:assessmentId/questions/reorder', [
   requirePermission('content:write'),
-  param('assessmentId').isUUID().withMessage('测评ID格式错误'),
+  param('assessmentId').isString().trim().notEmpty().withMessage('测评ID格式错误'),
   body('orders').isArray().withMessage('排序数据必须是数组'),
   validate
 ], reorderQuestions);

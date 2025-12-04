@@ -361,19 +361,33 @@ private fun FeaturedAssessmentCard(
         shape = RoundedCornerShape(14.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFFFFF1E5)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Check,
-                        contentDescription = null,
-                        tint = AccentColor
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (!assessment.coverImage.isNullOrBlank()) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(assessment.coverImage)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = assessment.title,
+                        modifier = Modifier
+                            .size(width = 72.dp, height = 56.dp)
+                            .clip(RoundedCornerShape(12.dp)),
+                        contentScale = ContentScale.Crop
                     )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFFFF1E5)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Check,
+                            contentDescription = null,
+                            tint = AccentColor
+                        )
+                    }
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
@@ -669,6 +683,11 @@ private fun AssessmentCard(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Chip(text = "${assessment.durationMinutes}分钟")
+                        Chip(text = difficultyLabel(assessment.difficulty))
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(12.dp))
@@ -677,13 +696,15 @@ private fun AssessmentCard(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Chip(text = "${assessment.durationMinutes}分钟")
-                    Chip(text = difficultyLabel(assessment.difficulty))
-                }
                 Text(
                     text = "${assessment.participantCount}人已测",
                     style = MaterialTheme.typography.bodySmall.copy(color = MutedText)
+                )
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = null,
+                    modifier = Modifier.rotate(180f),
+                    tint = MutedText
                 )
             }
         }
@@ -1155,34 +1176,6 @@ private fun AssessmentTakeScreen(
                 onBack = onBack
             )
         },
-        bottomBar = {
-            if (detail != null && detail.questions.isNotEmpty()) {
-                AnswerBottomBar(
-                    currentIndex = currentIndex,
-                    total = detail.questions.size,
-                    canGoPrevious = currentIndex > 0,
-                    onPrevious = { currentIndex-- },
-                    onNext = {
-                        val state = answers.getValue(detail.questions[currentIndex].id)
-                        if (!state.isAnswered(detail.questions[currentIndex].questionType)) {
-                            Toast.makeText(context, "请先完成当前题目", Toast.LENGTH_SHORT).show()
-                        } else if (currentIndex < detail.questions.size - 1) {
-                            currentIndex++
-                        } else {
-                            showConfirmDialog = true
-                        }
-                    },
-                    onSubmit = {
-                        val state = answers.getValue(detail.questions[currentIndex].id)
-                        if (!state.isAnswered(detail.questions[currentIndex].questionType)) {
-                            Toast.makeText(context, "请先完成当前题目", Toast.LENGTH_SHORT).show()
-                        } else {
-                            showConfirmDialog = true
-                        }
-                    }
-                )
-            }
-        },
         containerColor = Color.White
     ) { padding ->
         when {
@@ -1207,7 +1200,19 @@ private fun AssessmentTakeScreen(
             }
             detail != null && detail.questions.isNotEmpty() -> {
                 val question = detail.questions[currentIndex]
-                val answerState = answers.getValue(question.id)
+                val answerState = answers.getOrPut(question.id) { AnswerState() }
+
+                val handleNext: () -> Unit = {
+                    val state = answers.getOrPut(detail.questions[currentIndex].id) { AnswerState() }
+                    if (!state.isAnswered(detail.questions[currentIndex].questionType)) {
+                        Toast.makeText(context, "请先完成当前题目", Toast.LENGTH_SHORT).show()
+                    } else if (currentIndex < detail.questions.size - 1) {
+                        currentIndex++
+                    } else {
+                        showConfirmDialog = true
+                    }
+                }
+
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
@@ -1216,15 +1221,22 @@ private fun AssessmentTakeScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     item {
-                        AssessmentIntroBanner(detail)
-                    }
-                    item {
                         QuestionProgress(current = currentIndex + 1, total = detail.questions.size)
                     }
                     item {
                         QuestionCard(
                             question = question,
-                            answerState = answerState
+                            answerState = answerState,
+                            questionNumber = currentIndex + 1,
+                            onAnswered = handleNext
+                        )
+                    }
+                    item {
+                        AnswerControls(
+                            canGoPrevious = currentIndex > 0,
+                            isLast = currentIndex == detail.questions.size - 1,
+                            onPrevious = { if (currentIndex > 0) currentIndex-- },
+                            onNext = handleNext
                         )
                     }
                 }
@@ -1248,7 +1260,7 @@ private fun AssessmentTakeScreen(
                         showConfirmDialog = false
                         val duration = ((System.currentTimeMillis() - startTimestamp) / 1000.0).roundToInt()
                         val userAnswers = detail.questions.map { question ->
-                            val state = answers.getValue(question.id)
+                            val state = answers.getOrPut(question.id) { AnswerState() }
                             UserAnswer(
                                 questionId = question.id,
                                 answer = state.toAnswerPayload(question.questionType)
@@ -1334,7 +1346,7 @@ private fun QuestionProgress(current: Int, total: Int) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "进度",
+                text = "第$current 题",
                 style = MaterialTheme.typography.labelMedium.copy(color = MutedText)
             )
             Text(
@@ -1363,7 +1375,9 @@ private fun QuestionProgress(current: Int, total: Int) {
 @Composable
 private fun QuestionCard(
     question: AssessmentQuestion,
-    answerState: AnswerState
+    answerState: AnswerState,
+    questionNumber: Int,
+    onAnswered: (() -> Unit)? = null
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -1378,7 +1392,7 @@ private fun QuestionCard(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
-                text = question.questionText,
+                text = "$questionNumber. ${question.questionText}",
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.SemiBold,
                     lineHeight = 22.sp
@@ -1386,23 +1400,24 @@ private fun QuestionCard(
             )
             when (question.questionType.uppercase()) {
                 "SINGLE_CHOICE" -> {
-                    QuestionOptions(
-                        options = question.options,
-                        selected = answerState.selectedOptions,
-                        multiple = false
-                    ) { option ->
-                        answerState.selectSingle(option.label)
-                    }
+                QuestionOptions(
+                    options = question.options,
+                    selected = answerState.selectedOptions,
+                    multiple = false
+                ) { option ->
+                    answerState.selectSingle(option.label)
+                    onAnswered?.invoke()
                 }
-                "MULTIPLE_CHOICE" -> {
-                    QuestionOptions(
-                        options = question.options,
-                        selected = answerState.selectedOptions,
-                        multiple = true
-                    ) { option ->
-                        answerState.toggle(option.label)
-                    }
+            }
+            "MULTIPLE_CHOICE" -> {
+                QuestionOptions(
+                    options = question.options,
+                    selected = answerState.selectedOptions,
+                    multiple = true
+                ) { option ->
+                    answerState.toggle(option.label)
                 }
+            }
                 "TEXT" -> {
                     OutlinedTextField(
                         value = answerState.textAnswer,
@@ -1474,45 +1489,31 @@ private fun QuestionOptions(
 }
 
 @Composable
-private fun AnswerBottomBar(
-    currentIndex: Int,
-    total: Int,
+private fun AnswerControls(
     canGoPrevious: Boolean,
+    isLast: Boolean,
     onPrevious: () -> Unit,
-    onNext: () -> Unit,
-    onSubmit: () -> Unit
+    onNext: () -> Unit
 ) {
-    Surface(color = Color.White, shadowElevation = 6.dp) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        OutlinedButton(
+            onClick = onPrevious,
+            enabled = canGoPrevious,
+            shape = RoundedCornerShape(22.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = MutedText)
         ) {
-            Button(
-                onClick = onPrevious,
-                enabled = canGoPrevious,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFF2F2F2),
-                    contentColor = MutedText,
-                    disabledContainerColor = Color(0xFFF2F2F2),
-                    disabledContentColor = MutedText.copy(alpha = 0.6f)
-                ),
-                shape = RoundedCornerShape(22.dp)
-            ) {
-                Text("上一题")
-            }
-            Button(
-                onClick = if (currentIndex == total - 1) onSubmit else onNext,
-                colors = ButtonDefaults.buttonColors(containerColor = AccentColor, contentColor = Color.White),
-                shape = RoundedCornerShape(22.dp)
-            ) {
-                Text(
-                    text = if (currentIndex == total - 1) "完成" else "下一题",
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
+            Text("上一题")
+        }
+        Button(
+            onClick = onNext,
+            colors = ButtonDefaults.buttonColors(containerColor = AccentColor, contentColor = Color.White),
+            shape = RoundedCornerShape(22.dp)
+        ) {
+            Text(if (isLast) "提交" else "下一题", fontWeight = FontWeight.SemiBold)
         }
     }
 }

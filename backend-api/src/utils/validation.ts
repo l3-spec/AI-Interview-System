@@ -210,6 +210,12 @@ export const changePasswordSchema = Joi.object({
 export const validate = (req: Request, res: Response, next: NextFunction) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    // 记录校验失败，方便排查线上问题
+    console.warn('[VALIDATION_ERROR]', {
+      path: req.path,
+      method: req.method,
+      errors: errors.array()
+    });
     return res.status(400).json({
       success: false,
       message: '数据验证失败',

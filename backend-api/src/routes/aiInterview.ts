@@ -208,15 +208,15 @@ router.post('/create-session',
       }
 
       res.json({
-          success: true,
-          message: '面试会话创建成功',
-          data: {
-            jobId: result.jobId,
-            sessionId: result.sessionId,
-            questions: result.questions,
-            totalQuestions: result.questions?.length || 0,
-            jobCategory: result.jobCategory,
-            jobSubCategory: result.jobSubCategory,
+        success: true,
+        message: '面试会话创建成功',
+        data: {
+          jobId: result.jobId,
+          sessionId: result.sessionId,
+          questions: result.questions,
+          totalQuestions: result.questions?.length || 0,
+          jobCategory: result.jobCategory,
+          jobSubCategory: result.jobSubCategory,
           prompt: result.prompt,
           plannedDuration: result.plannedDuration,
           resumed: result.resumed ?? false,
@@ -605,6 +605,18 @@ router.post('/complete/:sessionId',
 
       const result = await aiInterviewService.completeInterviewSession(sessionId);
 
+      // 触发分析任务
+      if (result.success) {
+        try {
+          const { analysisQueue } = await import('../jobs/analysisQueue');
+          await analysisQueue.enqueueAnalysis(sessionId);
+          console.log(`[AI Interview] Analysis task enqueued for session: ${sessionId}`);
+        } catch (error) {
+          console.error('[AI Interview] Failed to enqueue analysis task:', error);
+          // 不影响complete的成功响应
+        }
+      }
+
       res.json(result);
 
     } catch (error) {
@@ -616,6 +628,7 @@ router.post('/complete/:sessionId',
     }
   }
 );
+
 
 /**
  * @swagger
@@ -1162,7 +1175,7 @@ router.post('/smart-create-session',
 
       // 1. 使用NLP服务解析用户描述
       const parseResult = await nlpParsingService.parseJobDescription(userInput);
-      
+
       if (!nlpParsingService.validateParseResult(parseResult)) {
         return res.status(400).json({
           success: false,
@@ -1175,7 +1188,7 @@ router.post('/smart-create-session',
 
       // 2. 使用解析结果创建面试会话
       const finalQuestionCount = questionCount || parseResult.questionCount;
-      
+
       const result = await aiInterviewService.createInterviewSession({
         userId,
         jobTarget: parseResult.jobTarget,
@@ -1309,8 +1322,8 @@ router.post('/preview-parse',
         suggestions: {
           isHighConfidence: parseResult.confidence >= 0.8,
           needsMoreInfo: parseResult.confidence < 0.6,
-          tips: parseResult.confidence < 0.6 ? 
-            "建议提供更详细的信息，如具体的职位名称、公司名称、工作经验年限等" : 
+          tips: parseResult.confidence < 0.6 ?
+            "建议提供更详细的信息，如具体的职位名称、公司名称、工作经验年限等" :
             null
         }
       });
@@ -1326,4 +1339,191 @@ router.post('/preview-parse',
   }
 );
 
-export default router; 
+/**
+ * @swagger
+ * /api/ai-interview/sessions/{sessionId}/analysis:
+ *   get:
+ *     summary: 获取面试分析报告 📊
+ *     description: 获取已完成面试的综合分析报告，包含多维度职场素养评估
+ *     tags: [🤖 AI面试系统]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: 面试会话ID
+ *     responses:
+ *       200:
+ *         description: 获取报告成功
+ *       404:
+ *         description: 报告不存在
+ */
+router.get('/sessions/:sessionId/analysis',
+  authenticateToken,
+  [
+    param('sessionId')
+      .isUUID()
+      .withMessage('会话ID格式无效'),
+  ],
+  async (req: any, res: any) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: '请求参数错误',
+          errors: errors.array(),
+        });
+      }
+
+      const { sessionId } = req.params;
+      const { analysisService } = await import('../services/analysisService');
+
+      const report = await analysisService.getAnalysisReport(sessionId);
+
+      if (!report) {
+        return res.status(404).json({
+          success: false,
+          message: '分析报告不存在'
+        });
+      }
+
+      res.json({
+        success: true,
+        data: report
+      });
+
+    } catch (error) {
+      console.error('获取分析报告接口错误:', error);
+      res.status(500).json({
+        success: false,
+        message: '服务器内部错误',
+      });
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/ai-interview/sessions/{sessionId}/analysis/status:
+ *   get:
+ *     summary: 获取分析状态 🔍
+ *     description: 查询面试分析任务的当前状态
+ *     tags: [🤖 AI面试系统]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: 面试会话ID
+ *     responses:
+ *       200:
+ *         description: 获取状态成功
+ */
+router.get('/sessions/:sessionId/analysis/status',
+  authenticateToken,
+  [
+    param('sessionId')
+      .isUUID()
+      .withMessage('会话ID格式无效'),
+  ],
+  async (req: any, res: any) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: '请求参数错误',
+          errors: errors.array(),
+        });
+      }
+
+      const { sessionId } = req.params;
+      const { analysisService } = await import('../services/analysisService');
+
+      const status = await analysisService.getAnalysisStatus(sessionId);
+
+      res.json({
+        success: true,
+        data: status
+      });
+
+    } catch (error) {
+      console.error('获取分析状态接口错误:', error);
+      res.status(500).json({
+        success: false,
+        message: '服务器内部错误',
+      });
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/ai-interview/sessions/{sessionId}/analysis/retry:
+ *   post:
+ *     summary: 重试失败的分析 🔄
+ *     description: 重新触发失败的面试分析任务
+ *     tags: [🤖 AI面试系统]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: 面试会话ID
+ *     responses:
+ *       200:
+ *         description: 重试任务已创建
+ */
+router.post('/sessions/:sessionId/analysis/retry',
+  authenticateToken,
+  [
+    param('sessionId')
+      .isUUID()
+      .withMessage('会话ID格式无效'),
+  ],
+  async (req: any, res: any) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: '请求参数错误',
+          errors: errors.array(),
+        });
+      }
+
+      const { sessionId } = req.params;
+      const { analysisQueue } = await import('../jobs/analysisQueue');
+
+      await analysisQueue.retryFailedTask(sessionId);
+
+      res.json({
+        success: true,
+        message: '分析任务已重新加入队列'
+      });
+
+    } catch (error) {
+      console.error('重试分析接口错误:', error);
+      res.status(500).json({
+        success: false,
+        message: error instanceof Error ? error.message : '服务器内部错误',
+      });
+    }
+  }
+);
+
+export default router;
+

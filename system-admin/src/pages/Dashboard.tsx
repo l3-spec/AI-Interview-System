@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { config } from '../config/config';
 
 interface DashboardStats {
@@ -31,6 +32,7 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState('30d');
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   // 获取Dashboard统计数据
   const fetchStats = async () => {

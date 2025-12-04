@@ -1,7 +1,10 @@
 package com.xlwl.AiMian.navigation
 
 import android.app.Application
+import android.content.Intent
+import android.net.Uri
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -13,6 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.background
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -31,17 +35,21 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.MaterialTheme
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import com.google.gson.Gson
 import com.xlwl.AiMian.ai.guide.InterviewGuideRoute
 import com.xlwl.AiMian.data.api.AiInterviewApi
 import com.xlwl.AiMian.data.api.ApiService
 import com.xlwl.AiMian.data.api.OssApi
+import com.xlwl.AiMian.BuildConfig
 import com.xlwl.AiMian.ai.prep.PrepRoute
 import com.xlwl.AiMian.ai.session.InterviewSessionRoute
 import com.xlwl.AiMian.data.api.AuthApi
@@ -54,6 +62,7 @@ import com.xlwl.AiMian.data.repository.ContentRepository
 import com.xlwl.AiMian.data.repository.JobPreferenceRepository
 import com.xlwl.AiMian.data.repository.JobRepository
 import com.xlwl.AiMian.data.model.JobPreferenceDto
+import com.xlwl.AiMian.data.model.AppVersionInfo
 import com.xlwl.AiMian.data.repository.JobDictionaryRepository
 import com.xlwl.AiMian.data.repository.MessageRepository
 import com.xlwl.AiMian.data.model.AiInterviewFlowState
@@ -64,6 +73,7 @@ import com.xlwl.AiMian.data.model.AssessmentDetail
 import com.xlwl.AiMian.data.model.AssessmentResult
 import com.xlwl.AiMian.navigation.Routes.LOGIN
 import com.xlwl.AiMian.data.repository.OssRepository
+import com.xlwl.AiMian.data.repository.AppUpdateRepository
 import com.xlwl.AiMian.ui.auth.LoginScreen
 import com.xlwl.AiMian.ui.auth.LoginFlowScreen
 import com.xlwl.AiMian.ui.auth.RegisterScreen
@@ -78,9 +88,9 @@ import com.xlwl.AiMian.ui.jobs.CompanyDetailRoute
 import com.xlwl.AiMian.ui.jobs.EditIntentionJobScreen
 import com.xlwl.AiMian.ui.jobs.JobDetailRoute
 import com.xlwl.AiMian.ui.jobs.JobSelectionScreen
+import com.xlwl.AiMian.ai.InterviewCompleteScreen
 import com.xlwl.AiMian.ui.jobs.JobsScreen
 import com.xlwl.AiMian.ui.assessment.AssessmentCategoryRoute
-import com.xlwl.AiMian.ui.assessment.AssessmentDetailRoute
 import com.xlwl.AiMian.ui.assessment.AssessmentHomeRoute
 import com.xlwl.AiMian.ui.assessment.AssessmentResultRoute
 import com.xlwl.AiMian.ui.assessment.AssessmentTakeRoute
@@ -122,6 +132,19 @@ fun AppNavHost(navController: NavHostController) {
     val jobRepo = remember(apiService) { JobRepository(apiService) }
     val jobPreferenceRepo = remember(apiService) { JobPreferenceRepository(apiService) }
     val jobDictionaryRepo = remember(jobDictionaryApi) { JobDictionaryRepository(jobDictionaryApi) }
+    val appUpdateRepo = remember(apiService) { AppUpdateRepository(apiService) }
+    var latestAppVersion by remember { mutableStateOf<AppVersionInfo?>(null) }
+    val openDownload = remember(context) {
+        { url: String ->
+            if (url.isBlank()) {
+                Toast.makeText(context, "下载链接不可用", Toast.LENGTH_LONG).show()
+                return@remember
+            }
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            runCatching { context.startActivity(intent) }
+                .onFailure { Toast.makeText(context, "无法打开下载链接", Toast.LENGTH_LONG).show() }
+        }
+    }
     val gson = remember { Gson() }
     val currentUserId = remember(userJson) {
         userJson?.let { json ->
@@ -139,8 +162,23 @@ fun AppNavHost(navController: NavHostController) {
             }
         }
     }
+    LaunchedEffect(appUpdateRepo) {
+        val result = appUpdateRepo.checkUpdate(BuildConfig.VERSION_CODE)
+        result.onSuccess { info -> latestAppVersion = info }
+            .onFailure { throwable ->
+                Log.w("AppUpdate", "检测更新失败: ${throwable.message}")
+            }
+    }
+    val forceUpdateInfo = remember(latestAppVersion) {
+        latestAppVersion?.takeIf { info ->
+            val hasNewer = info.versionCode > BuildConfig.VERSION_CODE
+            val shouldUpdate = info.shouldUpdate || hasNewer
+            shouldUpdate && (info.forceUpdate || info.isMandatory)
+        }
+    }
 
-    NavHost(navController = navController, startDestination = Routes.HOME) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        NavHost(navController = navController, startDestination = Routes.HOME) {
         // 首页 - 使用优化版HomeScreen（瀑布流+固定顶栏+加载更多）
         composable(Routes.HOME) {
             HomeScreen(
@@ -585,7 +623,9 @@ fun AppNavHost(navController: NavHostController) {
                         navController.navigate("${Routes.PROFILE_ASSESSMENT_CATEGORY}/${URLEncoder.encode(category.id, "UTF-8")}/${URLEncoder.encode(category.name, "UTF-8")}")
                     },
                     onAssessmentSelected = { assessment ->
-                        navController.navigate("${Routes.PROFILE_ASSESSMENT_DETAIL}/${URLEncoder.encode(assessment.id, "UTF-8")}")
+                        navController.navigate("${Routes.PROFILE_ASSESSMENT_TAKE}/${URLEncoder.encode(assessment.id, "UTF-8")}") {
+                            launchSingleTop = true
+                        }
                     }
                 )
             }
@@ -605,31 +645,7 @@ fun AppNavHost(navController: NavHostController) {
                     categoryName = categoryName,
                     onBack = { navController.popBackStack() },
                     onAssessmentSelected = { assessment ->
-                        navController.navigate("${Routes.PROFILE_ASSESSMENT_DETAIL}/${URLEncoder.encode(assessment.id, "UTF-8")}")
-                    }
-                )
-            }
-        }
-
-        composable("${Routes.PROFILE_ASSESSMENT_DETAIL}/{assessmentId}") { backStackEntry ->
-            val assessmentId = backStackEntry.path("assessmentId")?.let { URLDecoder.decode(it, "UTF-8") } ?: ""
-            if (token.isNullOrEmpty()) {
-                LaunchedEffect(Unit) {
-                    navController.navigate(LOGIN) { launchSingleTop = true }
-                }
-            } else {
-                AssessmentDetailRoute(
-                    repository = contentRepo,
-                    assessmentId = assessmentId,
-                    onBack = { navController.popBackStack() },
-                    onStartAssessment = { detail ->
-                        navController.currentBackStackEntry
-                            ?.savedStateHandle
-                            ?.set("assessment_detail_json", gson.toJson(detail))
-                        navController.currentBackStackEntry
-                            ?.savedStateHandle
-                            ?.set("assessment_title", detail.title)
-                        navController.navigate("${Routes.PROFILE_ASSESSMENT_TAKE}/${URLEncoder.encode(detail.id, "UTF-8")}") {
+                        navController.navigate("${Routes.PROFILE_ASSESSMENT_TAKE}/${URLEncoder.encode(assessment.id, "UTF-8")}") {
                             launchSingleTop = true
                         }
                     }
@@ -644,39 +660,41 @@ fun AppNavHost(navController: NavHostController) {
                     navController.navigate(LOGIN) { launchSingleTop = true }
                 }
             } else {
-                val previousEntry = navController.previousBackStackEntry
-                val detailJson = previousEntry?.savedStateHandle?.remove<String>("assessment_detail_json")
-                val assessmentTitle = previousEntry?.savedStateHandle?.remove<String>("assessment_title")
-                val initialDetail = detailJson?.let { gson.fromJson(it, AssessmentDetail::class.java) }
                 AssessmentTakeRoute(
                     repository = contentRepo,
                     assessmentId = assessmentId,
-                    initialDetail = initialDetail,
+                    initialDetail = null,
                     userId = currentUserId,
-                    assessmentTitle = assessmentTitle,
+                    assessmentTitle = null,
                     onBack = { navController.popBackStack() },
                     onSubmitSuccess = { result ->
                         navController.currentBackStackEntry
                             ?.savedStateHandle
                             ?.set("assessment_result_json", gson.toJson(result))
-                        assessmentTitle?.let {
-                            navController.currentBackStackEntry
-                                ?.savedStateHandle
-                                ?.set("assessment_result_title", it)
-                        }
-                        navController.navigate(Routes.PROFILE_ASSESSMENT_RESULT) { launchSingleTop = true }
+                        val encoded = URLEncoder.encode(gson.toJson(result), "UTF-8")
+                        navController.navigate("${Routes.PROFILE_ASSESSMENT_RESULT}?result=$encoded") { launchSingleTop = true }
                     }
                 )
             }
         }
 
-        composable(Routes.PROFILE_ASSESSMENT_RESULT) {
+        composable(
+            route = "${Routes.PROFILE_ASSESSMENT_RESULT}?result={result}",
+            arguments = listOf(
+                navArgument("result") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { entry ->
             if (token.isNullOrEmpty()) {
                 LaunchedEffect(Unit) {
                     navController.navigate(LOGIN) { launchSingleTop = true }
                 }
             } else {
-                val resultJson = navController.previousBackStackEntry
+                val argResult = entry.arguments?.getString("result")
+                val resultJson = argResult ?: navController.previousBackStackEntry
                     ?.savedStateHandle
                     ?.remove<String>("assessment_result_json")
                 val resultTitle = navController.previousBackStackEntry
@@ -971,7 +989,7 @@ fun AppNavHost(navController: NavHostController) {
                                             Log.w("DigitalInterview", "标记面试完成失败", error)
                                         }
                                     }
-                                    navController.navigate(Routes.PROFILE_RESUME_REPORT) {
+                                    navController.navigate(Routes.INTERVIEW_COMPLETE) {
                                         popUpTo(Routes.HOME) { inclusive = false }
                                         launchSingleTop = true
                                     }
@@ -985,7 +1003,74 @@ fun AppNavHost(navController: NavHostController) {
                 }
             }
         }
+
+        composable(Routes.INTERVIEW_COMPLETE) {
+            InterviewCompleteScreen(
+                onBackHome = {
+                    val popped = navController.popBackStack(Routes.HOME, false)
+                    if (!popped) {
+                        navController.navigate(Routes.HOME) {
+                            popUpTo(Routes.HOME) { inclusive = false }
+                            launchSingleTop = true
+                        }
+                    }
+                }
+            )
+        }
+        }
+
+        if (forceUpdateInfo != null) {
+            ForceUpdateDialog(
+                info = forceUpdateInfo,
+                onConfirm = { openDownload(forceUpdateInfo.downloadUrl) }
+            )
+        }
     }
+}
+
+@Composable
+private fun ForceUpdateDialog(
+    info: AppVersionInfo,
+    onConfirm: () -> Unit
+) {
+    val notes = info.releaseNotes?.takeIf { it.isNotBlank() }
+    AlertDialog(
+        onDismissRequest = {},
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFEC7C38),
+                    contentColor = Color.White
+                )
+            ) {
+                Text("立即更新")
+            }
+        },
+        title = { Text(text = "发现新版本 ${info.versionName}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "当前版本需要升级后才能继续使用。",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    text = "最新版本号：${info.versionName} (Code ${info.versionCode})",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                if (notes != null) {
+                    Text(
+                        text = "更新内容：",
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold)
+                    )
+                    Text(
+                        text = notes,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        }
+    )
 }
 
 @Composable

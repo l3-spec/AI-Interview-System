@@ -1,61 +1,56 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Badge,
   Button,
   Card,
-  Table,
-  Space,
-  Tag,
-  Modal,
+  Col,
+  Collapse,
+  Empty,
   Form,
+  Image,
   Input,
   InputNumber,
+  Modal,
+  Popconfirm,
+  Row,
+  Select,
+  Space,
   Switch,
-  Image,
+  Table,
+  Tabs,
+  Tag,
+  Tooltip,
   Upload,
   message,
-  Popconfirm,
-  Select,
-  Row,
-  Col,
-  Typography,
-  Badge,
-  Tooltip,
-  Tabs,
-  Divider,
-  Empty,
-  Collapse
+  Typography
 } from 'antd';
 import {
-  PlusOutlined,
-  EditOutlined,
+  ArrowDownOutlined,
+  ArrowUpOutlined,
   DeleteOutlined,
-  UploadOutlined,
-  SearchOutlined,
-  ReloadOutlined,
+  EditOutlined,
   EyeOutlined,
-  QuestionCircleOutlined,
-  PlusCircleOutlined,
   MinusCircleOutlined,
-  DragOutlined
+  PlusCircleOutlined,
+  PlusOutlined,
+  QuestionCircleOutlined,
+  ReloadOutlined,
+  SearchOutlined,
+  UploadOutlined
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import { AssessmentCategory, Assessment, AssessmentQuestion, assessmentApi, uploadApi } from '../services/api';
+import { Assessment, AssessmentCategory, AssessmentQuestion, assessmentApi, uploadApi } from '../services/api';
 import dayjs from 'dayjs';
 
 const { TextArea } = Input;
-const { Title, Text } = Typography;
+const { Text } = Typography;
 const { Option } = Select;
 const { Panel } = Collapse;
 
 const AssessmentManagement: React.FC = () => {
-  // 分类管理状态
+  // 分类仅用于后端必填字段，前台不展示分类维护
   const [categories, setCategories] = useState<AssessmentCategory[]>([]);
-  const [categoryLoading, setCategoryLoading] = useState(false);
-  const [categoryPage, setCategoryPage] = useState(1);
-  const [categoryTotal, setCategoryTotal] = useState(0);
-  const [categoryFormVisible, setCategoryFormVisible] = useState(false);
-  const [categoryForm] = Form.useForm();
-  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
 
   // 测评管理状态
   const [assessments, setAssessments] = useState<Assessment[]>([]);
@@ -65,7 +60,6 @@ const AssessmentManagement: React.FC = () => {
   const [assessmentFormVisible, setAssessmentFormVisible] = useState(false);
   const [assessmentForm] = Form.useForm();
   const [editingAssessmentId, setEditingAssessmentId] = useState<string | null>(null);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [searchKeyword, setSearchKeyword] = useState('');
 
@@ -76,32 +70,26 @@ const AssessmentManagement: React.FC = () => {
   const [questionForm] = Form.useForm();
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [reorderingQuestionId, setReorderingQuestionId] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState('categories');
-
-  // 加载分类列表
+  // ========== 数据加载 ==========
   const loadCategories = async () => {
-    setCategoryLoading(true);
+    setCategoriesLoading(true);
     try {
-      const response = await assessmentApi.getCategories({
-        page: categoryPage,
-        pageSize: 20,
-      });
+      const response = await assessmentApi.getActiveCategories();
       if (response.success && response.data) {
-        setCategories(response.data.list || []);
-        setCategoryTotal(response.data.total || 0);
+        setCategories(response.data as AssessmentCategory[]);
       } else {
-        message.error(response.message || '获取分类列表失败');
+        message.warning(response.message || '获取分类失败，请检查是否存在默认分类');
       }
     } catch (error: any) {
       console.error('loadCategories error:', error);
-      message.error('网络错误，无法获取分类数据');
+      message.warning('获取分类失败，创建测评时请确保后台存在至少一个分类');
     } finally {
-      setCategoryLoading(false);
+      setCategoriesLoading(false);
     }
   };
 
-  // 加载测评列表
   const loadAssessments = async () => {
     setAssessmentLoading(true);
     try {
@@ -109,7 +97,6 @@ const AssessmentManagement: React.FC = () => {
         page: assessmentPage,
         pageSize: 20,
       };
-      if (selectedCategoryId) params.categoryId = selectedCategoryId;
       if (statusFilter) params.status = statusFilter;
       if (searchKeyword) params.keyword = searchKeyword;
 
@@ -129,60 +116,14 @@ const AssessmentManagement: React.FC = () => {
   };
 
   useEffect(() => {
-    if (activeTab === 'categories') {
-      loadCategories();
-    } else if (activeTab === 'assessments') {
-      loadAssessments();
-    }
-  }, [activeTab, categoryPage, assessmentPage, selectedCategoryId, statusFilter, searchKeyword]);
+    loadCategories();
+  }, []);
 
-  // 分类表单提交
-  const handleCategorySubmit = async () => {
-    try {
-      const values = await categoryForm.validateFields();
-      if (editingCategoryId) {
-        const response = await assessmentApi.updateCategory(editingCategoryId, values);
-        if (!response.success) {
-          message.error(response.message || '更新分类失败');
-          return;
-        }
-        message.success('分类更新成功');
-      } else {
-        const response = await assessmentApi.createCategory(values);
-        if (!response.success) {
-          message.error(response.message || '创建分类失败');
-          return;
-        }
-        message.success('分类创建成功');
-      }
-      setCategoryFormVisible(false);
-      categoryForm.resetFields();
-      setEditingCategoryId(null);
-      loadCategories();
-    } catch (error: any) {
-      if (error.errorFields) return;
-      console.error('handleCategorySubmit error:', error);
-      message.error('操作失败，请稍后再试');
-    }
-  };
+  useEffect(() => {
+    loadAssessments();
+  }, [assessmentPage, statusFilter, searchKeyword]);
 
-  // 删除分类
-  const handleDeleteCategory = async (category: AssessmentCategory) => {
-    try {
-      const response = await assessmentApi.deleteCategory(category.id);
-      if (!response.success) {
-        message.error(response.message || '删除失败');
-        return;
-      }
-      message.success('删除成功');
-      loadCategories();
-    } catch (error: any) {
-      console.error('handleDeleteCategory error:', error);
-      message.error('删除失败，请稍后再试');
-    }
-  };
-
-  // 测评表单提交
+  // ========== 测评表单 ==========
   const handleAssessmentSubmit = async () => {
     try {
       const values = await assessmentForm.validateFields();
@@ -193,11 +134,25 @@ const AssessmentManagement: React.FC = () => {
             .map((line: string) => line.trim())
             .filter((line: string) => line.length > 0)
         : [];
-      const payload = {
+
+      const payload: any = {
         ...restValues,
+        categoryId: restValues.categoryId || categories[0]?.id,
         guidelines: guidelineLines,
         tags: restValues.tags ? (Array.isArray(restValues.tags) ? restValues.tags : restValues.tags.split(',').map((t: string) => t.trim())) : [],
       };
+
+      if (!payload.coverImage || !String(payload.coverImage).trim()) {
+        delete payload.coverImage;
+      }
+      if (!payload.description || !String(payload.description).trim()) {
+        delete payload.description;
+      }
+
+      if (!payload.categoryId) {
+        message.error('缺少分类，请先在后端创建一个默认分类');
+        return;
+      }
 
       if (editingAssessmentId) {
         const response = await assessmentApi.updateAssessment(editingAssessmentId, payload);
@@ -217,15 +172,17 @@ const AssessmentManagement: React.FC = () => {
       setAssessmentFormVisible(false);
       assessmentForm.resetFields();
       setEditingAssessmentId(null);
+      setCurrentAssessment(null);
+      setQuestions([]);
       loadAssessments();
     } catch (error: any) {
       if (error.errorFields) return;
+      const serverMsg = error?.response?.data?.message;
       console.error('handleAssessmentSubmit error:', error);
-      message.error('操作失败，请稍后再试');
+      message.error(serverMsg || '操作失败，请稍后再试');
     }
   };
 
-  // 编辑测评并加载题目
   const handleEditAssessment = async (assessment: Assessment) => {
     setEditingAssessmentId(assessment.id);
     try {
@@ -254,7 +211,6 @@ const AssessmentManagement: React.FC = () => {
     }
   };
 
-  // 查看测评详情
   const handleViewAssessment = async (assessment: Assessment) => {
     try {
       const response = await assessmentApi.getAssessmentDetail(assessment.id);
@@ -273,7 +229,6 @@ const AssessmentManagement: React.FC = () => {
           status: response.data.status,
           isHot: response.data.isHot,
         });
-        setActiveTab('questions');
         setAssessmentFormVisible(true);
       }
     } catch (error: any) {
@@ -282,7 +237,6 @@ const AssessmentManagement: React.FC = () => {
     }
   };
 
-  // 删除测评
   const handleDeleteAssessment = async (assessment: Assessment) => {
     try {
       const response = await assessmentApi.deleteAssessment(assessment.id);
@@ -298,7 +252,7 @@ const AssessmentManagement: React.FC = () => {
     }
   };
 
-  // 题目表单提交
+  // ========== 题目相关 ==========
   const handleQuestionSubmit = async () => {
     try {
       const values = await questionForm.validateFields();
@@ -330,12 +284,9 @@ const AssessmentManagement: React.FC = () => {
       setQuestionFormVisible(false);
       questionForm.resetFields();
       setEditingQuestionId(null);
-      // 重新加载测评详情
-      if (currentAssessment) {
-        const response = await assessmentApi.getAssessmentDetail(currentAssessment.id);
-        if (response.success && response.data) {
-          setQuestions(response.data.questions || []);
-        }
+      const detail = await assessmentApi.getAssessmentDetail(currentAssessment.id);
+      if (detail.success && detail.data) {
+        setQuestions(detail.data.questions || []);
       }
     } catch (error: any) {
       if (error.errorFields) return;
@@ -344,7 +295,6 @@ const AssessmentManagement: React.FC = () => {
     }
   };
 
-  // 删除题目
   const handleDeleteQuestion = async (question: AssessmentQuestion) => {
     try {
       const response = await assessmentApi.deleteQuestion(question.id);
@@ -353,11 +303,10 @@ const AssessmentManagement: React.FC = () => {
         return;
       }
       message.success('删除成功');
-      // 重新加载题目列表
       if (currentAssessment) {
-        const response = await assessmentApi.getAssessmentDetail(currentAssessment.id);
-        if (response.success && response.data) {
-          setQuestions(response.data.questions || []);
+        const detail = await assessmentApi.getAssessmentDetail(currentAssessment.id);
+        if (detail.success && detail.data) {
+          setQuestions(detail.data.questions || []);
         }
       }
     } catch (error: any) {
@@ -366,7 +315,47 @@ const AssessmentManagement: React.FC = () => {
     }
   };
 
-  // 编辑题目
+  const handleMoveQuestion = async (questionId: string, direction: 'up' | 'down') => {
+    if (!currentAssessment) {
+      message.warning('请先选择或保存测评后再调整题目顺序');
+      return;
+    }
+
+    const ordered = [...questions].sort((a, b) => a.sortOrder - b.sortOrder);
+    const currentIndex = ordered.findIndex((q) => q.id === questionId);
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= ordered.length) {
+      message.info('已经到顶/底了');
+      return;
+    }
+
+    const updated = [...ordered];
+    const [moving] = updated.splice(currentIndex, 1);
+    updated.splice(targetIndex, 0, moving);
+    const newOrderedWithIndex = updated.map((item, index) => ({ ...item, sortOrder: index }));
+    const payload = newOrderedWithIndex.map((item) => ({ id: item.id, sortOrder: item.sortOrder }));
+
+    setReorderingQuestionId(questionId);
+    setQuestions(newOrderedWithIndex);
+
+    try {
+      const response = await assessmentApi.reorderQuestions(currentAssessment.id, payload);
+      if (!response.success) {
+        message.error(response.message || '更新顺序失败');
+        setQuestions(ordered);
+        return;
+      }
+      message.success('题目顺序已更新');
+    } catch (error: any) {
+      console.error('handleMoveQuestion error:', error);
+      message.error('更新顺序失败，请稍后再试');
+      setQuestions(ordered);
+    } finally {
+      setReorderingQuestionId(null);
+    }
+  };
+
   const handleEditQuestion = (question: AssessmentQuestion) => {
     setEditingQuestionId(question.id);
     questionForm.setFieldsValue({
@@ -380,7 +369,7 @@ const AssessmentManagement: React.FC = () => {
     setQuestionFormVisible(true);
   };
 
-  // 图片上传处理
+  // ========== 上传 ==========
   const handleImageUpload = async (file: File): Promise<string> => {
     setUploading(true);
     try {
@@ -399,80 +388,7 @@ const AssessmentManagement: React.FC = () => {
     }
   };
 
-  // 分类表格列
-  const categoryColumns: ColumnsType<AssessmentCategory> = [
-    {
-      title: '排序',
-      dataIndex: 'sortOrder',
-      key: 'sortOrder',
-      width: 80,
-      sorter: (a, b) => a.sortOrder - b.sortOrder,
-    },
-    {
-      title: '分类名称',
-      dataIndex: 'name',
-      key: 'name',
-    },
-    {
-      title: '描述',
-      dataIndex: 'description',
-      key: 'description',
-      ellipsis: true,
-    },
-    {
-      title: '测评数量',
-      key: 'count',
-      width: 100,
-      render: (_, record) => record._count?.assessments || 0,
-    },
-    {
-      title: '状态',
-      dataIndex: 'isActive',
-      key: 'isActive',
-      width: 100,
-      render: (isActive: boolean) => (
-        <Badge status={isActive ? 'success' : 'default'} text={isActive ? '启用' : '禁用'} />
-      ),
-    },
-    {
-      title: '操作',
-      key: 'action',
-      width: 200,
-      render: (_, record) => (
-        <Space size="small">
-          <Tooltip title="编辑">
-            <Button
-              type="link"
-              icon={<EditOutlined />}
-              onClick={() => {
-                setEditingCategoryId(record.id);
-                categoryForm.setFieldsValue({
-                  name: record.name,
-                  description: record.description || '',
-                  icon: record.icon || '',
-                  sortOrder: record.sortOrder,
-                  isActive: record.isActive,
-                });
-                setCategoryFormVisible(true);
-              }}
-            />
-          </Tooltip>
-          <Popconfirm
-            title="确定要删除这个分类吗？"
-            onConfirm={() => handleDeleteCategory(record)}
-            okText="确定"
-            cancelText="取消"
-          >
-            <Tooltip title="删除">
-              <Button type="link" danger icon={<DeleteOutlined />} />
-            </Tooltip>
-          </Popconfirm>
-        </Space>
-      ),
-    },
-  ];
-
-  // 测评表格列
+  // ========== 列定义 ==========
   const assessmentColumns: ColumnsType<Assessment> = [
     {
       title: '封面',
@@ -491,12 +407,6 @@ const AssessmentManagement: React.FC = () => {
       dataIndex: 'title',
       key: 'title',
       ellipsis: true,
-    },
-    {
-      title: '分类',
-      key: 'category',
-      width: 120,
-      render: (_, record) => <Tag>{record.category?.name || '-'}</Tag>,
     },
     {
       title: '题目数',
@@ -543,6 +453,13 @@ const AssessmentManagement: React.FC = () => {
       },
     },
     {
+      title: '创建时间',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
+      width: 160,
+      render: (val: string) => (val ? dayjs(val).format('YYYY-MM-DD HH:mm') : '-'),
+    },
+    {
       title: '操作',
       key: 'action',
       width: 250,
@@ -572,160 +489,82 @@ const AssessmentManagement: React.FC = () => {
 
   return (
     <div style={{ padding: '24px' }}>
-      <Card>
-        <Tabs activeKey={activeTab} onChange={setActiveTab}>
-          {/* 分类管理 */}
-          <Tabs.TabPane tab="测评分类" key="categories">
-            <Card
-              title="测评分类管理"
-              extra={
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => {
-                  setEditingCategoryId(null);
-                  categoryForm.resetFields();
-                  setCategoryFormVisible(true);
-                }}>
-                  新建分类
-                </Button>
-              }
+      <Card
+        title="测评管理（不区分分类，一卷一管理）"
+        extra={
+          <Space>
+            <Button icon={<ReloadOutlined />} onClick={loadAssessments} loading={assessmentLoading}>
+              刷新
+            </Button>
+            <Tooltip title="创建测评时自动绑定首个分类，若后端强制要求请先创建一个默认分类">
+              <QuestionCircleOutlined style={{ color: '#999' }} />
+            </Tooltip>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                setEditingAssessmentId(null);
+                assessmentForm.resetFields();
+                setCurrentAssessment(null);
+                setQuestions([]);
+                const defaultCategoryId = categories[0]?.id;
+                assessmentForm.setFieldsValue({
+                  categoryId: defaultCategoryId,
+                  durationMinutes: 15,
+                  difficulty: 'BEGINNER',
+                  status: 'DRAFT',
+                  isHot: false,
+                });
+                setAssessmentFormVisible(true);
+              }}
             >
-              <Table
-                columns={categoryColumns}
-                dataSource={categories}
-                rowKey="id"
-                loading={categoryLoading}
-                pagination={{
-                  current: categoryPage,
-                  pageSize: 20,
-                  total: categoryTotal,
-                  showTotal: (total) => `共 ${total} 条记录`,
-                  onChange: (page) => setCategoryPage(page),
-                }}
-              />
-            </Card>
-          </Tabs.TabPane>
-
-          {/* 测评管理 */}
-          <Tabs.TabPane tab="测评管理" key="assessments">
-            <Card
-              title="测评管理"
-              extra={
-                <Space>
-                  <Button icon={<ReloadOutlined />} onClick={loadAssessments} loading={assessmentLoading}>
-                    刷新
-                  </Button>
-                  <Button
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    onClick={() => {
-                      setEditingAssessmentId(null);
-                      assessmentForm.resetFields();
-                      setCurrentAssessment(null);
-                      setQuestions([]);
-                      setAssessmentFormVisible(true);
-                    }}
-                  >
-                    新建测评
-                  </Button>
-                </Space>
-              }
+              新建测评
+            </Button>
+          </Space>
+        }
+      >
+        <Row gutter={16} style={{ marginBottom: 16 }}>
+          <Col span={6}>
+            <Select
+              style={{ width: '100%' }}
+              placeholder="选择状态"
+              allowClear
+              value={statusFilter || undefined}
+              onChange={setStatusFilter}
             >
-              <Row gutter={16} style={{ marginBottom: 16 }}>
-                <Col span={6}>
-                  <Select
-                    style={{ width: '100%' }}
-                    placeholder="选择分类"
-                    allowClear
-                    value={selectedCategoryId || undefined}
-                    onChange={setSelectedCategoryId}
-                  >
-                    {categories.filter(c => c.isActive).map((cat) => (
-                      <Option key={cat.id} value={cat.id}>
-                        {cat.name}
-                      </Option>
-                    ))}
-                  </Select>
-                </Col>
-                <Col span={6}>
-                  <Select
-                    style={{ width: '100%' }}
-                    placeholder="选择状态"
-                    allowClear
-                    value={statusFilter || undefined}
-                    onChange={setStatusFilter}
-                  >
-                    <Option value="DRAFT">草稿</Option>
-                    <Option value="PUBLISHED">已发布</Option>
-                    <Option value="ARCHIVED">已归档</Option>
-                  </Select>
-                </Col>
-                <Col span={8}>
-                  <Input
-                    placeholder="搜索标题、描述..."
-                    prefix={<SearchOutlined />}
-                    value={searchKeyword}
-                    onChange={(e) => setSearchKeyword(e.target.value)}
-                    allowClear
-                  />
-                </Col>
-              </Row>
+              <Option value="DRAFT">草稿</Option>
+              <Option value="PUBLISHED">已发布</Option>
+              <Option value="ARCHIVED">已归档</Option>
+            </Select>
+          </Col>
+          <Col span={10}>
+            <Input
+              placeholder="搜索标题、描述..."
+              prefix={<SearchOutlined />}
+              value={searchKeyword}
+              onChange={(e) => setSearchKeyword(e.target.value)}
+              allowClear
+            />
+          </Col>
+        </Row>
 
-              <Table
-                columns={assessmentColumns}
-                dataSource={assessments}
-                rowKey="id"
-                loading={assessmentLoading}
-                scroll={{ x: 1200 }}
-                pagination={{
-                  current: assessmentPage,
-                  pageSize: 20,
-                  total: assessmentTotal,
-                  showTotal: (total) => `共 ${total} 条记录`,
-                  onChange: (page) => setAssessmentPage(page),
-                }}
-              />
-            </Card>
-          </Tabs.TabPane>
-        </Tabs>
+        <Table
+          columns={assessmentColumns}
+          dataSource={assessments}
+          rowKey="id"
+          loading={assessmentLoading}
+          scroll={{ x: 1200 }}
+          pagination={{
+            current: assessmentPage,
+            pageSize: 20,
+            total: assessmentTotal,
+            showTotal: (total) => `共 ${total} 条记录`,
+            onChange: (page) => setAssessmentPage(page),
+          }}
+        />
       </Card>
 
-      {/* 分类表单弹窗 */}
-      <Modal
-        title={editingCategoryId ? '编辑分类' : '新建分类'}
-        open={categoryFormVisible}
-        onOk={handleCategorySubmit}
-        onCancel={() => {
-          setCategoryFormVisible(false);
-          categoryForm.resetFields();
-          setEditingCategoryId(null);
-        }}
-        width={600}
-      >
-        <Form form={categoryForm} layout="vertical">
-          <Form.Item name="name" label="分类名称" rules={[{ required: true, message: '请输入分类名称' }]}>
-            <Input placeholder="请输入分类名称" />
-          </Form.Item>
-          <Form.Item name="description" label="描述">
-            <TextArea rows={3} placeholder="请输入分类描述" />
-          </Form.Item>
-          <Form.Item name="icon" label="图标">
-            <Input placeholder="图标URL或图标名称" />
-          </Form.Item>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="sortOrder" label="排序" initialValue={0}>
-                <InputNumber min={0} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="isActive" label="状态" valuePropName="checked" initialValue={true}>
-                <Switch checkedChildren="启用" unCheckedChildren="禁用" />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Form>
-      </Modal>
-
-      {/* 测评表单弹窗 */}
+      {/* 测评表单 + 题库管理 */}
       <Modal
         title={editingAssessmentId ? '编辑测评' : '新建测评'}
         open={assessmentFormVisible}
@@ -746,16 +585,15 @@ const AssessmentManagement: React.FC = () => {
             <Form form={assessmentForm} layout="vertical">
               <Form.Item
                 name="categoryId"
-                label="分类"
+                label="所属分类（为兼容后端必填，建议固定一个默认分类）"
                 rules={[{ required: true, message: '请选择分类' }]}
               >
-                <Select placeholder="请选择分类">
-                  {categories.filter(c => c.isActive).map((cat) => (
-                    <Option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </Option>
-                  ))}
-                </Select>
+                <Select
+                  placeholder={categoriesLoading ? '加载中…' : '请选择或使用默认分类'}
+                  loading={categoriesLoading}
+                  allowClear
+                  options={categories.map((cat) => ({ label: cat.name, value: cat.id }))}
+                />
               </Form.Item>
               <Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入标题' }]}>
                 <Input placeholder="请输入测评标题" />
@@ -846,7 +684,6 @@ const AssessmentManagement: React.FC = () => {
             </Form>
           </Tabs.TabPane>
 
-          {/* 题目管理 */}
           <Tabs.TabPane tab={`题目管理 (${questions.length})`} key="questions">
             <div style={{ marginBottom: 16 }}>
               <Button
@@ -861,7 +698,10 @@ const AssessmentManagement: React.FC = () => {
                   questionForm.resetFields();
                   questionForm.setFieldsValue({
                     questionType: 'SINGLE_CHOICE',
-                    options: [],
+                    options: [
+                      { label: 'A', text: '选项A', score: 1 },
+                      { label: 'B', text: '选项B', score: 0 }
+                    ],
                     score: 0,
                     sortOrder: questions.length,
                   });
@@ -870,6 +710,9 @@ const AssessmentManagement: React.FC = () => {
               >
                 添加题目
               </Button>
+              <Text type="secondary" style={{ marginLeft: 12 }}>
+                不再区分分类，直接维护问卷题库；上下移动可调整展示顺序。
+              </Text>
             </div>
 
             {questions.length === 0 ? (
@@ -877,6 +720,7 @@ const AssessmentManagement: React.FC = () => {
             ) : (
               <Collapse>
                 {questions
+                  .slice()
                   .sort((a, b) => a.sortOrder - b.sortOrder)
                   .map((question, index) => (
                     <Panel
@@ -891,6 +735,33 @@ const AssessmentManagement: React.FC = () => {
                           <Space>
                             <Tag>{question.questionType === 'SINGLE_CHOICE' ? '单选' : question.questionType === 'MULTIPLE_CHOICE' ? '多选' : '文本'}</Tag>
                             <Tag>分值: {question.score}</Tag>
+                            <Tag color="purple">排序: {(question.sortOrder ?? index) + 1}</Tag>
+                            <Button
+                              type="link"
+                              size="small"
+                              icon={<ArrowUpOutlined />}
+                              disabled={index === 0}
+                              loading={reorderingQuestionId === question.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMoveQuestion(question.id, 'up');
+                              }}
+                            >
+                              上移
+                            </Button>
+                            <Button
+                              type="link"
+                              size="small"
+                              icon={<ArrowDownOutlined />}
+                              disabled={index === questions.length - 1}
+                              loading={reorderingQuestionId === question.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMoveQuestion(question.id, 'down');
+                              }}
+                            >
+                              下移
+                            </Button>
                             <Button
                               type="link"
                               size="small"

@@ -157,3 +157,19 @@ INSERT INTO `expert_posts` (`id`, `expert_name`, `expert_title`, `expert_company
 ('expert-001', '张三', '阿里巴巴P9架构师', '阿里巴巴', '如何在大厂快速晋升', '分享我在阿里10年的晋升经验...', 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400', '["职业发展","大厂"]', 35000, 2100, NOW()),
 ('expert-002', '李四', '字节跳动产品总监', '字节跳动', '抖音产品设计背后的思考', '揭秘抖音产品设计的核心逻辑...', 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=400', '["产品设计","抖音"]', 28000, 1800, NOW());
 
+-- 应用版本管理表
+CREATE TABLE IF NOT EXISTS `app_versions` (
+  `id` VARCHAR(191) NOT NULL,
+  `platform` VARCHAR(20) NOT NULL DEFAULT 'ANDROID',
+  `version_name` VARCHAR(50) NOT NULL,
+  `version_code` INTEGER NOT NULL,
+  `download_url` VARCHAR(500) NOT NULL,
+  `release_notes` TEXT NULL,
+  `is_mandatory` BOOLEAN NOT NULL DEFAULT false,
+  `is_active` BOOLEAN NOT NULL DEFAULT true,
+  `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`id`),
+  INDEX `idx_app_versions_platform_active`(`platform`, `is_active`),
+  INDEX `idx_app_versions_version_code`(`version_code`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

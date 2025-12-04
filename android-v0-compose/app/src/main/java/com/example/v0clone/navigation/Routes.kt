@@ -20,6 +20,7 @@ object Routes {
     const val LOGIN = "login"
     const val REGISTER = "register"
     const val DIGITAL_INTERVIEW = "digitalInterview"
+    const val INTERVIEW_COMPLETE = "interviewComplete"
     const val JOB_SELECTION = "jobSelection"
     const val PROFILE_SETTINGS = "profileSettings"
     const val PROFILE_MY_POSTS = "profileMyPosts"

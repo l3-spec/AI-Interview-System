@@ -76,6 +76,7 @@ fun V0App() {
         currentRoute == Routes.REGISTER ||
         currentRoute == Routes.AI ||
         currentRoute == Routes.DIGITAL_INTERVIEW ||
+        currentRoute == Routes.INTERVIEW_COMPLETE ||
         currentRoute == Routes.EDIT_INTENTION ||
         currentRoute.startsWith(Routes.JOB_DETAIL) ||
         (currentRoute == Routes.PROFILE && token.isNullOrEmpty())

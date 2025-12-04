@@ -200,6 +200,7 @@ fun DigitalInterviewScreen(
     val digitalHumanReady = duixReady
     val digitalHumanStatus = duixStatus
     var hasReportedCompletion by rememberSaveable(uiState.sessionId) { mutableStateOf(false) }
+    var autoRecorderEnabled by rememberSaveable { mutableStateOf(true) }
 
     // 调试日志
     LaunchedEffect(uiState) {
@@ -363,6 +364,20 @@ fun DigitalInterviewScreen(
         }
     }
 
+    // 无需手动按钮，保持自动录音：当连接就绪且双方静默时自动开启录音
+    LaunchedEffect(connectionState, digitalHumanReady, isRecording, isProcessing, isDigitalHumanSpeaking, interviewCompleted) {
+        if (autoRecorderEnabled &&
+            digitalHumanReady &&
+            connectionState == ConnectionState.CONNECTED &&
+            !interviewCompleted &&
+            !isRecording &&
+            !isProcessing &&
+            !isDigitalHumanSpeaking
+        ) {
+            toggleRecording()
+        }
+    }
+
     Box(
         modifier = Modifier.fillMaxSize()
     ) {
@@ -420,8 +435,7 @@ fun DigitalInterviewScreen(
                 connectionState = connectionState,
                 partialTranscript = partialTranscript,
                 latestDigitalHumanText = latestDigitalHumanText,
-                conversation = conversation,
-                onToggleRecording = toggleRecording
+                conversation = conversation
             )
         }
 
@@ -579,7 +593,10 @@ private fun InterviewStage(
                     DuixViewHost(
                         modelUrl = duixModelUrl,
                         baseConfigUrl = duixBaseConfigUrl,
-                        modifier = Modifier.matchParentSize(),
+                        modifier = Modifier
+                            .matchParentSize()
+                            .scale(1.05f)
+                            .offset(x = 32.dp),
                         onReadyChanged = onDuixReadyChanged,
                         onStatusChanged = { status ->
                             onDigitalHumanStatus(status)
@@ -700,8 +717,7 @@ private fun BottomSection(
     connectionState: ConnectionState,
     partialTranscript: String,
     latestDigitalHumanText: String?,
-    conversation: List<ConversationMessage>,
-    onToggleRecording: () -> Unit
+    conversation: List<ConversationMessage>
 ) {
     LaunchedEffect(Unit) {
         Log.d("BottomSection", "Rendering bottom section: question=${uiState.questionText}")
@@ -709,7 +725,7 @@ private fun BottomSection(
     
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(24.dp)
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
 
 
@@ -720,23 +736,6 @@ private fun BottomSection(
             isRecording = isRecording,
             isDigitalHumanSpeaking = isDigitalHumanSpeaking,
             connectionState = connectionState
-        )
-
-        val isVoiceConnected = connectionState == ConnectionState.CONNECTED
-        val buttonText = when {
-            interviewCompleted -> "面试已结束"
-            !isDigitalHumanReady -> "正在唤起DUIX数字人…"
-            !isVoiceConnected -> "连接语音服务中…"
-            isProcessing -> "数字人应答中…"
-            isRecording -> "停止聆听"
-            else -> "开始答题"
-        }
-        val buttonEnabled = isVoiceConnected && !isProcessing && isDigitalHumanReady && !interviewCompleted
-
-        StartAnswerButton(
-            text = buttonText,
-            enabled = buttonEnabled,
-            onClick = onToggleRecording
         )
 
         if (!isDigitalHumanReady && !digitalHumanStatus.isNullOrBlank()) {
@@ -795,6 +794,13 @@ private fun QuestionTagChip(
 
 
 
+private data class RoleDisplay(
+    val roleLabel: String,
+    val contentText: String,
+    val activeColor: Color,
+    val blinkMs: Int
+)
+
 @Composable
 private fun ConversationPanel(
     partialTranscript: String,
@@ -805,33 +811,38 @@ private fun ConversationPanel(
     connectionState: ConnectionState
 ) {
     // Determine what to show in the subtitle area
-    val (roleLabel, contentText, activeColor) = when {
+    val display = when {
         // 1. User is speaking (High Priority)
         isRecording -> {
             val text = if (partialTranscript.isNotBlank()) partialTranscript else "..."
-            Triple("我", text, Color(0xFFEC7C38))
+            RoleDisplay("我", text, Color(0xFFEC7C38), 550)
         }
         // 2. Digital Human is speaking
         isDigitalHumanSpeaking -> {
             val text = if (!latestDigitalHumanText.isNullOrBlank()) latestDigitalHumanText else "..."
-            Triple("面试官", text, Color(0xFF43C1C9))
+            RoleDisplay("面试官", text, Color(0xFF43C1C9), 1100)
         }
         // 3. Fallback to last message
         else -> {
             val lastMsg = conversation.lastOrNull()
             if (lastMsg != null) {
                 val isUser = lastMsg.role == ConversationRole.USER
-                Triple(
-                    if (isUser) "我" else "面试官",
-                    lastMsg.text,
-                    if (isUser) Color(0xFFEC7C38) else Color(0xFF43C1C9)
+                RoleDisplay(
+                    roleLabel = if (isUser) "我" else "面试官",
+                    contentText = lastMsg.text,
+                    activeColor = if (isUser) Color(0xFFEC7C38) else Color(0xFF43C1C9),
+                    blinkMs = if (isUser) 550 else 1100
                 )
             } else {
                 // 4. Initial state
-                Triple("", "点击“开始答题”与数字人沟通", Color.Gray)
+                RoleDisplay("", "非常荣幸认识您，让我们像朋友视频那样聊聊工作，您可以介绍一下。", Color.Gray, 900)
             }
         }
     }
+    val roleLabel = display.roleLabel
+    val contentText = display.contentText
+    val activeColor = display.activeColor
+    val blinkMs = display.blinkMs
 
     Column(
         modifier = Modifier
@@ -852,7 +863,8 @@ private fun ConversationPanel(
                     AnimatedRecordingIndicator(
                         modifier = Modifier.size(10.dp),
                         isSpeaking = true,
-                        activeColor = activeColor
+                        activeColor = activeColor,
+                        blinkDurationMs = blinkMs
                     )
                 }
                 Text(
@@ -1057,7 +1069,8 @@ private fun StartAnswerButton(
 private fun AnimatedRecordingIndicator(
     modifier: Modifier = Modifier.size(8.dp),
     isSpeaking: Boolean,
-    activeColor: Color = Color.Red
+    activeColor: Color = Color.Red,
+    blinkDurationMs: Int = 1000
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "recording")
 
@@ -1065,7 +1078,7 @@ private fun AnimatedRecordingIndicator(
         initialValue = 0.3f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = LinearEasing),
+            animation = tween(blinkDurationMs, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "alpha"
@@ -1075,7 +1088,7 @@ private fun AnimatedRecordingIndicator(
         initialValue = 0.8f,
         targetValue = 1.2f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = LinearEasing),
+            animation = tween(blinkDurationMs, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "scale"

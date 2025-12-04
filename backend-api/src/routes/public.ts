@@ -9,6 +9,7 @@ import {
   getHomeFeed,
 } from '../controllers/publicController';
 import { authenticateToken } from '../middleware/auth';
+import { getLatestAppVersion } from '../controllers/appVersionController';
 
 const router = express.Router();
 
@@ -122,5 +123,8 @@ router.post('/jobs/:id/apply', authenticateToken, applyForJob);
 
 // 首页内容（横幅、评测、帖子、专家）
 router.get('/home', getHomeFeed);
+
+// 应用版本检测
+router.get('/app-version', getLatestAppVersion);
 
 export default router; 

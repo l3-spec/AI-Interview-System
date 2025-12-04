@@ -161,6 +161,21 @@ export interface JobDictionaryCategory {
   positions?: JobDictionaryPosition[];
 }
 
+export type AppPlatform = 'ANDROID' | 'IOS';
+
+export interface AppVersion {
+  id: string;
+  platform: AppPlatform;
+  versionName: string;
+  versionCode: number;
+  downloadUrl: string;
+  releaseNotes?: string | null;
+  isMandatory: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // 创建axios实例
 const apiClient = axios.create({
   baseURL: config.API_BASE_URL,
@@ -500,6 +515,39 @@ export const homeContentApi = {
   },
   deleteCompanyShowcase: async (companyId: string): Promise<ApiResponse> => {
     return await apiClient.delete(`/admin/home/company-showcases/${companyId}`);
+  }
+};
+
+export const appVersionApi = {
+  getList: async (
+    params?: Record<string, any>
+  ): Promise<ApiResponse<PaginationResult<AppVersion>>> => {
+    const response = await apiClient.get('/admin/app-versions', { params }) as ApiResponse<any>;
+    if (response?.success && response.data) {
+      response.data = {
+        list: Array.isArray(response.data.list)
+          ? response.data.list.map((item: any) => ({
+            ...item,
+            versionCode: Number(item.versionCode ?? 0),
+            isMandatory: Boolean(item.isMandatory),
+            isActive: Boolean(item.isActive)
+          }))
+          : [],
+        total: Number(response.data.total ?? 0),
+        page: Number(response.data.page ?? 1),
+        pageSize: Number(response.data.pageSize ?? (params?.pageSize || config.DEFAULT_PAGE_SIZE)),
+      };
+    }
+    return response as ApiResponse<PaginationResult<AppVersion>>;
+  },
+  create: async (payload: Partial<AppVersion>): Promise<ApiResponse<AppVersion>> => {
+    return await apiClient.post('/admin/app-versions', payload);
+  },
+  update: async (id: string, payload: Partial<AppVersion>): Promise<ApiResponse<AppVersion>> => {
+    return await apiClient.put(`/admin/app-versions/${id}`, payload);
+  },
+  activate: async (id: string): Promise<ApiResponse<AppVersion>> => {
+    return await apiClient.post(`/admin/app-versions/${id}/activate`);
   }
 };
 

@@ -99,7 +99,8 @@ router.get('/', (req, res) => {
       home: '/api/home',
       'job-dictionary': '/api/job-dictionary',
       'job-preferences': '/api/job-preferences',
-      messages: '/api/messages'
+      messages: '/api/messages',
+      'app-version': '/api/public/app-version'
     }
   });
 });
