@@ -595,8 +595,9 @@ private fun InterviewStage(
                         baseConfigUrl = duixBaseConfigUrl,
                         modifier = Modifier
                             .matchParentSize()
-                            .scale(1.05f)
-                            .offset(x = 10.dp),
+                            .scale(1.0f)
+                            .offset(x = 0.dp)
+                            .offset(y = 0.dp),
                         onReadyChanged = onDuixReadyChanged,
                         onStatusChanged = { status ->
                             onDigitalHumanStatus(status)

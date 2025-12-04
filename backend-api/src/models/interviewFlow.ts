@@ -37,6 +37,7 @@ export interface InterviewRound {
   endTime?: Date;
   score?: number;
   feedback?: string;
+  followupCount?: number;
 }
 
 export interface ResponseAnalysis {

@@ -23,11 +23,28 @@ interface DeepseekResponse {
     };
     finish_reason: string;
   }>;
-  usage: {
+  usage?: {
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
   };
+}
+
+export interface AnalysisResult {
+  score: number;
+  feedback: string;
+  needsFollowup: boolean;
+  strengths: string[];
+  weaknesses: string[];
+  suggestions: string[];
+}
+
+export interface OpeningResult {
+  opening: string;
+}
+
+export interface ClosingResult {
+  closing: string;
 }
 
 interface JobTemplate {
@@ -56,7 +73,7 @@ export class DeepseekService {
 
     // 如果没有API密钥，启用模拟模式
     this.isEnabled = !!this.apiKey;
-    
+
     if (!this.isEnabled) {
       console.warn('⚠️  DEEPSEEK_API_KEY 未配置，将使用模拟模式生成问题');
     } else {
@@ -209,7 +226,7 @@ export class DeepseekService {
 
       // 调用 Deepseek API
       const response = await this.callDeepseekAPI(builtPrompt);
-      
+
       // 解析返回的问题
       const questions = this.parseQuestionsFromResponse(response.choices[0].message.content);
       const trimmedQuestions = questions.slice(0, questionCount);
@@ -230,7 +247,7 @@ export class DeepseekService {
 
     } catch (error) {
       console.error('生成面试问题失败:', error);
-      
+
       // 如果 API 调用失败，返回备用问题
       console.log('API调用失败，使用备用问题...');
       if (!builtPrompt) {
@@ -479,7 +496,7 @@ export class DeepseekService {
   }): Promise<void> {
     try {
       console.log('创建职位模板:', templateData.jobTitle);
-      
+
       await prisma.jobInterviewTemplate.create({
         data: {
           jobTitle: templateData.jobTitle,
@@ -501,51 +518,182 @@ export class DeepseekService {
   /**
    * 生成面试内容 (Placeholder)
    */
-  async generateInterview(prompt: string): Promise<{ content: string }> {
-    console.warn('DeepseekService.generateInterview is a placeholder.');
-    // In a real scenario, this would call the Deepseek API to generate interview content.
-    return { content: "这是一个模拟的面试内容。请问您对这份工作有什么期待？" };
-  }
-
   /**
-   * 分析用户回答 (Placeholder)
+   * 生成面试内容
    */
-  async analyzeResponse(prompt: string): Promise<{
-    score: number;
-    feedback: string;
-    needsFollowup: boolean;
-    strengths: string[];
-    weaknesses: string[];
-    suggestions: string[];
-  }> {
-    console.warn('DeepseekService.analyzeResponse is a placeholder.');
-    // In a real scenario, this would call the Deepseek API to analyze the response.
-    return {
-      score: 80,
-      feedback: "回答完整，逻辑清晰。",
-      needsFollowup: false,
-      strengths: ["逻辑清晰", "表达流畅"],
-      weaknesses: ["缺乏具体案例"],
-      suggestions: ["多结合实际项目经验来阐述"]
-    };
+  async generateInterview(prompt: string): Promise<{ content: string }> {
+    if (!this.isEnabled) {
+      return { content: "这是一个模拟的面试内容。请问您对这份工作有什么期待？" };
+    }
+
+    try {
+      const response = await this.callDeepseekAPI(prompt);
+      const content = response.choices[0]?.message?.content || '';
+      return { content };
+    } catch (error) {
+      console.error('生成面试内容失败:', error);
+      return { content: "生成面试内容失败，请重试。" };
+    }
   }
 
   /**
-   * 生成追问问题 (Placeholder)
+   * 生成开场白
+   */
+  async generateOpening(userInfo: { name: string; targetJob: string }, isFirstTime: boolean): Promise<OpeningResult> {
+    const prompt = `
+你是一位专业的AI面试官。请为候选人生成一段简短、亲切且专业的开场白。
+
+候选人信息：
+- 姓名：${userInfo.name}
+- 目标职位：${userInfo.targetJob}
+- 场景：${isFirstTime ? '第一次进入面试' : '面试中断后重新进入'}
+
+要求：
+1. ${isFirstTime ? '包含欢迎致辞、自我介绍（我是您的AI面试官）、简要说明面试流程（约15-20分钟，分为信息确认和正式面试两部分）。' : '包含欢迎回来致辞，鼓励候选人继续完成面试。'}
+2. 语气专业、亲切、自然。
+3. 长度控制在100字以内。
+4. 请直接输出开场白内容，不要包含任何其他文字。
+    `.trim();
+
+    if (!this.isEnabled) {
+      return { opening: isFirstTime ? "您好，欢迎来到AI面试系统。" : "欢迎回来，让我们继续面试。" };
+    }
+
+    try {
+      const response = await this.callDeepseekAPI(prompt);
+      const content = response.choices[0]?.message?.content || '';
+      return { opening: content.trim() };
+    } catch (error) {
+      console.error('生成开场白失败:', error);
+      return { opening: "您好，欢迎参加面试。" };
+    }
+  }
+
+  /**
+   * 分析用户回答
+   */
+  async analyzeResponse(prompt: string): Promise<AnalysisResult> {
+    if (!this.isEnabled) {
+      return {
+        score: 80,
+        feedback: "回答完整，逻辑清晰。",
+        needsFollowup: false,
+        strengths: ["逻辑清晰", "表达流畅"],
+        weaknesses: ["缺乏具体案例"],
+        suggestions: ["多结合实际项目经验来阐述"]
+      };
+    }
+
+    try {
+      const response = await this.callDeepseekAPI(prompt);
+      const content = response.choices[0]?.message?.content || '';
+
+      // 尝试解析JSON
+      try {
+        // 提取JSON部分（如果DeepSeek返回了Markdown代码块）
+        const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/) || content.match(/\{[\s\S]*\}/);
+        const jsonStr = jsonMatch ? jsonMatch[0].replace(/```json|```/g, '') : content;
+
+        const result = JSON.parse(jsonStr);
+        return {
+          score: result.score || 0,
+          feedback: result.feedback || '',
+          needsFollowup: result.needsFollowup || false,
+          strengths: result.strengths || [],
+          weaknesses: result.weaknesses || [],
+          suggestions: result.suggestions || []
+        };
+      } catch (e) {
+        console.warn('解析分析结果JSON失败，尝试文本解析:', e);
+        // 简单的文本解析回退
+        return {
+          score: 70,
+          feedback: content.slice(0, 100),
+          needsFollowup: content.includes("追问") || content.includes("深入"),
+          strengths: [],
+          weaknesses: [],
+          suggestions: []
+        };
+      }
+    } catch (error) {
+      console.error('分析回答失败:', error);
+      return {
+        score: 0,
+        feedback: "分析失败",
+        needsFollowup: false,
+        strengths: [],
+        weaknesses: [],
+        suggestions: []
+      };
+    }
+  }
+
+  /**
+   * 生成追问问题
    */
   async generateFollowup(prompt: string): Promise<{ question: string }> {
-    console.warn('DeepseekService.generateFollowup is a placeholder.');
-    // In a real scenario, this would call the Deepseek API to generate a followup question.
-    return { question: "您刚才提到了...，能详细说明一下您是如何实现它的吗？" };
+    if (!this.isEnabled) {
+      return { question: "您刚才提到了...，能详细说明一下您是如何实现它的吗？" };
+    }
+
+    try {
+      const response = await this.callDeepseekAPI(prompt);
+      const content = response.choices[0]?.message?.content || '';
+      return { question: content.trim() };
+    } catch (error) {
+      console.error('生成追问失败:', error);
+      return { question: "能请您多谈谈这方面的细节吗？" };
+    }
   }
 
   /**
-   * 生成面试总结 (Placeholder)
+   * 生成面试总结
    */
   async generateSummary(prompt: string): Promise<{ summary: string }> {
-    console.warn('DeepseekService.generateSummary is a placeholder.');
-    // In a real scenario, this would call the Deepseek API to generate an interview summary.
-    return { summary: "候选人表现良好，对技术有扎实理解，但需加强项目经验的阐述。" };
+    if (!this.isEnabled) {
+      return { summary: "候选人表现良好，对技术有扎实理解，但需加强项目经验的阐述。" };
+    }
+
+    try {
+      const response = await this.callDeepseekAPI(prompt);
+      const content = response.choices[0]?.message?.content || '';
+      return { summary: content.trim() };
+    } catch (error) {
+      console.error('生成总结失败:', error);
+      return { summary: "面试已结束，感谢您的参与。" };
+    }
+  }
+
+  /**
+   * 生成结束语
+   */
+  async generateClosing(summary: string): Promise<ClosingResult> {
+    const prompt = `
+你是一位专业的AI面试官。面试已经结束，请根据以下面试总结为候选人生成一段结束语。
+
+面试总结：${summary}
+
+要求：
+1. 感谢候选人的时间。
+2. 简要提及面试表现（基于总结，保持积极鼓励的基调）。
+3. 说明后续流程（评估报告生成中，请留意通知）。
+4. 语气专业、温暖。
+5. 长度控制在100字以内。
+6. 请直接输出结束语内容。
+    `.trim();
+
+    if (!this.isEnabled) {
+      return { closing: "感谢您的参与，面试结束。详细报告将稍后生成。" };
+    }
+
+    try {
+      const response = await this.callDeepseekAPI(prompt);
+      const content = response.choices[0]?.message?.content || '';
+      return { closing: content.trim() };
+    } catch (error) {
+      console.error('生成结束语失败:', error);
+      return { closing: "面试结束，谢谢。" };
+    }
   }
 
   /**

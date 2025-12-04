@@ -1,4 +1,4 @@
-import { deepseekService } from './deepseekService.js';
+import { deepseekService, OpeningResult, ClosingResult } from './deepseekService.js';
 import { ttsService } from './ttsService.js';
 import { avatarService } from './avatar.service'; // Import avatarService
 import { InterviewSession, InterviewRound, InterviewState, ResponseAnalysis } from '../models/interviewFlow.js'; // Import ResponseAnalysis
@@ -43,13 +43,13 @@ export class InterviewFlowService {
       voiceCode: 'zh-CN-lisa'
     });
 
-    if (isFirstTime) {
-      // 第一次用户：详细介绍流程和注意事项
-      await this.sendIntroductionContent(sessionId);
-    } else {
-      // 老用户：简短欢迎
-      await this.sendWelcomeBackContent(sessionId);
-    }
+    // 生成动态开场白
+    const openingResult = await deepseekService.generateOpening(
+      { name: userName, targetJob: '' }, // targetJob might be empty initially
+      isFirstTime
+    );
+
+    await avatarService.sendTextToAvatar(sessionId, userId, openingResult.opening);
 
     return sessionId;
   }
@@ -139,10 +139,10 @@ export class InterviewFlowService {
 
     // 1. 使用DeepSeek生成面试内容
     const interviewContent = await this.generateInterviewContent(session);
-    
+
     // 2. 将内容转换为语音回合
     const interviewRounds = await this.createInterviewRounds(sessionId, interviewContent);
-    
+
     session.rounds = interviewRounds;
     session.state = InterviewState.READY;
 
@@ -192,13 +192,13 @@ export class InterviewFlowService {
    */
   private async createInterviewRounds(sessionId: string, content: string): Promise<InterviewRound[]> {
     const rounds: InterviewRound[] = [];
-    
+
     // 解析DeepSeek生成的内容
     const questions = this.parseInterviewContent(content);
-    
+
     for (let i = 0; i < questions.length; i++) {
       const question = questions[i];
-      
+
       // 生成TTS语音
       const ttsResult = await ttsService.textToSpeech({
         text: question.text,
@@ -228,7 +228,7 @@ export class InterviewFlowService {
   private parseInterviewContent(content: string) {
     // 这里实现从DeepSeek响应中解析问题
     // 简化版实现
-    const questions = content.split('\n').filter(line => 
+    const questions = content.split('\n').filter(line =>
       line.trim().startsWith('问题') || line.trim().endsWith('？')
     ).map((q, index) => ({
       text: q.trim(),
@@ -258,7 +258,7 @@ export class InterviewFlowService {
 
     // 通过数字人播放问题
     await avatarService.sendTextToAvatar(sessionId, session.userId, nextRound.question);
-    
+
     // 如果有音频文件，客户端会播放音频，这里不需要服务器端播放
     // if (nextRound.audioUrl) {
     //   await this.playAudio(sessionId, nextRound.audioUrl);
@@ -280,28 +280,74 @@ export class InterviewFlowService {
     if (!session) throw new Error('Session not found');
 
     const currentRound = session.rounds.find(r => r.status === 'in_progress');
+    let analysisResult;
+
     if (currentRound) {
       currentRound.userResponse = response;
       currentRound.status = 'completed';
-      
-      // 这里可以添加AI分析用户回答的逻辑
-      const analysis = await this.analyzeResponse(currentRound, response);
-      currentRound.analysis = analysis;
 
-      if (analysis.needsFollowup) {
-        const followup = await this.generateFollowupQuestion(session, currentRound);
-        await avatarService.sendTextToAvatar(sessionId, session.userId, followup);
+      // AI分析用户回答
+      const prompt = `
+问题：${currentRound.question}
+回答：${response}
+历史对话数：${currentRound.followupCount || 0}
+
+请分析回答质量，并判断是否需要追问。如果回答太简略或不清楚，且追问次数未超过2次，建议追问。
+      `.trim();
+
+      analysisResult = await deepseekService.analyzeResponse(prompt);
+
+      currentRound.analysis = {
+        score: analysisResult.score,
+        feedback: analysisResult.feedback,
+        strengths: analysisResult.strengths,
+        weaknesses: analysisResult.weaknesses,
+        suggestions: analysisResult.suggestions,
+        needsFollowup: analysisResult.needsFollowup
+      };
+
+      // 智能流控：决定是否追问
+      // 限制：每个问题最多追问2次
+      const currentFollowupCount = currentRound.followupCount || 0;
+
+      if (analysisResult.needsFollowup && currentFollowupCount < 2) {
+        // 生成追问
+        const followupPrompt = `
+原始问题：${currentRound.question}
+用户回答：${response}
+请生成一个简短的追问问题，引导用户补充细节。
+        `.trim();
+
+        const followup = await deepseekService.generateFollowup(followupPrompt);
+
+        // 插入新的追问回合
+        const followupRound: InterviewRound = {
+          roundNumber: currentRound.roundNumber, // 保持同一个大题号
+          question: followup.question,
+          duration: 0,
+          expectedPoints: currentRound.expectedPoints,
+          suggestedTime: 120,
+          scoringCriteria: currentRound.scoringCriteria,
+          status: 'pending',
+          followupCount: currentFollowupCount + 1
+        };
+
+        // 找到当前回合的索引，插入到后面
+        const currentIndex = session.rounds.findIndex(r => r === currentRound);
+        if (currentIndex !== -1) {
+          session.rounds.splice(currentIndex + 1, 0, followupRound);
+        }
       }
     }
 
-    // 开始下一轮
+    // 开始下一轮（或者是刚才插入的追问）
     const nextRound = await this.startNextRound(sessionId);
-    
+
     return {
       nextRound,
       isCompleted: !nextRound,
-      feedback: currentRound?.analysis?.feedback,
-      score: currentRound?.analysis?.score // Added score
+      feedback: analysisResult?.feedback,
+      score: analysisResult?.score
     };
   }
 
@@ -359,12 +405,13 @@ export class InterviewFlowService {
 
     // 生成总结
     const summary = await this.generateSummary(session);
-    
-    // 通过数字人发送总结
-    await avatarService.sendTextToAvatar(sessionId, session.userId, summary);
+
+    // 生成并发送结束语
+    const closingResult = await deepseekService.generateClosing(summary);
+    await avatarService.sendTextToAvatar(sessionId, session.userId, closingResult.closing);
 
     // 停止数字人生命周期
-    await avatarService.stopAvatarInstance(sessionId, session.userId); // Changed to stopAvatarInstance
+    await avatarService.stopAvatarInstance(sessionId, session.userId);
 
     return {
       sessionId,
