@@ -321,6 +321,12 @@ class RealtimeVoiceManager(private val context: Context) {
     private val completionKeywords = listOf(
         "面试结束",
         "结束面试",
+        "结束这次面试",
+        "结束这个面试",
+        "完成面试",
+        "完成了面试",
+        "帮我结束面试",
+        "我答完了",
         "本次面试到此结束",
         "interview finished",
         "interview is over",

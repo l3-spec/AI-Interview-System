@@ -301,6 +301,23 @@ export class RealtimeVoiceWebSocketServer {
 
         try {
           const text = (data?.text || '').trim();
+          const normalizedText = text.replace(/\s+/g, '');
+          const completionIntents = [
+            '结束面试',
+            '面试结束',
+            '完成面试',
+            '完成了面试',
+            '结束这个面试',
+            '结束这次面试',
+            '帮我结束面试',
+            '我答完了',
+            '已经完成面试',
+          ];
+          const hasCompletionIntent =
+            completionIntents.some(keyword => normalizedText.includes(keyword)) ||
+            /结束.*面试|面试.*结束/.test(normalizedText);
+          const completionClosingText =
+            '感谢您的配合，我们会尽快生成本次面试报告，请留意“我的”里的“简历报告”通知。';
           if (!text) {
             console.warn(`⚠️ 文本内容为空 - sessionId: ${data.sessionId}`);
             socket.emit('error', {
@@ -321,30 +338,123 @@ export class RealtimeVoiceWebSocketServer {
 
           console.log(`💬 收到文本消息 (Session: ${data.sessionId}): ${text}`);
 
-          // 直接调用LLM生成回复，不使用服务器端TTS
-          const llmResponse = await deepseekService.generateResponse({
-            userMessage: text,
-            sessionId: data.sessionId,
-            context: {
-              userId: session.userId,
-              jobPosition: session.jobPosition,
-            },
-          });
+          // 尝试使用 interviewFlowService 处理（如果会话存在）
+          // 否则回退到直接 LLM 调用以保持向后兼容
+          try {
+            const { interviewFlowService } = await import('../services/interviewFlowService');
+            const result = await interviewFlowService.processUserResponse(data.sessionId, text);
 
-          console.log(`✅ LLM回复: ${llmResponse}`);
+            if (result.isCompleted) {
+              console.log(`🏁 面试已完成 - sessionId: ${data.sessionId}`);
 
-          // 强制使用客户端TTS模式
-          socket.emit('voice_response', {
-            audioUrl: null,
-            text: llmResponse,
-            sessionId: data.sessionId,
-            duration: 0,
-            ttsMode: 'client',
-            userText: undefined,
-          });
+              const completionText = completionClosingText;
+
+              socket.emit('voice_response', {
+                audioUrl: null,
+                text: completionText,
+                sessionId: data.sessionId,
+                duration: 0,
+                ttsMode: 'client',
+                userText: undefined,
+                isCompleted: true,
+                status: 'completed'
+              });
+
+              socket.emit('interview_completed', {
+                sessionId: data.sessionId,
+                summary: result.feedback
+              });
+
+            } else if (result.nextRound) {
+              console.log(`➡️ 进入下一轮 (${result.nextRound.roundNumber}) - Question: ${result.nextRound.question}`);
+
+              socket.emit('voice_response', {
+                audioUrl: result.nextRound.audioUrl || null,
+                text: result.nextRound.question,
+                sessionId: data.sessionId,
+                duration: 0,
+                ttsMode: 'client',
+                userText: undefined,
+                questionIndex: result.nextRound.roundNumber
+              });
+
+            } else {
+              console.warn(`⚠️ 处理结果既未结束也无下一轮 - sessionId: ${data.sessionId}`);
+              socket.emit('voice_response', {
+                audioUrl: null,
+                text: "收到您的回答，请稍等...",
+                sessionId: data.sessionId,
+                duration: 0,
+                ttsMode: 'client'
+              });
+            }
+          } catch (flowError: any) {
+            // 回退到直接 LLM 调用（用于未通过 interviewFlowService 创建的会话）
+            if (flowError.message?.includes('Session not found') || flowError.message?.includes('not found')) {
+              console.log(`⚠️ InterviewFlowService 会话不存在，回退到直接LLM模式 - sessionId: ${data.sessionId}`);
+
+              if (hasCompletionIntent) {
+                socket.emit('voice_response', {
+                  audioUrl: null,
+                  text: completionClosingText,
+                  sessionId: data.sessionId,
+                  duration: 0,
+                  ttsMode: 'client',
+                  userText: undefined,
+                  isCompleted: true,
+                  status: 'completed'
+                });
+
+                socket.emit('interview_completed', {
+                  sessionId: data.sessionId,
+                  summary: completionClosingText
+                });
+                return;
+              }
+
+              const llmResponse = await deepseekService.generateResponse({
+                userMessage: text,
+                sessionId: data.sessionId,
+                context: {
+                  userId: session.userId,
+                  jobPosition: session.jobPosition,
+                },
+              });
+
+              console.log(`✅ LLM回复 (Fallback): ${llmResponse}`);
+              const responseNormalized = llmResponse.replace(/\s+/g, '');
+              const llmCompletionHint =
+                hasCompletionIntent ||
+                completionIntents.some(keyword => responseNormalized.includes(keyword)) ||
+                /简历报告|面试报告|报告.*生成/.test(responseNormalized);
+
+              socket.emit('voice_response', {
+                audioUrl: null,
+                text: llmResponse,
+                sessionId: data.sessionId,
+                duration: 0,
+                ttsMode: 'client',
+                userText: undefined,
+                isCompleted: llmCompletionHint,
+                status: llmCompletionHint ? 'completed' : undefined
+              });
+
+              if (llmCompletionHint) {
+                socket.emit('interview_completed', {
+                  sessionId: data.sessionId,
+                  summary: llmResponse
+                });
+              }
+            } else {
+              // 其他错误，重新抛出
+              throw flowError;
+            }
+          }
 
         } catch (error: any) {
           console.error('处理文本消息失败:', error);
+
+          // 尝试回退到简单的对话模式或报错
           socket.emit('error', {
             message: error.message || '处理失败',
             sessionId: data.sessionId,

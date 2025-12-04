@@ -54,7 +54,6 @@ export class AnalysisService {
                     user: {
                         select: {
                             name: true,
-                            background: true,
                             experience: true,
                             skills: true
                         }

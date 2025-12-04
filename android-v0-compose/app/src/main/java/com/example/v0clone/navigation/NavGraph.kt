@@ -972,8 +972,15 @@ fun AppNavHost(navController: NavHostController) {
                             )
                             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
+                            val videoRecorder = remember(context) { 
+                                com.xlwl.AiMian.ai.video.InterviewVideoRecorder(context) 
+                            }
+                            
                             DisposableEffect(viewModelKey) {
-                                onDispose { viewModel.endSession() }
+                                onDispose { 
+                                    viewModel.endSession()
+                                    videoRecorder.release()
+                                }
                             }
 
                             DigitalInterviewScreen(
@@ -993,6 +1000,37 @@ fun AppNavHost(navController: NavHostController) {
                                     navController.navigate(Routes.INTERVIEW_COMPLETE) {
                                         popUpTo(Routes.HOME) { inclusive = false }
                                         launchSingleTop = true
+                                    }
+                                },
+                                videoRecorder = videoRecorder,
+                                onRecordingFinished = { file, duration ->
+                                    coroutineScope.launch {
+                                        runCatching {
+                                            Log.i("DigitalInterview", "录制完成，准备上传: ${file.absolutePath}, 时长: ${duration}ms")
+                                            val objectKey = "interview/${data.sessionId}/${file.name}"
+                                            val result = ossRepository.uploadVideo(file, objectKey)
+                                            result.onSuccess { uploadResult ->
+                                                Log.i("DigitalInterview", "视频上传成功: ${uploadResult.url}")
+                                                // 解析questionIndex from filename
+                                                val questionIndex = file.name.split("_").getOrNull(2)?.toIntOrNull() ?: 0
+                                                // 通知后端上传完成
+                                                ossRepository.notifyUploadComplete(
+                                                    com.xlwl.AiMian.data.model.OssUploadCompleteRequest(
+                                                        sessionId = data.sessionId,
+                                                        questionIndex = questionIndex,
+                                                        ossUrl = uploadResult.url ?: "",
+                                                        fileSize = file.length(),
+                                                        duration = duration
+                                                    )
+                                                )
+                                            }.onFailure { error ->
+                                                Log.e("DigitalInterview", "视频上传失败", error)
+                                            }
+                                            // 删除本地临时文件
+                                            file.delete()
+                                        }.onFailure { error ->
+                                            Log.e("DigitalInterview", "处理录制视频失败", error)
+                                        }
                                     }
                                 }
                             )

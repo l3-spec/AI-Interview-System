@@ -404,11 +404,23 @@ fun DigitalInterviewScreen(
         }
     }
 
-    // 监听题目变化，触发数字人朗读
+    // 监听面试结束状态
+    LaunchedEffect(interviewCompleted) {
+        if (interviewCompleted) {
+            Log.i("DigitalInterviewScreen", "面试已结束，准备跳转")
+            // 延迟一小会儿让结束语播报完（可选）
+            kotlinx.coroutines.delay(3000)
+            onInterviewComplete(uiState.sessionId)
+        }
+    }
+
+    // 监听题目变化 - 注意：现在主要依赖WebSocket推送的voice_response来触发说话
+    // uiState.questionText主要用于初始题目显示
     LaunchedEffect(uiState.questionText) {
-        if (!uiState.isLoading && uiState.questionText.isNotBlank()) {
-            Log.d("DigitalInterviewScreen", "题目更新，触发数字人朗读: ${uiState.questionText.take(20)}...")
-            voiceManager.speak(uiState.questionText)
+        if (!uiState.isLoading && uiState.questionText.isNotBlank() && !interviewCompleted) {
+            Log.d("DigitalInterviewScreen", "UI题目更新: ${uiState.questionText.take(20)}...")
+            // 如果是第一题，且数字人还没说话，可以手动触发一次（视具体需求而定）
+            // 但通常WebSocket连接后会收到welcome或first question，所以这里尽量少干预
         }
     }
 
@@ -817,7 +829,8 @@ private fun BottomSection(
 
         ConversationPanel(
             partialTranscript = partialTranscript,
-            latestDigitalHumanText = latestDigitalHumanText,
+            // 优先显示实时推送的数字人文本，如果没有则显示UI状态中的题目文本
+            latestDigitalHumanText = latestDigitalHumanText ?: uiState.questionText,
             conversation = conversation,
             isRecording = isRecording,
             isDigitalHumanSpeaking = isDigitalHumanSpeaking,
