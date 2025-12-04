@@ -978,6 +978,8 @@ class RealtimeVoiceManager(private val context: Context) {
         }
     }
 
+    private var activeAudioHash: String? = null // 记录MediaPlayer当前实际正在播放的文本Hash
+
     private suspend fun playPreparedAudio(path: String, textHash: String?, digitalHumanText: String?) {
         val preparedPath = preparePlayableAudio(path)
         if (preparedPath == null) {
@@ -994,8 +996,9 @@ class RealtimeVoiceManager(private val context: Context) {
         duixAudioSink?.invoke(preparedPath)
 
         try {
-            // 如果正在播放相同的文本，跳过
-            if (textHash != null && currentPlayingTextHash == textHash && _isDigitalHumanSpeaking.value) {
+            // 如果正在播放相同的文本，且MediaPlayer确实在播放中，才跳过
+            // 使用 activeAudioHash 而不是 currentPlayingTextHash，因为 currentPlayingTextHash 可能已经被 speak() 更新为新值
+            if (textHash != null && activeAudioHash == textHash && mediaPlayer?.isPlaying == true) {
                 Log.w(TAG, "⚠️ 检测到重复播放请求（正在播放中），跳过 - textHash=$textHash, path=$preparedPath")
                 return
             }
@@ -1017,6 +1020,7 @@ class RealtimeVoiceManager(private val context: Context) {
                     start()
                     Log.i(TAG, "MediaPlayer开始播放 - textHash=$textHash")
                     this@RealtimeVoiceManager._isDigitalHumanSpeaking.value = true
+                    this@RealtimeVoiceManager.activeAudioHash = textHash // 标记当前正在播放的Hash
                     digitalHumanController?.onTtsPlayback(preparedPath, digitalHumanText)
                     
                     // 延迟一小段时间确保播放真正开始后再初始化Visualizer
@@ -1035,6 +1039,7 @@ class RealtimeVoiceManager(private val context: Context) {
                 setOnCompletionListener {
                     Log.i(TAG, "MediaPlayer播放完成 - textHash=$textHash")
                     this@RealtimeVoiceManager._isDigitalHumanSpeaking.value = false
+                    this@RealtimeVoiceManager.activeAudioHash = null // 清除播放标记
                     releaseVisualizer()
                     // 重置数字人嘴型
                     digitalHumanController?.updateMouthOpenness(0f)
@@ -1061,6 +1066,7 @@ class RealtimeVoiceManager(private val context: Context) {
                 setOnErrorListener { mp, what, extra ->
                     Log.e(TAG, "MediaPlayer错误 - what=$what, extra=$extra, textHash=$textHash")
                     this@RealtimeVoiceManager._isDigitalHumanSpeaking.value = false
+                    this@RealtimeVoiceManager.activeAudioHash = null // 清除播放标记
                     releaseVisualizer()
                     // 出错时清除播放标记
                     currentPlayingTextHash = null
