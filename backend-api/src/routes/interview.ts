@@ -1,5 +1,5 @@
 import express from 'express';
-import { interviewController } from '../controllers/interviewController';
+import { interviewFlowController } from '../controllers/interviewFlowController';
 import { auth } from '../middleware/auth';
 import { upload } from '../middleware/upload';
 
@@ -9,7 +9,7 @@ const router = express.Router();
  * @swagger
  * /api/interview/start:
  *   post:
- *     summary: 开始面试
+ *     summary: 开始面试 (使用智能流程)
  *     tags: [Interview]
  *     requestBody:
  *       required: true
@@ -18,127 +18,76 @@ const router = express.Router();
  *           schema:
  *             type: object
  *             properties:
- *               action:
+ *               userId:
  *                 type: string
- *                 example: "start"
- *               user_job_target:
+ *               userName:
  *                 type: string
- *                 example: "软件开发工程师"
- *               user_company_target:
- *                 type: string
- *                 example: "互联网公司"
- *               user_background:
- *                 type: string
- *                 example: "计算机相关专业"
+ *               isFirstTime:
+ *                 type: boolean
  *     responses:
  *       200:
  *         description: 面试开始成功
  */
-router.post('/start', interviewController.startInterview);
+router.post('/start', interviewFlowController.startInterview);
 
 /**
  * @swagger
- * /api/interview/next:
+ * /api/interview/:sessionId/info:
  *   post:
- *     summary: 获取下一题
+ *     summary: 收集用户信息
  *     tags: [Interview]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               action:
- *                 type: string
- *                 example: "next"
- *               session_id:
- *                 type: string
- *               last_answer:
- *                 type: string
- *               current_question_index:
- *                 type: number
- *     responses:
- *       200:
- *         description: 获取下一题成功
- */
-router.post('/next', interviewController.getNextQuestion);
-
-/**
- * @swagger
- * /api/interview/submit:
- *   post:
- *     summary: 提交面试结果
- *     tags: [Interview]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               action:
- *                 type: string
- *                 example: "submit"
- *               session_id:
- *                 type: string
- *               video_url:
- *                 type: string
- *               interview_duration:
- *                 type: number
- *     responses:
- *       200:
- *         description: 提交成功
- */
-router.post('/submit', interviewController.submitInterview);
-
-/**
- * @swagger
- * /api/interview/upload-video:
- *   post:
- *     summary: 上传面试视频
- *     tags: [Interview]
- *     consumes:
- *       - multipart/form-data
  *     parameters:
- *       - in: formData
- *         name: video
- *         type: file
+ *       - in: path
+ *         name: sessionId
  *         required: true
- *         description: 面试视频文件
- *       - in: formData
- *         name: session_id
- *         type: string
- *         required: true
- *         description: 面试会话ID
- *       - in: formData
- *         name: question_index
- *         type: number
- *         required: true
- *         description: 题目索引
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               targetJob:
+ *                 type: string
+ *               background:
+ *                 type: string
+ *               experience:
+ *                 type: string
+ *               skills:
+ *                 type: array
+ *                 items:
+ *                   type: string
  *     responses:
  *       200:
- *         description: 上传成功
+ *         description: 信息收集成功
  */
-router.post('/upload-video', upload.single('video'), interviewController.uploadVideo);
+router.post('/:sessionId/info', interviewFlowController.collectUserInfo);
 
 /**
  * @swagger
- * /api/interview/sessions:
- *   get:
- *     summary: 获取面试会话列表
+ * /api/interview/:sessionId/phase:
+ *   post:
+ *     summary: 开始面试第二阶段
  *     tags: [Interview]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
  *     responses:
  *       200:
- *         description: 获取成功
+ *         description: 面试阶段开始成功
  */
-router.get('/sessions', interviewController.getInterviewSessions);
+router.post('/:sessionId/phase', interviewFlowController.startInterviewPhase);
 
 /**
  * @swagger
- * /api/interview/session/{sessionId}:
- *   get:
- *     summary: 获取面试会话详情
+ * /api/interview/:sessionId/next:
+ *   post:
+ *     summary: 获取下一题 (智能流程控制)
  *     tags: [Interview]
  *     parameters:
  *       - in: path
@@ -150,6 +99,101 @@ router.get('/sessions', interviewController.getInterviewSessions);
  *       200:
  *         description: 获取成功
  */
-router.get('/session/:sessionId', interviewController.getInterviewSession);
+router.post('/:sessionId/next', interviewFlowController.startNextRound);
 
-export default router; 
+/**
+ * @swagger
+ * /api/interview/:sessionId/response:
+ *   post:
+ *     summary: 提交用户回答 (智能分析)
+ *     tags: [Interview]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               response:
+ *                 type: string
+ *               duration:
+ *                 type: number
+ *     responses:
+ *       200:
+ *         description: 回答提交成功
+ */
+router.post('/:sessionId/response', interviewFlowController.processUserResponse);
+
+/**
+ * @swagger
+ * /api/interview/:sessionId/end:
+ *   post:
+ *     summary: 结束面试 (动态结束语)
+ *     tags: [Interview]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: 面试结束成功
+ */
+router.post('/:sessionId/end', interviewFlowController.endInterview);
+
+/**
+ * @swagger
+ * /api/interview/:sessionId/status:
+ *   get:
+ *     summary: 获取会话状态
+ *     tags: [Interview]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: 获取成功
+ */
+router.get('/:sessionId/status', interviewFlowController.getSessionStatus);
+
+/**
+ * @swagger
+ * /api/interview/sessions:
+ *   get:
+ *     summary: 获取所有会话
+ *     tags: [Interview]
+ *     responses:
+ *       200:
+ *         description: 获取成功
+ */
+router.get('/sessions', interviewFlowController.getAllSessions);
+
+/**
+ * @swagger
+ * /api/interview/:sessionId/skip:
+ *   post:
+ *     summary: 跳过当前问题
+ *     tags: [Interview]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: 跳过成功
+ */
+router.post('/:sessionId/skip', interviewFlowController.skipQuestion);
+
+export default router;

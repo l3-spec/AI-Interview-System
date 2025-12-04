@@ -89,6 +89,7 @@ import com.xlwl.AiMian.ui.jobs.EditIntentionJobScreen
 import com.xlwl.AiMian.ui.jobs.JobDetailRoute
 import com.xlwl.AiMian.ui.jobs.JobSelectionScreen
 import com.xlwl.AiMian.ai.InterviewCompleteScreen
+import com.xlwl.AiMian.ui.assessment.InterviewEndScreen
 import com.xlwl.AiMian.ui.jobs.JobsScreen
 import com.xlwl.AiMian.ui.assessment.AssessmentCategoryRoute
 import com.xlwl.AiMian.ui.assessment.AssessmentHomeRoute
@@ -1005,8 +1006,8 @@ fun AppNavHost(navController: NavHostController) {
         }
 
         composable(Routes.INTERVIEW_COMPLETE) {
-            InterviewCompleteScreen(
-                onBackHome = {
+            InterviewEndScreen(
+                onNavigateHome = {
                     val popped = navController.popBackStack(Routes.HOME, false)
                     if (!popped) {
                         navController.navigate(Routes.HOME) {

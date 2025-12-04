@@ -53,23 +53,29 @@ const CompanyVerification: React.FC = () => {
     try {
       const data = await verificationApi.getStatus();
       setVerificationStatus(data);
-      
-      if (data) {
-        // 根据认证状态设置步骤
-        switch (data.status) {
-          case 'pending':
-            setCurrentStep(1);
-            break;
-          case 'approved':
-            setCurrentStep(2);
-            break;
-          case 'rejected':
-            setCurrentStep(0);
-            break;
-        }
+
+      const status = data?.status?.toLowerCase();
+      if (!status) {
+        setCurrentStep(0);
+        return;
+      }
+
+      switch (status) {
+        case 'pending':
+          setCurrentStep(1);
+          break;
+        case 'approved':
+          setCurrentStep(2);
+          break;
+        case 'rejected':
+        default:
+          setCurrentStep(0);
+          break;
       }
     } catch (error) {
       console.error('加载认证状态失败:', error);
+      setVerificationStatus(null);
+      setCurrentStep(0);
     } finally {
       setLoading(false);
     }
@@ -134,8 +140,9 @@ const CompanyVerification: React.FC = () => {
 
       message.success('认证申请提交成功，请等待审核');
       loadVerificationStatus(); // 重新加载状态
-    } catch (error) {
-      message.error('提交失败，请稍后重试');
+    } catch (error: any) {
+      const errMsg = error?.message || error?.response?.data?.message;
+      message.error(errMsg || '提交失败，请稍后重试');
     } finally {
       setSubmitLoading(false);
     }

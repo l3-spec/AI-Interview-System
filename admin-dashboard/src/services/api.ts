@@ -905,6 +905,26 @@ export const interviewApi = {
   },
 };
 
+const normalizeVerificationApplication = (
+  payload: any
+): VerificationApplication | null => {
+  if (!payload) return null;
+  const rawStatus = (payload.status || '').toString().toLowerCase();
+  const normalizedStatus: VerificationApplication['status'] =
+    rawStatus === 'approved'
+      ? 'approved'
+      : rawStatus === 'rejected'
+        ? 'rejected'
+        : 'pending';
+
+  return {
+    ...payload,
+    status: normalizedStatus,
+    submittedAt: payload.submittedAt || payload.createdAt || payload.updatedAt,
+    reviewedAt: payload.reviewedAt || payload.updatedAt
+  } as VerificationApplication;
+};
+
 // 实名认证API
 export const verificationApi = {
   // 提交实名认证申请
@@ -912,19 +932,29 @@ export const verificationApi = {
     businessLicense: File;
     legalPerson: string;
     registrationNumber: string;
-  }) => {
+  }): Promise<VerificationApplication | null> => {
     const formData = new FormData();
     formData.append('businessLicense', data.businessLicense);
     formData.append('legalPerson', data.legalPerson);
     formData.append('registrationNumber', data.registrationNumber);
-    return await apiClient.post('/verification/submit', formData, {
+    const response = await apiClient.post<ApiResponse<VerificationApplication>>('/verification/submit', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
-    });
+    }) as unknown as ApiResponse<VerificationApplication>;
+
+    if (!response?.success) {
+      throw new Error(response?.message || '提交认证失败');
+    }
+
+    return normalizeVerificationApplication(response.data);
   },
   
   // 获取认证状态
   getStatus: async (): Promise<VerificationApplication | null> => {
-    return await apiClient.get('/verification/status');
+    const response = await apiClient.get<ApiResponse<VerificationApplication | null>>('/verification/status') as unknown as ApiResponse<VerificationApplication | null>;
+    if (!response?.success) {
+      throw new Error(response?.message || '获取认证状态失败');
+    }
+    return normalizeVerificationApplication(response.data);
   },
   
   // 获取认证申请列表（管理员使用）

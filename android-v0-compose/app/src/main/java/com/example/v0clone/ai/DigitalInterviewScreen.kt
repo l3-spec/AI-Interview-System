@@ -263,10 +263,15 @@ fun DigitalInterviewScreen(
         }
     }
 
-    LaunchedEffect(uiState.sessionId, hasMicrophonePermission, connectionState) {
+    var connectionRetryCount by remember { mutableStateOf(0) }
+    val maxRetries = 3
+
+    LaunchedEffect(uiState.sessionId, hasMicrophonePermission, connectionState, connectionRetryCount) {
         if (uiState.sessionId.isNotBlank() && hasMicrophonePermission && connectionState == ConnectionState.DISCONNECTED) {
             // 避免立即重连导致死循环，增加延时
             kotlinx.coroutines.delay(2000)
+            
+            Log.d("DigitalInterviewScreen", "Attempting voice service connection (attempt ${connectionRetryCount + 1}/$maxRetries)")
             
             val success = voiceManager.initialize(
                 AppConfig.realtimeVoiceWsUrl,
@@ -274,7 +279,42 @@ fun DigitalInterviewScreen(
                 jobPosition = uiState.position
             )
             if (!success) {
-                // Toast.makeText(context, "实时语音服务连接失败", Toast.LENGTH_SHORT).show()
+                if (connectionRetryCount < maxRetries) {
+                    connectionRetryCount += 1
+                    Log.w("DigitalInterviewScreen", "Voice service connection failed, will retry...")
+                    Toast.makeText(
+                        context, 
+                        "语音服务连接中... ($connectionRetryCount/$maxRetries)",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    Log.e("DigitalInterviewScreen", "Voice service connection failed after $maxRetries attempts")
+                    Toast.makeText(
+                        context,
+                        "语音服务连接失败，请检查网络后重启面试",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            } else {
+                connectionRetryCount = 0
+                Log.d("DigitalInterviewScreen", "Voice service connected successfully")
+            }
+        }
+    }
+
+    // Monitor connection state changes
+    LaunchedEffect(connectionState) {
+        when (connectionState) {
+            ConnectionState.CONNECTING -> {
+                Log.d("DigitalInterviewScreen", "Voice service: Connecting...")
+            }
+            ConnectionState.CONNECTED -> {
+                Log.d("DigitalInterviewScreen", "Voice service: Connected ✓")
+                Toast.makeText(context, "语音服务已就绪", Toast.LENGTH_SHORT).show()
+                connectionRetryCount = 0
+            }
+            ConnectionState.DISCONNECTED -> {
+                Log.w("DigitalInterviewScreen", "Voice service: Disconnected")
             }
         }
     }
@@ -364,8 +404,27 @@ fun DigitalInterviewScreen(
         }
     }
 
+    // 监听题目变化，触发数字人朗读
+    LaunchedEffect(uiState.questionText) {
+        if (!uiState.isLoading && uiState.questionText.isNotBlank()) {
+            Log.d("DigitalInterviewScreen", "题目更新，触发数字人朗读: ${uiState.questionText.take(20)}...")
+            voiceManager.speak(uiState.questionText)
+        }
+    }
+
     // 无需手动按钮，保持自动录音：当连接就绪且双方静默时自动开启录音
     LaunchedEffect(connectionState, digitalHumanReady, isRecording, isProcessing, isDigitalHumanSpeaking, interviewCompleted) {
+        Log.d("DigitalInterviewScreen", """
+            Auto-recording check:
+              autoRecorderEnabled: $autoRecorderEnabled
+              digitalHumanReady: $digitalHumanReady
+              connectionState: $connectionState
+              interviewCompleted: $interviewCompleted
+              isRecording: $isRecording
+              isProcessing: $isProcessing
+              isDigitalHumanSpeaking: $isDigitalHumanSpeaking
+        """.trimIndent())
+        
         if (autoRecorderEnabled &&
             digitalHumanReady &&
             connectionState == ConnectionState.CONNECTED &&
@@ -374,7 +433,33 @@ fun DigitalInterviewScreen(
             !isProcessing &&
             !isDigitalHumanSpeaking
         ) {
+            Log.d("DigitalInterviewScreen", "✓ All conditions met, triggering auto-recording...")
             toggleRecording()
+        } else {
+            val blockers = mutableListOf<String>()
+            if (!autoRecorderEnabled) blockers.add("autoRecorderDisabled")
+            if (!digitalHumanReady) blockers.add("digitalHumanNotReady")
+            if (connectionState != ConnectionState.CONNECTED) blockers.add("notConnected")
+            if (interviewCompleted) blockers.add("interviewCompleted")
+            if (isRecording) blockers.add("alreadyRecording")
+            if (isProcessing) blockers.add("processing")
+            if (isDigitalHumanSpeaking) blockers.add("digitalHumanSpeaking")
+            
+            if (blockers.isNotEmpty()) {
+                Log.d("DigitalInterviewScreen", "✗ Auto-recording blocked by: ${blockers.joinToString(", ")}")
+            }
+        }
+    }
+
+    // Fallback: 如果数字人说完话5秒后还没开始录音，尝试手动触发
+    LaunchedEffect(isDigitalHumanSpeaking, digitalHumanReady, connectionState) {
+        if (!isDigitalHumanSpeaking && digitalHumanReady && connectionState == ConnectionState.CONNECTED && !isRecording) {
+            kotlinx.coroutines.delay(5000)
+            if (!isRecording && !isProcessing && !interviewCompleted) {
+                Log.w("DigitalInterviewScreen", "Fallback: Manually triggering recording after digital human finished speaking")
+                Toast.makeText(context, "开始监听您的回答...", Toast.LENGTH_SHORT).show()
+                toggleRecording()
+            }
         }
     }
 

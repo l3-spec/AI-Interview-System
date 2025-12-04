@@ -457,6 +457,36 @@ class RealtimeVoiceManager(private val context: Context) {
     }
 
     /**
+     * 手动触发数字人说话（使用客户端TTS）
+     * 用于在收到纯文本题目时驱动数字人朗读
+     */
+    fun speak(text: String) {
+        if (text.isBlank()) return
+        
+        // 避免重复播放相同内容
+        val textHash = text.hashCode().toString() + "_" + text.length
+        if (playedTextHashes.contains(textHash) || currentPlayingTextHash == textHash) {
+            Log.d(TAG, "文本已播放或正在播放，跳过: ${text.take(20)}...")
+            return
+        }
+
+        Log.i(TAG, "手动触发说话: ${text.take(20)}...")
+        
+        // 停止录音，避免自问自答
+        stopRecordingInternal()
+        
+        _isDigitalHumanSpeaking.value = true
+        _latestDigitalHumanText.value = text
+        currentPlayingTextHash = textHash
+        
+        // 添加到对话历史
+        appendMessage(ConversationMessage(role = ConversationRole.DIGITAL_HUMAN, text = text))
+        
+        // 使用客户端TTS播放
+        playClientSideTts(text, textHash)
+    }
+
+    /**
      * 启动VAD智能录音
      * 自动检测说话和静音，智能结束录音
      */

@@ -1,7 +1,7 @@
-import { deepseekService, OpeningResult, ClosingResult } from './deepseekService.js';
-import { ttsService } from './ttsService.js';
+import { deepseekService, OpeningResult, ClosingResult } from './deepseekService';
+import { ttsService } from './ttsService';
 import { avatarService } from './avatar.service'; // Import avatarService
-import { InterviewSession, InterviewRound, InterviewState, ResponseAnalysis } from '../models/interviewFlow.js'; // Import ResponseAnalysis
+import { InterviewSession, InterviewRound, InterviewState, ResponseAnalysis } from '../models/interviewFlow'; // Import ResponseAnalysis
 
 /**
  * 面试流程服务
