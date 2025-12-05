@@ -1,46 +1,16 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { ossService } from '../services/ossService';
+import { isOSSConfigured, toObjectKey, toPublicUrl, typeToFolder } from '../utils/ossUtils';
 
 const prisma = new PrismaClient();
 
-const normalizeLicensePath = (licensePath?: string | null) => {
-  if (!licensePath) return licensePath;
-  const cleaned = licensePath.replace(/\\\\/g, '/').replace(/\\/g, '/');
-  // OSS地址直接返回
-  if (cleaned.startsWith('http://') || cleaned.startsWith('https://')) {
-    return cleaned;
-  }
-
-  // 已包含完整子目录
-  if (cleaned.includes('/uploads/licenses/')) {
-    return cleaned.startsWith('/') ? cleaned : `/${cleaned}`;
-  }
-
-  // 老路径：/uploads/filename，实际文件存于 /uploads/licenses/
-  const matchLegacy = cleaned.match(/\/?uploads\/([^/]+)$/);
-  if (matchLegacy) {
-    const filename = matchLegacy[1];
-    return `/uploads/licenses/${filename}`;
-  }
-
-  return cleaned.startsWith('/') ? cleaned : `/${cleaned}`;
-};
-
-const isOSSConfigured = () =>
-  Boolean(
-    process.env.OSS_ACCESS_KEY_ID &&
-    process.env.OSS_ACCESS_KEY_SECRET &&
-    process.env.OSS_BUCKET
-  );
-
-const typeToFolder = (type?: string) => {
-  switch (type) {
-    case 'license':
-      return 'licenses';
-    default:
-      return 'others';
-  }
+const mapVerificationForResponse = (verification: any) => {
+  if (!verification) return verification;
+  return {
+    ...verification,
+    businessLicense: toPublicUrl(verification.businessLicense)
+  };
 };
 
 // 提交实名认证申请
@@ -69,28 +39,32 @@ export const submitVerification = async (req: Request, res: Response) => {
       });
     }
 
-    // 允许待审核状态下更新资料；如果没有新文件，则沿用已上传的营业执照或前端传回的现有URL
-    let rawPath: string | undefined;
-    if (file) {
-      if (isOSSConfigured()) {
-        try {
-          const folder = typeToFolder('license');
-          const { url } = await ossService.uploadLocalFile(file.path, `uploads/${folder}/${file.filename}`);
-          rawPath = url;
-        } catch (err) {
-          console.error('OSS上传营业执照失败，回退本地:', err);
-          rawPath = `/${file.path.replace(/\\\\/g, '/').replace(/\\/g, '/')}`;
-        }
-      } else {
-        rawPath = `/${file.path.replace(/\\\\/g, '/').replace(/\\/g, '/')}`;
-      }
-    } else {
-      rawPath = businessLicenseUrl || existingVerification?.businessLicense;
+    if (file && !isOSSConfigured()) {
+      return res.status(500).json({
+        success: false,
+        message: 'OSS 未配置，无法上传营业执照'
+      });
     }
 
-    const businessLicensePath = normalizeLicensePath(rawPath);
+    // 允许待审核状态下更新资料；如果没有新文件，则沿用已上传的营业执照或前端传回的现有URL
+    let businessLicenseKey: string | undefined;
+    if (file) {
+      try {
+        const folder = typeToFolder('license');
+        const { objectKey } = await ossService.uploadLocalFile(file.path, `uploads/${folder}/${file.filename}`);
+        businessLicenseKey = toObjectKey(objectKey);
+      } catch (err) {
+        console.error('OSS上传营业执照失败:', err);
+        return res.status(500).json({
+          success: false,
+          message: '营业执照上传失败，请稍后重试'
+        });
+      }
+    } else {
+      businessLicenseKey = toObjectKey(businessLicenseUrl || existingVerification?.businessLicense);
+    }
 
-    if (!businessLicensePath) {
+    if (!businessLicenseKey) {
       return res.status(400).json({
         success: false,
         message: '请上传营业执照'
@@ -101,7 +75,7 @@ export const submitVerification = async (req: Request, res: Response) => {
     const verification = await prisma.companyVerification.upsert({
       where: { companyId },
       update: {
-        businessLicense: businessLicensePath,
+        businessLicense: businessLicenseKey,
         legalPerson,
         registrationNumber,
         status: 'PENDING',
@@ -111,17 +85,19 @@ export const submitVerification = async (req: Request, res: Response) => {
       },
       create: {
         companyId,
-        businessLicense: businessLicensePath,
+        businessLicense: businessLicenseKey,
         legalPerson,
         registrationNumber,
         status: 'PENDING'
       }
     });
 
+    const responseData = mapVerificationForResponse(verification);
+
     res.status(201).json({
       success: true,
       message: '实名认证申请提交成功，请等待审核',
-      data: verification
+      data: responseData
     });
   } catch (error) {
     console.error('提交实名认证申请失败:', error);
@@ -159,13 +135,9 @@ export const getVerificationStatus = async (req: Request, res: Response) => {
       }
     });
 
-    if (verification?.businessLicense) {
-      verification.businessLicense = normalizeLicensePath(verification.businessLicense) as string;
-    }
-
     res.json({
       success: true,
-      data: verification
+      data: mapVerificationForResponse(verification)
     });
   } catch (error) {
     console.error('获取认证状态失败:', error);
@@ -221,7 +193,7 @@ export const getVerificationList = async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      data: verifications,
+      data: verifications.map(mapVerificationForResponse),
       total,
       page: Number(page),
       pageSize: Number(pageSize)
@@ -281,7 +253,7 @@ export const reviewVerification = async (req: Request, res: Response) => {
     res.json({
       success: true,
       message: status === 'approved' ? '认证申请已通过' : '认证申请已拒绝',
-      data: verification
+      data: mapVerificationForResponse(verification)
     });
   } catch (error) {
     console.error('审核认证申请失败:', error);
@@ -333,7 +305,7 @@ export const getVerificationById = async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      data: verification
+      data: mapVerificationForResponse(verification)
     });
   } catch (error) {
     console.error('获取认证申请详情失败:', error);

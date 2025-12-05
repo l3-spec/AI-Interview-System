@@ -2,30 +2,7 @@ import { Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
 import { ossService } from '../services/ossService';
-
-const isOSSConfigured = () =>
-  Boolean(
-    process.env.OSS_ACCESS_KEY_ID &&
-    process.env.OSS_ACCESS_KEY_SECRET &&
-    process.env.OSS_BUCKET
-  );
-
-const typeToFolder = (type?: string) => {
-  switch (type) {
-    case 'logo':
-      return 'logos';
-    case 'license':
-      return 'licenses';
-    case 'resume':
-      return 'resumes';
-    case 'avatar':
-      return 'avatars';
-    case 'banner':
-      return 'banners';
-    default:
-      return 'others';
-  }
-};
+import { isOSSConfigured, typeToFolder, toPublicUrl } from '../utils/ossUtils';
 
 const buildObjectKey = (type?: string, filename?: string) => {
   const folder = typeToFolder(type);
@@ -36,6 +13,13 @@ const buildObjectKey = (type?: string, filename?: string) => {
 // 上传文件
 export const uploadFile = async (req: Request, res: Response) => {
   try {
+    if (!isOSSConfigured()) {
+      return res.status(500).json({
+        success: false,
+        message: 'OSS 未配置，无法上传文件'
+      });
+    }
+
     const file = req.file;
     const { type } = req.body;
 
@@ -55,26 +39,10 @@ export const uploadFile = async (req: Request, res: Response) => {
       });
     }
 
-    // 构建文件URL（包含子目录或OSS URL）
-    let fileUrl = '';
-    let objectKey = '';
-    if (isOSSConfigured()) {
-      try {
-        objectKey = buildObjectKey(type, file.filename);
-        const result = await ossService.uploadLocalFile(file.path, objectKey);
-        fileUrl = result.url;
-        objectKey = result.objectKey;
-      } catch (err) {
-        console.error('OSS 上传失败，回退到本地存储:', err);
-        // fall through to local save
-      }
-    }
-
-    if (!fileUrl) {
-      const normalizedPath = `/${file.path.replace(/\\\\/g, '/').replace(/\\/g, '/')}`;
-      fileUrl = normalizedPath;
-      objectKey = normalizedPath;
-    }
+    // 始终上传到 OSS
+    const objectKey = buildObjectKey(type, file.filename);
+    const { objectKey: storedKey } = await ossService.uploadLocalFile(file.path, objectKey);
+    const fileUrl = toPublicUrl(storedKey);
 
     res.json({
       success: true,
@@ -86,7 +54,7 @@ export const uploadFile = async (req: Request, res: Response) => {
         mimetype: file.mimetype,
         url: fileUrl,
         type: type,
-        objectKey
+        objectKey: storedKey
       }
     });
   } catch (error) {

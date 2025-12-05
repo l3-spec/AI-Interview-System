@@ -295,6 +295,52 @@ class OSSController {
   }
 
   /**
+   * 代理输出 OSS 文件，避免在前端暴露签名参数
+   */
+  async proxyFile(req: Request, res: Response) {
+    try {
+      const { objectKey } = req.query;
+      if (!objectKey || typeof objectKey !== 'string') {
+        return res.status(400).json({ success: false, error_message: '缺少文件路径参数' });
+      }
+
+      const key = objectKey.replace(/^\/+/, '');
+
+      const { stream, res: ossRes } = await ossService.getFileStream(key);
+      const headers = (ossRes && ossRes.headers ? ossRes.headers : {}) as Record<string, string>;
+      // 透传必要头部
+      res.setHeader('Content-Type', headers['content-type'] || 'application/octet-stream');
+      if (headers['content-length']) {
+        res.setHeader('Content-Length', headers['content-length']);
+      }
+      res.setHeader('Cache-Control', 'private, max-age=60');
+
+      stream.on('error', (err: any) => {
+        console.error('OSS流读取失败:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ success: false, error_message: '读取文件失败' });
+        } else {
+          res.end();
+        }
+      });
+
+      stream.pipe(res);
+    } catch (error: any) {
+      console.error('代理文件失败:', error);
+      if (error?.status === 404 || error?.code === 'NoSuchKey') {
+        return res.status(404).json({ success: false, error_message: '文件不存在' });
+      }
+      if (error?.status === 403) {
+        return res.status(403).json({ success: false, error_message: '无权访问文件' });
+      }
+      res.status(500).json({
+        success: false,
+        error_message: '读取文件失败'
+      });
+    }
+  }
+
+  /**
    * 删除文件
    */
   async deleteFile(req: Request, res: Response) {

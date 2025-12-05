@@ -139,14 +139,14 @@ class OSSService {
   /**
    * 生成文件的访问URL
    */
-  generateFileUrl(objectKey: string, useSSL: boolean = true): string {
+  generateFileUrl(objectKey: string, useSSL: boolean = true, expiresInSeconds: number = 3600): string {
+    // 如果配置了CDN，优先返回 CDN 公网地址（默认桶视作私有，CDN 需配置回源权限）
     if (this.cdnDomain) {
-      // 如果配置了CDN域名，优先使用CDN
       return `${useSSL ? 'https' : 'http'}://${this.cdnDomain}/${objectKey}`;
-    } else {
-      // 使用OSS直接访问地址
-      return `${useSSL ? 'https' : 'http'}://${this.bucket}.${this.region}.aliyuncs.com/${objectKey}`;
     }
+    // 否则返回带有效期的签名URL，适配私有桶
+    const client = this.getOSSClient();
+    return client.signatureUrl(objectKey, { expires: expiresInSeconds, method: 'GET' });
   }
 
   /**
@@ -326,6 +326,14 @@ class OSSService {
       console.error('上传Buffer到OSS失败:', error);
       throw error;
     }
+  }
+
+  /**
+   * 获取文件流（用于服务端代理输出）
+   */
+  async getFileStream(objectKey: string) {
+    const client = this.getOSSClient();
+    return client.getStream(objectKey);
   }
 }
 

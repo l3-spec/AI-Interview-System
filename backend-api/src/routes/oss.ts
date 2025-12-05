@@ -208,6 +208,7 @@ router.post('/upload-callback', ossController.uploadCallback);
  *         description: 服务器错误
  */
 router.get('/file-url', ossController.getFileUrl);
+router.get('/proxy', ossController.proxyFile);
 
 /**
  * @swagger

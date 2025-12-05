@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
 import { config } from '../config';
+import { toPublicUrl } from '../utils/ossUtils';
 
 /**
  * 管理员登录
@@ -455,10 +456,15 @@ export const getCompanyDetail = async (req: Request, res: Response) => {
       }
     };
 
+    const verification = company.verification
+      ? { ...company.verification, businessLicense: toPublicUrl(company.verification.businessLicense) }
+      : null;
+
     res.json({
       success: true,
       data: {
         ...company,
+        verification,
         themeColors: parseJsonArray<string>(company.themeColors, []),
         highlights: parseJsonArray<string>(company.highlights, []),
         culture: parseJsonArray<string>(company.culture, []),
