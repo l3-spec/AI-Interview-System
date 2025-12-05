@@ -69,15 +69,21 @@ export class AnalysisService {
                 throw new Error(`面试会话未完成，无法分析: ${session.status}`);
             }
 
-            const missingVideos = (session.questions || []).filter(q => !q.answerVideoUrl);
-            const missingAnswers = (session.questions || []).filter(
-                q => !q.answerText || q.answerText.trim().length === 0
+            const questions = (session.questions || []) as Array<{
+                questionIndex: number;
+                answerVideoUrl?: string | null;
+                answerText?: string | null;
+            }>;
+
+            const missingVideos = questions.filter((q) => !q.answerVideoUrl);
+            const missingAnswers = questions.filter(
+                (q) => !q.answerText || q.answerText.trim().length === 0
             );
             if (missingVideos.length > 0 || missingAnswers.length > 0) {
                 throw new Error(
                     `题目视频/答案缺失，停止分析。缺视频: [${missingVideos
-                        .map(q => q.questionIndex)
-                        .join(', ')}], 缺文本: [${missingAnswers.map(q => q.questionIndex).join(', ')}]`
+                        .map((q) => q.questionIndex)
+                        .join(', ')}], 缺文本: [${missingAnswers.map((q) => q.questionIndex).join(', ')}]`
                 );
             }
 
