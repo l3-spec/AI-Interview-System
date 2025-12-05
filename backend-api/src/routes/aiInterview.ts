@@ -498,6 +498,14 @@ router.post('/submit-answer',
       .optional()
       .isLength({ max: 2000 })
       .withMessage('答案文本长度不能超过2000个字符'),
+    body('answerVideoUrl')
+      .optional()
+      .isURL()
+      .withMessage('answerVideoUrl 必须是有效的URL'),
+    body('answerVideoPath')
+      .optional()
+      .isString()
+      .withMessage('answerVideoPath 无效'),
     body('answerDuration')
       .optional()
       .isInt({ min: 1 })
@@ -1526,4 +1534,3 @@ router.post('/sessions/:sessionId/analysis/retry',
 );
 
 export default router;
-

@@ -69,6 +69,18 @@ export class AnalysisService {
                 throw new Error(`面试会话未完成，无法分析: ${session.status}`);
             }
 
+            const missingVideos = (session.questions || []).filter(q => !q.answerVideoUrl);
+            const missingAnswers = (session.questions || []).filter(
+                q => !q.answerText || q.answerText.trim().length === 0
+            );
+            if (missingVideos.length > 0 || missingAnswers.length > 0) {
+                throw new Error(
+                    `题目视频/答案缺失，停止分析。缺视频: [${missingVideos
+                        .map(q => q.questionIndex)
+                        .join(', ')}], 缺文本: [${missingAnswers.map(q => q.questionIndex).join(', ')}]`
+                );
+            }
+
             // 2. 检查是否已有分析报告
             const existingReport = await prisma.aIInterviewAnalysisReport.findUnique({
                 where: { sessionId }
@@ -82,7 +94,8 @@ export class AnalysisService {
             // 3. 准备分析数据
             const questionsAndAnswers = session.questions.map((q: any) => ({
                 question: q.questionText,
-                answer: q.answerText || '(未回答)'
+                answer: q.answerText || '(未回答)',
+                videoUrl: q.answerVideoUrl || undefined
             }));
 
             if (questionsAndAnswers.length === 0) {
@@ -149,7 +162,7 @@ export class AnalysisService {
             experience?: string | null;
             skills?: string | null;
         };
-        questionsAndAnswers: Array<{ question: string; answer: string }>;
+        questionsAndAnswers: Array<{ question: string; answer: string; videoUrl?: string }>;
     }): Promise<AnalysisResult> {
 
         const prompt = this.buildAnalysisPrompt(params);
@@ -179,12 +192,15 @@ export class AnalysisService {
         companyTarget?: string | null;
         background?: string | null;
         userInfo?: any;
-        questionsAndAnswers: Array<{ question: string; answer: string }>;
+        questionsAndAnswers: Array<{ question: string; answer: string; videoUrl?: string }>;
     }): string {
         const { jobTarget, jobCategory, companyTarget, background, questionsAndAnswers } = params;
 
         const qaText = questionsAndAnswers
-            .map((qa: { question: string; answer: string }, idx: number) => `问题${idx + 1}：${qa.question}\n回答${idx + 1}：${qa.answer}`)
+            .map((qa: { question: string; answer: string; videoUrl?: string }, idx: number) => {
+                const videoLine = qa.videoUrl ? `视频${idx + 1}：${qa.videoUrl}` : `视频${idx + 1}：未提供`;
+                return `问题${idx + 1}：${qa.question}\n回答${idx + 1}：${qa.answer}\n${videoLine}`;
+            })
             .join('\n\n');
 
         return `你是一位资深的职业素养评估专家，请基于以下面试内容进行多维度分析。

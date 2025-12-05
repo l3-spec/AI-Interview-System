@@ -561,6 +561,13 @@ class AIInterviewService {
     error?: string;
   }> {
     try {
+      if (!videoUrl && !videoPath) {
+        return {
+          success: false,
+          error: '必须先上传答题视频到OSS并携带videoUrl/videoPath后才能提交答案',
+        };
+      }
+
       // 更新问题答案
       await prisma.aIInterviewQuestion.updateMany({
         where: {
@@ -679,12 +686,30 @@ class AIInterviewService {
     try {
       const session = await prisma.aIInterviewSession.findUnique({
         where: { id: sessionId },
+        include: {
+          questions: {
+            orderBy: { questionIndex: 'asc' },
+          },
+        },
       });
 
       if (!session) {
         return {
           success: false,
           error: '面试会话不存在',
+        };
+      }
+
+      const missingVideos = (session.questions || []).filter(q => !q.answerVideoUrl);
+      const missingAnswers = (session.questions || []).filter(
+        q => !q.answerText || q.answerText.trim().length === 0
+      );
+      if (missingVideos.length > 0 || missingAnswers.length > 0) {
+        return {
+          success: false,
+          error: `仍有题目未提交完整答案或视频：缺视频(${missingVideos
+            .map(q => q.questionIndex)
+            .join(',')})，缺文本(${missingAnswers.map(q => q.questionIndex).join(',')})`,
         };
       }
 
