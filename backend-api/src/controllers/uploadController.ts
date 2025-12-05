@@ -1,6 +1,37 @@
 import { Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
+import { ossService } from '../services/ossService';
+
+const isOSSConfigured = () =>
+  Boolean(
+    process.env.OSS_ACCESS_KEY_ID &&
+    process.env.OSS_ACCESS_KEY_SECRET &&
+    process.env.OSS_BUCKET
+  );
+
+const typeToFolder = (type?: string) => {
+  switch (type) {
+    case 'logo':
+      return 'logos';
+    case 'license':
+      return 'licenses';
+    case 'resume':
+      return 'resumes';
+    case 'avatar':
+      return 'avatars';
+    case 'banner':
+      return 'banners';
+    default:
+      return 'others';
+  }
+};
+
+const buildObjectKey = (type?: string, filename?: string) => {
+  const folder = typeToFolder(type);
+  const safeFilename = filename || `file-${Date.now()}`;
+  return `uploads/${folder}/${safeFilename}`;
+};
 
 // 上传文件
 export const uploadFile = async (req: Request, res: Response) => {
@@ -16,7 +47,7 @@ export const uploadFile = async (req: Request, res: Response) => {
     }
 
     // 验证文件类型
-    const allowedTypes = ['logo', 'license', 'resume', 'avatar'];
+    const allowedTypes = ['logo', 'license', 'resume', 'avatar', 'banner', 'other'];
     if (!allowedTypes.includes(type)) {
       return res.status(400).json({
         success: false,
@@ -24,8 +55,26 @@ export const uploadFile = async (req: Request, res: Response) => {
       });
     }
 
-    // 构建文件URL
-    const fileUrl = `/uploads/${file.filename}`;
+    // 构建文件URL（包含子目录或OSS URL）
+    let fileUrl = '';
+    let objectKey = '';
+    if (isOSSConfigured()) {
+      try {
+        objectKey = buildObjectKey(type, file.filename);
+        const result = await ossService.uploadLocalFile(file.path, objectKey);
+        fileUrl = result.url;
+        objectKey = result.objectKey;
+      } catch (err) {
+        console.error('OSS 上传失败，回退到本地存储:', err);
+        // fall through to local save
+      }
+    }
+
+    if (!fileUrl) {
+      const normalizedPath = `/${file.path.replace(/\\\\/g, '/').replace(/\\/g, '/')}`;
+      fileUrl = normalizedPath;
+      objectKey = normalizedPath;
+    }
 
     res.json({
       success: true,
@@ -36,7 +85,8 @@ export const uploadFile = async (req: Request, res: Response) => {
         size: file.size,
         mimetype: file.mimetype,
         url: fileUrl,
-        type: type
+        type: type,
+        objectKey
       }
     });
   } catch (error) {

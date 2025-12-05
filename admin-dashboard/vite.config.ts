@@ -33,6 +33,13 @@ export default defineConfig({
           });
         },
         rewrite: (path) => path.replace(/^\/api/, '/api')
+      },
+      '/uploads': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+        ws: false,
+        timeout: 10000
       }
     }
   },

@@ -86,7 +86,19 @@ export interface CompanyShowcaseEntry {
     highlights?: string[];
     industry?: string | null;
     scale?: string | null;
-  } | null;
+    } | null;
+}
+
+export interface CompanyVerification {
+  id: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | string;
+  businessLicense?: string | null;
+  legalPerson?: string | null;
+  registrationNumber?: string | null;
+  reviewComments?: string | null;
+  reviewedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface AdminCompanySummary {
@@ -102,6 +114,7 @@ export interface AdminCompanySummary {
   focusArea?: string | null;
   tagline?: string | null;
   themeColors: string[];
+  verification?: CompanyVerification | null;
   showcase?: {
     id: string;
     role?: string | null;
@@ -239,6 +252,7 @@ const mapCompanySummary = (company: any): AdminCompanySummary => ({
   focusArea: company.focusArea,
   tagline: company.tagline,
   themeColors: parseJsonArray<string>(company.themeColors),
+  verification: mapVerification(company.verification),
   showcase: company.showcase
     ? {
         id: company.showcase.id,
@@ -311,6 +325,26 @@ function mapDictionaryPosition(position: any): JobDictionaryPosition {
     category: position.category ? mapDictionaryCategory(position.category, false) : undefined,
   };
 }
+
+const mapVerification = (verification: any): CompanyVerification | null => {
+  if (!verification) {
+    return null;
+  }
+
+  const status = (verification.status || '').toString().toUpperCase() as CompanyVerification['status'];
+
+  return {
+    id: verification.id,
+    status,
+    businessLicense: verification.businessLicense || null,
+    legalPerson: verification.legalPerson || null,
+    registrationNumber: verification.registrationNumber || null,
+    reviewComments: verification.reviewComments || null,
+    reviewedAt: verification.reviewedAt || null,
+    createdAt: verification.createdAt,
+    updatedAt: verification.updatedAt
+  };
+};
 
 const mapCompanyDetail = (company: any): AdminCompanyDetail => ({
   ...mapCompanySummary(company),
@@ -518,6 +552,19 @@ export const homeContentApi = {
   }
 };
 
+export const verificationApi = {
+  review: async (id: string, status: 'approved' | 'rejected', comments?: string): Promise<ApiResponse> => {
+    return await apiClient.post(`/verification/admin/${id}/review`, { status, comments });
+  },
+  getById: async (id: string): Promise<ApiResponse<CompanyVerification>> => {
+    const response = await apiClient.get(`/verification/admin/${id}`) as ApiResponse<any>;
+    if (response?.success && response.data) {
+      response.data = mapVerification(response.data);
+    }
+    return response as ApiResponse<CompanyVerification>;
+  }
+};
+
 export const appVersionApi = {
   getList: async (
     params?: Record<string, any>
@@ -714,6 +761,13 @@ export const uploadApi = {
         message: error?.response?.data?.message || error?.message || '文件上传失败'
       };
     }
+  }
+};
+
+// OSS 配置相关 API（前端不再硬编码 OSS 信息）
+export const ossApi = {
+  getConfig: async (): Promise<ApiResponse<{ endpoint: string; bucketName: string; region: string; cdnDomain?: string }>> => {
+    return await apiClient.get('/oss/config');
   }
 };
 

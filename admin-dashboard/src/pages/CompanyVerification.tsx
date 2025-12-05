@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Card,
   Form,
@@ -19,21 +19,19 @@ import {
 } from 'antd';
 import {
   SafetyCertificateOutlined,
-  UploadOutlined,
   FileTextOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
-  ExclamationCircleOutlined,
-  EyeOutlined,
+  EditOutlined,
   InboxOutlined
 } from '@ant-design/icons';
 import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
-import { verificationApi, uploadApi } from '../services/api';
+import apiClient, { verificationApi, uploadApi } from '../services/api';
 import { VerificationApplication } from '../types/interview';
 import { useAuth } from '../contexts/AuthContext';
 
 const { Step } = Steps;
-const { Title, Text, Paragraph } = Typography;
+const { Title, Text } = Typography;
 const { Dragger } = Upload;
 
 const CompanyVerification: React.FC = () => {
@@ -45,7 +43,40 @@ const CompanyVerification: React.FC = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewImage, setPreviewImage] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const editFormRef = useRef<HTMLDivElement | null>(null);
   const { user } = useAuth();
+
+  const buildFileUrl = (url?: string | null) => {
+    if (!url) return '';
+    if (/^https?:\/\//i.test(url)) return url;
+    if (typeof window === 'undefined') return url;
+
+    try {
+      const base = apiClient.defaults.baseURL || '';
+      const apiUrl = new URL(base, window.location.origin);
+      const apiOrigin = `${apiUrl.protocol}//${apiUrl.host}`;
+      const path = url.startsWith('/') ? url : `/${url}`;
+      return `${apiOrigin}${path}`;
+    } catch (err) {
+      return url;
+    }
+  };
+
+  const normalizeFileList = (list: UploadFile[]) =>
+    list.map((file) => {
+      const responseUrl =
+        (file.response as any)?.data?.url ||
+        (file.response as any)?.url ||
+        (file.response as any)?.data;
+      const mergedUrl = file.url || responseUrl;
+      const normalizedUrl = mergedUrl ? buildFileUrl(String(mergedUrl)) : undefined;
+      return {
+        ...file,
+        url: normalizedUrl || mergedUrl,
+        thumbUrl: normalizedUrl || mergedUrl
+      };
+    });
 
   // 加载认证状态
   const loadVerificationStatus = async () => {
@@ -100,7 +131,7 @@ const CompanyVerification: React.FC = () => {
 
   // 处理文件列表变化
   const handleFileChange: UploadProps['onChange'] = ({ fileList: newFileList }) => {
-    setFileList(newFileList);
+    setFileList(normalizeFileList(newFileList));
   };
 
   // 预览图片
@@ -108,7 +139,8 @@ const CompanyVerification: React.FC = () => {
     if (!file.url && !file.preview) {
       file.preview = await getBase64(file.originFileObj as File);
     }
-    setPreviewImage(file.url || file.preview || '');
+    const normalized = file.url ? buildFileUrl(file.url) : file.preview;
+    setPreviewImage(normalized || '');
     setPreviewVisible(true);
   };
 
@@ -123,25 +155,34 @@ const CompanyVerification: React.FC = () => {
 
   // 提交认证申请
   const handleSubmit = async (values: any) => {
-    if (fileList.length === 0) {
+    const hasNewFile = fileList.some(file => Boolean(file.originFileObj));
+    const existingLicense = verificationStatus?.businessLicense;
+
+    if (!hasNewFile && !existingLicense) {
       message.error('请上传营业执照');
       return;
     }
 
     setSubmitLoading(true);
     try {
-      const businessLicenseFile = fileList[0].originFileObj as File;
+      const businessLicenseFile = hasNewFile
+        ? (fileList.find(file => file.originFileObj)?.originFileObj as File)
+        : undefined;
       
       await verificationApi.submit({
         businessLicense: businessLicenseFile,
         legalPerson: values.legalPerson,
-        registrationNumber: values.registrationNumber
+        registrationNumber: values.registrationNumber,
+        existingBusinessLicense: !hasNewFile ? verificationStatus?.businessLicense : undefined
       });
 
-      message.success('认证申请提交成功，请等待审核');
+      message.success(isEditing ? '认证资料已更新，请等待审核' : '认证申请提交成功，请等待审核');
+      setIsEditing(false);
+      form.resetFields();
+      setFileList([]);
       loadVerificationStatus(); // 重新加载状态
     } catch (error: any) {
-      const errMsg = error?.message || error?.response?.data?.message;
+      const errMsg = error?.response?.data?.message || error?.message;
       message.error(errMsg || '提交失败，请稍后重试');
     } finally {
       setSubmitLoading(false);
@@ -154,7 +195,49 @@ const CompanyVerification: React.FC = () => {
     setVerificationStatus(null);
     form.resetFields();
     setFileList([]);
+    setIsEditing(false);
   };
+
+  // 审核中修改资料
+  const handleStartEdit = () => {
+    if (!verificationStatus) return;
+
+    form.setFieldsValue({
+      legalPerson: verificationStatus.legalPerson,
+      registrationNumber: verificationStatus.registrationNumber
+    });
+
+    if (verificationStatus.businessLicense) {
+      setFileList(normalizeFileList([
+        {
+          uid: '-1',
+          name: 'business-license',
+          status: 'done',
+          url: verificationStatus.businessLicense
+        }
+      ]));
+    } else {
+      setFileList([]);
+    }
+
+    setIsEditing(true);
+    message.info('已进入修改模式，下方可更新资料');
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    form.resetFields();
+    setFileList([]);
+  };
+
+  useEffect(() => {
+    if (isEditing) {
+      // 确保按钮点击后有明显响应：滚动到表单位置
+      setTimeout(() => {
+        editFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 50);
+    }
+  }, [isEditing]);
 
   // 渲染认证步骤
   const renderSteps = () => (
@@ -178,10 +261,10 @@ const CompanyVerification: React.FC = () => {
   );
 
   // 渲染申请表单
-  const renderApplicationForm = () => (
-    <Card title="企业实名认证申请">
+  const renderApplicationForm = (isEditMode = false) => (
+    <Card title={isEditMode ? '修改认证资料' : '企业实名认证申请'}>
       <Alert
-        message="认证须知"
+        message={isEditMode ? '修改说明' : '认证须知'}
         description={
           <ul style={{ marginBottom: 0, paddingLeft: '20px' }}>
             <li>请确保营业执照清晰可见，信息完整</li>
@@ -189,9 +272,12 @@ const CompanyVerification: React.FC = () => {
             <li>法人姓名需与营业执照上的法定代表人一致</li>
             <li>统一社会信用代码/注册号需准确填写</li>
             <li>认证审核通常需要1-3个工作日</li>
+            {isEditMode && (
+              <li>修改后将覆盖当前审核中的资料，平台以最新提交为准</li>
+            )}
           </ul>
         }
-        type="info"
+        type={isEditMode ? 'warning' : 'info'}
         showIcon
         style={{ marginBottom: '24px' }}
       />
@@ -228,6 +314,7 @@ const CompanyVerification: React.FC = () => {
             onPreview={handlePreview}
             accept="image/*,.pdf"
             maxCount={1}
+            listType="picture"
           >
             <p className="ant-upload-drag-icon">
               <InboxOutlined />
@@ -247,8 +334,13 @@ const CompanyVerification: React.FC = () => {
             size="large"
             icon={<SafetyCertificateOutlined />}
           >
-            提交认证申请
+            {isEditMode ? '保存修改并重新提交' : '提交认证申请'}
           </Button>
+          {isEditMode && (
+            <Button style={{ marginLeft: 12 }} onClick={handleCancelEdit}>
+              取消修改
+            </Button>
+          )}
         </Form.Item>
       </Form>
     </Card>
@@ -287,7 +379,7 @@ const CompanyVerification: React.FC = () => {
             <div style={{ marginTop: '8px' }}>
               <Image
                 width={200}
-                src={verificationStatus?.businessLicense}
+                src={buildFileUrl(verificationStatus?.businessLicense)}
                 placeholder="加载中..."
               />
             </div>
@@ -309,6 +401,26 @@ const CompanyVerification: React.FC = () => {
               <Text type="secondary">预计1-3个工作日完成</Text>
             </Timeline.Item>
           </Timeline>
+
+          <div style={{ marginTop: '24px' }}>
+            <Space direction="vertical">
+              <Space>
+                <Button 
+                  type="primary" 
+                  icon={<EditOutlined />} 
+                  onClick={handleStartEdit}
+                >
+                  修改提交资料
+                </Button>
+                {isEditing && (
+                  <Button onClick={handleCancelEdit}>取消修改</Button>
+                )}
+              </Space>
+              <Text type="secondary">
+                修改后会覆盖当前审核信息，平台将以最新提交为准
+              </Text>
+            </Space>
+          </div>
         </div>
       }
     />
@@ -418,6 +530,17 @@ const CompanyVerification: React.FC = () => {
 
     if (!verificationStatus) {
       return renderApplicationForm();
+    }
+
+    if (isEditing && verificationStatus.status?.toLowerCase() === 'pending') {
+      return (
+        <Space direction="vertical" size={24} style={{ width: '100%' }}>
+          {renderPendingStatus()}
+          <div ref={editFormRef}>
+            {renderApplicationForm(true)}
+          </div>
+        </Space>
+      );
     }
 
     switch (verificationStatus.status) {

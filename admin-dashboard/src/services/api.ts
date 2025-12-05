@@ -929,12 +929,17 @@ const normalizeVerificationApplication = (
 export const verificationApi = {
   // 提交实名认证申请
   submit: async (data: {
-    businessLicense: File;
+    businessLicense?: File;
     legalPerson: string;
     registrationNumber: string;
+    existingBusinessLicense?: string;
   }): Promise<VerificationApplication | null> => {
     const formData = new FormData();
-    formData.append('businessLicense', data.businessLicense);
+    if (data.businessLicense) {
+      formData.append('businessLicense', data.businessLicense);
+    } else if (data.existingBusinessLicense) {
+      formData.append('businessLicense', data.existingBusinessLicense);
+    }
     formData.append('legalPerson', data.legalPerson);
     formData.append('registrationNumber', data.registrationNumber);
     const response = await apiClient.post<ApiResponse<VerificationApplication>>('/verification/submit', formData, {

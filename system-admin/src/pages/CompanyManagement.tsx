@@ -11,6 +11,7 @@ import {
   Form,
   Input,
   InputNumber,
+  Image,
   Modal,
   Popconfirm,
   Select,
@@ -24,7 +25,8 @@ import {
 import { StarFilled, StarOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { AdminCompanySummary, AdminCompanyDetail } from '../services/api';
-import { companyApi, homeContentApi } from '../services/api';
+import { companyApi, homeContentApi, verificationApi } from '../services/api';
+import { buildAssetUrl } from '../utils/url';
 
 type StatusFilter = 'all' | 'active' | 'inactive';
 type VerificationFilter = 'all' | 'verified' | 'unverified';
@@ -48,11 +50,25 @@ const CompanyManagement: React.FC = () => {
   const [companies, setCompanies] = useState<AdminCompanySummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [pagination, setPagination] = useState({ page: 1, pageSize: 10, total: 0 });
-  const [actionState, setActionState] = useState<{ id: string | null; type?: 'active' | 'verified' | 'showcase' | 'remove-showcase' }>({ id: null });
+  const [actionState, setActionState] = useState<{ id: string | null; type?: 'active' | 'verified' | 'showcase' | 'remove-showcase' | 'verification-review' }>({ id: null });
   const [detailDrawer, setDetailDrawer] = useState<{ open: boolean; loading: boolean; data?: AdminCompanyDetail | null }>({ open: false, loading: false });
   const [selectedCompany, setSelectedCompany] = useState<AdminCompanySummary | null>(null);
   const [showcaseModalOpen, setShowcaseModalOpen] = useState(false);
   const [showcaseForm] = Form.useForm();
+
+  const renderVerificationStatusTag = (verification?: AdminCompanyDetail['verification'], isVerified?: boolean) => {
+    const status = (verification?.status || (isVerified ? 'APPROVED' : 'PENDING')).toString().toUpperCase();
+    switch (status) {
+      case 'APPROVED':
+        return <Tag color="blue">已认证</Tag>;
+      case 'REJECTED':
+        return <Tag color="red">已驳回</Tag>;
+      default:
+        return <Tag color="gold">待认证</Tag>;
+    }
+  };
+
+  const formatDateTime = (value?: string | null) => (value ? new Date(value).toLocaleString() : '-');
 
   const fetchCompanies = async (
     page: number = pagination.page,
@@ -206,6 +222,89 @@ const CompanyManagement: React.FC = () => {
     }
   };
 
+  const refreshCompanyDetail = async (companyId: string) => {
+    try {
+      const response = await companyApi.getDetail(companyId);
+      if (response.success && response.data) {
+        setDetailDrawer({ open: true, loading: false, data: response.data });
+      }
+    } catch (error: any) {
+      const errMsg = error?.message || error?.response?.data?.message;
+      message.error(errMsg || '刷新企业详情失败');
+    }
+  };
+
+  const handleReviewVerification = async (status: 'approved' | 'rejected', comments?: string) => {
+    if (!detailDrawer.data?.verification?.id || !detailDrawer.data?.id) {
+      message.error('暂无可审核的认证申请');
+      return;
+    }
+
+    const verificationId = detailDrawer.data.verification.id;
+    const companyId = detailDrawer.data.id;
+    setActionState({ id: verificationId, type: 'verification-review' });
+
+    try {
+      await verificationApi.review(verificationId, status, comments);
+      message.success(status === 'approved' ? '认证已通过' : '认证已拒绝');
+      await Promise.all([
+        fetchCompanies(pagination.page, pagination.pageSize),
+        refreshCompanyDetail(companyId)
+      ]);
+    } catch (error: any) {
+      const errMsg = error?.message || error?.response?.data?.message;
+      message.error(errMsg || '审核失败，请稍后再试');
+    } finally {
+      setActionState({ id: null });
+    }
+  };
+
+  const handleRejectVerification = () => {
+    if (!detailDrawer.data?.verification) {
+      message.error('暂无认证申请');
+      return;
+    }
+    let reason = '';
+    Modal.confirm({
+      title: '拒绝认证申请',
+      okText: '拒绝',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      content: (
+        <div>
+          <p style={{ marginBottom: 8 }}>请填写拒绝原因，方便企业修改后再次提交。</p>
+          <Input.TextArea
+            rows={3}
+            maxLength={200}
+            placeholder="请输入拒绝原因"
+            onChange={(event) => {
+              reason = event.target.value;
+            }}
+          />
+        </div>
+      ),
+      onOk: async () => {
+        await handleReviewVerification('rejected', reason || undefined);
+      }
+    });
+  };
+
+  const handleApproveVerification = () => {
+    if (!detailDrawer.data?.verification) {
+      message.error('暂无认证申请');
+      return;
+    }
+    Modal.confirm({
+      title: '通过认证申请',
+      content: '确认通过该企业的实名认证申请？',
+      okText: '通过',
+      cancelText: '取消',
+      onOk: async () => {
+        await handleReviewVerification('approved');
+      }
+    });
+  };
+
   const handleViewDetail = async (record: AdminCompanySummary) => {
     setDetailDrawer({ open: true, loading: true });
     try {
@@ -290,7 +389,7 @@ const CompanyManagement: React.FC = () => {
       render: (_: any, record: AdminCompanySummary) => (
         <Space size="small">
           <Tag color={record.isActive ? 'green' : 'red'}>{record.isActive ? '已启用' : '已禁用'}</Tag>
-          <Tag color={record.isVerified ? 'blue' : 'gold'}>{record.isVerified ? '已认证' : '待认证'}</Tag>
+          {renderVerificationStatusTag(record.verification, record.isVerified)}
           {record.showcase && <Tag color="purple">精选</Tag>}
         </Space>
       )
@@ -427,6 +526,79 @@ const CompanyManagement: React.FC = () => {
               <Descriptions.Item label="业务聚焦">{detailDrawer.data.focusArea || '-'}</Descriptions.Item>
               <Descriptions.Item label="企业标语">{detailDrawer.data.tagline || '-'}</Descriptions.Item>
             </Descriptions>
+
+            <div>
+              <Divider orientation="left">实名认证</Divider>
+              {detailDrawer.data.verification ? (
+                <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                  <Space align="center">
+                    <span>当前状态：</span>
+                    {renderVerificationStatusTag(detailDrawer.data.verification, detailDrawer.data.isVerified)}
+                  </Space>
+                  <Descriptions column={2} size="small" bordered>
+                    <Descriptions.Item label="法人姓名">{detailDrawer.data.verification.legalPerson || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="注册号 / 统一社会信用代码">
+                      {detailDrawer.data.verification.registrationNumber || '-'}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="提交时间">
+                      {formatDateTime(detailDrawer.data.verification.createdAt)}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="审核时间">
+                      {formatDateTime(detailDrawer.data.verification.reviewedAt)}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="审核意见" span={2}>
+                      {detailDrawer.data.verification.reviewComments || '-'}
+                    </Descriptions.Item>
+                  </Descriptions>
+                  <Space align="start" size="large" wrap>
+                    <div>
+                      <div style={{ marginBottom: 8 }}>营业执照</div>
+                      {detailDrawer.data.verification.businessLicense ? (
+                        <Image
+                          width={220}
+                          src={buildAssetUrl(detailDrawer.data.verification.businessLicense)}
+                          style={{ borderRadius: 6, border: '1px solid #f0f0f0' }}
+                        />
+                      ) : (
+                        <Empty description="未上传营业执照" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                      )}
+                    </div>
+                    <Space direction="vertical">
+                      {detailDrawer.data.verification.businessLicense && (
+                        <Button
+                          type="link"
+                          href={buildAssetUrl(detailDrawer.data.verification.businessLicense)}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          新窗口查看原图
+                        </Button>
+                      )}
+                      {detailDrawer.data.verification.status !== 'APPROVED' && (
+                        <Space>
+                          <Button
+                            type="primary"
+                            onClick={handleApproveVerification}
+                            loading={actionState.id === detailDrawer.data.verification.id && actionState.type === 'verification-review'}
+                          >
+                            通过认证
+                          </Button>
+                          <Button
+                            danger
+                            onClick={handleRejectVerification}
+                            loading={actionState.id === detailDrawer.data.verification.id && actionState.type === 'verification-review'}
+                          >
+                            拒绝
+                          </Button>
+                        </Space>
+                      )}
+                    </Space>
+                  </Space>
+                </Space>
+              ) : (
+                <Empty description="暂无认证申请" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              )}
+            </div>
 
             <div>
               <Divider orientation="left">主题色</Divider>

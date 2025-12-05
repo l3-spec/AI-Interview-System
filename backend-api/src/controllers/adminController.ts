@@ -212,6 +212,19 @@ export const getCompanies = async (req: Request, res: Response) => {
           focusArea: true,
           tagline: true,
           themeColors: true,
+          verification: {
+            select: {
+              id: true,
+              status: true,
+              businessLicense: true,
+              legalPerson: true,
+              registrationNumber: true,
+              reviewComments: true,
+              reviewedAt: true,
+              createdAt: true,
+              updatedAt: true
+            }
+          },
           showcase: {
             select: {
               id: true,
@@ -317,6 +330,27 @@ export const updateCompanyStatus = async (req: Request, res: Response) => {
     if (isActive !== undefined) updateData.isActive = isActive;
     if (isVerified !== undefined) updateData.isVerified = isVerified;
 
+    // 同步实名认证记录的审核状态，避免认证状态不一致
+    if (isVerified !== undefined) {
+      const verification = await prisma.companyVerification.findUnique({
+        where: { companyId }
+      });
+
+      if (verification) {
+        await prisma.companyVerification.update({
+          where: { companyId },
+          data: {
+            status: isVerified ? 'APPROVED' : 'REJECTED',
+            reviewedAt: new Date(),
+            reviewedBy: req.user?.id || null,
+            reviewComments: isVerified
+              ? verification.reviewComments
+              : verification.reviewComments || '管理员取消认证'
+          }
+        });
+      }
+    }
+
     await prisma.company.update({
       where: { id: companyId },
       data: updateData
@@ -363,6 +397,19 @@ export const getCompanyDetail = async (req: Request, res: Response) => {
         isActive: true,
         createdAt: true,
         updatedAt: true,
+        verification: {
+          select: {
+            id: true,
+            status: true,
+            businessLicense: true,
+            legalPerson: true,
+            registrationNumber: true,
+            reviewComments: true,
+            reviewedAt: true,
+            createdAt: true,
+            updatedAt: true
+          }
+        },
         showcase: {
           select: {
             id: true,

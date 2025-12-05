@@ -519,6 +519,7 @@ fun AppNavHost(navController: NavHostController) {
                 }
             } else {
                 ResumeReportRoute(
+                    repository = aiInterviewRepository,
                     onBack = { navController.popBackStack() }
                 )
             }

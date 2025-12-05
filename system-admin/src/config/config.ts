@@ -11,10 +11,6 @@ export const config = {
   SERVER_HOST: import.meta.env.VITE_SERVER_HOST || 'localhost',
   SERVER_PORT: Number(import.meta.env.VITE_SERVER_PORT || 3001),
   
-  // OSS配置
-  OSS_BUCKET: 'ai-interview',
-  OSS_REGION: 'oss-cn-beijing',
-  
   // 分页配置
   DEFAULT_PAGE_SIZE: 20,
   

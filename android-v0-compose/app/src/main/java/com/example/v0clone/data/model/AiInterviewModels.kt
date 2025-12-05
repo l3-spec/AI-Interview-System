@@ -112,6 +112,8 @@ data class AiInterviewSessionSummary(
   val reportUrl: String? = null,
   @SerializedName("reportReady")
   val reportReady: Boolean? = null,
+  val createdAt: String? = null,
+  val startedAt: String? = null,
   val questions: List<AiInterviewSessionQuestionSummary> = emptyList(),
   val jobId: String? = null
 )
