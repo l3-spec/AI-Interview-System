@@ -12,6 +12,7 @@ import { RealtimeVoicePipelineService } from '../services/realtime-voice-pipelin
 import { ttsService } from '../services/ttsService';
 import { deepseekService } from '../services/deepseekService';
 import { volcOpenApiService } from '../services/volc-openapi.service';
+import { aiInterviewService } from '../services/aiInterviewService';
 
 type SocketSessionInfo = {
   sessionId: string;
@@ -437,7 +438,45 @@ export class RealtimeVoiceWebSocketServer {
                   sessionId: data.sessionId,
                   summary: llmResponse
                 });
+              } else {
+                // 尝试从数据库获取当前问题索引，以便客户端同步进度
+                try {
+                  const dbResult = await aiInterviewService.getInterviewSession(data.sessionId);
+                  if (dbResult.success && dbResult.session && dbResult.session.status === 'IN_PROGRESS') {
+                    // 获取当前题目
+                    const currentQIndex = dbResult.session.currentQuestion;
+                    const currentQ = dbResult.session.questions.find(q => q.questionIndex === currentQIndex);
+
+                    if (currentQ) {
+                      console.log(`🔄 同步进度: index=${currentQ.questionIndex}, text=${currentQ.questionText.substring(0, 10)}...`);
+                      // 重新发送带有正确index的响应
+                      socket.emit('voice_response', {
+                        audioUrl: null,
+                        text: llmResponse,
+                        sessionId: data.sessionId,
+                        duration: 0,
+                        ttsMode: 'client',
+                        userText: undefined,
+                        questionIndex: currentQ.questionIndex + 1 // 客户端通常显示为 1-based
+                      });
+                      return; // 已发送带index的响应，跳过下面的默认发送
+                    }
+                  }
+                } catch (dbError) {
+                  console.warn(`⚠️ 获取数据库会话失败: ${dbError}`);
+                }
               }
+
+              socket.emit('voice_response', {
+                audioUrl: null,
+                text: llmResponse,
+                sessionId: data.sessionId,
+                duration: 0,
+                ttsMode: 'client',
+                userText: undefined,
+                isCompleted: llmCompletionHint,
+                status: llmCompletionHint ? 'completed' : undefined
+              });
             } else {
               // 其他错误，重新抛出
               throw flowError;

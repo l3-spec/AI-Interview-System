@@ -108,6 +108,14 @@ class DigitalInterviewViewModel(
         }
     }
 
+    fun updateCurrentQuestion(index: Int) {
+        if (index > 0 && index != _uiState.value.currentQuestion) {
+            _uiState.update {
+                it.copy(currentQuestion = index)
+            }
+        }
+    }
+
     fun submitAnswer(videoFile: File, durationMillis: Long) {
         viewModelScope.launch {
             _uiState.update { it.copy(isUploading = true, statusMessage = "正在上传视频...") }

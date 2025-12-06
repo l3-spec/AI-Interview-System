@@ -96,6 +96,9 @@ class DigitalInterviewActivity : ComponentActivity() {
                         onInterviewComplete = { finish() },
                         onRecordingFinished = { file, duration ->
                             viewModel.submitAnswer(file, duration)
+                        },
+                        onQuestionIndexChange = { index ->
+                            viewModel.updateCurrentQuestion(index)
                         }
                     )
                 }

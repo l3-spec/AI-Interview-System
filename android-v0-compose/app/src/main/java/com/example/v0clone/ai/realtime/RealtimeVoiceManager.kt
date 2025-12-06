@@ -315,6 +315,9 @@ class RealtimeVoiceManager(private val context: Context) {
     private val _interviewCompleted = MutableStateFlow(false)
     val interviewCompleted: StateFlow<Boolean> = _interviewCompleted.asStateFlow()
 
+    private val _currentQuestionIndex = MutableStateFlow<Int?>(null)
+    val currentQuestionIndex: StateFlow<Int?> = _currentQuestionIndex.asStateFlow()
+
     private val _errors = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val errors: SharedFlow<String> = _errors.asSharedFlow()
 
@@ -834,6 +837,7 @@ class RealtimeVoiceManager(private val context: Context) {
             val text = data.optString("text", "")
             val ttsMode = data.optString("ttsMode", if (audioUrl.isNullOrBlank()) "client" else "server")
             val userText = data.optString("userText", "")
+            val questionIndex = data.optInt("questionIndex", -1)
             val willSpeak = text.isNotBlank() || !audioUrl.isNullOrBlank()
             val isCompletedFlag = data.optBoolean("isCompleted", false) ||
                 data.optString("status").equals("completed", ignoreCase = true) ||
@@ -880,6 +884,11 @@ class RealtimeVoiceManager(private val context: Context) {
             }
             appendMessage(ConversationMessage(role = ConversationRole.DIGITAL_HUMAN, text = text))
             _latestDigitalHumanText.value = text
+            
+            if (questionIndex > 0) {
+                Log.i(TAG, "收到题目索引更新: $questionIndex")
+                _currentQuestionIndex.value = questionIndex
+            }
 
             val completionHint = isCompletedFlag || completionKeywords.any { keyword ->
                 text.contains(keyword, ignoreCase = true)

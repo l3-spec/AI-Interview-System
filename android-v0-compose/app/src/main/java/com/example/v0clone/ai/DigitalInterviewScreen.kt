@@ -113,7 +113,8 @@ fun DigitalInterviewScreen(
     onRetry: () -> Unit,
     onInterviewComplete: (sessionId: String) -> Unit = {},
     videoRecorder: InterviewVideoRecorder? = null,
-    onRecordingFinished: ((File, Long) -> Unit)? = null
+    onRecordingFinished: ((File, Long) -> Unit)? = null,
+    onQuestionIndexChange: (Int) -> Unit = {}
 ) {
     val context = LocalContext.current
     var hasCameraPermission by remember { mutableStateOf(false) }
@@ -216,10 +217,21 @@ fun DigitalInterviewScreen(
     val latestDigitalHumanText by voiceManager.latestDigitalHumanText.collectAsState()
     val interviewCompleted by voiceManager.interviewCompleted.collectAsState()
     val conversation by voiceManager.conversation.collectAsState()
+    val currentQuestionIndex by voiceManager.currentQuestionIndex.collectAsState()
     val digitalHumanReady = duixReady
     val digitalHumanStatus = duixStatus
     var hasReportedCompletion by rememberSaveable(uiState.sessionId) { mutableStateOf(false) }
     var autoRecorderEnabled by rememberSaveable { mutableStateOf(true) }
+
+    // 监听题目索引变化并同步到ViewModel
+    LaunchedEffect(currentQuestionIndex) {
+        currentQuestionIndex?.let { index ->
+            // 注意：这里假设后端返回的是 1-based index，或者已经在Manager中处理好
+            // 根据之前的后端代码：questionIndex: currentQ.questionIndex + 1
+            // 所以这里直接使用即可
+            onQuestionIndexChange(index)
+        }
+    }
 
     // 调试日志
     LaunchedEffect(uiState) {
