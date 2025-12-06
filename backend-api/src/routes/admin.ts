@@ -74,6 +74,11 @@ import {
   updateUserPostAdmin,
 } from '../controllers/postAdminController';
 import {
+  listInterviewSessions,
+  getInterviewSessionAnalysis,
+  listAnalysisTasks
+} from '../controllers/aiInterviewAdminController';
+import {
   listAppVersions,
   createAppVersion,
   updateAppVersion,
@@ -381,7 +386,10 @@ router.post('/home/banners', [
 
 router.put('/home/banners/:id', [
   requirePermission('content:write'),
-  param('id').isUUID().withMessage('Banner ID 格式错误'),
+  param('id')
+    .isString().withMessage('Banner ID 格式错误')
+    .trim()
+    .matches(/^[a-zA-Z0-9-_]+$/).withMessage('Banner ID 格式错误'),
   body('title').optional().isLength({ min: 1, max: 100 }).withMessage('标题不超过100字符'),
   body('subtitle').optional().isLength({ min: 1, max: 150 }).withMessage('副标题不超过150字符'),
   body('imageUrl').optional().isURL().withMessage('请提供有效的图片链接'),
@@ -392,21 +400,30 @@ router.put('/home/banners/:id', [
 
 router.patch('/home/banners/:id/status', [
   requirePermission('content:write'),
-  param('id').isUUID().withMessage('Banner ID 格式错误'),
+  param('id')
+    .isString().withMessage('Banner ID 格式错误')
+    .trim()
+    .matches(/^[a-zA-Z0-9-_]+$/).withMessage('Banner ID 格式错误'),
   body('isActive').isBoolean().withMessage('状态参数必须是布尔值'),
   validate
 ], updateHomeBannerStatus);
 
 router.delete('/home/banners/:id', [
   requirePermission('content:write'),
-  param('id').isUUID().withMessage('Banner ID 格式错误'),
+  param('id')
+    .isString().withMessage('Banner ID 格式错误')
+    .trim()
+    .matches(/^[a-zA-Z0-9-_]+$/).withMessage('Banner ID 格式错误'),
   validate
 ], deleteHomeBanner);
 
 router.post('/home/banners/reorder', [
   requirePermission('content:write'),
   body('orders').isArray({ min: 1 }).withMessage('排序数据不能为空'),
-  body('orders.*.id').isUUID().withMessage('Banner ID 格式错误'),
+  body('orders.*.id')
+    .isString().withMessage('Banner ID 格式错误')
+    .trim()
+    .matches(/^[a-zA-Z0-9-_]+$/).withMessage('Banner ID 格式错误'),
   body('orders.*.sortOrder').isInt({ min: 0, max: 1000 }).withMessage('排序值必须在0-1000之间'),
   validate
 ], reorderHomeBanners);
@@ -423,7 +440,10 @@ router.get('/home/promoted-jobs', [
 
 router.post('/home/promoted-jobs', [
   requirePermission('content:write'),
-  body('jobId').isUUID().withMessage('职位ID格式错误'),
+  body('jobId')
+    .isString().withMessage('职位ID格式错误')
+    .trim()
+    .matches(/^[a-zA-Z0-9-_]+$/).withMessage('职位ID格式错误'),
   body('promotionType').optional().isIn(['NORMAL', 'PREMIUM', 'FEATURED']).withMessage('推广类型参数无效'),
   body('displayFrequency').optional().isInt({ min: 1, max: 50 }).withMessage('展示频率必须在1-50之间'),
   body('priority').optional().isInt({ min: 0, max: 100 }).withMessage('优先级必须在0-100之间'),
@@ -435,7 +455,10 @@ router.post('/home/promoted-jobs', [
 
 router.put('/home/promoted-jobs/:id', [
   requirePermission('content:write'),
-  param('id').isUUID().withMessage('推广职位ID格式错误'),
+  param('id')
+    .isString().withMessage('推广职位ID格式错误')
+    .trim()
+    .matches(/^[a-zA-Z0-9-_]+$/).withMessage('推广职位ID格式错误'),
   body('promotionType').optional().isIn(['NORMAL', 'PREMIUM', 'FEATURED']).withMessage('推广类型参数无效'),
   body('displayFrequency').optional().isInt({ min: 1, max: 50 }).withMessage('展示频率必须在1-50之间'),
   body('priority').optional().isInt({ min: 0, max: 100 }).withMessage('优先级必须在0-100之间'),
@@ -447,7 +470,10 @@ router.put('/home/promoted-jobs/:id', [
 
 router.delete('/home/promoted-jobs/:id', [
   requirePermission('content:write'),
-  param('id').isUUID().withMessage('推广职位ID格式错误'),
+  param('id')
+    .isString().withMessage('推广职位ID格式错误')
+    .trim()
+    .matches(/^[a-zA-Z0-9-_]+$/).withMessage('推广职位ID格式错误'),
   validate
 ], deletePromotedJob);
 
@@ -663,5 +689,30 @@ router.post('/assessments/:assessmentId/questions/reorder', [
   body('orders').isArray().withMessage('排序数据必须是数组'),
   validate
 ], reorderQuestions);
+
+
+
+// AI面试管理
+router.get('/ai-interviews', [
+  requirePermission('interview:read'),
+  query('page').optional().isInt({ min: 1 }).withMessage('页码必须大于0'),
+  query('pageSize').optional().isInt({ min: 1, max: 100 }).withMessage('每页数量必须在1-100之间'),
+  query('status').optional().isIn(['PREPARING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']).withMessage('状态参数无效'),
+  validate
+], listInterviewSessions);
+
+router.get('/ai-interviews/:sessionId/analysis', [
+  requirePermission('interview:read'),
+  param('sessionId').isUUID().withMessage('会话ID格式错误'),
+  validate
+], getInterviewSessionAnalysis);
+
+router.get('/ai-interviews/tasks', [
+  requirePermission('interview:read'),
+  query('page').optional().isInt({ min: 1 }).withMessage('页码必须大于0'),
+  query('pageSize').optional().isInt({ min: 1, max: 100 }).withMessage('每页数量必须在1-100之间'),
+  query('status').optional().isIn(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).withMessage('状态参数无效'),
+  validate
+], listAnalysisTasks);
 
 export default router; 

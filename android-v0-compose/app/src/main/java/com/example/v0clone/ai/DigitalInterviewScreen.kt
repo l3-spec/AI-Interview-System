@@ -130,6 +130,14 @@ fun DigitalInterviewScreen(
     val activity = context as? Activity
     var showEducationOverlay by rememberSaveable { mutableStateOf(true) }
     val powerManager = remember { context.getSystemService(Context.POWER_SERVICE) as? PowerManager }
+    var showPowerSaveDialog by remember { mutableStateOf(false) }
+
+    // Check for Power Save Mode on entry
+    LaunchedEffect(Unit) {
+        if (powerManager?.isPowerSaveMode == true) {
+            showPowerSaveDialog = true
+        }
+    }
 
     // 沉浸式处理：进入数字人面试页时隐藏系统栏，退出时恢复
     DisposableEffect(activity) {
@@ -661,6 +669,39 @@ fun DigitalInterviewScreen(
             dismissButton = {
                 TextButton(onClick = { showPermissionDialog = false }) {
                     Text("稍后再说")
+                }
+            }
+        )
+    }
+
+    if (showPowerSaveDialog) {
+        AlertDialog(
+            onDismissRequest = { showPowerSaveDialog = false },
+            title = { Text(text = "检测到省电模式") },
+            text = {
+                Text(
+                    text = "检测到您的手机开启了省电模式。为了保证面试过程中屏幕常亮且画面流畅，建议您关闭省电模式。"
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showPowerSaveDialog = false
+                        // Try to open battery saver settings
+                        try {
+                            val intent = android.content.Intent(android.provider.Settings.ACTION_BATTERY_SAVER_SETTINGS)
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "无法自动打开设置，请手动关闭省电模式", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                ) {
+                    Text("去设置")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPowerSaveDialog = false }) {
+                    Text("我知道了")
                 }
             }
         )

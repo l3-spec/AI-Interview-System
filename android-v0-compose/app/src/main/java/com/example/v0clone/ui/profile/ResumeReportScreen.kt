@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.xlwl.AiMian.data.repository.AiInterviewRepository
@@ -170,8 +171,8 @@ private fun ResumeReportListScreen(
   onRefresh: () -> Unit,
   onSelectReport: (ResumeReportListItem) -> Unit
 ) {
-  val headerHeight = 88.dp
-  val listTopPadding = headerHeight - 36.dp
+  val headerHeight = 96.dp
+  val listTopPadding = headerHeight
   val listBottomPadding = 140.dp
   Box(
     modifier = Modifier
@@ -183,6 +184,7 @@ private fun ResumeReportListScreen(
         .fillMaxWidth()
         .height(headerHeight)
         .background(GradientTop)
+        .zIndex(1f)
     ) {
       ResumeReportTopBar(
         onBack = onBack,
@@ -632,7 +634,7 @@ fun ResumeReportScreen(
   onBack: () -> Unit,
   onRetest: () -> Unit = {}
 ) {
-  val headerHeight = 116.dp
+  val headerHeight = 96.dp
   Box(
     modifier = Modifier
       .fillMaxSize()
@@ -643,6 +645,7 @@ fun ResumeReportScreen(
         .fillMaxWidth()
         .height(headerHeight)
         .background(GradientTop)
+        .zIndex(1f)
     ) {
       ResumeReportTopBar(
         onBack = onBack,
@@ -654,7 +657,7 @@ fun ResumeReportScreen(
       modifier = Modifier
         .fillMaxSize()
         .padding(horizontal = 12.dp)
-        .padding(top = headerHeight - 16.dp),
+        .padding(top = headerHeight),
       verticalArrangement = Arrangement.spacedBy(12.dp),
       contentPadding = PaddingValues(bottom = 32.dp)
     ) {
@@ -723,18 +726,15 @@ private fun ResumeReportTopBar(
   onBack: () -> Unit,
   onRefresh: () -> Unit
 ) {
-  Box(
+  Row(
     modifier = Modifier
       .fillMaxWidth()
       .statusBarsPadding()
-      .height(56.dp)
-      .padding(horizontal = 12.dp),
-    contentAlignment = Alignment.Center
+      .padding(horizontal = 12.dp, vertical = 8.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.SpaceBetween
   ) {
-    IconButton(
-      onClick = onBack,
-      modifier = Modifier.align(Alignment.CenterStart)
-    ) {
+    IconButton(onClick = onBack) {
       Icon(
         imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
         contentDescription = "返回",
@@ -751,10 +751,7 @@ private fun ResumeReportTopBar(
       )
     )
 
-    IconButton(
-      onClick = onRefresh,
-      modifier = Modifier.align(Alignment.CenterEnd)
-    ) {
+    IconButton(onClick = onRefresh) {
       Icon(
         imageVector = Icons.Outlined.Refresh,
         contentDescription = "刷新",

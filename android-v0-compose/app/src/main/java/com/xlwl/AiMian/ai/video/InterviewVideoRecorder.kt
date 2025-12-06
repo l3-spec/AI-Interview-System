@@ -38,8 +38,8 @@ class InterviewVideoRecorder(private val context: Context) {
     try {
       val provider = cameraProviderFuture.get()
       val qualitySelector = QualitySelector.fromOrderedList(
-        listOf(Quality.FHD, Quality.HD, Quality.SD),
-        FallbackStrategy.lowerQualityOrHigherThan(Quality.SD)
+        listOf(Quality.SD, Quality.HD, Quality.FHD),
+        FallbackStrategy.higherQualityOrLowerThan(Quality.SD)
       )
       val recorder = Recorder.Builder()
         .setQualitySelector(qualitySelector)

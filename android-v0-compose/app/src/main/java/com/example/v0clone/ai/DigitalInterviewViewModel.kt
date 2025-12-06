@@ -117,10 +117,12 @@ class DigitalInterviewViewModel(
     }
 
     fun submitAnswer(videoFile: File, durationMillis: Long) {
+        // Silent async upload - do not block UI or show loading state
         viewModelScope.launch {
-            _uiState.update { it.copy(isUploading = true, statusMessage = "正在上传视频...") }
+            // _uiState.update { it.copy(isUploading = true, statusMessage = "正在上传视频...") }
             
             try {
+                Log.d("DigitalInterviewVM", "Starting silent upload for session $sessionId question $currentQuestion")
                 // 1. Upload video to OSS
                 val objectKey = "interview/${sessionId}/${currentQuestion}_${System.currentTimeMillis()}.mp4"
                 val uploadResult = ossRepository.uploadVideo(videoFile, objectKey)
@@ -144,28 +146,23 @@ class DigitalInterviewViewModel(
                 
                 if (submitResult.isSuccess) {
                     val response = submitResult.getOrNull()
-                    if (response?.isCompleted == true) {
-                        _uiState.update { it.copy(isUploading = false, statusMessage = "面试已完成") }
-                        // Activity will handle completion via onInterviewComplete callback if needed, 
-                        // but currently we might need a way to signal completion state or just let the flow continue.
-                        // For now, we rely on the UI to react to completion or just wait for the next question logic (if any).
-                        // However, since this is a "submit answer" action, we usually expect to move to next question or finish.
-                    } else {
-                        _uiState.update { it.copy(isUploading = false, statusMessage = "答案提交成功") }
-                    }
+                    Log.d("DigitalInterviewVM", "Answer submitted successfully. Completed: ${response?.isCompleted}")
+                    // Do not update statusMessage to avoid showing overlay
+                    // _uiState.update { it.copy(isUploading = false, statusMessage = "答案提交成功") }
                 } else {
                     throw submitResult.exceptionOrNull() ?: Exception("提交答案失败")
                 }
                 
             } catch (e: Exception) {
-                Log.e("DigitalInterviewVM", "Submit answer failed", e)
-                _uiState.update { 
-                    it.copy(
-                        isUploading = false, 
-                        errorMessage = "提交失败: ${e.message}",
-                        statusMessage = null
-                    ) 
-                }
+                Log.e("DigitalInterviewVM", "Submit answer failed (silent)", e)
+                // Do not show error overlay for background upload failure to avoid interrupting user
+                // _uiState.update { 
+                //     it.copy(
+                //         isUploading = false, 
+                //         errorMessage = "提交失败: ${e.message}",
+                //         statusMessage = null
+                //     ) 
+                // }
             }
         }
     }

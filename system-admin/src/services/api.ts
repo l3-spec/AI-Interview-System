@@ -86,7 +86,7 @@ export interface CompanyShowcaseEntry {
     highlights?: string[];
     industry?: string | null;
     scale?: string | null;
-    } | null;
+  } | null;
 }
 
 export interface CompanyVerification {
@@ -255,11 +255,11 @@ const mapCompanySummary = (company: any): AdminCompanySummary => ({
   verification: mapVerification(company.verification),
   showcase: company.showcase
     ? {
-        id: company.showcase.id,
-        role: company.showcase.role,
-        hiringCount: Number(company.showcase.hiringCount ?? 0),
-        sortOrder: Number(company.showcase.sortOrder ?? 0)
-      }
+      id: company.showcase.id,
+      role: company.showcase.role,
+      hiringCount: Number(company.showcase.hiringCount ?? 0),
+      sortOrder: Number(company.showcase.sortOrder ?? 0)
+    }
     : null,
   stats: parseCompanyStats(company.stats),
   jobCount: Number(company._count?.jobs ?? 0),
@@ -367,16 +367,16 @@ const mapCompanyShowcase = (entry: any): CompanyShowcaseEntry => ({
   sortOrder: Number(entry.sortOrder ?? 0),
   company: entry.company
     ? {
-        id: entry.company.id,
-        name: entry.company.name,
-        logo: entry.company.logo,
-        tagline: entry.company.tagline,
-        focusArea: entry.company.focusArea,
-        themeColors: parseJsonArray<string>(entry.company.themeColors),
-        highlights: parseJsonArray<string>(entry.company.highlights),
-        industry: entry.company.industry,
-        scale: entry.company.scale
-      }
+      id: entry.company.id,
+      name: entry.company.name,
+      logo: entry.company.logo,
+      tagline: entry.company.tagline,
+      focusArea: entry.company.focusArea,
+      themeColors: parseJsonArray<string>(entry.company.themeColors),
+      highlights: parseJsonArray<string>(entry.company.highlights),
+      industry: entry.company.industry,
+      scale: entry.company.scale
+    }
     : null
 });
 
@@ -414,12 +414,12 @@ export const authApi = {
   login: async (email: string, password: string): Promise<ApiResponse<AdminLoginResponse>> => {
     return await apiClient.post('/auth/login/admin', { email, password });
   },
-  
+
   // 验证token
   verifyToken: async (): Promise<ApiResponse> => {
     return await apiClient.get('/auth/verify');
   },
-  
+
   // 退出登录
   logout: async (): Promise<ApiResponse> => {
     return await apiClient.post('/auth/logout');
@@ -719,7 +719,7 @@ export const uploadApi = {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('type', type === 'banner' ? 'logo' : type); // 使用 logo 类型作为 banner 的临时方案
-    
+
     // 创建临时 axios 实例用于文件上传（不使用 JSON Content-Type）
     const uploadClient = axios.create({
       baseURL: config.API_BASE_URL,
@@ -728,7 +728,7 @@ export const uploadApi = {
         'Content-Type': 'multipart/form-data'
       }
     });
-    
+
     // 添加认证 token
     uploadClient.interceptors.request.use((axiosConfig) => {
       const token = localStorage.getItem(config.TOKEN_KEY);
@@ -737,13 +737,13 @@ export const uploadApi = {
       }
       return axiosConfig;
     });
-    
+
     try {
       const response = await uploadClient.post('/upload', formData);
       if (response.data?.success && response.data?.data?.url) {
         // 确保返回完整的 URL
-        const url = response.data.data.url.startsWith('http') 
-          ? response.data.data.url 
+        const url = response.data.data.url.startsWith('http')
+          ? response.data.data.url
           : `${config.API_BASE_URL}${response.data.data.url}`;
         return {
           success: true,
@@ -768,6 +768,18 @@ export const uploadApi = {
 export const ossApi = {
   getConfig: async (): Promise<ApiResponse<{ endpoint: string; bucketName: string; region: string; cdnDomain?: string }>> => {
     return await apiClient.get('/oss/config');
+  }
+};
+
+export const aiInterviewApi = {
+  getSessions: async (params?: Record<string, any>): Promise<ApiResponse<PaginationResult<any>>> => {
+    return await apiClient.get('/admin/ai-interviews', { params });
+  },
+  getSessionAnalysis: async (sessionId: string): Promise<ApiResponse<any>> => {
+    return await apiClient.get(`/admin/ai-interviews/${sessionId}/analysis`);
+  },
+  getAnalysisTasks: async (params?: Record<string, any>): Promise<ApiResponse<PaginationResult<any>>> => {
+    return await apiClient.get('/admin/ai-interviews/tasks', { params });
   }
 };
 
@@ -920,11 +932,11 @@ const mapUserPostAdmin = (post: any): UserPostAdmin => ({
   updatedAt: post.updatedAt,
   user: post.user
     ? {
-        id: post.user.id,
-        name: post.user.name,
-        email: post.user.email,
-        isActive: Boolean(post.user.isActive),
-      }
+      id: post.user.id,
+      name: post.user.name,
+      email: post.user.email,
+      isActive: Boolean(post.user.isActive),
+    }
     : null,
 });
 

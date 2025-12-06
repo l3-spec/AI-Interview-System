@@ -102,40 +102,46 @@ fun V0App() {
                 AppNavHost(navController = navController)
             }
 
-            if (!hideBottomBar) {
-                FrostedGlassBottomBar(
-                    selectedIndex = selectedTabIndex,
-                    onSelected = { index ->
-                        when (index) {
-                            0 -> navController.navigate(Routes.HOME) { launchSingleTop = true }
-                            1 -> navController.navigate(Routes.JOBS) { launchSingleTop = true }
-                            2 -> navController.navigate(Routes.CIRCLE) { launchSingleTop = true }
-                            3 -> navController.navigate(Routes.PROFILE) { launchSingleTop = true }
-                        }
-                    },
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = bottomPadding)
-                )
+            androidx.compose.animation.AnimatedVisibility(
+                visible = !hideBottomBar,
+                enter = androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.fadeOut()
+            ) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    FrostedGlassBottomBar(
+                        selectedIndex = selectedTabIndex,
+                        onSelected = { index ->
+                            when (index) {
+                                0 -> navController.navigate(Routes.HOME) { launchSingleTop = true }
+                                1 -> navController.navigate(Routes.JOBS) { launchSingleTop = true }
+                                2 -> navController.navigate(Routes.CIRCLE) { launchSingleTop = true }
+                                3 -> navController.navigate(Routes.PROFILE) { launchSingleTop = true }
+                            }
+                        },
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = bottomPadding)
+                    )
 
-                FloatingActionButton(
-                    onClick = { navController.navigate(Routes.AI) { launchSingleTop = true } },
-                    containerColor = Color.Transparent,
-                    shape = CircleShape,
-                    elevation = FloatingActionButtonDefaults.elevation(
-                        defaultElevation = 0.dp,
-                        pressedElevation = 0.dp,
-                        focusedElevation = 0.dp,
-                        hoveredElevation = 0.dp
-                    ),
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .offset(y = -(bottomInset + 32.dp))
-                        .size(72.dp)
-                        .shadow(if (aiSelected) 12.dp else 8.dp, CircleShape, clip = false)
-                        .zIndex(10f)
-                ) {
-                    AIInterviewFab(selected = aiSelected)
+                    FloatingActionButton(
+                        onClick = { navController.navigate(Routes.AI) { launchSingleTop = true } },
+                        containerColor = Color.Transparent,
+                        shape = CircleShape,
+                        elevation = FloatingActionButtonDefaults.elevation(
+                            defaultElevation = 0.dp,
+                            pressedElevation = 0.dp,
+                            focusedElevation = 0.dp,
+                            hoveredElevation = 0.dp
+                        ),
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .offset(y = -(bottomInset + 32.dp))
+                            .size(72.dp)
+                            .shadow(if (aiSelected) 12.dp else 8.dp, CircleShape, clip = false)
+                            .zIndex(10f)
+                    ) {
+                        AIInterviewFab(selected = aiSelected)
+                    }
                 }
             }
         }

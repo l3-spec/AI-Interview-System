@@ -90,7 +90,7 @@ private val ScrimBrush = Brush.verticalGradient(
 
 private val GUIDE_STEPS = listOf(
     GuideStep(
-        instructions = listOf("请认真听题，AI", "面试官将随机提问"),
+        instructions = listOf("请认真听题，AI", "面试官将随机提问", "请尽量在安静的环境下进行"),
         card = GuideCardData(
             title = "面试官提问中...",
             subtitle = "请您做一个自我介绍",

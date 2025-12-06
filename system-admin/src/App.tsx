@@ -17,16 +17,17 @@ import HomeContentManagement from './pages/HomeContentManagement';
 import AssessmentManagement from './pages/AssessmentManagement';
 import PostManagement from './pages/PostManagement';
 import AppVersionManagement from './pages/AppVersionManagement';
+import InterviewAnalysisManagement from './pages/InterviewAnalysisManagement';
 import './App.css';
 
 const App: React.FC = () => {
   return (
-      <AuthProvider>
+    <AuthProvider>
       <Router>
         <Routes>
           {/* 登录页面 */}
           <Route path="/login" element={<LoginPage />} />
-          
+
           {/* 系统布局 */}
           <Route path="/" element={<SystemLayout />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
@@ -40,6 +41,7 @@ const App: React.FC = () => {
             <Route path="assessments" element={<AssessmentManagement />} />
             <Route path="admins" element={<AdminManagement />} />
             <Route path="app-versions" element={<AppVersionManagement />} />
+            <Route path="interview-analysis" element={<InterviewAnalysisManagement />} />
             <Route path="logs" element={<SystemLogs />} />
             <Route path="permissions" element={<PermissionManagement />} />
             <Route path="billing" element={<BillingManagement />} />
@@ -50,7 +52,7 @@ const App: React.FC = () => {
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </Router>
-      </AuthProvider>
+    </AuthProvider>
   );
 };
 
