@@ -824,13 +824,27 @@ class AIInterviewService {
               status: true,
             },
           },
+          analysisReport: {
+            select: {
+              analysisStatus: true,
+              reportUrl: true,
+            }
+          }
         },
         orderBy: { createdAt: 'desc' },
       });
 
+      // 映射数据以匹配前端模型
+      const mappedSessions = sessions.map(session => ({
+        ...session,
+        analysisStatus: session.analysisReport?.analysisStatus,
+        reportUrl: session.analysisReport?.reportUrl,
+        reportReady: session.analysisReport?.analysisStatus === 'COMPLETED',
+      }));
+
       return {
         success: true,
-        sessions,
+        sessions: mappedSessions,
       };
     } catch (error) {
       console.error('获取面试会话列表失败:', error);
@@ -952,7 +966,7 @@ class AIInterviewService {
       }
 
       const sessionData = session.session;
-      
+
       if (sessionData.currentQuestion >= sessionData.totalQuestions) {
         return {
           success: true,

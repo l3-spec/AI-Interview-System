@@ -701,12 +701,6 @@ router.get('/ai-interviews', [
   validate
 ], listInterviewSessions);
 
-router.get('/ai-interviews/:sessionId/analysis', [
-  requirePermission('interview:read'),
-  param('sessionId').isUUID().withMessage('会话ID格式错误'),
-  validate
-], getInterviewSessionAnalysis);
-
 router.get('/ai-interviews/tasks', [
   requirePermission('interview:read'),
   query('page').optional().isInt({ min: 1 }).withMessage('页码必须大于0'),
@@ -715,4 +709,10 @@ router.get('/ai-interviews/tasks', [
   validate
 ], listAnalysisTasks);
 
-export default router; 
+router.get('/ai-interviews/:sessionId/analysis', [
+  requirePermission('interview:read'),
+  param('sessionId').isUUID().withMessage('会话ID格式无效'),
+  validate
+], getInterviewSessionAnalysis);
+
+export default router;
