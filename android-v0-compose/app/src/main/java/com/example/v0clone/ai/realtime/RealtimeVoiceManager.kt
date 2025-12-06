@@ -335,6 +335,7 @@ class RealtimeVoiceManager(private val context: Context) {
 
     // 可选的数字人音频分发（用于DUIX推送PCM/WAV）
     private var duixAudioSink: ((String) -> Unit)? = null
+    private var preferExternalAudio = false
 
     private val downloadClient by lazy {
         OkHttpClient.Builder()
@@ -460,6 +461,15 @@ class RealtimeVoiceManager(private val context: Context) {
 
     fun setDuixAudioSink(sink: ((String) -> Unit)?) {
         duixAudioSink = sink
+        preferExternalAudio = sink != null
+        Log.i(
+            TAG,
+            if (sink != null) {
+                "DUIX音频接收器已安装，优先使用数字人通道播放语音并静音本地播放器以避免重复播放"
+            } else {
+                "DUIX音频接收器已移除，恢复本地播放器输出"
+            }
+        )
     }
 
     /**
@@ -1000,6 +1010,7 @@ class RealtimeVoiceManager(private val context: Context) {
 
         // 将可播放路径同步给数字人
         duixAudioSink?.invoke(preparedPath)
+        val muteLocalPlayback = preferExternalAudio && duixAudioSink != null
 
         try {
             // 如果正在播放相同的文本，且MediaPlayer确实在播放中，才跳过
@@ -1014,6 +1025,9 @@ class RealtimeVoiceManager(private val context: Context) {
             
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(preparedPath)
+                if (muteLocalPlayback) {
+                    setVolume(0f, 0f)
+                }
                 
                 setOnPreparedListener {
                     val sessionId = audioSessionId
@@ -1024,7 +1038,11 @@ class RealtimeVoiceManager(private val context: Context) {
                     }
                     
                     start()
-                    Log.i(TAG, "MediaPlayer开始播放 - textHash=$textHash")
+                    Log.i(
+                        TAG,
+                        "MediaPlayer开始播放 - textHash=$textHash" +
+                            if (muteLocalPlayback) "（已静音，避免与数字人双重播放）" else ""
+                    )
                     this@RealtimeVoiceManager._isDigitalHumanSpeaking.value = true
                     this@RealtimeVoiceManager.activeAudioHash = textHash // 标记当前正在播放的Hash
                     digitalHumanController?.onTtsPlayback(preparedPath, digitalHumanText)

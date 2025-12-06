@@ -12,7 +12,7 @@ if (!fs.existsSync(uploadsDir)) {
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     let dir = 'uploads/';
-    
+
     // 根据文件类型创建不同的子目录
     if (file.fieldname === 'logo') {
       dir += 'logos/';
@@ -49,16 +49,22 @@ const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCa
   const allowedImageTypes = /jpeg|jpg|png|gif|webp/;
   // 允许的文档类型
   const allowedDocTypes = /pdf|doc|docx/;
-  
+  // 允许的视频类型
+  const allowedVideoTypes = /mp4|webm|ogg|quicktime/;
+
   const extname = allowedImageTypes.test(path.extname(file.originalname).toLowerCase()) ||
-                  allowedDocTypes.test(path.extname(file.originalname).toLowerCase());
+    allowedDocTypes.test(path.extname(file.originalname).toLowerCase()) ||
+    allowedVideoTypes.test(path.extname(file.originalname).toLowerCase());
+
   const mimetype = allowedImageTypes.test(file.mimetype) ||
-                   /application\/(pdf|msword|vnd.openxmlformats-officedocument.wordprocessingml.document)/.test(file.mimetype);
+    /application\/(pdf|msword|vnd.openxmlformats-officedocument.wordprocessingml.document)/.test(file.mimetype) ||
+    allowedVideoTypes.test(file.mimetype) ||
+    file.mimetype === 'video/quicktime'; // iOS .mov files often use this
 
   if (mimetype && extname) {
     return cb(null, true);
   } else {
-    cb(new Error('只允许上传图片文件 (jpeg, jpg, png, gif, webp) 或文档文件 (pdf, doc, docx)'));
+    cb(new Error('只允许上传图片、文档或视频文件'));
   }
 };
 
@@ -66,7 +72,7 @@ const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCa
 export const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB限制
+    fileSize: 500 * 1024 * 1024, // 500MB限制
   },
   fileFilter: fileFilter
 });
@@ -75,9 +81,9 @@ export const upload = multer({
 export const uploadSingle = (fieldName: string) => upload.single(fieldName);
 
 // 多文件上传中间件
-export const uploadMultiple = (fieldName: string, maxCount: number = 5) => 
+export const uploadMultiple = (fieldName: string, maxCount: number = 5) =>
   upload.array(fieldName, maxCount);
 
 // 混合上传中间件
-export const uploadFields = (fields: { name: string; maxCount?: number }[]) => 
+export const uploadFields = (fields: { name: string; maxCount?: number }[]) =>
   upload.fields(fields); 

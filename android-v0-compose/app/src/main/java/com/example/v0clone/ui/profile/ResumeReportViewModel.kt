@@ -48,7 +48,9 @@ class ResumeReportViewModel(
       val result = repository.getInterviewHistory()
       result
         .onSuccess { sessions ->
-          val reports = sessions.mapNotNull { it.toReportItem() }
+          val reports = sessions
+            .filter { hasCompletedInterview(it) }
+            .mapNotNull { it.toReportItem() }
           val ready = reports.filter { it.isReady }
           val selected = if (ready.size == 1) ready.first() else null
           val currentSelection = _uiState.value.selectedReport
@@ -81,6 +83,23 @@ class ResumeReportViewModel(
 
   fun clearSelection() {
     _uiState.update { it.copy(selectedReport = null) }
+  }
+
+  private fun hasCompletedInterview(session: AiInterviewSessionSummary): Boolean {
+    val status = session.status.orEmpty().trim().uppercase()
+    val analysis = session.analysisStatus.orEmpty().trim().uppercase()
+    val hasReportUrl = session.reportUrl?.isNotBlank() == true
+    val reportReady = session.reportReady == true
+    val allQuestionsCompleted = session.questions.isNotEmpty() &&
+      session.questions.all { it.status?.trim()?.uppercase() == "COMPLETED" }
+    val readyFlags = setOf("COMPLETED", "FINISHED", "READY", "DONE")
+    val processingFlags = setOf("PROCESSING")
+    return status in readyFlags ||
+      analysis in readyFlags ||
+      hasReportUrl ||
+      reportReady ||
+      (analysis in processingFlags && (status in readyFlags || allQuestionsCompleted)) ||
+      allQuestionsCompleted
   }
 
   private fun AiInterviewSessionSummary.toReportItem(): ResumeReportListItem? {

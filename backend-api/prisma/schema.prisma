@@ -367,13 +367,13 @@ model AIInterviewQuestion {
   id              String    @id @default(uuid())
   questionIndex   Int // 问题序号
   questionText    String // 问题内容
-  audioUrl        String? // 问题语音文件URL
-  audioPath       String? // 语音文件路径
-  answerText      String? // 用户回答文本
-  answerVideoUrl  String? // 用户回答视频URL
-  answerVideoPath String? // 回答视频文件路径
+  audioUrl        String?   @db.Text // 问题语音文件URL
+  audioPath       String?   @db.Text // 语音文件路径
+  answerText      String?   @db.Text // 用户回答文本
+  answerVideoUrl  String?   @db.Text // 用户回答视频URL
+  answerVideoPath String?   @db.Text // 回答视频文件路径
   answerDuration  Int? // 回答时长(秒)
-  videoUrl        String? // 题目视频URL（数字人）
+  videoUrl        String?   @db.Text // 题目视频URL（数字人）
   status          String? // PREPARING | READY | FAILED
   createdAt       DateTime  @default(now())
   answeredAt      DateTime? // 回答时间

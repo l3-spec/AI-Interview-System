@@ -170,7 +170,9 @@ private fun ResumeReportListScreen(
   onRefresh: () -> Unit,
   onSelectReport: (ResumeReportListItem) -> Unit
 ) {
-  val headerHeight = 116.dp
+  val headerHeight = 88.dp
+  val listTopPadding = headerHeight - 36.dp
+  val listBottomPadding = 140.dp
   Box(
     modifier = Modifier
       .fillMaxSize()
@@ -222,9 +224,9 @@ private fun ResumeReportListScreen(
           modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 12.dp)
-            .padding(top = headerHeight - 16.dp),
+            .padding(top = listTopPadding),
           verticalArrangement = Arrangement.spacedBy(12.dp),
-          contentPadding = PaddingValues(bottom = 32.dp)
+          contentPadding = PaddingValues(bottom = listBottomPadding)
         ) {
           items(state.reports) { report ->
             ResumeReportListItemCard(
@@ -431,7 +433,7 @@ private fun ResumeReportDetailScreen(
   onBack: () -> Unit,
   onRefresh: () -> Unit
 ) {
-  val headerHeight = 116.dp
+  val headerHeight = 88.dp
   val reportUrl = report.reportUrl?.takeIf { it.isNotBlank() }
   var reloadToken by remember { mutableStateOf(0) }
   val subtitle = remember(report) {
@@ -478,7 +480,7 @@ private fun ResumeReportDetailScreen(
       modifier = Modifier
         .fillMaxSize()
         .padding(horizontal = 12.dp)
-        .padding(top = headerHeight - 12.dp),
+        .padding(top = headerHeight - 20.dp),
       verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
       Card(

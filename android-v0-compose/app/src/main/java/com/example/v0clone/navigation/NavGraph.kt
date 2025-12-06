@@ -968,7 +968,9 @@ fun AppNavHost(navController: NavHostController) {
                                     currentQuestion = (firstQuestion?.questionIndex ?: 0) + 1,
                                     totalQuestions = data.totalQuestions,
                                     countdownSeconds = countdownSeconds,
-                                    sessionId = data.sessionId
+                                    sessionId = data.sessionId,
+                                    ossRepository = ossRepository,
+                                    aiInterviewRepository = aiInterviewRepository
                                 )
                             )
                             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -998,41 +1000,13 @@ fun AppNavHost(navController: NavHostController) {
                                             Log.w("DigitalInterview", "标记面试完成失败", error)
                                         }
                                     }
-                                    navController.navigate(Routes.INTERVIEW_COMPLETE) {
-                                        popUpTo(Routes.HOME) { inclusive = false }
-                                        launchSingleTop = true
+                                    navController.navigate("${Routes.SESSION}/$sessionId") {
+                                        popUpTo(Routes.DIGITAL_INTERVIEW) { inclusive = true }
                                     }
                                 },
                                 videoRecorder = videoRecorder,
                                 onRecordingFinished = { file, duration ->
-                                    coroutineScope.launch {
-                                        runCatching {
-                                            Log.i("DigitalInterview", "录制完成，准备上传: ${file.absolutePath}, 时长: ${duration}ms")
-                                            val objectKey = "interview/${data.sessionId}/${file.name}"
-                                            val result = ossRepository.uploadVideo(file, objectKey)
-                                            result.onSuccess { uploadResult ->
-                                                Log.i("DigitalInterview", "视频上传成功: ${uploadResult.url}")
-                                                // 解析questionIndex from filename
-                                                val questionIndex = file.name.split("_").getOrNull(2)?.toIntOrNull() ?: 0
-                                                // 通知后端上传完成
-                                                ossRepository.notifyUploadComplete(
-                                                    com.xlwl.AiMian.data.model.OssUploadCompleteRequest(
-                                                        sessionId = data.sessionId,
-                                                        questionIndex = questionIndex,
-                                                        ossUrl = uploadResult.url ?: "",
-                                                        fileSize = file.length(),
-                                                        duration = duration
-                                                    )
-                                                )
-                                            }.onFailure { error ->
-                                                Log.e("DigitalInterview", "视频上传失败", error)
-                                            }
-                                            // 删除本地临时文件
-                                            file.delete()
-                                        }.onFailure { error ->
-                                            Log.e("DigitalInterview", "处理录制视频失败", error)
-                                        }
-                                    }
+                                    viewModel.submitAnswer(file, duration)
                                 }
                             )
                         }

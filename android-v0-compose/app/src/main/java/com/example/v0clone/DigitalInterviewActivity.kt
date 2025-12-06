@@ -18,6 +18,14 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.xlwl.AiMian.ai.DigitalInterviewScreen
 import com.xlwl.AiMian.ai.DigitalInterviewViewModel
+import com.xlwl.AiMian.data.api.AiInterviewApi
+import com.xlwl.AiMian.data.api.OssApi
+import com.xlwl.AiMian.data.api.RetrofitClient
+import com.xlwl.AiMian.data.auth.AuthManager
+import com.xlwl.AiMian.data.repository.AiInterviewRepository
+import com.xlwl.AiMian.data.repository.OssRepository
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 
 /**
  * 数字人面试全屏Activity
@@ -45,6 +53,20 @@ class DigitalInterviewActivity : ComponentActivity() {
         val countdownSeconds = intent.getIntExtra("countdownSeconds", 180)
         val sessionId = intent.getStringExtra("sessionId") ?: ""
 
+        // Initialize dependencies
+        val authManager = AuthManager(applicationContext)
+        // Blocking call to get token is not ideal but acceptable for Activity initialization if fast,
+        // or we can use a runBlocking since we need the token for Retrofit.
+        // Better approach: RetrofitClient usually takes a provider or we pass the token.
+        // Looking at NavGraph, RetrofitClient.createOkHttpClient { token } is used.
+        
+        val token = runBlocking { authManager.tokenFlow.first() }
+        val client = RetrofitClient.createOkHttpClient { token }
+        val aiInterviewApi = RetrofitClient.createService(AiInterviewApi::class.java, client)
+        val ossApi = RetrofitClient.createService(OssApi::class.java, client)
+        val aiInterviewRepository = AiInterviewRepository(aiInterviewApi)
+        val ossRepository = OssRepository(ossApi)
+
         val factory = DigitalInterviewViewModel.Factory(
             application = application,
             position = position,
@@ -52,7 +74,9 @@ class DigitalInterviewActivity : ComponentActivity() {
             currentQuestion = currentQuestion,
             totalQuestions = totalQuestions,
             countdownSeconds = countdownSeconds,
-            sessionId = sessionId
+            sessionId = sessionId,
+            ossRepository = ossRepository,
+            aiInterviewRepository = aiInterviewRepository
         )
         viewModel = ViewModelProvider(this, factory)[DigitalInterviewViewModel::class.java]
 
@@ -69,7 +93,10 @@ class DigitalInterviewActivity : ComponentActivity() {
                         uiState = uiState,
                         onStartAnswer = { viewModel.onStartAnswer() },
                         onRetry = { viewModel.retryConnection() },
-                        onInterviewComplete = { finish() }
+                        onInterviewComplete = { finish() },
+                        onRecordingFinished = { file, duration ->
+                            viewModel.submitAnswer(file, duration)
+                        }
                     )
                 }
             }

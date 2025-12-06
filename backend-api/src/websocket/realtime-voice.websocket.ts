@@ -238,16 +238,6 @@ export class RealtimeVoiceWebSocketServer {
             background,
           });
 
-          if (sessionState.welcomeSent) {
-            console.log(`⚠️ 会话已存在且已发送欢迎语，跳过重复发送 - sessionId: ${sessionId}, socketId: ${socket.id}`);
-            socket.emit('session_joined', {
-              sessionId,
-              status: 'success',
-            });
-            this.touchSession(sessionId);
-            return;
-          }
-
           console.log(`✅ 用户加入会话: ${sessionId} (Socket: ${socket.id})`);
 
           socket.emit('session_joined', {
@@ -256,13 +246,16 @@ export class RealtimeVoiceWebSocketServer {
           });
           this.touchSession(sessionId);
 
+          const isResume = sessionState.welcomeSent;
           // 发送第一个欢迎问题
           // 构建个性化欢迎语
           const jobPositionText = jobPosition || '这个职位';
-          const welcomeText =
-            `非常荣幸认识您，我会陪您完成接下来的面试流程。` +
-            `请简单介绍一下您自己，并说明为什么想要应聘${jobPositionText}。`;
-          console.log(`🎤 发送初始欢迎问题 - sessionId: ${sessionId}`);
+          const welcomeText = isResume
+            ? `欢迎回来，我们继续完成${jobPositionText}的面试。请从刚才的思路继续，或补充关键经历。`
+            : `让我陪您一起完成这个面试流程。请简单介绍一下您自己，并说明为什么想要应聘${jobPositionText}。`;
+          console.log(
+            `${isResume ? '🎤 发送欢迎回来提示' : '🎤 发送初始欢迎问题'} - sessionId: ${sessionId}`
+          );
           const welcomeHash = this.hashText(welcomeText);
           if (this.hasRecentWelcome(sessionId, welcomeHash)) {
             console.warn(`⚠️ 检测到重复欢迎语，已在冷却窗口内，跳过发送 - sessionId: ${sessionId}`);

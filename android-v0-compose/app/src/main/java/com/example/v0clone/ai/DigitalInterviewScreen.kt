@@ -5,8 +5,9 @@ import android.app.Activity
 import android.content.Context
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
-import android.view.WindowManager
+import android.os.PowerManager
 import android.util.Log
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -127,6 +128,7 @@ fun DigitalInterviewScreen(
     val duixModelUrl = remember { AppConfig.duixModelUrl }
     val activity = context as? Activity
     var showEducationOverlay by rememberSaveable { mutableStateOf(true) }
+    val powerManager = remember { context.getSystemService(Context.POWER_SERVICE) as? PowerManager }
 
     // 沉浸式处理：进入数字人面试页时隐藏系统栏，退出时恢复
     DisposableEffect(activity) {
@@ -144,6 +146,9 @@ fun DigitalInterviewScreen(
         val wasKeepingScreenOn = window?.attributes?.flags?.let { flags ->
             flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0
         } ?: false
+        val originalBrightness = window?.attributes?.screenBrightness
+            ?: WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        val wasPowerSaveMode = powerManager?.isPowerSaveMode == true
 
         if (window != null && controller != null) {
             WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -156,8 +161,17 @@ fun DigitalInterviewScreen(
             controller.hide(WindowInsetsCompat.Type.systemBars())
         }
 
-        // Keep the screen awake while the interview is active to avoid dimming during long sessions
-        window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        window?.let { w ->
+            // Keep the screen awake and force full brightness for the interview
+            w.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            w.addFlags(WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
+            val attrs = w.attributes
+            attrs.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL
+            w.attributes = attrs
+            if (wasPowerSaveMode) {
+                Log.i("DigitalInterviewScreen", "检测到省电模式，已强制提高屏幕亮度用于面试")
+            }
+        }
 
         onDispose {
             if (window != null && controller != null) {
@@ -170,6 +184,11 @@ fun DigitalInterviewScreen(
 
             if (window != null && !wasKeepingScreenOn) {
                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+            if (window != null) {
+                val attrs = window.attributes
+                attrs.screenBrightness = originalBrightness
+                window.attributes = attrs
             }
         }
     }
@@ -310,7 +329,7 @@ fun DigitalInterviewScreen(
             }
             ConnectionState.CONNECTED -> {
                 Log.d("DigitalInterviewScreen", "Voice service: Connected ✓")
-                Toast.makeText(context, "语音服务已就绪", Toast.LENGTH_SHORT).show()
+                // Toast.makeText(context, "语音服务已就绪", Toast.LENGTH_SHORT).show()
                 connectionRetryCount = 0
             }
             ConnectionState.DISCONNECTED -> {
@@ -384,13 +403,8 @@ fun DigitalInterviewScreen(
 
                 if (isRecording) {
                     voiceManager.stopRecording()
-                    coroutineScope.launch {
-                        val result = videoRecorder?.stopRecording()
-                        if (result != null) {
-                            onRecordingFinished?.invoke(result.file, result.durationMillis)
-                        }
-                    }
-                    Toast.makeText(context, "录音已结束", Toast.LENGTH_SHORT).show()
+                    // Video stop is now handled by LaunchedEffect(isRecording)
+                    // Toast.makeText(context, "录音已结束", Toast.LENGTH_SHORT).show()
                 } else {
                     onStartAnswer()
                     videoRecorder?.startRecording(
@@ -398,7 +412,6 @@ fun DigitalInterviewScreen(
                         (uiState.currentQuestion - 1).coerceAtLeast(0)
                     )
                     voiceManager.startRecording()
-                    Toast.makeText(context, "开始录音，请作答", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -416,11 +429,30 @@ fun DigitalInterviewScreen(
 
     // 监听题目变化 - 注意：现在主要依赖WebSocket推送的voice_response来触发说话
     // uiState.questionText主要用于初始题目显示
-    LaunchedEffect(uiState.questionText) {
-        if (!uiState.isLoading && uiState.questionText.isNotBlank() && !interviewCompleted) {
-            Log.d("DigitalInterviewScreen", "UI题目更新: ${uiState.questionText.take(20)}...")
-            // 如果是第一题，且数字人还没说话，可以手动触发一次（视具体需求而定）
-            // 但通常WebSocket连接后会收到welcome或first question，所以这里尽量少干预
+    // 使用 activeQuestionText 跟踪当前显示的题目（优先使用数字人最新的回复）
+    var activeQuestionText by remember(uiState.questionText) { mutableStateOf(uiState.questionText) }
+    
+    LaunchedEffect(latestDigitalHumanText) {
+        if (!latestDigitalHumanText.isNullOrBlank()) {
+            activeQuestionText = latestDigitalHumanText ?: ""
+        }
+    }
+
+    LaunchedEffect(uiState, activeQuestionText) {
+        Log.d("DigitalInterviewScreen", "UI State: isLoading=${uiState.isLoading}, error=${uiState.errorMessage}, question=$activeQuestionText")
+    }
+
+    // 监听录音状态，当语音录制停止时（包括VAD自动停止），同步停止视频录制
+    LaunchedEffect(isRecording) {
+        if (!isRecording) {
+            // 语音录制已停止（可能是VAD触发，也可能是手动停止）
+            // 尝试停止视频录制并提交
+            val result = videoRecorder?.stopRecording()
+            if (result != null) {
+                Log.d("DigitalInterviewScreen", "同步停止视频录制: ${result.file.name}, duration=${result.durationMillis}ms")
+                onRecordingFinished?.invoke(result.file, result.durationMillis)
+                // Toast.makeText(context, "录音已结束", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -531,7 +563,7 @@ fun DigitalInterviewScreen(
                 interviewCompleted = interviewCompleted,
                 connectionState = connectionState,
                 partialTranscript = partialTranscript,
-                latestDigitalHumanText = latestDigitalHumanText,
+                latestDigitalHumanText = activeQuestionText,
                 conversation = conversation
             )
         }
