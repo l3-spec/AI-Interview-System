@@ -234,8 +234,8 @@ export const listAnalysisTasks = async (req: Request, res: Response) => {
                 list: tasks.map((task: any) => ({
                     id: task.id,
                     sessionId: task.sessionId,
-                    userName: task.session.user.name,
-                    jobTarget: task.session.jobTarget,
+                    userName: task.session?.user?.name || '未知用户',
+                    jobTarget: task.session?.jobTarget || '未知职位',
                     status: task.status,
                     priority: task.priority,
                     retryCount: task.retryCount,

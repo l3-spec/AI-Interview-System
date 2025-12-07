@@ -615,6 +615,16 @@ class AIInterviewService {
           },
         });
 
+        // 自动创建分析任务
+        try {
+          const { analysisQueue } = await import('../jobs/analysisQueue');
+          await analysisQueue.enqueueAnalysis(sessionId, 0);
+          console.log(`[AIInterview] 已为会话 ${sessionId} 创建分析任务`);
+        } catch (error) {
+          console.error('[AIInterview] 创建分析任务失败:', error);
+          // 不阻塞面试完成流程，仅记录错误
+        }
+
         return {
           success: true,
           message: '面试已完成',

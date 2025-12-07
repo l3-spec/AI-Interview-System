@@ -1,0 +1,16 @@
+{
+  "images": [
+    {
+      "idiom": "universal",
+      "platform": "ios",
+      "size": "1024x1024",
+      "scale": "1x",
+      "filename": "AppIcon.png",
+      "role": "marketing"
+    }
+  ],
+  "info": {
+    "version": 1,
+    "author": "xcode"
+  }
+}
