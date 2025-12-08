@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { deepseekService } from './deepseekService';
+import { aliyunVideoAIService, type VideoAnalysisResult } from './aliyunVideoAIService';
 
 /**
  * AI面试分析服务
@@ -75,16 +76,28 @@ export class AnalysisService {
                 answerText?: string | null;
             }>;
 
-            const missingVideos = questions.filter((q) => !q.answerVideoUrl);
-            const missingAnswers = questions.filter(
-                (q) => !q.answerText || q.answerText.trim().length === 0
+            // 检查每个问题是否至少有视频或文本答案之一
+            const missingBoth = questions.filter(
+                (q) => !q.answerVideoUrl && (!q.answerText || q.answerText.trim().length === 0)
             );
-            if (missingVideos.length > 0 || missingAnswers.length > 0) {
+
+            if (missingBoth.length > 0) {
                 throw new Error(
-                    `题目视频/答案缺失，停止分析。缺视频: [${missingVideos
+                    `题目缺少答案（视频和文本都为空），停止分析。缺失的问题: [${missingBoth
                         .map((q) => q.questionIndex)
-                        .join(', ')}], 缺文本: [${missingAnswers.map((q) => q.questionIndex).join(', ')}]`
+                        .join(', ')}]`
                 );
+            }
+
+            // 记录缺失的部分答案（仅用于日志，不阻止分析）
+            const missingVideos = questions.filter((q) => !q.answerVideoUrl);
+            const missingText = questions.filter((q) => !q.answerText || q.answerText.trim().length === 0);
+
+            if (missingVideos.length > 0) {
+                console.log(`[AnalysisService] 注意: 以下问题缺少视频: [${missingVideos.map(q => q.questionIndex).join(', ')}]`);
+            }
+            if (missingText.length > 0) {
+                console.log(`[AnalysisService] 注意: 以下问题缺少文本答案: [${missingText.map(q => q.questionIndex).join(', ')}]`);
             }
 
             // 2. 检查是否已有分析报告
@@ -108,24 +121,30 @@ export class AnalysisService {
                 throw new Error('没有可分析的问题和答案');
             }
 
-            // 4. 调用LLM进行分析
-            const analysisResult = await this.performLLMAnalysis({
+            // 4. 使用LLM执行文本分析
+            const textAnalysisResult = await this.performLLMAnalysis({
                 jobTarget: session.jobTarget,
                 jobCategory: session.jobCategory,
                 companyTarget: session.companyTarget,
                 background: session.background,
-                userInfo: {
-                    name: session.user?.name,
-                    experience: session.user?.experience,
-                    skills: session.user?.skills
-                },
+                userInfo: session.user,
                 questionsAndAnswers
             });
 
-            // 5. 保存分析结果到数据库
-            await this.saveAnalysisReport(sessionId, analysisResult);
+            // 5. 执行视频分析（新增）
+            console.log(`[AnalysisService] 开始视频分析...`);
+            const videoAnalysisResults = await this.performVideoAnalysis(questions);
 
-            console.log(`[AnalysisService] 分析完成: ${sessionId}`);
+            // 6. 融合文本和视频分析结果
+            const combinedResult = this.combineAnalysisResults(
+                textAnalysisResult,
+                videoAnalysisResults
+            );
+
+            // 7. 保存综合分析报告
+            await this.saveAnalysisReport(sessionId, combinedResult);
+
+            console.log(`[AnalysisService] 分析成功: ${sessionId}`);
 
         } catch (error) {
             console.error(`[AnalysisService] 分析失败: ${sessionId}`, error);
@@ -153,6 +172,95 @@ export class AnalysisService {
 
             throw error;
         }
+    }
+
+    /**
+     * 执行视频分析
+     */
+    private async performVideoAnalysis(
+        questions: Array<{ answerVideoUrl?: string | null }>
+    ): Promise<VideoAnalysisResult[]> {
+        if (!aliyunVideoAIService.isEnabled()) {
+            console.log('[AnalysisService] 阿里云视频分析未启用，跳过视频分析');
+            return [];
+        }
+
+        const results: VideoAnalysisResult[] = [];
+
+        for (const question of questions) {
+            if (question.answerVideoUrl) {
+                try {
+                    const result = await aliyunVideoAIService.analyzeAnswerVideo(
+                        question.answerVideoUrl
+                    );
+                    results.push(result);
+                } catch (error) {
+                    console.error('[AnalysisService] 单个视频分析失败:', error);
+                    // 继续处理其他视频
+                }
+            }
+        }
+
+        return results;
+    }
+
+    /**
+     * 融合文本和视频分析结果
+     */
+    private combineAnalysisResults(
+        textAnalysis: AnalysisResult,
+        videoAnalysisResults: VideoAnalysisResult[]
+    ): AnalysisResult {
+        if (videoAnalysisResults.length === 0) {
+            // 无视频分析，返回纯文本结果
+            return textAnalysis;
+        }
+
+        // 计算视频综合指标
+        const avgConfidence = videoAnalysisResults.reduce(
+            (sum, v) => sum + v.overallConfidence, 0
+        ) / videoAnalysisResults.length;
+
+        const avgStability = videoAnalysisResults.reduce(
+            (sum, v) => sum + v.emotionStability, 0
+        ) / videoAnalysisResults.length;
+
+        // 统计主导情绪
+        const emotionCounts: Record<string, number> = {};
+        videoAnalysisResults.forEach(v => {
+            emotionCounts[v.dominantEmotion] = (emotionCounts[v.dominantEmotion] || 0) + 1;
+        });
+
+        console.log(`[AnalysisService] 视频分析结果: 平均自信度=${avgConfidence}, 情绪稳定性=${avgStability}`);
+
+        // 调整能力维度评分（融合视频表现）
+        const adjustedCompetencies = { ...textAnalysis.competencies };
+
+        // 沟通表达能力受视频自信度影响（权重：文本60% + 视频40%）
+        adjustedCompetencies.communication =
+            adjustedCompetencies.communication * 0.6 + avgConfidence * 0.4;
+
+        // 抗压能力受情绪稳定性影响
+        const stressResistance = avgStability;
+        // 假设原有学习能力可以映射为抗压能力的一部分，这里简化处理
+        adjustedCompetencies.learning =
+            adjustedCompetencies.learning * 0.7 + stressResistance * 0.3;
+
+        // 重新计算总分
+        const competencyScores = Object.values(adjustedCompetencies);
+        const adjustedOverallScore =
+            competencyScores.reduce((sum, score) => sum + score, 0) / competencyScores.length;
+
+        return {
+            ...textAnalysis,
+            overallScore: Math.round(adjustedOverallScore),
+            competencies: adjustedCompetencies,
+            // 附加视频分析数据，用于报告保存
+            videoConfidenceScore: avgConfidence,
+            emotionStability: avgStability,
+            emotionDistribution: emotionCounts,
+            videoAnalysisResults
+        } as any;
     }
 
     /**
@@ -370,7 +478,7 @@ ${qaText}
     /**
      * 保存分析报告到数据库
      */
-    private async saveAnalysisReport(sessionId: string, result: AnalysisResult): Promise<void> {
+    private async saveAnalysisReport(sessionId: string, result: any): Promise<void> {
         await prisma.aIInterviewAnalysisReport.create({
             data: {
                 sessionId,
@@ -388,7 +496,16 @@ ${qaText}
                 jobMatchDescription: result.jobMatch?.description,
                 jobMatchRatio: result.jobMatch?.matchRatio,
                 tips: result.tips,
-                analysisStatus: 'COMPLETED'
+                analysisStatus: 'COMPLETED',
+                generatedAt: new Date(),
+                // 视频分析字段（新增）
+                videoConfidenceScore: result.videoConfidenceScore,
+                emotionDistribution: result.emotionDistribution ?
+                    JSON.stringify(result.emotionDistribution) : null,
+                speechQuality: null, // 暂未实现
+                bodyLanguageScore: null, // 暂未实现
+                videoInsights: result.videoAnalysisResults ?
+                    JSON.stringify(result.videoAnalysisResults) : null
             }
         });
     }

@@ -710,16 +710,17 @@ class AIInterviewService {
         };
       }
 
-      const missingVideos = (session.questions || []).filter(q => !q.answerVideoUrl);
-      const missingAnswers = (session.questions || []).filter(
-        q => !q.answerText || q.answerText.trim().length === 0
+      // 检查每个问题是否至少有视频或文本答案之一
+      const missingBoth = (session.questions || []).filter(
+        q => !q.answerVideoUrl && (!q.answerText || q.answerText.trim().length === 0)
       );
-      if (missingVideos.length > 0 || missingAnswers.length > 0) {
+
+      if (missingBoth.length > 0) {
         return {
           success: false,
-          error: `仍有题目未提交完整答案或视频：缺视频(${missingVideos
+          error: `仍有题目缺少答案（视频和文本都为空）：${missingBoth
             .map(q => q.questionIndex)
-            .join(',')})，缺文本(${missingAnswers.map(q => q.questionIndex).join(',')})`,
+            .join(',')}`,
         };
       }
 

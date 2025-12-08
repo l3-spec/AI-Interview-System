@@ -422,16 +422,26 @@ model AIInterviewAnalysisReport {
   jobMatchDescription String?  @db.Text // 最佳匹配岗位描述
   jobMatchRatio       Float? // 匹配度 (0-1)
   tips                String?  @db.Text // 职场Tips
-  analysisStatus      String   @default("COMPLETED") // COMPLETED | PARTIAL | FAILED
-  analysisError       String?  @db.Text // 分析错误信息
-  reportUrl           String? // 报告URL（如果有）
-  generatedAt         DateTime @default(now())
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  reportUrl           String?  @map("report_url")
+  analysisStatus      String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  analysisError       String?  @db.Text @map("analysis_error")
+  generatedAt         DateTime?
+  
+  // 视频分析结果（新增）
+  videoConfidenceScore Float?  @map("video_confidence_score") // 综合自信度评分 0-100
+  emotionDistribution  String? @db.Text @map("emotion_distribution") // JSON: 情绪分布统计
+  speechQuality        Float?  @map("speech_quality") // 语音质量评分 0-100
+  bodyLanguageScore    Float?  @map("body_language_score") // 肢体语言评分 0-100
+  videoInsights        String? @db.Text @map("video_insights") // JSON: 详细视频分析结果
+
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
 
   // 外键
   session AIInterviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
+  @@index([sessionId])
+  @@index([analysisStatus])
   @@map("ai_interview_analysis_reports")
 }
 

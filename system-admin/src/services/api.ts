@@ -780,6 +780,9 @@ export const aiInterviewApi = {
   },
   getAnalysisTasks: async (params?: Record<string, any>): Promise<ApiResponse<PaginationResult<any>>> => {
     return await apiClient.get('/admin/ai-interviews/tasks', { params });
+  },
+  retryAnalysisTask: async (sessionId: string): Promise<ApiResponse<any>> => {
+    return await apiClient.post(`/admin/ai-interviews/${sessionId}/retry`);
   }
 };
 

@@ -262,3 +262,28 @@ export const listAnalysisTasks = async (req: Request, res: Response) => {
         });
     }
 };
+
+/**
+ * 重试失败的分析任务（管理员）
+ */
+export const retryAnalysisTask = async (req: Request, res: Response) => {
+    try {
+        const { sessionId } = req.params;
+
+        // 动态导入analysisQueue避免循环依赖
+        const { analysisQueue } = await import('../jobs/analysisQueue');
+
+        await analysisQueue.retryFailedTask(sessionId);
+
+        res.json({
+            success: true,
+            message: '任务已重新加入队列'
+        });
+    } catch (error) {
+        console.error('重试分析任务错误:', error);
+        res.status(500).json({
+            success: false,
+            message: error instanceof Error ? error.message : '重试失败'
+        });
+    }
+};

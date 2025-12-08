@@ -15,7 +15,7 @@ import {
     Select,
     Tabs
 } from 'antd';
-import { SearchOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons';
+import { SearchOutlined, EyeOutlined, ReloadOutlined, PlayCircleOutlined, DownloadOutlined, RedoOutlined } from '@ant-design/icons';
 import { aiInterviewApi } from '../services/api';
 
 const { Title, Text, Paragraph } = Typography;
@@ -50,6 +50,14 @@ interface AnalysisTask {
     completedAt?: string;
     createdAt: string;
     updatedAt: string;
+}
+
+interface Question {
+    index: number;
+    text: string;
+    answer?: string;
+    videoUrl?: string;
+    duration?: number;
 }
 
 interface AnalysisReport {
@@ -105,7 +113,11 @@ const InterviewAnalysisManagement: React.FC = () => {
     const [detailVisible, setDetailVisible] = useState(false);
     const [currentSession, setCurrentSession] = useState<InterviewSession | null>(null);
     const [analysisReport, setAnalysisReport] = useState<AnalysisReport | null>(null);
+    const [questions, setQuestions] = useState<Question[]>([]);
     const [detailLoading, setDetailLoading] = useState(false);
+    const [detailActiveTab, setDetailActiveTab] = useState('questions');
+    const [videoPlayerVisible, setVideoPlayerVisible] = useState(false);
+    const [currentVideoUrl, setCurrentVideoUrl] = useState<string>('');
 
     const fetchSessions = async (page = 1, pageSize = 10) => {
         setSessionsLoading(true);
@@ -166,18 +178,68 @@ const InterviewAnalysisManagement: React.FC = () => {
         setCurrentSession(record);
         setDetailVisible(true);
         setDetailLoading(true);
+        setDetailActiveTab('questions'); // 默认显示问题标签页
+        setVideoPlayerVisible(false); // 关闭视频播放器
         try {
             const res = await aiInterviewApi.getSessionAnalysis(record.id);
             if (res.success && res.data) {
                 setAnalysisReport(res.data.report);
+                setQuestions(res.data.questions || []);
             } else {
                 setAnalysisReport(null);
+                setQuestions([]);
             }
         } catch (error) {
             message.error('获取分析详情失败');
         } finally {
             setDetailLoading(false);
         }
+    };
+
+    const handlePlayVideo = (videoUrl: string) => {
+        // 将OSS直接URL转换为代理URL
+        // 格式：http://ai-interview-videos.oss-cn-beijing.aliyuncs.com/interview-videos/xxx.mp4?... 
+        // 转为：http://localhost:5174/api/oss/proxy?objectKey=interview-videos/xxx.mp4
+
+        let processedUrl = videoUrl;
+
+        try {
+            const url = new URL(videoUrl);
+            // 检查是否是OSS URL
+            if (url.hostname.includes('aliyuncs.com')) {
+                // 提取objectKey (路径部分，去掉开头的/)
+                const objectKey = url.pathname.substring(1);
+                // 构建代理URL
+                processedUrl = `http://localhost:5174/api/oss/proxy?objectKey=${encodeURIComponent(objectKey)}`;
+                console.log('[VideoPlayer] 转换URL:', { original: videoUrl, proxy: processedUrl });
+            }
+        } catch (error) {
+            console.error('[VideoPlayer] URL解析失败，使用原始URL:', error);
+        }
+
+        setCurrentVideoUrl(processedUrl);
+        setVideoPlayerVisible(true);
+    };
+
+    const handleRetryTask = async (record: AnalysisTask) => {
+        Modal.confirm({
+            title: '确认重试',
+            content: `确定要重试任务 ${record.id.substring(0, 8)}... 吗？此操作将重置重试次数并重新加入队列。`,
+            onOk: async () => {
+                try {
+                    const res = await aiInterviewApi.retryAnalysisTask(record.sessionId);
+                    if (res.success) {
+                        message.success('任务已重新加入队列');
+                        // 刷新任务列表
+                        fetchTasks(tasksPagination.current, tasksPagination.pageSize);
+                    } else {
+                        message.error('重试失败');
+                    }
+                } catch (error) {
+                    message.error('重试失败：' + (error instanceof Error ? error.message : '未知错误'));
+                }
+            }
+        });
     };
 
     const sessionColumns = [
@@ -308,6 +370,22 @@ const InterviewAnalysisManagement: React.FC = () => {
             dataIndex: 'updatedAt',
             key: 'updatedAt',
             render: (text: string) => new Date(text).toLocaleString()
+        },
+        {
+            title: '操作',
+            key: 'action',
+            render: (_: any, record: AnalysisTask) => (
+                record.status === 'FAILED' && (
+                    <Button
+                        type="link"
+                        size="small"
+                        icon={<RedoOutlined />}
+                        onClick={() => handleRetryTask(record)}
+                    >
+                        重试
+                    </Button>
+                )
+            )
         }
     ];
 
@@ -380,73 +458,154 @@ const InterviewAnalysisManagement: React.FC = () => {
             </Card>
 
             <Modal
-                title="面试分析报告"
+                title="面试详情"
                 open={detailVisible}
                 onCancel={() => setDetailVisible(false)}
                 footer={null}
-                width={800}
+                width={900}
             >
                 {detailLoading ? (
                     <div style={{ textAlign: 'center', padding: 50 }}>加载中...</div>
-                ) : analysisReport ? (
-                    <Space direction="vertical" size="large" style={{ width: '100%' }}>
-                        <Card>
-                            <Descriptions title="基本信息" bordered column={2}>
-                                <Descriptions.Item label="求职者">{currentSession?.userName}</Descriptions.Item>
-                                <Descriptions.Item label="目标职位">{currentSession?.jobTarget}</Descriptions.Item>
-                                <Descriptions.Item label="综合评分">
-                                    <Text style={{ fontSize: 24, color: '#1890ff' }}>{analysisReport.overallScore}</Text>
-                                </Descriptions.Item>
-                                <Descriptions.Item label="生成时间">{new Date(analysisReport.generatedAt).toLocaleString()}</Descriptions.Item>
-                            </Descriptions>
-                        </Card>
-
-                        <Card title="能力维度分析">
+                ) : (
+                    <Tabs activeKey={detailActiveTab} onChange={setDetailActiveTab}>
+                        <Tabs.TabPane tab="问题与答案" key="questions">
                             <List
-                                grid={{ gutter: 16, column: 2 }}
-                                dataSource={analysisReport.competencies}
-                                renderItem={item => (
-                                    <List.Item>
-                                        <Card size="small" title={item.name} extra={<Text strong>{item.score}分</Text>}>
-                                            <Progress percent={item.score} size="small" status="active" />
-                                            <Paragraph style={{ marginTop: 8 }} type="secondary">{item.description}</Paragraph>
-                                        </Card>
-                                    </List.Item>
+                                dataSource={questions}
+                                locale={{ emptyText: '暂无问题数据' }}
+                                renderItem={(q, idx) => (
+                                    <Card
+                                        key={idx}
+                                        style={{ marginBottom: 16 }}
+                                        size="small"
+                                    >
+                                        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                                            <div>
+                                                <Tag color="blue">Q{q.index + 1}</Tag>
+                                                <Text strong>{q.text}</Text>
+                                            </div>
+
+                                            <div>
+                                                <Text type="secondary">答案: </Text>
+                                                <Text>{q.answer || '未作答'}</Text>
+                                            </div>
+
+                                            {q.videoUrl && (
+                                                <Space>
+                                                    <Button
+                                                        type="primary"
+                                                        size="small"
+                                                        icon={<PlayCircleOutlined />}
+                                                        onClick={() => handlePlayVideo(q.videoUrl!)}
+                                                    >
+                                                        播放视频
+                                                    </Button>
+                                                    <Button
+                                                        size="small"
+                                                        icon={<DownloadOutlined />}
+                                                        onClick={() => {
+                                                            const a = document.createElement('a');
+                                                            a.href = q.videoUrl!;
+                                                            a.download = `answer_q${q.index + 1}.mp4`;
+                                                            a.click();
+                                                        }}
+                                                    >
+                                                        下载
+                                                    </Button>
+                                                    {q.duration && (
+                                                        <Text type="secondary">时长: {q.duration}秒</Text>
+                                                    )}
+                                                </Space>
+                                            )}
+                                        </Space>
+                                    </Card>
                                 )}
                             />
-                        </Card>
+                        </Tabs.TabPane>
 
-                        <div style={{ display: 'flex', gap: 16 }}>
-                            <Card title="优势" style={{ flex: 1 }}>
-                                <ul>
-                                    {analysisReport.strengths.map((s, i) => <li key={i}>{s}</li>)}
-                                </ul>
-                            </Card>
-                            <Card title="待改进" style={{ flex: 1 }}>
-                                <ul>
-                                    {analysisReport.improvements.map((s, i) => <li key={i}>{s}</li>)}
-                                </ul>
-                            </Card>
-                        </div>
+                        <Tabs.TabPane tab="综合分析" key="analysis">
+                            {analysisReport ? (
+                                <Space direction="vertical" size="large" style={{ width: '100%' }}>
+                                    <Card>
+                                        <Descriptions title="基本信息" bordered column={2}>
+                                            <Descriptions.Item label="求职者">{currentSession?.userName}</Descriptions.Item>
+                                            <Descriptions.Item label="目标职位">{currentSession?.jobTarget}</Descriptions.Item>
+                                            <Descriptions.Item label="综合评分">
+                                                <Text style={{ fontSize: 24, color: '#1890ff' }}>{analysisReport.overallScore}</Text>
+                                            </Descriptions.Item>
+                                            <Descriptions.Item label="生成时间">{new Date(analysisReport.generatedAt).toLocaleString()}</Descriptions.Item>
+                                        </Descriptions>
+                                    </Card>
 
-                        <Card title="岗位匹配度">
-                            <Descriptions column={1}>
-                                <Descriptions.Item label="匹配职位">{analysisReport.jobMatch.title}</Descriptions.Item>
-                                <Descriptions.Item label="匹配度">
-                                    <Progress percent={Math.round(analysisReport.jobMatch.ratio * 100)} />
-                                </Descriptions.Item>
-                                <Descriptions.Item label="评价">{analysisReport.jobMatch.description}</Descriptions.Item>
-                            </Descriptions>
-                        </Card>
+                                    <Card title="能力维度分析">
+                                        <List
+                                            grid={{ gutter: 16, column: 2 }}
+                                            dataSource={analysisReport.competencies}
+                                            renderItem={item => (
+                                                <List.Item>
+                                                    <Card size="small" title={item.name} extra={<Text strong>{item.score}分</Text>}>
+                                                        <Progress percent={item.score} size="small" status="active" />
+                                                        <Paragraph style={{ marginTop: 8 }} type="secondary">{item.description}</Paragraph>
+                                                    </Card>
+                                                </List.Item>
+                                            )}
+                                        />
+                                    </Card>
 
-                        <Card title="职场建议">
-                            <Paragraph>{analysisReport.tips}</Paragraph>
-                        </Card>
-                    </Space>
-                ) : (
-                    <div style={{ textAlign: 'center', padding: 50 }}>
-                        <Text type="secondary">暂无分析报告</Text>
-                    </div>
+                                    <div style={{ display: 'flex', gap: 16 }}>
+                                        <Card title="优势" style={{ flex: 1 }}>
+                                            <ul>
+                                                {analysisReport.strengths.map((s, i) => <li key={i}>{s}</li>)}
+                                            </ul>
+                                        </Card>
+                                        <Card title="待改进" style={{ flex: 1 }}>
+                                            <ul>
+                                                {analysisReport.improvements.map((s, i) => <li key={i}>{s}</li>)}
+                                            </ul>
+                                        </Card>
+                                    </div>
+
+                                    <Card title="岗位匹配度">
+                                        <Descriptions column={1}>
+                                            <Descriptions.Item label="匹配职位">{analysisReport.jobMatch.title}</Descriptions.Item>
+                                            <Descriptions.Item label="匹配度">
+                                                <Progress percent={Math.round(analysisReport.jobMatch.ratio * 100)} />
+                                            </Descriptions.Item>
+                                            <Descriptions.Item label="评价">{analysisReport.jobMatch.description}</Descriptions.Item>
+                                        </Descriptions>
+                                    </Card>
+
+                                    <Card title="职场建议">
+                                        <Paragraph>{analysisReport.tips}</Paragraph>
+                                    </Card>
+                                </Space>
+                            ) : (
+                                <div style={{ textAlign: 'center', padding: 50 }}>
+                                    <Text type="secondary">暂无分析报告</Text>
+                                </div>
+                            )}
+                        </Tabs.TabPane>
+                    </Tabs>
+                )}
+            </Modal>
+
+            {/* 视频播放器Modal */}
+            <Modal
+                title="视频播放"
+                open={videoPlayerVisible}
+                onCancel={() => setVideoPlayerVisible(false)}
+                footer={null}
+                width={800}
+                centered
+            >
+                {currentVideoUrl && (
+                    <video
+                        controls
+                        autoPlay
+                        style={{ width: '100%', maxHeight: '600px' }}
+                        src={currentVideoUrl}
+                    >
+                        您的浏览器不支持视频播放。
+                    </video>
                 )}
             </Modal>
         </div>

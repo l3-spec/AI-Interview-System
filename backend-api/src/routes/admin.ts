@@ -76,7 +76,8 @@ import {
 import {
   listInterviewSessions,
   getInterviewSessionAnalysis,
-  listAnalysisTasks
+  listAnalysisTasks,
+  retryAnalysisTask
 } from '../controllers/aiInterviewAdminController';
 import {
   listAppVersions,
@@ -714,5 +715,11 @@ router.get('/ai-interviews/:sessionId/analysis', [
   param('sessionId').isUUID().withMessage('会话ID格式无效'),
   validate
 ], getInterviewSessionAnalysis);
+
+router.post('/ai-interviews/:sessionId/retry', [
+  requirePermission('interview:read'),
+  param('sessionId').isUUID().withMessage('会话ID格式无效'),
+  validate
+], retryAnalysisTask);
 
 export default router;
