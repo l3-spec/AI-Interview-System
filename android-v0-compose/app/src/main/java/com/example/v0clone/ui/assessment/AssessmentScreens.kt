@@ -91,23 +91,59 @@ private val HeaderGradient = Brush.verticalGradient(listOf(Color(0xFF00ACC3), Co
 private val OptionBorder = Color(0xFFE3E6ED)
 
 @Composable
-private fun AssessmentTakeTopBar(title: String, onBack: () -> Unit) {
+private fun AssessmentTakeTopBar(
+    title: String,
+    currentIndex: Int,
+    totalQuestions: Int,
+    onBack: () -> Unit
+) {
     Surface(color = Color.White, shadowElevation = 0.dp) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier.fillMaxWidth()
         ) {
-            IconButton(onClick = onBack) {
-                Icon(imageVector = Icons.Filled.Close, contentDescription = "关闭")
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(imageVector = Icons.Filled.Close, contentDescription = "关闭")
+                }
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                // 显示进度：如 "2/48"
+                Text(
+                    text = "$currentIndex/$totalQuestions",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF242B31)
+                    ),
+                    modifier = Modifier.padding(end = 8.dp)
+                )
             }
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            // 进度条
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .padding(horizontal = 8.dp)
+                    .clip(RoundedCornerShape(1.dp))
+                    .background(Color(0xFFE6E6E6))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth((currentIndex.toFloat() / totalQuestions.coerceAtLeast(1)))
+                        .clip(RoundedCornerShape(1.dp))
+                        .background(AccentColor)
+                )
+            }
         }
     }
 }
@@ -226,34 +262,24 @@ private fun AssessmentHomeScreen(
                     item {
                         AssessmentHomeHeader(onBack = onBack)
                     }
+                    // 显示所有测评卡片
                     if (featuredAssessments.isNotEmpty()) {
-                        item {
-                            Text(
-                                text = "精选测评",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                                modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)
-                            )
-                        }
                         items(featuredAssessments, key = { it.id }) { assessment ->
                             FeaturedAssessmentCard(
                                 assessment = assessment,
                                 onClick = { onAssessmentSelected(assessment) }
                             )
                         }
-                    }
-                    item {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "测评分类",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                            modifier = Modifier.padding(bottom = 6.dp)
-                        )
-                    }
-                    items(categories, key = { it.id }) { category ->
-                        AssessmentCategoryCard(
-                            category = category,
-                            onClick = { onCategorySelected(category) }
-                        )
+                    } else {
+                        // 如果没有精选测评，显示分类中的测评
+                        items(categories, key = { it.id }) { category ->
+                            category.assessments?.forEach { assessment ->
+                                FeaturedAssessmentCard(
+                                    assessment = assessment,
+                                    onClick = { onAssessmentSelected(assessment) }
+                                )
+                            }
+                        }
                     }
                     item { Spacer(modifier = Modifier.height(16.dp)) }
                 }
@@ -316,22 +342,35 @@ private fun AssessmentHomeHeader(onBack: () -> Unit) {
                 .padding(horizontal = 16.dp, vertical = 18.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                        contentDescription = "返回",
-                        tint = Color.White
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                            contentDescription = "返回",
+                            tint = Color.White
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "职业测评",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
                     )
                 }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "职业测评",
-                    style = MaterialTheme.typography.titleLarge.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White
-                    )
-                )
+                // 右侧装饰图标（文件夹图标占位符）
+                Box(
+                    modifier = Modifier.size(48.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // 这里可以添加文件夹图标，暂时留空或使用占位符
+                }
             }
             Text(
                 text = "科学认知自我，找到更适合的职业路径。",
@@ -353,71 +392,84 @@ private fun FeaturedAssessmentCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(Color.White)
             .clickableWithRipple(onClick),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        shape = RoundedCornerShape(14.dp)
+        shape = RoundedCornerShape(16.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (!assessment.coverImage.isNullOrBlank()) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(assessment.coverImage)
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = assessment.title,
-                        modifier = Modifier
-                            .size(width = 72.dp, height = 56.dp)
-                            .clip(RoundedCornerShape(12.dp)),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFFFFF1E5)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Check,
-                            contentDescription = null,
-                            tint = AccentColor
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 左侧图标
+            if (!assessment.coverImage.isNullOrBlank()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(assessment.coverImage)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = assessment.title,
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                // 默认图标：圆形背景
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFFFF1E5)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // 这里可以显示MBTI等图标，暂时使用占位符
+                    Text(
+                        text = assessment.title.take(2),
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = AccentColor
                         )
-                    }
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = assessment.title,
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = assessment.description ?: "简要的测评介绍或说明。",
-                        style = MaterialTheme.typography.bodySmall.copy(color = MutedText),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
                     )
                 }
-                Icon(
-                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                    contentDescription = null,
-                    modifier = Modifier.rotate(180f),
-                    tint = MutedText
+            }
+            
+            // 中间内容
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = assessment.title,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = assessment.description ?: "找到最适合你的职业方向，从认识自己开始",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = MutedText,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
+                    ),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Chip(text = "${assessment.durationMinutes}分钟")
-                assessment.questionCount?.takeIf { it > 0 }?.let {
-                    Chip(text = "$it 题")
-                }
-                Chip(text = difficultyLabel(assessment.difficulty))
-            }
+            
+            // 右侧箭头
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                contentDescription = null,
+                modifier = Modifier.rotate(180f),
+                tint = MutedText
+            )
         }
     }
 }
@@ -1173,6 +1225,8 @@ private fun AssessmentTakeScreen(
         topBar = {
             AssessmentTakeTopBar(
                 title = detail?.title ?: assessmentTitle ?: "测评答题",
+                currentIndex = currentIndex + 1,
+                totalQuestions = detail?.questions?.size ?: 1,
                 onBack = onBack
             )
         },
@@ -1201,6 +1255,7 @@ private fun AssessmentTakeScreen(
             detail != null && detail.questions.isNotEmpty() -> {
                 val question = detail.questions[currentIndex]
                 val answerState = answers.getOrPut(question.id) { AnswerState() }
+                val isFirstQuestion = currentIndex == 0
 
                 val handleNext: () -> Unit = {
                     val state = answers.getOrPut(detail.questions[currentIndex].id) { AnswerState() }
@@ -1220,8 +1275,11 @@ private fun AssessmentTakeScreen(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    item {
-                        QuestionProgress(current = currentIndex + 1, total = detail.questions.size)
+                    // 第一题显示介绍和指南部分
+                    if (isFirstQuestion) {
+                        item {
+                            AssessmentIntroBanner(detail)
+                        }
                     }
                     item {
                         QuestionCard(
@@ -1238,6 +1296,22 @@ private fun AssessmentTakeScreen(
                             onPrevious = { if (currentIndex > 0) currentIndex-- },
                             onNext = handleNext
                         )
+                    }
+                    // 底部信息（仅第一题显示）
+                    if (isFirstQuestion) {
+                        item {
+                            Text(
+                                text = "完成MBTI测试后，您将获得\n你的MBTI人格类型，你的人格优劣势分析",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = MutedText,
+                                    lineHeight = 18.sp,
+                                    textAlign = TextAlign.Center
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -1334,43 +1408,7 @@ private fun AssessmentIntroBanner(detail: AssessmentDetail) {
     }
 }
 
-@Composable
-private fun QuestionProgress(current: Int, total: Int) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "第$current 题",
-                style = MaterialTheme.typography.labelMedium.copy(color = MutedText)
-            )
-            Text(
-                text = "$current/$total",
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
-            )
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp)
-                .clip(RoundedCornerShape(50))
-                .background(Color(0xFFE6E6E6))
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(current.toFloat() / total.coerceAtLeast(1))
-                    .clip(RoundedCornerShape(50))
-                    .background(AccentColor)
-            )
-        }
-    }
-}
+// 已移除 QuestionProgress，进度条现在在顶部栏中显示
 
 @Composable
 private fun QuestionCard(
@@ -1398,8 +1436,8 @@ private fun QuestionCard(
                     lineHeight = 22.sp
                 )
             )
-            when (question.questionType.uppercase()) {
-                "SINGLE_CHOICE" -> {
+        when (question.questionType.uppercase()) {
+            "SINGLE_CHOICE" -> {
                 QuestionOptions(
                     options = question.options,
                     selected = answerState.selectedOptions,
@@ -1418,22 +1456,21 @@ private fun QuestionCard(
                     answerState.toggle(option.label)
                 }
             }
-                "TEXT" -> {
-                    OutlinedTextField(
-                        value = answerState.textAnswer,
-                        onValueChange = { answerState.textAnswer = it },
-                        placeholder = { Text("请简述你的想法或案例...") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(140.dp)
-                    )
-                }
-                else -> {
-                    Text(
-                        text = "暂不支持的题型：${question.questionType}",
-                        style = MaterialTheme.typography.bodySmall.copy(color = Color.Red)
-                    )
-                }
+            "TEXT" -> {
+                OutlinedTextField(
+                    value = answerState.textAnswer,
+                    onValueChange = { answerState.textAnswer = it },
+                    placeholder = { Text("请简述你的想法或案例...") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(140.dp)
+                )
+            }
+            else -> {
+                Text(
+                    text = "暂不支持的题型：${question.questionType}",
+                    style = MaterialTheme.typography.bodySmall.copy(color = Color.Red)
+                )
             }
         }
     }
@@ -1495,25 +1532,48 @@ private fun AnswerControls(
     onPrevious: () -> Unit,
     onNext: () -> Unit
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        OutlinedButton(
-            onClick = onPrevious,
-            enabled = canGoPrevious,
-            shape = RoundedCornerShape(22.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = MutedText)
-        ) {
-            Text("上一题")
-        }
+    if (isLast) {
+        // 最后一题：居中显示"完成"按钮
         Button(
             onClick = onNext,
             colors = ButtonDefaults.buttonColors(containerColor = AccentColor, contentColor = Color.White),
-            shape = RoundedCornerShape(22.dp)
+            shape = RoundedCornerShape(24.dp),
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Text(if (isLast) "提交" else "下一题", fontWeight = FontWeight.SemiBold)
+            Text(
+                text = "完成",
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(vertical = 4.dp)
+            )
+        }
+    } else {
+        // 中间题：左右布局，上一题/下一题
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedButton(
+                onClick = onPrevious,
+                enabled = canGoPrevious,
+                shape = RoundedCornerShape(22.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = Color(0xFF8A8D95),
+                    disabledContentColor = Color(0xFFE3E6ED)
+                ),
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("上一题")
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Button(
+                onClick = onNext,
+                colors = ButtonDefaults.buttonColors(containerColor = AccentColor, contentColor = Color.White),
+                shape = RoundedCornerShape(22.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("下一题", fontWeight = FontWeight.SemiBold)
+            }
         }
     }
 }

@@ -62,19 +62,19 @@ import com.xlwl.AiMian.data.repository.ContentRepository
 import java.text.DecimalFormat
 import kotlinx.coroutines.flow.distinctUntilChanged
 
-// 根据Figma设计规范定义颜色，与职岗页保持统一的头部样式
-private val PageBackground = Color(0xFFF4F5F6)
-private val HeroGradientStart = Color(0xFF00ACC3)
-private val HeroGradientEnd = Color(0xFFE9F7F9)
-private val SearchPlaceholder = Color(0xFFA6ABB1)
-private val PrimaryText = Color(0xFF2D3036)
-private val AccentOrange = Color(0xFFF28B3F)
+// 根据Figma设计规范定义颜色和尺寸
+private val PageBackground = Color(0xFFEBEBEB) // 根据Figma设计：背景灰色 #EBEBEB
+private val HeroGradientStart = Color(0xFF00ACC3) // 顶部蓝色
+private val HeroGradientEnd = Color(0xFFEBEBEB) // 底部灰色
+private val SearchPlaceholder = Color(0xFFB5B7B8) // 根据Figma设计：灰色占位 #B5B7B8
+private val PrimaryText = Color(0xFF000000) // 根据Figma设计：黑色 #000000
+private val AccentOrange = Color(0xFFEC7C38) // 根据Figma设计：橙色 #EC7C38
 private val WhiteColor = Color(0xFFFFFFFF)
-private val CardCorner = 8.dp
-private val CircleTopBarExpandedHeight = 76.dp
-private val CircleTopBarCollapsedHeight = 54.dp
+private val CardCorner = 8.dp // 根据Figma设计：卡片圆角8px
+private val CircleTopBarExpandedHeight = 44.dp // 根据Figma设计：顶部区域高度
+private val CircleTopBarCollapsedHeight = 44.dp
 private val CircleTopBarMaxOffset = 120.dp
-private val CircleHeaderApproxHeight = CircleTopBarExpandedHeight + 64.dp
+private val CircleHeaderApproxHeight = 103.dp // 根据Figma设计：顶部区域总高度103px
 
 @Composable
 fun CircleRoute(
@@ -160,14 +160,20 @@ private fun CircleScreen(
             .fillMaxSize()
             .background(PageBackground)
     ) {
+        // 根据Figma设计：背景渐变从#00ACC3到#EBEBEB，从31.65%位置开始过渡
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     brush = Brush.verticalGradient(
-                        colors = listOf(HeroGradientStart, HeroGradientEnd),
+                        colors = listOf(
+                            HeroGradientStart,  // #00ACC3
+                            HeroGradientStart,  // 保持到31.65%
+                            HeroGradientEnd     // #EBEBEB
+                        ),
                         startY = 0f,
-                        endY = 520f
+                        endY = Float.POSITIVE_INFINITY,
+                        stops = floatArrayOf(0f, 0.3165f, 1f)
                     )
                 )
         )
@@ -259,10 +265,11 @@ private fun CircleScreen(
             modifier = Modifier.align(Alignment.TopCenter)
         )
 
+        // 发帖按钮 - 根据Figma设计：距离右边16px，距离底部174px（考虑底部导航栏）
         CreatePostDock(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 16.dp, bottom = 144.dp),
+                .padding(end = 16.dp, bottom = 174.dp), // 根据Figma设计：距离底部174px
             onClick = onCreatePost
         )
     }
@@ -549,6 +556,14 @@ private fun CircleEmptyState(
     }
 }
 
+/**
+ * 发帖浮动按钮 - 根据Figma设计实现
+ * Figma设计规范：
+ * - 尺寸：48x48px
+ * - 位置：右下角，距离右边16px，距离底部174px（考虑底部导航栏）
+ * - 颜色：橙色 #EC7C38
+ * - 阴影：0px 2px 2px 0px rgba(0,0,0,0.25)
+ */
 @Composable
 private fun CreatePostDock(
     modifier: Modifier = Modifier,
@@ -556,11 +571,11 @@ private fun CreatePostDock(
 ) {
     Surface(
         modifier = modifier
-            .size(48.dp)  // 根据Figma设计调整为48dp
+            .size(48.dp) // 根据Figma设计：48x48px
             .clip(CircleShape)
             .clickable(onClick = onClick),
-        color = AccentOrange,
-        shadowElevation = 2.dp  // Figma设计的阴影
+        color = AccentOrange, // 根据Figma设计：橙色 #EC7C38
+        shadowElevation = 2.dp // 根据Figma设计：阴影 0px 2px 2px 0px rgba(0,0,0,0.25)
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
@@ -573,6 +588,15 @@ private fun CreatePostDock(
     }
 }
 
+/**
+ * 职圈顶部搜索栏 - 根据Figma设计实现
+ * Figma设计规范：
+ * - 顶部区域：从#00ACC3到#EBEBEB的渐变，从31.65%位置开始过渡
+ * - 标题"职圈"：24sp，Semibold，黑色
+ * - "大咖分享"：14sp，Medium，黑色，50%透明度
+ * - 搜索框：白色背景，32px高度，8px圆角，12px占位文字
+ * - 内边距：左右12px，上下12px
+ */
 @Composable
 private fun CircleHeader(
     progress: Float,
@@ -580,73 +604,76 @@ private fun CircleHeader(
     onHeightChanged: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val barHeight = lerp(CircleTopBarExpandedHeight, CircleTopBarCollapsedHeight, progress)
-    val horizontalPadding = lerp(16.dp, 14.dp, progress)
-    val verticalPadding = lerp(12.dp, 10.dp, progress)
-    val titleSize = lerp(26.sp, 22.sp, progress)
-    val fieldHeight = lerp(42.dp, 38.dp, progress)
-    val searchIconSize = lerp(18.dp, 16.dp, progress)
-    val rowSpacing = lerp(14.dp, 10.dp, progress)
-    val bottomPadding = lerp(14.dp, 10.dp, progress)
-
     Column(
         modifier = modifier
             .fillMaxWidth()
             .onGloballyPositioned { onHeightChanged(it.size.height) }
             .background(
                 brush = Brush.verticalGradient(
-                    colors = listOf(HeroGradientStart, HeroGradientEnd),
+                    colors = listOf(
+                        HeroGradientStart,  // #00ACC3
+                        HeroGradientStart,  // 保持到31.65%
+                        HeroGradientEnd     // #EBEBEB
+                    ),
                     startY = 0f,
-                    endY = 520f
+                    endY = Float.POSITIVE_INFINITY,
+                    stops = floatArrayOf(0f, 0.3165f, 1f)
                 )
             )
-            .padding(bottom = bottomPadding)
+            .padding(top = 59.dp, bottom = 12.dp, start = 12.dp, end = 12.dp) // 根据Figma设计：padding
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(barHeight)
-                .padding(horizontal = horizontalPadding, vertical = verticalPadding),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(rowSpacing)
+            horizontalArrangement = Arrangement.spacedBy(32.dp) // 根据Figma设计：间距32px
         ) {
+            // 标题"职圈" - 根据Figma设计：24sp，Semibold，黑色
             Text(
                 text = "职圈",
-                fontSize = titleSize,
-                fontWeight = FontWeight.SemiBold,
-                color = PrimaryText
+                fontSize = 24.sp, // 根据Figma设计：24sp
+                fontWeight = FontWeight.SemiBold, // PingFang SC Semibold
+                color = PrimaryText,
+                letterSpacing = (-0.32).sp // 根据Figma设计：letterSpacing -0.32px
             )
+            
+            // "大咖分享"文字 - 根据Figma设计：14sp，Medium，50%透明度
+            Text(
+                text = "大咖分享",
+                fontSize = 14.sp, // 根据Figma设计：14sp
+                fontWeight = FontWeight.Medium, // PingFang SC Medium
+                color = PrimaryText.copy(alpha = 0.5f), // 50%透明度
+                letterSpacing = (-0.32).sp
+            )
+            
+            // 搜索框 - 根据Figma设计：白色背景，32px高度，8px圆角
             Surface(
                 color = Color.White,
-                shape = RoundedCornerShape(14.dp),
-                shadowElevation = 6.dp,
-                tonalElevation = 0.dp,
+                shape = RoundedCornerShape(8.dp), // 根据Figma设计：8px圆角
                 modifier = Modifier
-                    .height(fieldHeight)
+                    .height(32.dp) // 根据Figma设计：32px高度
                     .weight(1f)
                     .clickable(onClick = onSearchClick)
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 24.dp), // 根据Figma设计：左右24px内边距
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp) // 根据Figma设计：间距10px
                 ) {
                     Icon(
                         painter = painterResource(id = com.xlwl.AiMian.R.drawable.ic_jobs_search),
                         contentDescription = "搜索职圈",
                         tint = SearchPlaceholder,
-                        modifier = Modifier.size(searchIconSize)
+                        modifier = Modifier.size(12.dp) // 根据Figma设计：12px图标
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Box(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "搜索",
-                            color = SearchPlaceholder,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Normal
-                        )
-                    }
+                    Text(
+                        text = "搜索",
+                        color = SearchPlaceholder,
+                        fontSize = 12.sp, // 根据Figma设计：12sp
+                        fontWeight = FontWeight.Light, // PingFang SC Light
+                        letterSpacing = (-0.32).sp
+                    )
                 }
             }
         }

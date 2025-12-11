@@ -174,6 +174,7 @@ fun CodeLoginScreen(
                 )
             )
     ) {
+        // 根据Figma设计：数字键盘高度 290px
         val cardBottomOffset = if (showKeyboard) 290.dp else 0.dp
         val cardHeight = 416.dp
         val logoTop = 90.dp
@@ -186,16 +187,31 @@ fun CodeLoginScreen(
             val availableHeight = (maxHeight - cardBottomOffset).coerceAtLeast(cardHeight + logoTop + logoHeight)
             val computedGap = (availableHeight - cardHeight - logoTop - logoHeight).coerceIn(0.dp, desiredGap)
 
+            // Logo 和品牌名称区域 - 根据Figma设计
+            // Figma设计：Logo距离顶部90px，Logo和白色卡片之间间距120px
             Column(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
                     .padding(horizontal = 48.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Top
             ) {
                 Spacer(modifier = Modifier.height(logoTop))
                 AppLogo(modifier = Modifier.size(width = 192.dp, height = logoHeight))
-                Spacer(modifier = Modifier.height(computedGap))
+                // 品牌名称：STARLINK FUTURE - 根据Figma设计
+                // 字体：Anta Regular, 21sp, 橙色 #EC7C38, letterSpacing 0.42px
+                Spacer(modifier = Modifier.height(24.dp)) // Logo和文字之间的间距
+                Text(
+                    text = "STARLINK FUTURE",
+                    fontSize = 21.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = Color(0xFFEC7C38),
+                    letterSpacing = 0.42.sp,
+                    lineHeight = 18.sp
+                )
+                // Logo区域和白色卡片之间的间距：120px - 24px(Logo和文字间距) = 96px
+                Spacer(modifier = Modifier.height(computedGap - 24.dp))
             }
 
             Card(
@@ -614,6 +630,10 @@ private fun AppLogo(modifier: Modifier = Modifier) {
     )
 }
 
+/**
+ * 用户协议复选框组件
+ * 根据Figma设计：14x14px，橙色背景 #EC7C38，白色勾选标记
+ */
 @Composable
 private fun AgreementCheckbox(
     checked: Boolean,
@@ -622,7 +642,7 @@ private fun AgreementCheckbox(
     val interactionSource = remember { MutableInteractionSource() }
     Box(
         modifier = Modifier
-            .size(18.dp)
+            .size(14.dp) // 根据Figma设计：14x14px
             .clip(RoundedCornerShape(4.dp))
             .background(
                 color = if (checked) Color(0xFFEC7C38) else Color.White,
@@ -630,7 +650,7 @@ private fun AgreementCheckbox(
             )
             .border(
                 width = 1.dp,
-                color = Color(0xFFB5B7B8),
+                color = if (checked) Color(0xFFEC7C38) else Color(0xFFB5B7B8),
                 shape = RoundedCornerShape(4.dp)
             )
             .clickable(
@@ -646,7 +666,7 @@ private fun AgreementCheckbox(
                 imageVector = Icons.Filled.Check,
                 contentDescription = null,
                 tint = Color.White,
-                modifier = Modifier.size(12.dp)
+                modifier = Modifier.size(10.dp)
             )
         }
     }
@@ -670,7 +690,7 @@ private fun AgreementText(modifier: Modifier = Modifier) {
         fontSize = 12.sp,
         fontWeight = FontWeight.Light,
         color = Color(0xFF242525),
-        lineHeight = 18.sp,
+        lineHeight = 21.sp, // 根据Figma设计：lineHeight 21
         modifier = modifier
     )
 }

@@ -243,13 +243,18 @@ private fun HeaderWithDeliverySection(
             .fillMaxWidth()
             .height(containerHeight)
     ) {
+        // 渐变背景：从浅蓝/青色渐变到白色
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(headerHeight)
                 .background(
                     brush = Brush.verticalGradient(
-                        colors = listOf(Color(0xFF00ACC3), Color(0xFFEBEBEB))
+                        colors = listOf(
+                            Color(0xFF4FC3F7), // 浅蓝色
+                            Color(0xFFE0F7FA), // 浅青色
+                            Color(0xFFFFFFFF)  // 白色
+                        )
                     )
                 )
         ) {
@@ -348,15 +353,18 @@ private fun MyDeliveryCard(
                     color = Color(0xFF242525)
                 )
             )
+            // "我的投递"图标行：使用橙色填充图标
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(42.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 shortcuts.forEach { shortcut ->
                     ProfileShortcutItem(
                         shortcut = shortcut,
-                        onClick = { onShortcutClick(shortcut) }
+                        onClick = { onShortcutClick(shortcut) },
+                        isFilled = true, // 填充样式
+                        iconColor = Color(0xFFEC7C38) // 橙色
                     )
                 }
             }
@@ -364,9 +372,10 @@ private fun MyDeliveryCard(
                 color = Color(0xFFE6E7EB),
                 thickness = 0.5.dp
             )
+            // 统计数据行
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(42.dp)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 stats.forEach { stat ->
                     ProfileStatItem(stat = stat)
@@ -444,15 +453,18 @@ private fun GeneralFunctionsCard(
                     color = Color(0xFF242525)
                 )
             )
+            // "通用功能"图标行：使用轮廓样式图标
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(42.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 shortcuts.forEach { shortcut ->
                     ProfileShortcutItem(
                         shortcut = shortcut,
-                        onClick = { onShortcutClick(shortcut) }
+                        onClick = { onShortcutClick(shortcut) },
+                        isFilled = false, // 轮廓样式
+                        iconColor = Color(0xFF242525) // 深灰色
                     )
                 }
             }
@@ -464,7 +476,9 @@ private fun GeneralFunctionsCard(
 private fun ProfileShortcutItem(
     shortcut: ProfileShortcut,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isFilled: Boolean = false, // 是否为填充样式
+    iconColor: Color = Color(0xFF242525) // 图标颜色
 ) {
     Column(
         modifier = modifier
@@ -473,10 +487,18 @@ private fun ProfileShortcutItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        // 根据 isFilled 参数决定是否应用颜色滤镜
+        // 填充样式（我的投递）：保持原色（橙色）
+        // 轮廓样式（我的社区、通用功能）：应用灰色滤镜
         Image(
             painter = painterResource(id = shortcut.iconRes),
             contentDescription = shortcut.title,
-            modifier = Modifier.size(24.dp)
+            modifier = Modifier.size(24.dp),
+            colorFilter = if (!isFilled) {
+                ColorFilter.tint(iconColor)
+            } else {
+                null // 填充样式保持原色
+            }
         )
         Text(
             text = shortcut.title,
@@ -500,19 +522,21 @@ private fun ProfileStatItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
+        // 统计数值：大号粗体
         Text(
             text = stat.value,
             style = MaterialTheme.typography.titleLarge.copy(
                 fontSize = 24.sp,
-                fontWeight = FontWeight.Medium,
+                fontWeight = FontWeight.Bold, // 使用粗体以匹配设计
                 color = Color(0xFF000000)
             )
         )
+        // 统计标签：小号灰色文字
         Text(
             text = stat.label,
             style = MaterialTheme.typography.bodySmall.copy(
                 fontSize = 11.sp,
-                fontWeight = FontWeight.Light,
+                fontWeight = FontWeight.Normal,
                 color = Color(0xFF242525).copy(alpha = 0.7f)
             ),
             textAlign = TextAlign.Center

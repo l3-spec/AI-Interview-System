@@ -329,49 +329,56 @@ private fun JobCompanyCard(
 
 @Composable
 private fun CompanyLogo(detail: JobDetail) {
-  val placeholder = detail.company.take(1).ifBlank { "企" }
   Box(
-    modifier = Modifier
-      .size(48.dp)
-      .clip(CircleShape)
-      .background(Color.White), // White background for logo
+    modifier = Modifier.size(48.dp),
     contentAlignment = Alignment.Center
   ) {
     if (detail.companyLogo.isNullOrBlank()) {
-       // Fallback if no logo
-       Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(AccentOrange.copy(alpha = 0.1f)),
-        contentAlignment = Alignment.Center
-       ) {
-           Icon(
-             painter = painterResource(id = com.xlwl.AiMian.R.drawable.ic_tab_jobs_filled),
-             contentDescription = null,
-             tint = AccentOrange,
-             modifier = Modifier.size(24.dp)
-           )
-       }
+      // 默认橙色圆形图标
+      Surface(
+        shape = CircleShape,
+        color = AccentOrange,
+        modifier = Modifier.fillMaxSize()
+      ) {
+        Box(
+          contentAlignment = Alignment.Center,
+          modifier = Modifier.fillMaxSize()
+        ) {
+          Icon(
+            painter = painterResource(id = com.xlwl.AiMian.R.drawable.ic_tab_jobs_filled),
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size(24.dp)
+          )
+        }
+      }
     } else {
+      // 显示公司 Logo
       SubcomposeAsyncImage(
         model = detail.companyLogo,
         contentDescription = detail.company,
-        modifier = Modifier.fillMaxSize(),
-        contentScale = ContentScale.Fit, // Fit to show full logo
+        modifier = Modifier
+          .fillMaxSize()
+          .clip(CircleShape),
+        contentScale = ContentScale.Crop,
         error = {
-           Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(AccentOrange.copy(alpha = 0.1f)),
-            contentAlignment = Alignment.Center
-           ) {
-               Icon(
-                 painter = painterResource(id = com.xlwl.AiMian.R.drawable.ic_tab_jobs_filled),
-                 contentDescription = null,
-                 tint = AccentOrange,
-                 modifier = Modifier.size(24.dp)
-               )
-           }
+          Surface(
+            shape = CircleShape,
+            color = AccentOrange,
+            modifier = Modifier.fillMaxSize()
+          ) {
+            Box(
+              contentAlignment = Alignment.Center,
+              modifier = Modifier.fillMaxSize()
+            ) {
+              Icon(
+                painter = painterResource(id = com.xlwl.AiMian.R.drawable.ic_tab_jobs_filled),
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(24.dp)
+              )
+            }
+          }
         }
       )
     }
@@ -615,44 +622,76 @@ private fun RecommendedJobCard(
           verticalAlignment = Alignment.CenterVertically,
           modifier = Modifier.weight(1f)
         ) {
-          // Small company logo
-           Box(
-            modifier = Modifier
-              .size(24.dp)
-              .clip(CircleShape)
-              .background(Color.White),
+          // 公司 Logo - 小尺寸圆形图标
+          Box(
+            modifier = Modifier.size(24.dp),
             contentAlignment = Alignment.Center
           ) {
             if (job.companyLogo.isNullOrBlank()) {
-               Icon(
-                 painter = painterResource(id = com.xlwl.AiMian.R.drawable.ic_tab_jobs_filled),
-                 contentDescription = null,
-                 tint = AccentOrange,
-                 modifier = Modifier.padding(4.dp)
-               )
+              // 默认橙色圆形图标
+              Surface(
+                shape = CircleShape,
+                color = AccentOrange,
+                modifier = Modifier.fillMaxSize()
+              ) {
+                Box(
+                  contentAlignment = Alignment.Center,
+                  modifier = Modifier.fillMaxSize()
+                ) {
+                  Icon(
+                    painter = painterResource(id = com.xlwl.AiMian.R.drawable.ic_tab_jobs_filled),
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(14.dp)
+                  )
+                }
+              }
             } else {
-               SubcomposeAsyncImage(
+              // 显示公司 Logo
+              SubcomposeAsyncImage(
                 model = job.companyLogo,
                 contentDescription = job.company,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit
-               )
+                modifier = Modifier
+                  .fillMaxSize()
+                  .clip(CircleShape),
+                contentScale = ContentScale.Crop,
+                error = {
+                  Surface(
+                    shape = CircleShape,
+                    color = AccentOrange,
+                    modifier = Modifier.fillMaxSize()
+                  ) {
+                    Box(
+                      contentAlignment = Alignment.Center,
+                      modifier = Modifier.fillMaxSize()
+                    ) {
+                      Icon(
+                        painter = painterResource(id = com.xlwl.AiMian.R.drawable.ic_tab_jobs_filled),
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(14.dp)
+                      )
+                    }
+                  }
+                }
+              )
             }
           }
           
-          Text(
-            text = job.company,
-            style = MaterialTheme.typography.bodySmall.copy(
-              fontWeight = FontWeight.Normal,
-              fontSize = 13.sp,
-              color = TextSecondary
-            ),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-          )
-          
-          if (job.companyTagline.isNotBlank()) {
-             Text(
+          Column(modifier = Modifier.weight(1f)) {
+            Text(
+              text = job.company,
+              style = MaterialTheme.typography.bodySmall.copy(
+                fontWeight = FontWeight.Normal,
+                fontSize = 13.sp,
+                color = TextSecondary
+              ),
+              maxLines = 1,
+              overflow = TextOverflow.Ellipsis
+            )
+            
+            if (job.companyTagline.isNotBlank()) {
+              Text(
                 text = job.companyTagline,
                 style = MaterialTheme.typography.bodySmall.copy(
                   fontSize = 12.sp,
@@ -660,7 +699,8 @@ private fun RecommendedJobCard(
                 ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
-             )
+              )
+            }
           }
         }
         

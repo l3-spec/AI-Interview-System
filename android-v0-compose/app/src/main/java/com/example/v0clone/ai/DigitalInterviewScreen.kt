@@ -129,6 +129,7 @@ fun DigitalInterviewScreen(
     val duixModelUrl = remember { AppConfig.duixModelUrl }
     val activity = context as? Activity
     var showEducationOverlay by rememberSaveable { mutableStateOf(true) }
+    var educationState by rememberSaveable { mutableStateOf(EducationState.START_INTERVIEW) }
     val powerManager = remember { context.getSystemService(Context.POWER_SERVICE) as? PowerManager }
     var showPowerSaveDialog by remember { mutableStateOf(false) }
 
@@ -631,19 +632,30 @@ fun DigitalInterviewScreen(
 
         // 第四层：教育引导层（最顶层，zIndex 3f）
         if (showEducationOverlay) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.8f))
-                    .clickable(
-                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                        indication = null
-                    ) { showEducationOverlay = false }
-                    .zIndex(3f),
-                contentAlignment = Alignment.Center
-            ) {
-                // 教育引导内容已按需求移除，保持空态遮罩
-            }
+            EducationOverlay(
+                state = educationState,
+                currentQuestion = uiState.currentQuestion,
+                totalQuestions = uiState.totalQuestions,
+                thinkingTimeSeconds = 30,
+                answerTimeMinutes = 3,
+                onDismiss = { showEducationOverlay = false },
+                onStartInterview = {
+                    // 开始面试后，切换到思考时间状态
+                    educationState = EducationState.THINKING_TIME
+                },
+                onStartAnswer = {
+                    // 开始答题后，关闭教育引导并开始录音
+                    showEducationOverlay = false
+                    onStartAnswer()
+                },
+                onEndAnswer = {
+                    // 结束答题
+                    showEducationOverlay = false
+                    if (isRecording) {
+                        toggleRecording()
+                    }
+                }
+            )
         }
     }
 

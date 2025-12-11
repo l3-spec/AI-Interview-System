@@ -44,28 +44,31 @@ fun NumericKeyboard(
     BackHandler(onBack = onDismiss)
 
     val backgroundShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
-    val keyShape = RoundedCornerShape(14.dp)
+    // 根据Figma设计：按键圆角 4.6px ≈ 4.6dp
+    val keyShape = RoundedCornerShape(4.6.dp)
 
+    // 根据Figma设计：键盘背景色 #D1D3D9，高度 290px
     Box(
         modifier = modifier
             .fillMaxWidth()
             .shadow(elevation = 16.dp, shape = backgroundShape, clip = false)
             .clip(backgroundShape)
             .background(
-                color = Color(0xFFE7EAEE)
+                color = Color(0xFFD1D3D9) // 根据Figma设计：背景色 #D1D3D9
             )
-            .height(296.dp)
+            .height(290.dp) // 根据Figma设计：高度 290px
     ) {
+        // 根据Figma设计：键盘内边距和间距
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .padding(horizontal = 6.dp, vertical = 6.dp), // 根据Figma设计：左右6px，上下6px
+            verticalArrangement = Arrangement.spacedBy(5.dp) // 根据Figma设计：行间距5px
         ) {
-            // 第一行：1, 2, 3
+            // 第一行：1, 2, 3 - 根据Figma设计：按键间距5px
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(5.dp) // 根据Figma设计：列间距5px
             ) {
                 KeyboardKey("1", "", keyShape, onKeyPress, modifier = Modifier.weight(1f))
                 KeyboardKey("2", "ABC", keyShape, onKeyPress, modifier = Modifier.weight(1f))
@@ -75,7 +78,7 @@ fun NumericKeyboard(
             // 第二行：4, 5, 6
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 KeyboardKey("4", "GHI", keyShape, onKeyPress, modifier = Modifier.weight(1f))
                 KeyboardKey("5", "JKL", keyShape, onKeyPress, modifier = Modifier.weight(1f))
@@ -85,7 +88,7 @@ fun NumericKeyboard(
             // 第三行：7, 8, 9
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 KeyboardKey("7", "PQRS", keyShape, onKeyPress, modifier = Modifier.weight(1f))
                 KeyboardKey("8", "TUV", keyShape, onKeyPress, modifier = Modifier.weight(1f))
@@ -95,7 +98,7 @@ fun NumericKeyboard(
             // 第四行：空, 0, 删除
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 Spacer(modifier = Modifier.weight(1f)) // 空位
                 KeyboardKey("0", "", keyShape, onKeyPress, modifier = Modifier.weight(1f))
@@ -130,18 +133,19 @@ private fun KeyboardKey(
     onKeyPress: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // 根据Figma设计：按键高度46px，白色背景，阴影效果
+    // Figma设计：shadow 0px 1px 0px 0px rgba(0,0,0,0.3)
     Box(
         modifier = modifier
-            .height(56.dp)
-            .shadow(elevation = 3.dp, shape = keyShape, clip = false)
+            .height(46.dp) // 根据Figma设计：按键高度46px
+            .shadow(
+                elevation = 1.dp, // 根据Figma设计：1px阴影
+                shape = keyShape,
+                clip = false
+            )
             .clip(keyShape)
             .background(
                 color = Color.White,
-                shape = keyShape
-            )
-            .border(
-                width = 1.dp,
-                color = Color(0xFFD4D8DF),
                 shape = keyShape
             )
             .clickable { onKeyPress(number) },
@@ -150,26 +154,26 @@ private fun KeyboardKey(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = 6.dp, bottom = if (letters.isEmpty()) 0.dp else 4.dp)
+            modifier = Modifier.fillMaxSize()
         ) {
+            // 根据Figma设计：数字字体25px，Regular，黑色
             Text(
                 text = number,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF1F2126),
-                textAlign = TextAlign.Center
+                fontSize = 25.sp, // 根据Figma设计：25px
+                fontWeight = FontWeight.Normal, // 根据Figma设计：Regular
+                color = Color.Black,
+                textAlign = TextAlign.Center,
+                letterSpacing = 0.2912.sp // 根据Figma设计：letterSpacing 0.2912px
             )
+            // 根据Figma设计：字母提示10px，Bold，黑色，letterSpacing 2px
             if (letters.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(3.dp))
                 Text(
                     text = letters,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color(0xFF8C929C),
+                    fontSize = 10.sp, // 根据Figma设计：10px
+                    fontWeight = FontWeight.Bold, // 根据Figma设计：Bold
+                    color = Color.Black, // 根据Figma设计：黑色
                     textAlign = TextAlign.Center,
-                    letterSpacing = 1.2.sp
+                    letterSpacing = 2.sp // 根据Figma设计：letterSpacing 2px
                 )
             }
         }
@@ -182,29 +186,29 @@ private fun DeleteKey(
     keyShape: RoundedCornerShape,
     modifier: Modifier = Modifier
 ) {
+    // 根据Figma设计：删除键高度46px，白色背景
     Box(
         modifier = modifier
-            .height(56.dp)
-            .shadow(elevation = 3.dp, shape = keyShape, clip = false)
+            .height(46.dp) // 根据Figma设计：按键高度46px
+            .shadow(
+                elevation = 1.dp, // 根据Figma设计：1px阴影
+                shape = keyShape,
+                clip = false
+            )
             .clip(keyShape)
             .background(
                 color = Color.White,
                 shape = keyShape
             )
-            .border(
-                width = 1.dp,
-                color = Color(0xFFD4D8DF),
-                shape = keyShape
-            )
             .clickable { onKeyPress("backspace") },
         contentAlignment = Alignment.Center
     ) {
-        // 删除图标 - 严格按照Figma设计
+        // 删除图标 - 根据Figma设计：黑色，17x23px
         Icon(
             imageVector = Icons.Filled.Backspace,
             contentDescription = "删除",
-            tint = Color(0xFF1F2126),
-            modifier = Modifier.size(24.dp)
+            tint = Color.Black,
+            modifier = Modifier.size(20.dp) // 根据Figma设计：约17x23px，使用20dp近似
         )
     }
 }

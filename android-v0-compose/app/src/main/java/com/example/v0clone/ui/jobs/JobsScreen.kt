@@ -459,8 +459,8 @@ private fun JobsIntentionCard(
     val hasPreferences = preferredPositions.isNotEmpty()
     val titleText = when {
         hasPreferences -> "${preferredPositions.first().name} (意向岗位)"
-        keyword.isNotBlank() -> keyword
-        else -> "前端开发（意向岗位）"
+        keyword.isNotBlank() -> "$keyword (意向岗位)"
+        else -> "前端开发 (意向岗位)"
     }
 
     Column(
@@ -600,9 +600,9 @@ private fun PreferenceChipRow(
 private fun SortTab(label: String, active: Boolean, onClick: () -> Unit) {
     Text(
         text = label,
-        color = if (active) TextPrimary else CardTagText,
+        color = if (active) TextPrimary else TextSecondary,
         fontSize = 15.sp,
-        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
         modifier = Modifier.clickable(onClick = onClick)
     )
 }
@@ -665,7 +665,7 @@ private fun JobCard(
                     text = job.salary.ifBlank { "薪资面议" },
                     color = AccentOrange,
                     fontSize = 17.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(start = 8.dp)
                 )
             }
@@ -914,6 +914,11 @@ private fun JobFiltersSheet(
     var typeValue by remember { mutableStateOf(filters.type) }
     var levelValue by remember { mutableStateOf(filters.level) }
     var remoteOnly by remember { mutableStateOf(filters.remoteOnly) }
+    var graduationYear by remember { mutableStateOf(filters.graduationYear) }
+    var salaryRange by remember { mutableStateOf(filters.salaryRange) }
+    var companyNature by remember { mutableStateOf(filters.companyNature) }
+    var companyScale by remember { mutableStateOf(filters.companyScale) }
+    var financingStage by remember { mutableStateOf(filters.financingStage) }
     val scrollState = rememberScrollState()
 
     Dialog(
@@ -1266,6 +1271,53 @@ private val levelOptions = listOf(
 private val remoteOptions = listOf(
     FilterChoice("不限", false),
     FilterChoice("仅远程", true)
+)
+
+private val graduationYearOptions = listOf(
+    FilterChoice<String?>("不限", null),
+    FilterChoice<String?>("2025届", "2025"),
+    FilterChoice<String?>("2026届", "2026")
+)
+
+private val salaryRangeOptions = listOf(
+    FilterChoice<String?>("不限", null),
+    FilterChoice<String?>("面议", "NEGOTIABLE"),
+    FilterChoice<String?>("5k以下", "BELOW_5K"),
+    FilterChoice<String?>("5-10k", "5K_10K"),
+    FilterChoice<String?>("10-15k", "10K_15K"),
+    FilterChoice<String?>("15-25k", "15K_25K"),
+    FilterChoice<String?>("25k-50k", "25K_50K"),
+    FilterChoice<String?>("50k以上", "ABOVE_50K")
+)
+
+private val companyNatureOptions = listOf(
+    FilterChoice<String?>("不限", null),
+    FilterChoice<String?>("国企/央企", "STATE_OWNED"),
+    FilterChoice<String?>("外企", "FOREIGN"),
+    FilterChoice<String?>("民企", "PRIVATE"),
+    FilterChoice<String?>("事业单位", "PUBLIC_INSTITUTION")
+)
+
+private val companyScaleOptions = listOf(
+    FilterChoice<String?>("不限", null),
+    FilterChoice<String?>("0-20人", "0_20"),
+    FilterChoice<String?>("20-99人", "20_99"),
+    FilterChoice<String?>("100-499人", "100_499"),
+    FilterChoice<String?>("500-999人", "500_999"),
+    FilterChoice<String?>("1000-9999人", "1000_9999"),
+    FilterChoice<String?>("10000人以上", "ABOVE_10000")
+)
+
+private val financingStageOptions = listOf(
+    FilterChoice<String?>("不限", null),
+    FilterChoice<String?>("天使轮", "ANGEL"),
+    FilterChoice<String?>("A轮", "SERIES_A"),
+    FilterChoice<String?>("B轮", "SERIES_B"),
+    FilterChoice<String?>("C轮", "SERIES_C"),
+    FilterChoice<String?>("D轮及以上", "SERIES_D_PLUS"),
+    FilterChoice<String?>("未融资", "NO_FINANCING"),
+    FilterChoice<String?>("不需要融资", "NO_NEED_FINANCING"),
+    FilterChoice<String?>("已上市", "LISTED")
 )
 
 private fun formatJobType(type: String): String = when (type.uppercase(Locale.getDefault())) {

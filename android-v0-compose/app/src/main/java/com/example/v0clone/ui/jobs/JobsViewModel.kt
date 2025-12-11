@@ -49,6 +49,11 @@ data class ActiveJobFilters(
     val level: String? = null,
     val experience: String? = null,
     val education: String? = null,
+    val graduationYear: String? = null,
+    val salaryRange: String? = null,
+    val companyNature: String? = null,
+    val companyScale: String? = null,
+    val financingStage: String? = null,
     val dictionaryPositionIds: List<String> = emptyList()
 )
 
@@ -58,7 +63,12 @@ data class AdvancedFilterValues(
     val education: String? = null,
     val type: String? = null,
     val level: String? = null,
-    val remoteOnly: Boolean = false
+    val remoteOnly: Boolean = false,
+    val graduationYear: String? = null,
+    val salaryRange: String? = null,
+    val companyNature: String? = null,
+    val companyScale: String? = null,
+    val financingStage: String? = null
 )
 
 class JobsViewModel(
@@ -205,7 +215,12 @@ class JobsViewModel(
                 education = values.education,
                 type = values.type,
                 level = values.level,
-                remoteOnly = values.remoteOnly
+                remoteOnly = values.remoteOnly,
+                graduationYear = values.graduationYear,
+                salaryRange = values.salaryRange,
+                companyNature = values.companyNature,
+                companyScale = values.companyScale,
+                financingStage = values.financingStage
             )
         }
     }
@@ -413,6 +428,11 @@ private fun ActiveJobFilters.normalized(): ActiveJobFilters = copy(
     level = level?.trim()?.takeIf { it.isNotEmpty() },
     experience = experience?.trim()?.takeIf { it.isNotEmpty() },
     education = education?.trim()?.takeIf { it.isNotEmpty() },
+    graduationYear = graduationYear?.trim()?.takeIf { it.isNotEmpty() },
+    salaryRange = salaryRange?.trim()?.takeIf { it.isNotEmpty() },
+    companyNature = companyNature?.trim()?.takeIf { it.isNotEmpty() },
+    companyScale = companyScale?.trim()?.takeIf { it.isNotEmpty() },
+    financingStage = financingStage?.trim()?.takeIf { it.isNotEmpty() },
     dictionaryPositionIds = dictionaryPositionIds
         .mapNotNull { it.trim().takeIf { trimmed -> trimmed.isNotEmpty() } }
         .distinct()

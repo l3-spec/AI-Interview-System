@@ -10,6 +10,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,9 +25,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -38,6 +44,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.ToggleableState
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -58,7 +68,15 @@ import kotlinx.coroutines.launch
 
 /**
  * 主登录页 - 根据Figma设计实现
- * 包含Logo、两个登录按钮（授权手机号登录、验证码登录）
+ * Figma设计规范：
+ * - 背景渐变：从 #00ACC3 到 #EBEBEB，从 31.65% 位置开始过渡
+ * - Logo位置：距离顶部 90px，Logo 和按钮之间间距 217px
+ * - Logo尺寸：192x120px
+ * - 按钮高度：48px，圆角 24px
+ * - 按钮间距：16px
+ * - 复选框：14x14px，橙色 #EC7C38，已选中
+ * - 协议文字：12sp，PingFang SC Light，黑色，链接蓝色 #169BD5
+ * 包含Logo、两个登录按钮（授权手机号登录、验证码登录）、用户协议复选框
  */
 @Composable
 fun LoginMainScreen(
@@ -73,10 +91,19 @@ fun LoginMainScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var info by remember { mutableStateOf<String?>(null) }
     var pendingAutoLogin by remember { mutableStateOf(false) }
+    var agreed by remember { mutableStateOf(true) } // 默认已同意
 
+    // 根据Figma设计：渐变从31.65%位置开始过渡
     val gradient = remember {
         Brush.verticalGradient(
-            colors = listOf(Color(0xFF00ACC3), Color(0xFFEBEBEB))
+            colors = listOf(
+                Color(0xFF00ACC3),  // 顶部浅蓝色
+                Color(0xFF00ACC3),  // 保持到31.65%
+                Color(0xFFEBEBEB)   // 底部浅灰色
+            ),
+            startY = 0f,
+            endY = Float.POSITIVE_INFINITY,
+            stops = floatArrayOf(0f, 0.3165f, 1f)
         )
     }
 
@@ -138,14 +165,15 @@ fun LoginMainScreen(
             .fillMaxSize()
             .background(gradient)
     ) {
+        // 根据Figma设计：Logo距离顶部90px，Logo和按钮之间间距217px
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 48.dp, vertical = 90.dp),
+                .padding(horizontal = 48.dp, top = 90.dp, bottom = 96.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
+            verticalArrangement = Arrangement.Top
         ) {
-            Spacer(modifier = Modifier.height(42.dp))
+            // Logo区域
             Image(
                 painter = painterResource(id = R.drawable.login_logo),
                 contentDescription = "Starlink Future logo",
@@ -153,9 +181,14 @@ fun LoginMainScreen(
                     .size(width = 192.dp, height = 120.dp)
             )
 
+            // Logo和按钮之间的间距：217px
+            Spacer(modifier = Modifier.height(217.dp))
+
+            // 按钮和协议区域
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Button(
                     onClick = {
@@ -195,13 +228,17 @@ fun LoginMainScreen(
                     }
                 }
 
+                // 验证码登录按钮：白色背景，灰色边框和文字
                 OutlinedButton(
                     onClick = { onRequestCodeLogin(null) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp),
                     shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB5B7B8)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = Color.White, // 白色背景
+                        contentColor = Color(0xFFB5B7B8)
+                    ),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFB5B7B8))
                 ) {
                     Text(
@@ -212,15 +249,17 @@ fun LoginMainScreen(
                     )
                 }
 
+                // 用户协议复选框和文字
+                // 根据Figma设计：复选框14x14px，橙色背景，已选中
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(horizontal = 4.dp)
                 ) {
-                    Surface(
-                        modifier = Modifier.size(14.dp),
-                        color = Color(0xFFEC7C38),
-                        shape = CircleShape
-                    ) {}
+                    AgreementCheckbox(
+                        checked = agreed,
+                        onCheckedChange = { agreed = it }
+                    )
                     Text(
                         text = buildAnnotatedString {
                             append("我已阅读并同意")
@@ -235,7 +274,7 @@ fun LoginMainScreen(
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Light,
                         color = Color.Black,
-                        lineHeight = 16.sp
+                        lineHeight = 21.sp // 根据Figma设计：lineHeight 21
                     )
                 }
 
@@ -259,6 +298,50 @@ fun LoginMainScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * 用户协议复选框组件
+ * 根据Figma设计：14x14px，橙色背景 #EC7C38，白色勾选标记
+ */
+@Composable
+private fun AgreementCheckbox(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Box(
+        modifier = Modifier
+            .size(14.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .background(
+                color = if (checked) Color(0xFFEC7C38) else Color.White,
+                shape = RoundedCornerShape(4.dp)
+            )
+            .border(
+                width = 1.dp,
+                color = if (checked) Color(0xFFEC7C38) else Color(0xFFB5B7B8),
+                shape = RoundedCornerShape(4.dp)
+            )
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                role = Role.Checkbox
+            ) { onCheckedChange(!checked) }
+            .semantics { 
+                toggleableState = if (checked) ToggleableState.On else ToggleableState.Off 
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        if (checked) {
+            Icon(
+                imageVector = Icons.Filled.Check,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(10.dp)
+            )
         }
     }
 }

@@ -70,11 +70,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+// 根据Figma设计规范定义颜色
 private val ScreenBackground = Color.White
-private val PrimaryText = Color(0xFF242525)
-private val SecondaryText = Color(0xFFB5B7B8)
-private val MutedText = Color(0xFF858687)
-private val AccentText = Color(0xFFFF6B00) // Updated to match screenshot orange/red
+private val PrimaryText = Color(0xFF000000) // 根据Figma设计：黑色 #000000
+private val SecondaryText = Color(0xFFB5B7B8) // 根据Figma设计：灰色占位 #B5B7B8
+private val MutedText = Color(0xFF858687) // 根据Figma设计：次要文字 #858687
+private val AccentText = Color(0xFFEC7C38) // 根据Figma设计：橙色 #EC7C38
 private val DividerColor = Color(0xFFE5E7EB)
 private val SectionBackground = Color(0xFFF8F8F8)
 
@@ -134,17 +135,19 @@ fun PostDetailRoute(
             }
             detail != null -> {
                 val gallery = remember(detail) { detail.galleryImages.take(2) }
+                // 根据Figma设计：内容区域布局
+                // 顺序：标题和元信息 -> 作者信息 -> 主图 -> 正文 -> 内联图片 -> 评论区域
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding),
                     contentPadding = PaddingValues(
-                        start = 12.dp,
-                        end = 12.dp,
-                        top = 12.dp,
-                        bottom = 120.dp
+                        start = 0.dp,
+                        end = 0.dp,
+                        top = 0.dp,
+                        bottom = 120.dp // 底部留出空间给操作栏
                     ),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(0.dp) // 间距由各组件内部控制
                 ) {
                     item { PostHeader(detail) }
                     item { PostAuthor(detail.author) }
@@ -157,7 +160,6 @@ fun PostDetailRoute(
                     if (gallery.isNotEmpty()) {
                         item { PostInlineGallery(gallery) }
                     }
-                    item { CommentInputPlaceholder() }
                     item { PostCommentsHeader(count = detail.commentCount) }
                     items(detail.comments, key = { it.id }) { comment ->
                         PostCommentItem(comment)
@@ -212,19 +214,31 @@ private fun PostDetailErrorState(
     }
 }
 
+/**
+ * 帖子标题和元信息 - 根据Figma设计实现
+ * Figma设计规范：
+ * - 标题：20sp，Semibold，黑色，行高21sp，letterSpacing -0.32px
+ * - 发布日期和浏览数：12sp，Light，灰色 #B5B7B8，行高21sp
+ * - 间距：10px
+ */
 @Composable
 private fun PostHeader(detail: PostDetail) {
     Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(12.dp), // 根据Figma设计：padding 12px
+        verticalArrangement = Arrangement.spacedBy(10.dp) // 根据Figma设计：间距10px
     ) {
+        // 标题 - 根据Figma设计：20sp，Semibold，黑色
         Text(
             text = detail.title,
             color = PrimaryText,
-            fontSize = 24.sp, // Larger title
-            fontWeight = FontWeight.Bold, // Bolder title
-            lineHeight = 32.sp
+            fontSize = 20.sp, // 根据Figma设计：20sp
+            fontWeight = FontWeight.SemiBold, // PingFang SC Semibold
+            lineHeight = 21.sp, // 根据Figma设计：行高21sp
+            letterSpacing = (-0.32).sp // 根据Figma设计：letterSpacing -0.32px
         )
+        // 发布日期和浏览数
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -232,97 +246,144 @@ private fun PostHeader(detail: PostDetail) {
             Text(
                 text = detail.publishDate,
                 color = SecondaryText,
-                fontSize = 12.sp,
-                lineHeight = 18.sp
+                fontSize = 12.sp, // 根据Figma设计：12sp
+                fontWeight = FontWeight.Light, // PingFang SC Light
+                lineHeight = 21.sp, // 根据Figma设计：行高21sp
+                letterSpacing = (-0.32).sp
             )
             Icon(
                 imageVector = Icons.Outlined.Visibility,
                 contentDescription = null,
                 tint = SecondaryText,
-                modifier = Modifier.size(14.dp) // Slightly smaller icon
+                modifier = Modifier.size(16.dp) // 根据Figma设计：16px图标
             )
             Text(
                 text = detail.viewCount,
                 color = SecondaryText,
                 fontSize = 12.sp,
-                lineHeight = 18.sp
+                fontWeight = FontWeight.Light,
+                lineHeight = 21.sp,
+                letterSpacing = (-0.32).sp
             )
         }
     }
 }
 
 
+/**
+ * 主图 - 根据Figma设计实现
+ * Figma设计规范：
+ * - 宽高比：351:197
+ * - 圆角：8px
+ * - 内边距：12px
+ */
 @Composable
 private fun PostHeroImage(imageUrl: String) {
-    AsyncImage(
-        model = imageUrl,
-        contentDescription = null,
-        contentScale = ContentScale.Crop,
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .aspectRatio(351f / 197f)
-    )
+            .padding(12.dp) // 根据Figma设计：内边距12px
+    ) {
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .aspectRatio(351f / 197f) // 根据Figma设计：351:197
+        )
+    }
 }
 
 
+/**
+ * 作者信息 - 根据Figma设计实现
+ * Figma设计规范：
+ * - 头像：36x36px
+ * - 作者名字：12sp，Light，橙色 #EC7C38
+ * - 作者简介：12sp，Light，灰色 #B5B7B8
+ * - 间距：12px
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PostAuthor(author: PostAuthor) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp), // 根据Figma设计：左右12px
+        color = Color.White,
+        shape = RoundedCornerShape(8.dp)
     ) {
-        if (author.avatarUrl != null) {
-            AsyncImage(
-                model = author.avatarUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(40.dp) // Larger avatar
-                    .clip(CircleShape)
-            )
-        } else {
-            Surface(
-                modifier = Modifier.size(40.dp), // Larger avatar
-                shape = CircleShape,
-                color = author.avatarColor.copy(alpha = 0.16f)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp), // 根据Figma设计：内边距12px
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp) // 根据Figma设计：间距12px
+        ) {
+            // 头像 - 根据Figma设计：36x36px
+            if (author.avatarUrl != null) {
+                AsyncImage(
+                    model = author.avatarUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(36.dp) // 根据Figma设计：36px
+                        .clip(CircleShape)
+                )
+            } else {
+                Surface(
+                    modifier = Modifier.size(36.dp), // 根据Figma设计：36px
+                    shape = CircleShape,
+                    color = author.avatarColor.copy(alpha = 0.16f)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = author.name.take(1),
+                            color = author.avatarColor,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            // 作者信息
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp) // 根据Figma设计：间距2px
             ) {
-                Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = author.name,
+                    color = AccentText, // 根据Figma设计：橙色 #EC7C38
+                    fontSize = 12.sp, // 根据Figma设计：12sp
+                    fontWeight = FontWeight.Light, // PingFang SC Light
+                    lineHeight = 21.sp,
+                    letterSpacing = (-0.32).sp
+                )
+                if (author.title.isNotBlank()) {
                     Text(
-                        text = author.name.take(1),
-                        color = author.avatarColor,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
+                        text = author.title,
+                        color = SecondaryText, // 根据Figma设计：灰色 #B5B7B8
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Light,
+                        lineHeight = 21.sp,
+                        letterSpacing = (-0.32).sp
                     )
                 }
             }
         }
-
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(
-                text = author.name,
-                color = AccentText, // Orange color
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                lineHeight = 20.sp
-            )
-            if (author.title.isNotBlank()) {
-                Text(
-                    text = author.title,
-                    color = SecondaryText,
-                    fontSize = 12.sp,
-                    lineHeight = 18.sp
-                )
-            }
-        }
     }
 }
 
+/**
+ * 正文内容 - 根据Figma设计实现
+ * Figma设计规范：
+ * - 字体：14sp，Regular，黑色
+ * - 行高：22sp
+ * - 内边距：12px
+ */
 @Composable
 private fun PostBodyText(sections: List<PostSection>) {
     if (sections.isEmpty()) return
@@ -342,21 +403,39 @@ private fun PostBodyText(sections: List<PostSection>) {
         }
     }
 
-    Text(
-        text = content,
-        color = PrimaryText,
-        fontSize = 14.sp,
-        lineHeight = 22.sp,
-        modifier = Modifier.fillMaxWidth()
-    )
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = Color.White
+    ) {
+        Text(
+            text = content,
+            color = PrimaryText,
+            fontSize = 14.sp, // 根据Figma设计：14sp
+            fontWeight = FontWeight.Normal, // PingFang SC Regular
+            lineHeight = 22.sp, // 根据Figma设计：行高22sp
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp) // 根据Figma设计：内边距12px
+        )
+    }
 }
 
+/**
+ * 内联图片画廊 - 根据Figma设计实现
+ * Figma设计规范：
+ * - 宽高比：154:206
+ * - 圆角：8px
+ * - 间距：12px
+ * - 内边距：12px
+ */
 @Composable
 private fun PostInlineGallery(imageUrls: List<String>) {
     if (imageUrls.isEmpty()) return
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(12.dp), // 根据Figma设计：内边距12px
+        horizontalArrangement = Arrangement.spacedBy(12.dp) // 根据Figma设计：间距12px
     ) {
         imageUrls.take(2).forEach { url ->
             AsyncImage(
@@ -366,7 +445,7 @@ private fun PostInlineGallery(imageUrls: List<String>) {
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(8.dp))
-                    .aspectRatio(154f / 206f)
+                    .aspectRatio(154f / 206f) // 根据Figma设计：154:206
             )
         }
         if (imageUrls.size == 1) {
@@ -375,65 +454,108 @@ private fun PostInlineGallery(imageUrls: List<String>) {
     }
 }
 
+/**
+ * 评论区域标题 - 根据Figma设计实现
+ * Figma设计规范：
+ * - 分隔线
+ * - 评论数量文字：12sp，Light，灰色 #B5B7B8
+ * - 间距：10px
+ * - 内边距：12px
+ */
 @Composable
 private fun PostCommentsHeader(count: Int) {
-    Column(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        color = Color.White
     ) {
-        HorizontalDivider(color = DividerColor)
-        Text(
-            text = "共${count}条评论",
-            color = SecondaryText,
-            fontSize = 12.sp,
-            lineHeight = 18.sp
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp), // 根据Figma设计：内边距12px
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp) // 根据Figma设计：间距10px
+        ) {
+            HorizontalDivider(color = DividerColor)
+            Text(
+                text = "共${count}条评论",
+                color = SecondaryText, // 根据Figma设计：灰色 #B5B7B8
+                fontSize = 12.sp, // 根据Figma设计：12sp
+                fontWeight = FontWeight.Light, // PingFang SC Light
+                lineHeight = 21.sp,
+                letterSpacing = (-0.32).sp
+            )
+        }
     }
 }
 
 
+/**
+ * 评论项 - 根据Figma设计实现
+ * Figma设计规范：
+ * - 头像：36x36px
+ * - 作者名字：12sp，Light，橙色 #EC7C38
+ * - 评论内容：14sp，Regular，黑色 #242525，行高22sp
+ * - 时间：12sp，Light，灰色 #858687
+ * - 间距：12px（水平），2px（垂直）
+ * - 内边距：12px（垂直），0px（水平）
+ */
 @Composable
 private fun PostCommentItem(comment: PostComment) {
-    Row(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        color = Color.White
     ) {
-        Surface(
-            modifier = Modifier.size(32.dp), // Slightly smaller than author
-            shape = CircleShape,
-            color = comment.avatarColor.copy(alpha = 0.16f)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 12.dp), // 根据Figma设计：内边距
+            horizontalArrangement = Arrangement.spacedBy(12.dp) // 根据Figma设计：间距12px
         ) {
-            Box(contentAlignment = Alignment.Center) {
+            // 头像 - 根据Figma设计：36x36px
+            Surface(
+                modifier = Modifier.size(36.dp), // 根据Figma设计：36px
+                shape = CircleShape,
+                color = comment.avatarColor.copy(alpha = 0.16f)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = comment.author.take(1),
+                        color = comment.avatarColor,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            // 评论内容
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp) // 根据Figma设计：间距2px
+            ) {
                 Text(
-                    text = comment.author.take(1),
-                    color = comment.avatarColor,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
+                    text = comment.author,
+                    color = AccentText, // 根据Figma设计：橙色 #EC7C38
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Light, // PingFang SC Light
+                    lineHeight = 21.sp,
+                    letterSpacing = (-0.32).sp
+                )
+                Text(
+                    text = comment.content,
+                    color = PrimaryText, // 根据Figma设计：黑色 #242525
+                    fontSize = 14.sp, // 根据Figma设计：14sp
+                    fontWeight = FontWeight.Normal, // PingFang SC Regular
+                    lineHeight = 22.sp // 根据Figma设计：行高22sp
+                )
+                Text(
+                    text = comment.time,
+                    color = MutedText, // 根据Figma设计：灰色 #858687
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Light,
+                    lineHeight = 21.sp,
+                    letterSpacing = (-0.32).sp
                 )
             }
-        }
-
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(
-                text = comment.author,
-                color = AccentText, // Orange color
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                lineHeight = 18.sp
-            )
-            Text(
-                text = comment.content,
-                color = PrimaryText,
-                fontSize = 14.sp,
-                lineHeight = 22.sp
-            )
-            Text(
-                text = comment.time,
-                color = MutedText,
-                fontSize = 12.sp,
-                lineHeight = 18.sp
-            )
         }
     }
 }
@@ -458,42 +580,53 @@ private fun CommentInputPlaceholder() {
 }
 
 
+/**
+ * 底部操作栏 - 根据Figma设计实现
+ * Figma设计规范：
+ * - 输入框：32px高度，8px圆角，灰色边框 #B5B7B8，占位文字12sp Light
+ * - 操作按钮：24px图标，12sp文字，间距16px
+ * - 内边距：左右12px，上下10px，底部36px（安全区域）
+ */
 @Composable
 private fun PostDetailBottomBar(likeCount: Int, collectCount: Int, commentCount: Int) {
-    Surface(color = Color.White, shadowElevation = 8.dp) { // Added elevation
+    Surface(color = Color.White, shadowElevation = 8.dp) {
         Column(modifier = Modifier.fillMaxWidth()) {
             HorizontalDivider(color = DividerColor)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-                    .padding(bottom = 20.dp), // Adjust bottom padding for safe area
+                    .padding(horizontal = 12.dp, vertical = 10.dp) // 根据Figma设计：内边距
+                    .padding(bottom = 36.dp), // 根据Figma设计：底部36px（安全区域）
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp) // 根据Figma设计：间距10px
             ) {
+                // 评论输入框 - 根据Figma设计：32px高度，8px圆角
                 Surface(
                     modifier = Modifier
                         .weight(1f)
-                        .height(36.dp),
-                    shape = RoundedCornerShape(18.dp), // Fully rounded
+                        .height(32.dp), // 根据Figma设计：32px高度
+                    shape = RoundedCornerShape(8.dp), // 根据Figma设计：8px圆角
                     color = Color.White,
-                    border = BorderStroke(1.dp, SecondaryText)
+                    border = BorderStroke(1.dp, SecondaryText) // 根据Figma设计：灰色边框 #B5B7B8
                 ) {
                     Box(
                         contentAlignment = Alignment.CenterStart,
-                        modifier = Modifier.padding(horizontal = 12.dp)
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp) // 根据Figma设计：内边距
                     ) {
                         Text(
                             text = "添加评论",
-                            color = SecondaryText,
-                            fontSize = 14.sp,
-                            lineHeight = 20.sp
+                            color = SecondaryText, // 根据Figma设计：灰色 #B5B7B8
+                            fontSize = 12.sp, // 根据Figma设计：12sp
+                            fontWeight = FontWeight.Light, // PingFang SC Light
+                            lineHeight = 21.sp,
+                            letterSpacing = (-0.32).sp
                         )
                     }
                 }
 
+                // 操作按钮组 - 根据Figma设计：间距16px
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(20.dp), // Increased spacing
+                    horizontalArrangement = Arrangement.spacedBy(16.dp), // 根据Figma设计：间距16px
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     BottomStat(Icons.Outlined.FavoriteBorder, likeCount)
@@ -505,15 +638,31 @@ private fun PostDetailBottomBar(likeCount: Int, collectCount: Int, commentCount:
     }
 }
 
+/**
+ * 底部操作按钮 - 根据Figma设计实现
+ * Figma设计规范：
+ * - 图标：24px
+ * - 文字：12sp，Light，黑色
+ * - 间距：2px
+ */
 @Composable
 private fun BottomStat(icon: ImageVector, count: Int) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, contentDescription = null, tint = PrimaryText, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(4.dp))
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp) // 根据Figma设计：间距2px
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = PrimaryText,
+            modifier = Modifier.size(24.dp) // 根据Figma设计：24px图标
+        )
         Text(
             text = count.toString(),
-            color = PrimaryText,
-            fontSize = 12.sp
+            color = PrimaryText, // 根据Figma设计：黑色
+            fontSize = 12.sp, // 根据Figma设计：12sp
+            fontWeight = FontWeight.Light, // PingFang SC Light
+            letterSpacing = (-0.32).sp
         )
     }
 }

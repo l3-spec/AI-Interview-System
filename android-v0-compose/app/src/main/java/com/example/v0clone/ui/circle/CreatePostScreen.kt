@@ -33,6 +33,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Close
@@ -99,6 +102,25 @@ data class SelectedImage(
     val file: File
 )
 
+/**
+ * 富文本内容块 - 支持文本和图片混合
+ */
+sealed class ContentBlock {
+    data class TextBlock(val text: String) : ContentBlock()
+    data class ImageBlock(
+        val images: List<SelectedImage>, // 1个或2个图片
+        val layout: ImageLayout = ImageLayout.Single // 布局类型
+    ) : ContentBlock()
+}
+
+/**
+ * 图片布局类型
+ */
+enum class ImageLayout {
+    Single,  // 单个图片
+    Double   // 并排2个图片
+}
+
 @Composable
 fun CreatePostRoute(
     repository: ContentRepository,
@@ -151,38 +173,169 @@ private fun CreatePostScreen(
     val context = LocalContext.current
     val resolver = rememberUpdatedState(newValue = context.contentResolver)
     var title by rememberSaveable { mutableStateOf("") }
-    var content by rememberSaveable { mutableStateOf("") }
+    // 使用富文本内容块列表替代纯文本
+    val contentBlocks = remember { mutableStateListOf<ContentBlock>(ContentBlock.TextBlock("")) }
     val selectedTags = remember { mutableStateListOf<String>() }
-    val selectedImages = remember { mutableStateListOf<SelectedImage>() }
     var showTagDialog by remember { mutableStateOf(false) }
     var tagInput by rememberSaveable { mutableStateOf("") }
+    var showImageLayoutDialog by remember { mutableStateOf(false) }
+    var pendingImages by remember { mutableStateOf<List<SelectedImage>>(emptyList()) }
+    var currentBlockIndex by remember { mutableStateOf(0) } // 当前编辑的文本块索引
     val tagSuggestions = remember {
         listOf("#AI", "#职业转型", "#Offer分享")
     }
     val scrollState = rememberScrollState()
 
+    // 计算当前已使用的图片数量
+    val currentImageCount = remember(contentBlocks) {
+        contentBlocks.sumOf { block ->
+            when (block) {
+                is ContentBlock.TextBlock -> 0
+                is ContentBlock.ImageBlock -> block.images.size
+            }
+        }
+    }
+
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia()
     ) { uris ->
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
-        val capacity = MAX_IMAGES - selectedImages.size
-        if (capacity <= 0) return@rememberLauncherForActivityResult
+        val capacity = MAX_IMAGES - currentImageCount
+        if (capacity <= 0) {
+            showTransientMessage(snackbarHostState, "最多只能添加${MAX_IMAGES}张图片")
+            return@rememberLauncherForActivityResult
+        }
         val toProcess = uris.take(capacity)
         val resolverValue = resolver.value
+        val processedImages = mutableListOf<SelectedImage>()
         toProcess.forEach { uri ->
-            if (selectedImages.any { it.uri == uri }) return@forEach
             val file = copyUriToCache(resolverValue, uri, context.cacheDir)
             if (file != null) {
-                selectedImages.add(SelectedImage(uri = uri, file = file))
+                processedImages.add(SelectedImage(uri = uri, file = file))
             } else {
                 showTransientMessage(snackbarHostState, "选择图片失败，请重试")
+            }
+        }
+        if (processedImages.isNotEmpty()) {
+            // 如果选择了多张图片，显示布局选择对话框
+            if (processedImages.size == 2) {
+                pendingImages = processedImages
+                showImageLayoutDialog = true
+            } else {
+                // 单张图片，直接插入
+                insertImageBlock(processedImages.first(), ImageLayout.Single)
+            }
+        }
+    }
+
+    // 插入图片块到当前光标位置
+    fun insertImageBlock(image: SelectedImage, layout: ImageLayout) {
+        val currentBlock = contentBlocks.getOrNull(currentBlockIndex)
+        val insertIndex = if (currentBlock is ContentBlock.TextBlock) {
+            // 如果当前是文本块，在它后面插入
+            currentBlockIndex + 1
+        } else {
+            // 如果当前不是文本块，在当前位置插入
+            currentBlockIndex
+        }
+        
+        val newImageBlock = ContentBlock.ImageBlock(
+            images = listOf(image),
+            layout = layout
+        )
+        contentBlocks.add(insertIndex, newImageBlock)
+        
+        // 在图片块后添加新的文本块（如果不存在或下一个不是文本块）
+        if (insertIndex + 1 >= contentBlocks.size || 
+            contentBlocks[insertIndex + 1] !is ContentBlock.TextBlock) {
+            contentBlocks.add(insertIndex + 1, ContentBlock.TextBlock(""))
+        }
+        // 更新当前块索引到新创建的文本块
+        currentBlockIndex = insertIndex + 1
+    }
+
+    // 插入双图块
+    fun insertDoubleImageBlock(image1: SelectedImage, image2: SelectedImage) {
+        val currentBlock = contentBlocks.getOrNull(currentBlockIndex)
+        val insertIndex = if (currentBlock is ContentBlock.TextBlock) {
+            currentBlockIndex + 1
+        } else {
+            currentBlockIndex
+        }
+        
+        val newImageBlock = ContentBlock.ImageBlock(
+            images = listOf(image1, image2),
+            layout = ImageLayout.Double
+        )
+        contentBlocks.add(insertIndex, newImageBlock)
+        
+        if (insertIndex + 1 >= contentBlocks.size || 
+            contentBlocks[insertIndex + 1] !is ContentBlock.TextBlock) {
+            contentBlocks.add(insertIndex + 1, ContentBlock.TextBlock(""))
+        }
+        currentBlockIndex = insertIndex + 1
+    }
+
+    // 删除图片块
+    fun removeImageBlock(blockIndex: Int) {
+        val block = contentBlocks.getOrNull(blockIndex)
+        if (block is ContentBlock.ImageBlock) {
+            // 删除图片文件
+            block.images.forEach { it.file.delete() }
+            contentBlocks.removeAt(blockIndex)
+            // 如果删除后列表为空，添加一个空文本块
+            if (contentBlocks.isEmpty()) {
+                contentBlocks.add(ContentBlock.TextBlock(""))
+                currentBlockIndex = 0
+            } else {
+                // 调整当前块索引
+                if (currentBlockIndex >= contentBlocks.size) {
+                    currentBlockIndex = contentBlocks.size - 1
+                }
+                // 如果删除后前后都是文本块，合并它们
+                if (blockIndex > 0 && blockIndex < contentBlocks.size) {
+                    val prev = contentBlocks[blockIndex - 1] as? ContentBlock.TextBlock
+                    val next = contentBlocks[blockIndex] as? ContentBlock.TextBlock
+                    if (prev != null && next != null) {
+                        contentBlocks[blockIndex - 1] = ContentBlock.TextBlock(prev.text + "\n\n" + next.text)
+                        contentBlocks.removeAt(blockIndex)
+                        if (currentBlockIndex >= blockIndex) {
+                            currentBlockIndex = blockIndex - 1
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 获取所有图片文件（用于发布）
+    fun getAllImageFiles(): List<File> {
+        return contentBlocks.flatMap { block ->
+            when (block) {
+                is ContentBlock.TextBlock -> emptyList()
+                is ContentBlock.ImageBlock -> block.images.map { it.file }
+            }
+        }
+    }
+
+    // 将内容块转换为纯文本（用于发布）
+    fun blocksToText(): String {
+        return contentBlocks.joinToString("\n\n") { block ->
+            when (block) {
+                is ContentBlock.TextBlock -> block.text
+                is ContentBlock.ImageBlock -> "[图片]"
             }
         }
     }
 
     DisposableEffect(Unit) {
         onDispose {
-            selectedImages.forEach { it.file.delete() }
+            // 清理所有图片文件
+            contentBlocks.forEach { block ->
+                if (block is ContentBlock.ImageBlock) {
+                    block.images.forEach { it.file.delete() }
+                }
+            }
         }
     }
 
@@ -215,15 +368,16 @@ private fun CreatePostScreen(
                                 showTransientMessage(snackbarHostState, "请输入帖子标题")
                                 return@Button
                             }
-                            if (content.isBlank()) {
+                            val contentText = blocksToText().trim()
+                            if (contentText.isBlank() || contentText == "[图片]") {
                                 showTransientMessage(snackbarHostState, "请输入帖子内容")
                                 return@Button
                             }
                             onPublish(
                                 title.trim(),
-                                content.trim(),
+                                contentText,
                                 selectedTags.map(String::trim),
-                                selectedImages.map { it.file }
+                                getAllImageFiles()
                             )
                         },
                         enabled = !uiState.isPublishing,
@@ -268,20 +422,33 @@ private fun CreatePostScreen(
                 onTitleChange = { if (it.length <= TITLE_MAX_LENGTH) title = it },
                 counter = "${title.length}/$TITLE_MAX_LENGTH"
             )
-            ContentSection(
-                content = content,
-                onContentChange = { content = it }
-            )
-            PhotoSection(
-                images = selectedImages,
-                onAddClick = {
-                    imagePickerLauncher.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                    )
+            // 所见即所得编辑器 - 支持文本和图片混合
+            WysiwygEditor(
+                contentBlocks = contentBlocks,
+                currentBlockIndex = currentBlockIndex,
+                onBlockIndexChange = { currentBlockIndex = it },
+                onTextChange = { index, text ->
+                    if (index < contentBlocks.size) {
+                        val block = contentBlocks[index]
+                        if (block is ContentBlock.TextBlock) {
+                            contentBlocks[index] = ContentBlock.TextBlock(text)
+                        }
+                    }
                 },
-                onRemove = { image ->
-                    selectedImages.remove(image)
-                    image.file.delete()
+                onAddImage = {
+                    val remainingCapacity = MAX_IMAGES - currentImageCount
+                    if (remainingCapacity <= 0) {
+                        showTransientMessage(snackbarHostState, "最多只能添加${MAX_IMAGES}张图片")
+                    } else {
+                        imagePickerLauncher.launch(
+                            PickVisualMediaRequest(
+                                ActivityResultContracts.PickVisualMedia.ImageOnly
+                            )
+                        )
+                    }
+                },
+                onRemoveImage = { index ->
+                    removeImageBlock(index)
                 }
             )
             TagSection(
@@ -297,6 +464,125 @@ private fun CreatePostScreen(
                 }
             )
         }
+    }
+
+    // 图片布局选择对话框 - 当选择2张图片时显示
+    if (showImageLayoutDialog && pendingImages.size == 2) {
+        AlertDialog(
+            onDismissRequest = { 
+                showImageLayoutDialog = false
+                pendingImages.forEach { it.file.delete() }
+                pendingImages = emptyList()
+            },
+            title = {
+                Text(
+                    text = "选择图片布局",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = "请选择图片的排列方式",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = PlaceholderColor
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // 单图选项 - 两张图片分别显示
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable {
+                                    insertImageBlock(pendingImages[0], ImageLayout.Single)
+                                    insertImageBlock(pendingImages[1], ImageLayout.Single)
+                                    showImageLayoutDialog = false
+                                    pendingImages = emptyList()
+                                },
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, PlaceholderColor),
+                            color = Color.White
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    "单图",
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    "两张图片分别显示",
+                                    fontSize = 12.sp,
+                                    color = PlaceholderColor
+                                )
+                            }
+                        }
+                        // 双图选项 - 两张图片并排显示
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable {
+                                    insertDoubleImageBlock(pendingImages[0], pendingImages[1])
+                                    showImageLayoutDialog = false
+                                    pendingImages = emptyList()
+                                },
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, AccentOrange),
+                            color = AccentOrange.copy(alpha = 0.1f)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    "并排",
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 14.sp,
+                                    color = AccentOrange
+                                )
+                                Text(
+                                    "两张图片并排显示",
+                                    fontSize = 12.sp,
+                                    color = PlaceholderColor
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        insertDoubleImageBlock(pendingImages[0], pendingImages[1])
+                        showImageLayoutDialog = false
+                        pendingImages = emptyList()
+                    }
+                ) {
+                    Text("并排", color = AccentOrange, fontWeight = FontWeight.Medium)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        insertImageBlock(pendingImages[0], ImageLayout.Single)
+                        insertImageBlock(pendingImages[1], ImageLayout.Single)
+                        showImageLayoutDialog = false
+                        pendingImages = emptyList()
+                    }
+                ) {
+                    Text("单图")
+                }
+            }
+        )
     }
 
     if (showTagDialog) {
@@ -346,6 +632,15 @@ private fun CreatePostScreen(
     }
 }
 
+/**
+ * 标题输入区域 - 根据Figma设计实现
+ * Figma设计规范：
+ * - 字体：14sp，Regular，黑色
+ * - 行高：22sp
+ * - 占位文字：14sp，灰色 #B5B7B8
+ * - 分隔线：0.25px，灰色
+ * - 内边距：左右16px，上下10px
+ */
 @Composable
 private fun TitleSection(
     title: String,
@@ -358,24 +653,25 @@ private fun TitleSection(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .padding(horizontal = 16.dp, vertical = 10.dp), // 根据Figma设计：内边距
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Start
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             BasicTextField(
                 value = title,
                 onValueChange = onTitleChange,
                 singleLine = true,
                 textStyle = TextStyle(
-                    fontSize = 14.sp,
+                    fontSize = 14.sp, // 根据Figma设计：14sp
                     color = Color.Black,
-                    lineHeight = 22.sp
+                    lineHeight = 22.sp, // 根据Figma设计：行高22sp
+                    fontWeight = FontWeight.Normal // PingFang SC Regular
                 ),
                 decorationBox = { inner ->
                     if (title.isEmpty()) {
                         Text(
                             text = "好的标题会让更多人看到哦~",
-                            color = PlaceholderColor,
+                            color = PlaceholderColor, // 根据Figma设计：灰色 #B5B7B8
                             fontSize = 14.sp,
                             lineHeight = 22.sp
                         )
@@ -396,67 +692,200 @@ private fun TitleSection(
         }
         Divider(
             color = PlaceholderColor.copy(alpha = 0.6f),
-            thickness = 0.25.dp
+            thickness = 0.25.dp // 根据Figma设计：0.25px
         )
     }
 }
 
+/**
+ * 所见即所得编辑器 - 支持文本和图片混合编辑
+ * 根据Figma设计实现
+ * 支持在任何位置插入图片，可以选择单图或双图布局
+ */
 @Composable
-private fun ContentSection(
-    content: String,
-    onContentChange: (String) -> Unit
+private fun WysiwygEditor(
+    contentBlocks: List<ContentBlock>,
+    currentBlockIndex: Int,
+    onBlockIndexChange: (Int) -> Unit,
+    onTextChange: (Int, String) -> Unit,
+    onAddImage: () -> Unit,
+    onRemoveImage: (Int) -> Unit
 ) {
-    BasicTextField(
-        value = content,
-        onValueChange = onContentChange,
-        textStyle = TextStyle(
-            fontSize = 14.sp,
-            color = Color.Black,
-            lineHeight = 22.sp
-        ),
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 220.dp)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        decorationBox = { inner ->
-            if (content.isEmpty()) {
-                Text(
-                    text = "此刻你想和大家分享什么......",
-                    color = PlaceholderColor,
-                    fontSize = 14.sp,
-                    lineHeight = 22.sp
-                )
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+    ) {
+        if (contentBlocks.isEmpty()) {
+            // 空状态 - 显示占位符和添加图片按钮
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 220.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = "此刻你想和大家分享什么......",
+                        color = PlaceholderColor,
+                        fontSize = 14.sp,
+                        lineHeight = 22.sp
+                    )
+                    AddImageCard(
+                        onClick = onAddImage,
+                        modifier = Modifier.size(110.dp)
+                    )
+                }
             }
-            inner()
+        } else {
+            // 显示内容块 - 所见即所得
+            contentBlocks.forEachIndexed { index, block ->
+                when (block) {
+                    is ContentBlock.TextBlock -> {
+                        ContentTextBlock(
+                            text = block.text,
+                            isFocused = index == currentBlockIndex,
+                            placeholder = if (index == 0 && contentBlocks.size == 1 && block.text.isEmpty()) {
+                                "此刻你想和大家分享什么......"
+                            } else null,
+                            onTextChange = { onTextChange(index, it) },
+                            onFocusChange = { if (it) onBlockIndexChange(index) },
+                            onAddImageClick = {
+                                // 在当前位置插入图片
+                                onAddImage()
+                            },
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+                    }
+                    is ContentBlock.ImageBlock -> {
+                        ContentImageBlock(
+                            images = block.images,
+                            layout = block.layout,
+                            onRemove = { onRemoveImage(index) },
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    }
+                }
+            }
         }
-    )
+    }
 }
 
+/**
+ * 文本内容块 - 根据Figma设计实现
+ * Figma设计规范：
+ * - 字体：14sp，Regular，黑色
+ * - 行高：22sp
+ * - 占位文字：14sp，灰色 #B5B7B8
+ */
 @Composable
-private fun PhotoSection(
-    images: List<SelectedImage>,
-    onAddClick: () -> Unit,
-    onRemove: (SelectedImage) -> Unit
+private fun ContentTextBlock(
+    text: String,
+    isFocused: Boolean,
+    placeholder: String?,
+    onTextChange: (String) -> Unit,
+    onFocusChange: (Boolean) -> Unit,
+    onAddImageClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    LazyRow(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 20.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = PaddingValues(end = 16.dp)
-    ) {
-        if (images.size < MAX_IMAGES) {
-            item { AddImageCard(onClick = onAddClick) }
+    val focusRequester = remember { FocusRequester() }
+    
+    LaunchedEffect(isFocused) {
+        if (isFocused) {
+            focusRequester.requestFocus()
         }
-        items(images.size) { index ->
-            val image = images[index]
-            ImageThumbnail(
-                image = image,
-                onRemove = { onRemove(image) }
+    }
+    
+    Column(modifier = modifier) {
+        BasicTextField(
+            value = text,
+            onValueChange = onTextChange,
+            textStyle = TextStyle(
+                fontSize = 14.sp, // 根据Figma设计：14sp
+                color = Color.Black,
+                lineHeight = 22.sp, // 根据Figma设计：行高22sp
+                fontWeight = FontWeight.Normal // PingFang SC Regular
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 40.dp)
+                .focusRequester(focusRequester)
+                .onFocusChanged { onFocusChange(it.isFocused) },
+            decorationBox = { inner ->
+                if (text.isEmpty() && placeholder != null) {
+                    Text(
+                        text = placeholder,
+                        color = PlaceholderColor, // 根据Figma设计：灰色 #B5B7B8
+                        fontSize = 14.sp,
+                        lineHeight = 22.sp
+                    )
+                }
+                inner()
+            }
+        )
+        // 添加图片按钮（在文本块下方，始终显示）
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            horizontalArrangement = Arrangement.Start
+        ) {
+            AddImageCard(
+                onClick = onAddImageClick,
+                modifier = Modifier.size(110.dp) // 根据Figma设计：110x110px
             )
         }
     }
 }
+
+/**
+ * 图片内容块 - 支持单图和双图布局
+ * 根据Figma设计实现
+ */
+@Composable
+private fun ContentImageBlock(
+    images: List<SelectedImage>,
+    layout: ImageLayout,
+    onRemove: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    when (layout) {
+        ImageLayout.Single -> {
+            // 单图布局 - 每张图片单独显示
+            Column(
+                modifier = modifier,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                images.forEach { image ->
+                    ImageThumbnail(
+                        image = image,
+                        onRemove = onRemove,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        }
+        ImageLayout.Double -> {
+            // 双图并排布局 - 根据Figma设计：两张图片并排显示，间距12px
+            Row(
+                modifier = modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp) // 根据Figma设计：间距12px
+            ) {
+                images.take(2).forEach { image ->
+                    ImageThumbnail(
+                        image = image,
+                        onRemove = onRemove,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+    }
+}
+
 
 @Composable
 private fun TagSection(
@@ -500,6 +929,14 @@ private fun TagSection(
     }
 }
 
+/**
+ * 标签芯片 - 根据Figma设计实现
+ * Figma设计规范：
+ * - 字体：12sp，Light，黑色（选中时为橙色 #EC7C38）
+ * - 圆角：25px
+ * - 边框：0.5px，灰色 #B5B7B8（选中时为橙色）
+ * - 内边距：左右12px，上下2px
+ */
 @Composable
 private fun TagChip(
     label: String,
@@ -508,16 +945,16 @@ private fun TagChip(
     emphasize: Boolean = false
 ) {
     val textColor = when {
-        isActive -> AccentOrange
-        emphasize -> Color.Black
-        else -> PlaceholderColor
+        isActive -> AccentOrange // 根据Figma设计：选中时橙色 #EC7C38
+        emphasize -> Color.Black // 根据Figma设计：强调时黑色
+        else -> PlaceholderColor // 根据Figma设计：灰色 #B5B7B8
     }
     val borderColor = if (isActive) AccentOrange else PlaceholderColor
     val backgroundColor = if (isActive) AccentOrange.copy(alpha = 0.12f) else Color.White
 
     Surface(
-        shape = RoundedCornerShape(25.dp),
-        border = BorderStroke(width = 0.5.dp, color = borderColor),
+        shape = RoundedCornerShape(25.dp), // 根据Figma设计：25px圆角
+        border = BorderStroke(width = 0.5.dp, color = borderColor), // 根据Figma设计：0.5px边框
         color = backgroundColor,
         modifier = Modifier.clickable(onClick = onClick)
     ) {
@@ -525,10 +962,11 @@ private fun TagChip(
             text = label,
             style = MaterialTheme.typography.bodySmall.copy(
                 color = textColor,
-                fontSize = 12.sp,
-                fontWeight = if (emphasize) FontWeight.Medium else FontWeight.Normal
+                fontSize = 12.sp, // 根据Figma设计：12sp
+                fontWeight = if (emphasize) FontWeight.Medium else FontWeight.Light, // PingFang SC Light
+                letterSpacing = (-0.32).sp
             ),
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp), // 根据Figma设计：内边距
             textAlign = TextAlign.Center
         )
     }
@@ -544,13 +982,16 @@ private fun TagDivider() {
     )
 }
 
+/**
+ * 添加图片卡片 - 根据Figma设计实现
+ */
 @Composable
 private fun AddImageCard(
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = Modifier
-            .size(110.dp)
+        modifier = modifier
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
@@ -571,15 +1012,19 @@ private fun AddImageCard(
     }
 }
 
+/**
+ * 图片缩略图 - 支持单图和双图布局
+ */
 @Composable
 private fun ImageThumbnail(
     image: SelectedImage,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Box(
-        modifier = Modifier
-            .size(110.dp)
-            .clip(RoundedCornerShape(12.dp))
+        modifier = modifier
+            .height(110.dp)
+            .clip(RoundedCornerShape(8.dp)) // 根据Figma设计：8px圆角
     ) {
         AsyncImage(
             model = image.uri,

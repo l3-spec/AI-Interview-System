@@ -57,6 +57,11 @@ class SplashActivity : ComponentActivity() {
 /**
  * 启动页 Compose UI
  * 根据Figma设计实现：渐变背景、居中Logo、底部文字
+ * Figma设计规范：
+ * - 背景渐变：从 #00ACC3 到 #EBEBEB，从 31.65% 位置开始过渡
+ * - Logo尺寸：80x50px（在375px宽度屏幕上）
+ * - Logo位置：垂直居中偏上
+ * - 底部文字："星链未来 成就职业梦想"，橙色 #EC7C38，20sp，PingFang SC Semibold
  * @param onSplashFinished 启动页完成回调
  */
 @Composable
@@ -74,11 +79,18 @@ fun SplashScreen(onSplashFinished: () -> Unit) {
         onSplashFinished()
     }
 
+    // 根据Figma设计：渐变从31.65%位置开始过渡
+    // 使用stops参数精确控制渐变位置
     val gradient = remember {
         Brush.verticalGradient(
-            colors = listOf(Color(0xFF00ACC3), Color(0xFFEBEBEB)),
+            colors = listOf(
+                Color(0xFF00ACC3),  // 顶部浅蓝色
+                Color(0xFF00ACC3),  // 保持到31.65%
+                Color(0xFFEBEBEB)   // 底部浅灰色
+            ),
             startY = 0f,
-            endY = Float.POSITIVE_INFINITY
+            endY = Float.POSITIVE_INFINITY,
+            stops = floatArrayOf(0f, 0.3165f, 1f)
         )
     }
 
@@ -87,6 +99,8 @@ fun SplashScreen(onSplashFinished: () -> Unit) {
             .fillMaxSize()
             .background(gradient)
     ) {
+        // Logo区域：垂直居中偏上，水平居中
+        // Figma设计：Logo尺寸80x50px，padding horizontal 48px, vertical 96px
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -94,21 +108,29 @@ fun SplashScreen(onSplashFinished: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            // Logo尺寸：根据Figma设计，在375px宽度屏幕上为80x50px
+            // 转换为dp：80px ≈ 80dp, 50px ≈ 50dp (mdpi基准)
             Image(
                 painter = painterResource(id = R.drawable.login_logo),
                 contentDescription = "Starlink Future logo",
                 modifier = Modifier
-                    .requiredWidth(192.dp)
-                    .requiredHeight(120.dp)
+                    .width(80.dp)
+                    .height(50.dp)
                     .alpha(alphaAnim)
             )
         }
 
+        // 底部文字：根据Figma设计
+        // 文字："星链未来 成就职业梦想"
+        // 颜色：#EC7C38 (橙色)
+        // 字体：PingFang SC Semibold, 20sp
+        // 位置：底部居中
         Text(
             text = "星链未来 成就职业梦想",
             color = Color(0xFFEC7C38),
             fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 72.dp)

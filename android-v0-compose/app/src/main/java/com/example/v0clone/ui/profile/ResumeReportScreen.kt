@@ -32,6 +32,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -81,6 +82,9 @@ private val AccentOrange = Color(0xFFEC7C38)
 private val MutedGray = Color(0xFFB5B7B8)
 private val TrackGray = Color(0xFFD9D9D9)
 private val ChipBackground = Color(0xFFF3F8FB)
+// 青色背景用于报告卡片
+private val TealCardBackground = Color(0xFFE0F7FA)
+private val TealDivider = Color(0xFF00ACC3)
 private val GradientTop = Brush.verticalGradient(listOf(Color(0xFF00ACC3), PageBackground))
 
 data class ResumeJobMatch(
@@ -671,7 +675,10 @@ fun ResumeReportScreen(
         BestMatchCard(report.bestMatch)
       }
       item {
-        CompetencyCard(report.competencies)
+        CompetencyRadarCard(report.competencies)
+      }
+      item {
+        CompetencyDetailsCard(report.competencies)
       }
       item {
         TipsCard(report.tips)
@@ -798,43 +805,34 @@ private fun ReportSummaryCard(
 
 @Composable
 private fun BestMatchCard(match: ResumeJobMatch) {
+  // 青色背景卡片
   Card(
     modifier = Modifier.fillMaxWidth(),
     shape = RoundedCornerShape(8.dp),
-    colors = CardDefaults.cardColors(containerColor = Color.White),
+    colors = CardDefaults.cardColors(containerColor = TealCardBackground),
     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
   ) {
     Column(
-      modifier = Modifier.padding(12.dp),
+      modifier = Modifier.padding(16.dp),
       verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
       Text(
         text = "最佳匹配岗位",
         style = MaterialTheme.typography.titleSmall.copy(
           fontSize = 14.sp,
-          color = AccentOrange,
+          color = Color.Black,
           fontWeight = FontWeight.Medium
         )
       )
       Text(
-        text = buildAnnotatedString {
-          withStyle(
-            SpanStyle(
-              fontWeight = FontWeight.Medium,
-              color = Color.Black
-            )
-          ) {
-            append(match.title)
-            append(" ")
-          }
-          append(match.description)
-        },
+        text = match.description,
         style = MaterialTheme.typography.bodyMedium.copy(
           fontSize = 14.sp,
           lineHeight = 22.sp,
           color = Color.Black
         )
       )
+      // 匹配度进度条：进度条 + 百分比标签
       Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -844,26 +842,20 @@ private fun BestMatchCard(match: ResumeJobMatch) {
           progress = match.matchRatio,
           modifier = Modifier.weight(1f)
         )
-        Text(
-          text = "匹配度",
-          style = MaterialTheme.typography.bodyMedium.copy(
-            fontSize = 14.sp,
-            color = Color.Black,
-            fontWeight = FontWeight.Medium
-          )
-        )
+        // 橙色标签显示百分比
         Surface(
           color = AccentOrange,
           shape = RoundedCornerShape(4.dp)
         ) {
           Text(
-            text = toPercentage(match.matchRatio),
+            text = "匹配度 ${toPercentage(match.matchRatio)}",
             style = MaterialTheme.typography.bodySmall.copy(
               fontSize = 12.sp,
-              color = Color.White
+              color = Color.White,
+              fontWeight = FontWeight.Medium
             ),
             modifier = Modifier
-              .padding(horizontal = 6.dp, vertical = 2.dp)
+              .padding(horizontal = 8.dp, vertical = 4.dp)
           )
         }
       }
@@ -871,23 +863,24 @@ private fun BestMatchCard(match: ResumeJobMatch) {
   }
 }
 
+// 核心竞争力雷达图卡片（青色背景）
 @Composable
-private fun CompetencyCard(competencies: List<ResumeCompetency>) {
+private fun CompetencyRadarCard(competencies: List<ResumeCompetency>) {
   Card(
     modifier = Modifier.fillMaxWidth(),
     shape = RoundedCornerShape(8.dp),
-    colors = CardDefaults.cardColors(containerColor = Color.White),
+    colors = CardDefaults.cardColors(containerColor = TealCardBackground),
     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
   ) {
     Column(
-      modifier = Modifier.padding(12.dp),
+      modifier = Modifier.padding(16.dp),
       verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
       Text(
         text = "职场六大核心竞争力",
         style = MaterialTheme.typography.titleSmall.copy(
           fontSize = 14.sp,
-          color = AccentOrange,
+          color = Color.Black,
           fontWeight = FontWeight.Medium
         )
       )
@@ -897,11 +890,33 @@ private fun CompetencyCard(competencies: List<ResumeCompetency>) {
           .fillMaxWidth()
           .height(220.dp)
       )
-      Column(
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-      ) {
-        competencies.forEach { competency ->
-          CompetencyItem(competency)
+    }
+  }
+}
+
+// 各竞争力详细描述卡片（白色背景，用青色分隔线分隔）
+@Composable
+private fun CompetencyDetailsCard(competencies: List<ResumeCompetency>) {
+  Card(
+    modifier = Modifier.fillMaxWidth(),
+    shape = RoundedCornerShape(8.dp),
+    colors = CardDefaults.cardColors(containerColor = Color.White),
+    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+  ) {
+    Column(
+      modifier = Modifier.padding(16.dp),
+      verticalArrangement = Arrangement.spacedBy(0.dp)
+    ) {
+      competencies.forEachIndexed { index, competency ->
+        CompetencyItem(competency)
+          // 添加青色分隔线（最后一个不添加）
+        if (index < competencies.size - 1) {
+          Spacer(modifier = Modifier.height(16.dp))
+          HorizontalDivider(
+            color = TealDivider.copy(alpha = 0.3f),
+            thickness = 0.5.dp
+          )
+          Spacer(modifier = Modifier.height(16.dp))
         }
       }
     }
@@ -1033,7 +1048,7 @@ private fun CompetencyRadarChart(
 @Composable
 private fun CompetencyItem(competency: ResumeCompetency) {
   Column(
-    verticalArrangement = Arrangement.spacedBy(4.dp)
+    verticalArrangement = Arrangement.spacedBy(8.dp)
   ) {
     Row(
       modifier = Modifier.fillMaxWidth(),
@@ -1052,6 +1067,7 @@ private fun CompetencyItem(competency: ResumeCompetency) {
         progress = competency.score,
         modifier = Modifier.weight(1f)
       )
+      // 评分标签：橙色文字
       Text(
         text = competency.ratingLabel,
         style = MaterialTheme.typography.bodySmall.copy(
@@ -1066,29 +1082,34 @@ private fun CompetencyItem(competency: ResumeCompetency) {
       style = MaterialTheme.typography.bodyMedium.copy(
         fontSize = 14.sp,
         lineHeight = 22.sp,
-        color = MutedGray
+        color = Color.Black
       )
     )
   }
 }
 
 @Composable
-private fun TipsCard(tips: String) {
+private fun TipsCard(
+  tips: String,
+  generatedNote: String,
+  onRetest: () -> Unit
+) {
+  // 青色背景卡片，包含Tips、有效期说明和重新测评按钮
   Card(
     modifier = Modifier.fillMaxWidth(),
     shape = RoundedCornerShape(8.dp),
-    colors = CardDefaults.cardColors(containerColor = Color.White),
+    colors = CardDefaults.cardColors(containerColor = TealCardBackground),
     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
   ) {
     Column(
-      modifier = Modifier.padding(12.dp),
-      verticalArrangement = Arrangement.spacedBy(12.dp)
+      modifier = Modifier.padding(16.dp),
+      verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
       Text(
         text = "职场Tips",
         style = MaterialTheme.typography.titleSmall.copy(
           fontSize = 14.sp,
-          color = AccentOrange,
+          color = Color.Black,
           fontWeight = FontWeight.Medium
         )
       )
@@ -1100,6 +1121,35 @@ private fun TipsCard(tips: String) {
           color = Color.Black
         )
       )
+      // 有效期说明
+      Text(
+        text = generatedNote,
+        style = MaterialTheme.typography.bodySmall.copy(
+          fontSize = 12.sp,
+          color = MutedGray,
+          lineHeight = 18.sp
+        )
+      )
+      // 重新测评按钮
+      Button(
+        onClick = onRetest,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(40.dp),
+        colors = ButtonDefaults.buttonColors(
+          containerColor = AccentOrange,
+          contentColor = Color.White
+        ),
+        contentPadding = PaddingValues(vertical = 12.dp)
+      ) {
+        Text(
+          text = "重新测评",
+          style = MaterialTheme.typography.bodyMedium.copy(
+            fontSize = 14.sp,
+            color = Color.White,
+            fontWeight = FontWeight.Medium
+          )
+        )
+      }
     }
   }
 }
@@ -1177,23 +1227,24 @@ private fun RecommendationCard(job: JobRecommendation) {
           )
         )
       }
+      // 标签：灰色背景，白色文字
       Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth()
       ) {
         job.tags.forEach { tag ->
           Surface(
-            color = ChipBackground,
+            color = Color(0xFFE0E0E0), // 灰色背景
             shape = RoundedCornerShape(4.dp)
           ) {
             Text(
               text = tag,
               style = MaterialTheme.typography.bodySmall.copy(
                 fontSize = 12.sp,
-                color = Color.Black
+                color = Color.White // 白色文字
               ),
               modifier = Modifier
-                .padding(horizontal = 8.dp, vertical = 2.dp)
+                .padding(horizontal = 8.dp, vertical = 4.dp)
             )
           }
         }
@@ -1207,12 +1258,16 @@ private fun RecommendationCard(job: JobRecommendation) {
           horizontalArrangement = Arrangement.spacedBy(12.dp),
           verticalAlignment = Alignment.CenterVertically
         ) {
+          // 公司logo：红色圆形背景
           Box(
             modifier = Modifier
               .size(24.dp)
               .clip(CircleShape)
-              .background(Color(0xFFE0E0E0))
-          )
+              .background(Color(0xFFE53935)), // 红色背景
+            contentAlignment = Alignment.Center
+          ) {
+            // 这里可以添加公司logo图标，暂时留空
+          }
           Column(
             verticalArrangement = Arrangement.spacedBy(2.dp)
           ) {
