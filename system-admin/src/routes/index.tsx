@@ -11,6 +11,7 @@ import PermissionManagement from '../pages/PermissionManagement';
 import BillingManagement from '../pages/BillingManagement';
 import SystemSettings from '../pages/SystemSettings';
 import SystemLogs from '../pages/SystemLogs';
+import MessageManagement from '../pages/MessageManagement';
 import AdminManagement from '../pages/AdminManagement';
 import HomeContentManagement from '../pages/HomeContentManagement';
 import AssessmentManagement from '../pages/AssessmentManagement';
@@ -37,6 +38,7 @@ export const AppRoutes: React.FC = () => {
         <Route path="users" element={<UserManagement />} />
         <Route path="companies" element={<CompanyManagement />} />
         <Route path="jobs" element={<JobManagement />} />
+        <Route path="messages" element={<MessageManagement />} />
         <Route path="home-content" element={<HomeContentManagement />} />
         <Route path="posts" element={<PostManagement />} />
         <Route path="assessments" element={<AssessmentManagement />} />

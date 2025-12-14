@@ -1,46 +1,8 @@
 import { Request, Response } from 'express';
 import { PrismaClient, Prisma } from '@prisma/client';
+import { normalizeStatus, normalizeType, parseJson, truncateContent } from '../utils/messageUtils';
 
 const prisma = new PrismaClient();
-
-const MESSAGE_TYPES = ['SYSTEM', 'INTERACTION', 'SUPPORT'];
-const MESSAGE_STATUS = ['UNREAD', 'READ', 'ARCHIVED'];
-
-const normalizeType = (raw?: string | null) => {
-  if (!raw) {
-    return undefined;
-  }
-  const upper = raw.toUpperCase();
-  return MESSAGE_TYPES.includes(upper) ? upper : undefined;
-};
-
-const normalizeStatus = (raw?: string | null) => {
-  if (!raw) {
-    return undefined;
-  }
-  const upper = raw.toUpperCase();
-  return MESSAGE_STATUS.includes(upper) ? upper : undefined;
-};
-
-const truncateContent = (content: string, limit = 120) => {
-  const trimmed = content.trim();
-  if (trimmed.length <= limit) {
-    return trimmed;
-  }
-  return `${trimmed.slice(0, limit)}…`;
-};
-
-const parseJson = <T>(value?: string | null): T | null => {
-  if (!value) {
-    return null;
-  }
-  try {
-    return JSON.parse(value) as T;
-  } catch (error) {
-    console.warn('消息元数据解析失败:', error);
-    return null;
-  }
-};
 
 const mapEntry = (entry: any) => ({
   id: entry.id,

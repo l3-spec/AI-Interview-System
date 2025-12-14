@@ -681,42 +681,11 @@ fun ResumeReportScreen(
         CompetencyDetailsCard(report.competencies)
       }
       item {
-        TipsCard(report.tips)
-      }
-      item {
-      Text(
-        text = report.generatedNote,
-        style = MaterialTheme.typography.bodySmall.copy(
-          color = MutedGray,
-          lineHeight = 21.sp,
-          fontSize = 12.sp
-        ),
-        modifier = Modifier
-          .fillMaxWidth()
-          .padding(horizontal = 12.dp)
-      )
-      }
-      item {
-        Button(
-          onClick = onRetest,
-          modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp),
-          shape = RoundedCornerShape(40.dp),
-          colors = ButtonDefaults.buttonColors(
-            containerColor = AccentOrange,
-            contentColor = Color.White
-          ),
-          contentPadding = PaddingValues(vertical = 8.dp)
-        ) {
-          Text(
-            text = "重新测评",
-            style = MaterialTheme.typography.bodySmall.copy(
-              fontSize = 12.sp,
-              color = Color.White
-            )
-          )
-        }
+        TipsCard(
+          tips = report.tips,
+          generatedNote = report.generatedNote,
+          onRetest = onRetest
+        )
       }
       item {
         RecommendationsHeader()

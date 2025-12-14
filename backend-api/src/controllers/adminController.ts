@@ -581,10 +581,51 @@ export const extendSubscription = async (req: Request, res: Response) => {
 };
 
 export const getSystemLogs = async (req: Request, res: Response) => {
-  res.status(501).json({
-    success: false,
-    message: '系统日志功能暂未实现，需要先更新数据库模型'
-  });
+  try {
+    const { page = 1, pageSize = 20, module, action, result, search } = req.query;
+    const skip = (Number(page) - 1) * Number(pageSize);
+    const take = Number(pageSize);
+
+    const where: any = {};
+    if (module) where.module = module;
+    if (action) where.action = action;
+    if (result) where.result = result;
+    if (search) {
+      where.OR = [
+        { description: { contains: search as string } },
+        { targetId: { contains: search as string } },
+      ];
+    }
+
+    const [logs, total] = await Promise.all([
+      prisma.systemLog.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { createdAt: 'desc' },
+        include: { admin: { select: { id: true, name: true, email: true } } },
+      }),
+      prisma.systemLog.count({ where }),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        list: logs,
+        total,
+        page: Number(page),
+        pageSize: Number(pageSize),
+        hasMore: skip + take < total,
+      },
+    });
+  } catch (error: any) {
+    console.error('获取系统日志失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '服务器内部错误',
+      error: error.message ?? 'Unknown error',
+    });
+  }
 };
 
 export const getAdmins = async (req: Request, res: Response) => {

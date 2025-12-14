@@ -1474,6 +1474,7 @@ private fun QuestionCard(
             }
         }
     }
+    }
 }
 
 @Composable

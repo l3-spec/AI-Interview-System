@@ -548,15 +548,26 @@ fun AppNavHost(navController: NavHostController) {
             }
         }
 
-        composable(Routes.PROFILE_MESSAGES) { backStackEntry ->
+        composable(
+            route = "${Routes.PROFILE_MESSAGES}?filter={filter}",
+            arguments = listOf(
+                navArgument("filter") {
+                    type = NavType.StringType
+                    defaultValue = "ALL"
+                    nullable = true
+                }
+            )
+        ) { backStackEntry ->
             if (token.isNullOrEmpty()) {
                 LaunchedEffect(Unit) {
                     navController.navigate(LOGIN) { launchSingleTop = true }
                 }
             } else {
+                val filterKey = backStackEntry.arguments?.getString("filter")
                 MessageCenterRoute(
                     repository = messageRepo,
                     backStackEntry = backStackEntry,
+                    initialType = com.xlwl.AiMian.ui.messages.MessageType.fromKey(filterKey),
                     onBack = { navController.popBackStack() },
                     onMessageSelected = { messageId ->
                         navController.navigate("${Routes.PROFILE_MESSAGE_DETAIL}/${URLEncoder.encode(messageId, "UTF-8")}")

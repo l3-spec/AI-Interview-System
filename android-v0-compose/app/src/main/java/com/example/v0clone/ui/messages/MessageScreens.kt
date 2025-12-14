@@ -29,6 +29,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.AddComment
+import androidx.compose.material.icons.outlined.AttachFile
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.MarkEmailUnread
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Send
@@ -89,12 +91,13 @@ private val chatDateFormatter = DateTimeFormatter.ofPattern("M月d日 HH:mm")
 fun MessageCenterRoute(
     repository: MessageRepository,
     backStackEntry: NavBackStackEntry,
+    initialType: MessageType = MessageType.ALL,
     onBack: () -> Unit,
     onMessageSelected: (String) -> Unit,
     onCompose: () -> Unit
 ) {
     var uiState by remember { mutableStateOf(MessageCenterUiState(isLoading = true)) }
-    var selectedType by rememberSaveable { mutableStateOf(MessageType.ALL) }
+    var selectedType by rememberSaveable(initialType.routeKey) { mutableStateOf(initialType) }
     val scope = rememberCoroutineScope()
     val refreshSignal by backStackEntry.savedStateHandle
         .getStateFlow("should_refresh_messages", false)
@@ -357,7 +360,10 @@ private fun MessageItemCard(
     onClick: () -> Unit
 ) {
     val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-    val isSystemNotification = summary.type == "SYSTEM"
+    val typeUpper = summary.type.uppercase()
+    val isSystemNotification = typeUpper == "SYSTEM"
+    val isInterview = typeUpper == "INTERVIEW"
+    val isChat = typeUpper == "CHAT"
     val isUnread = summary.status == "UNREAD" || summary.unreadCount > 0
     
     Column(
@@ -406,7 +412,11 @@ private fun MessageItemCard(
                         .clip(CircleShape)
                         .background(
                             Brush.linearGradient(
-                                colors = listOf(Color(0xFFFFD54F), Color(0xFFFFB300))
+                                colors = when {
+                                    isInterview -> listOf(Color(0xFF4FC3F7), Color(0xFF00ACC3))
+                                    isChat -> listOf(Color(0xFFFFD38A), Color(0xFFFFA768))
+                                    else -> listOf(Color(0xFFFFD54F), Color(0xFFFFB300))
+                                }
                             )
                         ),
                     contentAlignment = Alignment.Center
@@ -497,6 +507,16 @@ private fun MessageItemCard(
                 }
                 
                 // 消息预览
+                val tagLabel = when {
+                    isInterview -> "面试邀约"
+                    isChat -> "沟通消息"
+                    isSystemNotification -> "通知"
+                    else -> null
+                }
+                tagLabel?.let {
+                    MessageTypeBadge(label = it)
+                }
+
                 summary.latestEntry?.let { entry ->
                     Text(
                         text = entry.content,
@@ -576,6 +596,8 @@ fun MessageDetailRoute(
                     detail = data
                     error = null
                     onMessagesShouldRefresh()
+                    // 标记已读，保持邀约/沟通列表状态同步
+                    repository.markMessageRead(messageId)
                     scrollToBottom(listState)
                 }.onFailure {
                     error = it.message ?: "获取消息详情失败"
@@ -663,15 +685,14 @@ private fun MessageDetailScreen(
                         onAction = onRetry
                     )
                 }
-                detail != null -> {
-                    Box(Modifier.fillMaxSize()) {
-                        ChatContent(
-                            detail = detail,
-                            entries = detail.entries,
-                            listState = listState,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(bottom = 96.dp)
+                        detail != null -> {
+                            Box(Modifier.fillMaxSize()) {
+                                ChatContent(
+                                    entries = detail.entries,
+                                    listState = listState,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(bottom = 96.dp)
                         )
                         Column(
                             modifier = Modifier
@@ -686,6 +707,49 @@ private fun MessageDetailScreen(
                             )
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatTopBar(
+    name: String,
+    subtitle: String,
+    onBack: () -> Unit
+) {
+    Surface(color = Color.White, shadowElevation = 0.dp) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = "返回"
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (subtitle.isNotBlank()) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall.copy(color = MutedText),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }
@@ -1033,6 +1097,23 @@ private fun SystemBubble(content: String) {
     }
 }
 
+@Composable
+private fun MessageTypeBadge(label: String) {
+    Surface(
+        color = Color(0xFFEAF6FF),
+        shape = RoundedCornerShape(12.dp),
+        tonalElevation = 0.dp,
+        modifier = Modifier.padding(bottom = 4.dp)
+    ) {
+        Text(
+            text = label,
+            color = Color(0xFF1B8AD0),
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+        )
+    }
+}
+
 private fun formatDate(raw: String?): String {
     if (raw.isNullOrBlank()) return ""
     return runCatching {
@@ -1072,16 +1153,26 @@ private data class MessageCenterUiState(
     val error: String? = null
 )
 
-private enum class MessageType(
+enum class MessageType(
     val display: String,
     val typeKey: String?,
-    val statusKey: String?
+    val statusKey: String?,
+    val routeKey: String
 ) {
-    ALL("全部", null, null),
-    SYSTEM("系统通知", "SYSTEM", null),
-    INTERACTION("互动提醒", "INTERACTION", null),
-    SUPPORT("客服消息", "SUPPORT", null),
-    UNREAD("未读", null, "UNREAD")
+    ALL("全部", null, null, "ALL"),
+    INTERVIEW("面试邀约", "INTERVIEW", null, "INTERVIEW"),
+    CHAT("沟通消息", "CHAT", null, "CHAT"),
+    SYSTEM("系统通知", "SYSTEM", null, "SYSTEM"),
+    INTERACTION("互动提醒", "INTERACTION", null, "INTERACTION"),
+    SUPPORT("客服消息", "SUPPORT", null, "SUPPORT"),
+    UNREAD("未读", null, "UNREAD", "UNREAD");
+
+    companion object {
+        fun fromKey(key: String?): MessageType {
+            if (key.isNullOrBlank()) return ALL
+            return values().firstOrNull { it.routeKey.equals(key, ignoreCase = true) } ?: ALL
+        }
+    }
 }
 
 private enum class MessageComposeType(val display: String, val key: String) {

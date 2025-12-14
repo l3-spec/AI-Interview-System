@@ -196,38 +196,6 @@ private fun CreatePostScreen(
         }
     }
 
-    val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickMultipleVisualMedia()
-    ) { uris ->
-        if (uris.isEmpty()) return@rememberLauncherForActivityResult
-        val capacity = MAX_IMAGES - currentImageCount
-        if (capacity <= 0) {
-            showTransientMessage(snackbarHostState, "最多只能添加${MAX_IMAGES}张图片")
-            return@rememberLauncherForActivityResult
-        }
-        val toProcess = uris.take(capacity)
-        val resolverValue = resolver.value
-        val processedImages = mutableListOf<SelectedImage>()
-        toProcess.forEach { uri ->
-            val file = copyUriToCache(resolverValue, uri, context.cacheDir)
-            if (file != null) {
-                processedImages.add(SelectedImage(uri = uri, file = file))
-            } else {
-                showTransientMessage(snackbarHostState, "选择图片失败，请重试")
-            }
-        }
-        if (processedImages.isNotEmpty()) {
-            // 如果选择了多张图片，显示布局选择对话框
-            if (processedImages.size == 2) {
-                pendingImages = processedImages
-                showImageLayoutDialog = true
-            } else {
-                // 单张图片，直接插入
-                insertImageBlock(processedImages.first(), ImageLayout.Single)
-            }
-        }
-    }
-
     // 插入图片块到当前光标位置
     fun insertImageBlock(image: SelectedImage, layout: ImageLayout) {
         val currentBlock = contentBlocks.getOrNull(currentBlockIndex)
@@ -238,15 +206,15 @@ private fun CreatePostScreen(
             // 如果当前不是文本块，在当前位置插入
             currentBlockIndex
         }
-        
+
         val newImageBlock = ContentBlock.ImageBlock(
             images = listOf(image),
             layout = layout
         )
         contentBlocks.add(insertIndex, newImageBlock)
-        
+
         // 在图片块后添加新的文本块（如果不存在或下一个不是文本块）
-        if (insertIndex + 1 >= contentBlocks.size || 
+        if (insertIndex + 1 >= contentBlocks.size ||
             contentBlocks[insertIndex + 1] !is ContentBlock.TextBlock) {
             contentBlocks.add(insertIndex + 1, ContentBlock.TextBlock(""))
         }
@@ -262,14 +230,14 @@ private fun CreatePostScreen(
         } else {
             currentBlockIndex
         }
-        
+
         val newImageBlock = ContentBlock.ImageBlock(
             images = listOf(image1, image2),
             layout = ImageLayout.Double
         )
         contentBlocks.add(insertIndex, newImageBlock)
-        
-        if (insertIndex + 1 >= contentBlocks.size || 
+
+        if (insertIndex + 1 >= contentBlocks.size ||
             contentBlocks[insertIndex + 1] !is ContentBlock.TextBlock) {
             contentBlocks.add(insertIndex + 1, ContentBlock.TextBlock(""))
         }
@@ -314,6 +282,38 @@ private fun CreatePostScreen(
             when (block) {
                 is ContentBlock.TextBlock -> emptyList()
                 is ContentBlock.ImageBlock -> block.images.map { it.file }
+            }
+        }
+    }
+
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia()
+    ) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        val capacity = MAX_IMAGES - currentImageCount
+        if (capacity <= 0) {
+            showTransientMessage(snackbarHostState, "最多只能添加${MAX_IMAGES}张图片")
+            return@rememberLauncherForActivityResult
+        }
+        val toProcess = uris.take(capacity)
+        val resolverValue = resolver.value
+        val processedImages = mutableListOf<SelectedImage>()
+        toProcess.forEach { uri ->
+            val file = copyUriToCache(resolverValue, uri, context.cacheDir)
+            if (file != null) {
+                processedImages.add(SelectedImage(uri = uri, file = file))
+            } else {
+                showTransientMessage(snackbarHostState, "选择图片失败，请重试")
+            }
+        }
+        if (processedImages.isNotEmpty()) {
+            // 如果选择了多张图片，显示布局选择对话框
+            if (processedImages.size == 2) {
+                pendingImages = processedImages
+                showImageLayoutDialog = true
+            } else {
+                // 单张图片，直接插入
+                insertImageBlock(processedImages.first(), ImageLayout.Single)
             }
         }
     }

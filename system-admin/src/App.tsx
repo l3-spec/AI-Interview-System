@@ -8,6 +8,7 @@ import UserManagement from './pages/UserManagement';
 import CompanyManagement from './pages/CompanyManagement';
 import JobManagement from './pages/JobManagement';
 import JobDictionaryManagement from './pages/JobDictionaryManagement';
+import MessageManagement from './pages/MessageManagement';
 import AdminManagement from './pages/AdminManagement';
 import SystemLogs from './pages/SystemLogs';
 import PermissionManagement from './pages/PermissionManagement';
@@ -35,6 +36,7 @@ const App: React.FC = () => {
             <Route path="users" element={<UserManagement />} />
             <Route path="companies" element={<CompanyManagement />} />
             <Route path="jobs" element={<JobManagement />} />
+            <Route path="messages" element={<MessageManagement />} />
             <Route path="job-dictionary" element={<JobDictionaryManagement />} />
             <Route path="home-content" element={<HomeContentManagement />} />
             <Route path="posts" element={<PostManagement />} />

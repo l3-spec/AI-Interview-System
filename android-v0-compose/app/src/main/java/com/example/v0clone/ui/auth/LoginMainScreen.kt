@@ -45,7 +45,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.ToggleableState
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.toggleableState
 import androidx.compose.ui.graphics.Brush
@@ -60,6 +59,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.compose.ui.state.ToggleableState
 import com.xlwl.AiMian.R
 import com.xlwl.AiMian.data.model.SendCodeRequest
 import com.xlwl.AiMian.data.repository.AuthRepository
@@ -96,14 +96,11 @@ fun LoginMainScreen(
     // 根据Figma设计：渐变从31.65%位置开始过渡
     val gradient = remember {
         Brush.verticalGradient(
-            colors = listOf(
-                Color(0xFF00ACC3),  // 顶部浅蓝色
-                Color(0xFF00ACC3),  // 保持到31.65%
-                Color(0xFFEBEBEB)   // 底部浅灰色
-            ),
-            startY = 0f,
-            endY = Float.POSITIVE_INFINITY,
-            stops = floatArrayOf(0f, 0.3165f, 1f)
+            colorStops = arrayOf(
+                0f to Color(0xFF00ACC3),   // 顶部浅蓝色
+                0.3165f to Color(0xFF00ACC3), // 保持到31.65%
+                1f to Color(0xFFEBEBEB)    // 底部浅灰色
+            )
         )
     }
 
@@ -169,7 +166,7 @@ fun LoginMainScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 48.dp, top = 90.dp, bottom = 96.dp),
+                .padding(start = 48.dp, end = 48.dp, top = 90.dp, bottom = 96.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Top
         ) {

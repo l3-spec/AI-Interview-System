@@ -80,17 +80,14 @@ fun SplashScreen(onSplashFinished: () -> Unit) {
     }
 
     // 根据Figma设计：渐变从31.65%位置开始过渡
-    // 使用stops参数精确控制渐变位置
+    // 使用 colorStops 精确控制渐变位置
     val gradient = remember {
         Brush.verticalGradient(
-            colors = listOf(
-                Color(0xFF00ACC3),  // 顶部浅蓝色
-                Color(0xFF00ACC3),  // 保持到31.65%
-                Color(0xFFEBEBEB)   // 底部浅灰色
-            ),
-            startY = 0f,
-            endY = Float.POSITIVE_INFINITY,
-            stops = floatArrayOf(0f, 0.3165f, 1f)
+            colorStops = arrayOf(
+                0f to Color(0xFF00ACC3),   // 顶部浅蓝色
+                0.3165f to Color(0xFF00ACC3), // 保持到31.65%
+                1f to Color(0xFFEBEBEB)    // 底部浅灰色
+            )
         )
     }
 
