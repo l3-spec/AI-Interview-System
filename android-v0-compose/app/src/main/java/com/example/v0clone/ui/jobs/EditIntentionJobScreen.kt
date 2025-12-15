@@ -269,23 +269,20 @@ fun EditIntentionJobScreen(
                 selectedPositions.clear()
             },
             onSave = {
-                if (selectedPositions.isEmpty()) {
-                    Toast.makeText(context, "请至少选择一个职岗", Toast.LENGTH_SHORT).show()
-                } else {
-                    scope.launch {
-                        isSaving = true
-                        val result = preferenceRepository.savePreferences(selectedPositions.map { it.id })
-                        isSaving = false
-                        result.onSuccess { dto ->
-                            Toast.makeText(context, "意向职岗已保存", Toast.LENGTH_SHORT).show()
-                            onSaved(dto)
-                        }.onFailure { throwable ->
-                            Toast.makeText(
-                                context,
-                                throwable.message ?: "保存失败，请稍后重试",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
+                scope.launch {
+                    isSaving = true
+                    val result = preferenceRepository.savePreferences(selectedPositions.map { it.id })
+                    isSaving = false
+                    result.onSuccess { dto ->
+                        val msg = if (selectedPositions.isEmpty()) "已清空意向职岗" else "意向职岗已保存"
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                        onSaved(dto)
+                    }.onFailure { throwable ->
+                        Toast.makeText(
+                            context,
+                            throwable.message ?: "保存失败，请稍后重试",
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
                 }
             }

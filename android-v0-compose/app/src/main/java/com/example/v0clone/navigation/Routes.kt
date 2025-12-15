@@ -27,6 +27,7 @@ object Routes {
     const val PROFILE_MESSAGES = "profileMessages"
     const val PROFILE_MESSAGE_DETAIL = "profileMessagesDetail"
     const val PROFILE_MESSAGE_COMPOSE = "profileMessagesCompose"
+    const val PROFILE_VERIFICATION = "profileVerification"
     const val PROFILE_ASSESSMENTS = "profileAssessments"
     const val PROFILE_ASSESSMENT_CATEGORY = "profileAssessmentsCategory"
     const val PROFILE_ASSESSMENT_DETAIL = "profileAssessmentsDetail"

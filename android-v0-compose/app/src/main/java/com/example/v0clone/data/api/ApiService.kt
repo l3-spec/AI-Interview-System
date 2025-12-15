@@ -278,4 +278,23 @@ interface ApiService {
     suspend fun updateJobPreferences(
         @Body request: UpdateJobPreferencesRequest
     ): ApiResponse<JobPreferenceDto>
+
+    // ==================== 实名认证 ====================
+
+    /**
+     * 获取企业实名认证状态
+     */
+    @GET("verification/status")
+    suspend fun getVerificationStatus(): ApiResponse<VerificationInfo?>
+
+    /**
+     * 提交或更新企业实名认证
+     */
+    @Multipart
+    @POST("verification/submit")
+    suspend fun submitVerification(
+        @Part businessLicense: MultipartBody.Part?,
+        @Part("legalPerson") legalPerson: RequestBody,
+        @Part("registrationNumber") registrationNumber: RequestBody
+    ): ApiResponse<VerificationInfo>
 }

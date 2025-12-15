@@ -70,7 +70,11 @@ fun ProfileScreen(navController: NavController) {
     val user = remember(userJson) {
         userJson?.let { runCatching { gson.fromJson(it, User::class.java) }.getOrNull() }
     }
-    val loginClient = remember { RetrofitClient.createOkHttpClient { null } }
+    val loginClient = remember {
+        RetrofitClient.createOkHttpClient(
+            tokenProvider = { null }
+        )
+    }
     val loginAuthApi = remember(loginClient) { RetrofitClient.createService(AuthApi::class.java, loginClient) }
     val loginRepo = remember(loginAuthApi) { AuthRepository(loginAuthApi) }
 
@@ -197,7 +201,7 @@ private fun LoggedInProfileContent(
             item {
                 HeaderWithDeliverySection(
                     user = user,
-                    onVerifyClick = { handleAction(null, "实名认证") },
+                    onVerifyClick = { handleAction(Routes.PROFILE_VERIFICATION, "实名认证") },
                     onProfileDetailClick = { handleAction(null, "个人资料") },
                     deliveryShortcuts = deliveryShortcuts,
                     deliveryStats = deliveryStats,

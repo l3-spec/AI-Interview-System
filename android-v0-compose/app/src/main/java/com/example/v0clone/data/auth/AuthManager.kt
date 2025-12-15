@@ -5,6 +5,8 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import android.util.Base64
+import org.json.JSONObject
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -20,6 +22,20 @@ class AuthManager(private val context: Context) {
     }
 
     val tokenFlow: Flow<String?> = context.dataStore.data.map { it[KEY_TOKEN] }
+        .map { token ->
+            if (token.isNullOrBlank()) return@map null
+
+            val expired = isJwtExpired(token)
+            if (expired) {
+                // 清理过期 token，避免携带失效身份导致 401
+                context.dataStore.edit { prefs ->
+                    prefs.remove(KEY_TOKEN)
+                    prefs.remove(KEY_USER_JSON)
+                }
+                null
+            } else token
+        }
+
     val userJsonFlow: Flow<String?> = context.dataStore.data.map { it[KEY_USER_JSON] }
     val interviewGuideSeenFlow: Flow<Boolean> = context.dataStore.data.map { it[KEY_INTERVIEW_GUIDE_SEEN] ?: false }
     val lastAiJobIdFlow: Flow<String?> = context.dataStore.data.map { it[KEY_LAST_AI_JOB_ID] }
@@ -61,5 +77,25 @@ class AuthManager(private val context: Context) {
 
     suspend fun clear() {
         context.dataStore.edit { it.clear() }
+    }
+
+    /**
+     * 简单解析 JWT 过期时间，过期则返回 true。解析失败时默认认为未过期，避免误删。
+     */
+    private fun isJwtExpired(token: String): Boolean {
+        return try {
+            val parts = token.split(".")
+            if (parts.size < 2) return false
+
+            val payload = parts[1]
+                .replace('-', '+')
+                .replace('_', '/')
+                .let { Base64.decode(it, Base64.DEFAULT) }
+                .let { String(it) }
+            val expSeconds = JSONObject(payload).optLong("exp", 0L)
+            expSeconds > 0 && System.currentTimeMillis() / 1000 >= expSeconds
+        } catch (_: Exception) {
+            false
+        }
     }
 }

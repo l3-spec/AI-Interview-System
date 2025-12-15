@@ -16,6 +16,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import com.xlwl.AiMian.ai.DigitalInterviewScreen
 import com.xlwl.AiMian.ai.DigitalInterviewViewModel
 import com.xlwl.AiMian.data.api.AiInterviewApi
@@ -25,6 +26,7 @@ import com.xlwl.AiMian.data.auth.AuthManager
 import com.xlwl.AiMian.data.repository.AiInterviewRepository
 import com.xlwl.AiMian.data.repository.OssRepository
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -61,7 +63,15 @@ class DigitalInterviewActivity : ComponentActivity() {
         // Looking at NavGraph, RetrofitClient.createOkHttpClient { token } is used.
         
         val token = runBlocking { authManager.tokenFlow.first() }
-        val client = RetrofitClient.createOkHttpClient { token }
+        val client = RetrofitClient.createOkHttpClient(
+            tokenProvider = { token },
+            onUnauthorized = {
+                lifecycleScope.launch {
+                    authManager.clear()
+                    finish()
+                }
+            }
+        )
         val aiInterviewApi = RetrofitClient.createService(AiInterviewApi::class.java, client)
         val ossApi = RetrofitClient.createService(OssApi::class.java, client)
         val aiInterviewRepository = AiInterviewRepository(aiInterviewApi)

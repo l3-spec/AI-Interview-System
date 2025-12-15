@@ -74,6 +74,7 @@ import com.xlwl.AiMian.data.model.AssessmentResult
 import com.xlwl.AiMian.navigation.Routes.LOGIN
 import com.xlwl.AiMian.data.repository.OssRepository
 import com.xlwl.AiMian.data.repository.AppUpdateRepository
+import com.xlwl.AiMian.data.repository.VerificationRepository
 import com.xlwl.AiMian.ui.auth.LoginScreen
 import com.xlwl.AiMian.ui.auth.LoginFlowScreen
 import com.xlwl.AiMian.ui.auth.RegisterScreen
@@ -102,6 +103,7 @@ import com.xlwl.AiMian.ui.profile.MyPostsRoute
 import com.xlwl.AiMian.ui.profile.ProfileScreen
 import com.xlwl.AiMian.ui.profile.ProfileSettingsRoute
 import com.xlwl.AiMian.ui.profile.ResumeReportRoute
+import com.xlwl.AiMian.ui.profile.VerificationRoute
 import kotlinx.coroutines.launch
 import java.net.URLDecoder
 import java.net.URLEncoder
@@ -119,7 +121,28 @@ fun AppNavHost(navController: NavHostController) {
     val lastAiJobId by authManager.lastAiJobIdFlow.collectAsState(initial = null)
     val lastAiJobCategoryId by authManager.lastAiJobCategoryIdFlow.collectAsState(initial = null)
     val coroutineScope = rememberCoroutineScope()
-    val client = remember(token) { RetrofitClient.createOkHttpClient { token } }
+    val isHandlingUnauthorized = remember { mutableStateOf(false) }
+    val handleUnauthorized = remember(authManager, navController) {
+        {
+            if (!isHandlingUnauthorized.value) {
+                isHandlingUnauthorized.value = true
+                coroutineScope.launch {
+                    authManager.clear()
+                    navController.navigate(Routes.LOGIN) {
+                        popUpTo(Routes.HOME) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                    isHandlingUnauthorized.value = false
+                }
+            }
+        }
+    }
+    val client = remember(token) {
+        RetrofitClient.createOkHttpClient(
+            tokenProvider = { token },
+            onUnauthorized = handleUnauthorized
+        )
+    }
     val authApi = remember(client) { RetrofitClient.createService(AuthApi::class.java, client) }
     val apiService = remember(client) { RetrofitClient.createService(ApiService::class.java, client) }
     val jobDictionaryApi = remember(client) { RetrofitClient.createService(JobDictionaryApi::class.java, client) }
@@ -130,6 +153,7 @@ fun AppNavHost(navController: NavHostController) {
     val authRepo = remember(authApi) { AuthRepository(authApi) }
     val contentRepo = remember(apiService) { ContentRepository(apiService) }
     val messageRepo = remember(apiService) { MessageRepository(apiService) }
+    val verificationRepo = remember(apiService) { VerificationRepository(apiService) }
     val jobRepo = remember(apiService) { JobRepository(apiService) }
     val jobPreferenceRepo = remember(apiService) { JobPreferenceRepository(apiService) }
     val jobDictionaryRepo = remember(jobDictionaryApi) { JobDictionaryRepository(jobDictionaryApi) }
@@ -491,6 +515,19 @@ fun AppNavHost(navController: NavHostController) {
         // 我的页面
         composable(Routes.PROFILE) { 
             ProfileScreen(navController = navController) 
+        }
+
+        composable(Routes.PROFILE_VERIFICATION) {
+            if (token.isNullOrEmpty()) {
+                LaunchedEffect(Unit) {
+                    navController.navigate(LOGIN) { launchSingleTop = true }
+                }
+            } else {
+                VerificationRoute(
+                    repository = verificationRepo,
+                    onBack = { navController.popBackStack() }
+                )
+            }
         }
 
         composable(Routes.PROFILE_SETTINGS) {
