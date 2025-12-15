@@ -62,7 +62,7 @@ class VerificationRepository(private val apiService: ApiService) {
             }
 
             if (licensePart == null) {
-                return@withContext Result.failure(Exception("请上传营业执照"))
+                return@withContext Result.failure(Exception("请上传身份证照片"))
             }
 
             val response = apiService.submitVerification(

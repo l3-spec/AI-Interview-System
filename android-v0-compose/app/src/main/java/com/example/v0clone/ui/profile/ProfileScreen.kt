@@ -59,6 +59,14 @@ import com.xlwl.AiMian.ui.auth.LoginFlowScreen
 import com.google.gson.Gson
 import kotlinx.coroutines.launch
 
+private val ProfilePageGradient = Brush.verticalGradient(
+    colors = listOf(
+        Color(0xFF00ACC3), // 顶部蓝，与首页一致
+        Color(0xFFE9F7F9),
+        Color(0xFFE9F7F9)
+    )
+)
+
 @Composable
 fun ProfileScreen(navController: NavController) {
     val context = LocalContext.current
@@ -191,7 +199,7 @@ private fun LoggedInProfileContent(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFEBEBEB))
+            .background(ProfilePageGradient)
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -238,9 +246,9 @@ private fun HeaderWithDeliverySection(
     onShortcutClick: (ProfileShortcut) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val headerHeight = 156.dp
-    val cardOffset = 108.dp
-    val containerHeight = cardOffset + 184.dp
+    val headerHeight = 200.dp
+    val cardOffset = 120.dp
+    val containerHeight = cardOffset + 200.dp
 
     Box(
         modifier = modifier
@@ -252,15 +260,7 @@ private fun HeaderWithDeliverySection(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(headerHeight)
-                .background(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color(0xFF4FC3F7), // 浅蓝色
-                            Color(0xFFE0F7FA), // 浅青色
-                            Color(0xFFFFFFFF)  // 白色
-                        )
-                    )
-                )
+                .background(Color.Transparent)
         ) {
             Row(
                 modifier = Modifier
@@ -341,7 +341,7 @@ private fun MyDeliveryCard(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
             modifier = Modifier
@@ -399,7 +399,7 @@ private fun MyCommunityCard(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
             modifier = Modifier
@@ -441,7 +441,7 @@ private fun GeneralFunctionsCard(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
             modifier = Modifier

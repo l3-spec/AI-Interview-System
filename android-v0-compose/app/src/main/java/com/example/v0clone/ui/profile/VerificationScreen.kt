@@ -66,7 +66,9 @@ import com.xlwl.AiMian.ui.components.CompactTopBar
 import java.io.File
 import kotlinx.coroutines.launch
 
-private val PageBackground = Color(0xFFF7F7F9)
+private val GradientTop = Color(0xFF00ACC3)
+private val GradientBottom = Color(0xFFE9F7F9)
+private val CardBackground = Color.White.copy(alpha = 0.96f)
 private val AccentOrange = Color(0xFFEC7C38)
 private val CardStroke = Color(0xFFE6E7EB)
 private val SuccessGreen = Color(0xFF1BC184)
@@ -130,7 +132,7 @@ private fun VerificationScreen(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
-            val file = persistLicenseToCache(context, uri)
+            val file = persistIdCardToCache(context, uri)
             if (file != null) {
                 onLicenseSelected(file, file.absolutePath)
             } else {
@@ -142,102 +144,114 @@ private fun VerificationScreen(
     val licensePreview = uiState.localLicensePath ?: uiState.businessLicenseUrl
     val isApproved = statusType == VerificationStatusType.APPROVED
 
-    Scaffold(
-        topBar = {
-            CompactTopBar(
-                title = "实名认证",
-                onBack = onBack,
-                containerColor = Color.White,
-                contentColor = Color.Black
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(GradientTop, GradientBottom),
+                    startY = 0f,
+                    endY = 720f
+                )
             )
-        },
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
-        containerColor = PageBackground
-    ) { padding ->
-        if (uiState.isLoading) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
-            }
-        } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                StatusCard(
-                    statusType = statusType,
-                    status = uiState.status,
-                    onRefresh = onRefresh
+    ) {
+        Scaffold(
+            topBar = {
+                CompactTopBar(
+                    title = "实名认证",
+                    onBack = onBack,
+                    containerColor = Color.White,
+                    contentColor = Color.Black
                 )
-
-                if (statusType == VerificationStatusType.REJECTED && !uiState.status?.reviewComments.isNullOrBlank()) {
-                    ReviewCommentCard(uiState.status?.reviewComments.orEmpty())
-                }
-
-                FormCard(
-                    legalPerson = uiState.legalPerson,
-                    registrationNumber = uiState.registrationNumber,
-                    enabled = !isApproved && !uiState.submitting,
-                    onLegalPersonChange = onLegalPersonChange,
-                    onRegistrationNumberChange = onRegistrationNumberChange
-                )
-
-                LicenseUploadCard(
-                    preview = licensePreview,
-                    isApproved = isApproved,
-                    isSubmitting = uiState.submitting,
-                    onPick = {
-                        pickLicenseLauncher.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
-                    },
-                    onClear = onClearLocalLicense
-                )
-
-                TipsCard(statusType = statusType)
-
-                Button(
-                    onClick = onSubmit,
-                    enabled = !uiState.submitting && !isApproved,
+            },
+            snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+            containerColor = Color.Transparent
+        ) { padding ->
+            if (uiState.isLoading) {
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = AccentOrange,
-                        disabledContainerColor = AccentOrange.copy(alpha = 0.3f)
-                    )
+                        .fillMaxSize()
+                        .padding(padding),
+                    contentAlignment = Alignment.Center
                 ) {
-                    if (uiState.submitting) {
-                        CircularProgressIndicator(
-                            color = Color.White,
-                            strokeWidth = 2.dp,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    } else {
-                        Text(
-                            text = when (statusType) {
-                                VerificationStatusType.NOT_SUBMITTED -> "提交认证"
-                                VerificationStatusType.REJECTED -> "重新提交认证"
-                                VerificationStatusType.PENDING -> "更新资料"
-                                VerificationStatusType.APPROVED -> "已通过认证"
-                            },
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                color = Color.White,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        )
-                    }
+                    CircularProgressIndicator()
                 }
-                Spacer(modifier = Modifier.height(12.dp))
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    StatusCard(
+                        statusType = statusType,
+                        status = uiState.status,
+                        onRefresh = onRefresh
+                    )
+
+                    if (statusType == VerificationStatusType.REJECTED && !uiState.status?.reviewComments.isNullOrBlank()) {
+                        ReviewCommentCard(uiState.status?.reviewComments.orEmpty())
+                    }
+
+                    FormCard(
+                        legalPerson = uiState.legalPerson,
+                        registrationNumber = uiState.registrationNumber,
+                        enabled = !isApproved && !uiState.submitting,
+                        onLegalPersonChange = onLegalPersonChange,
+                        onRegistrationNumberChange = onRegistrationNumberChange
+                    )
+
+                    IdCardUploadCard(
+                        preview = licensePreview,
+                        isApproved = isApproved,
+                        isSubmitting = uiState.submitting,
+                        onPick = {
+                            pickLicenseLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        },
+                        onClear = onClearLocalLicense
+                    )
+
+                    TipsCard(statusType = statusType)
+
+                    Button(
+                        onClick = onSubmit,
+                        enabled = !uiState.submitting && !isApproved,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp),
+                        shape = RoundedCornerShape(24.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = AccentOrange,
+                            disabledContainerColor = AccentOrange.copy(alpha = 0.3f)
+                        )
+                    ) {
+                        if (uiState.submitting) {
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        } else {
+                            Text(
+                                text = when (statusType) {
+                                    VerificationStatusType.NOT_SUBMITTED -> "提交认证"
+                                    VerificationStatusType.REJECTED -> "重新提交认证"
+                                    VerificationStatusType.PENDING -> "更新资料"
+                                    VerificationStatusType.APPROVED -> "已通过认证"
+                                },
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    color = Color.White,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
             }
         }
     }
@@ -250,15 +264,15 @@ private fun StatusCard(
     onRefresh: () -> Unit
 ) {
     val (label, desc, color) = when (statusType) {
-        VerificationStatusType.NOT_SUBMITTED -> Triple("未认证", "提交认证资料，提升企业可信度", Color(0xFF606266))
-        VerificationStatusType.PENDING -> Triple("审核中", "资料已提交，预计1-2个工作日完成审核", WarningYellow)
-        VerificationStatusType.APPROVED -> Triple("已认证", "企业身份已验证，可以使用全部功能", SuccessGreen)
+        VerificationStatusType.NOT_SUBMITTED -> Triple("未认证", "提交身份证信息，完成个人实名认证", Color(0xFF606266))
+        VerificationStatusType.PENDING -> Triple("审核中", "资料已提交，预计1-2个工作日完成核验", WarningYellow)
+        VerificationStatusType.APPROVED -> Triple("已认证", "个人身份已验证，可正常使用全部功能", SuccessGreen)
         VerificationStatusType.REJECTED -> Triple("已驳回", status?.reviewComments?.takeIf { it.isNotBlank() }
             ?: "资料未通过审核，请根据反馈重新提交", ErrorRed)
     }
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = CardBackground),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
@@ -304,7 +318,7 @@ private fun StatusCard(
 private fun ReviewCommentCard(comment: String) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = CardBackground),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
@@ -349,7 +363,7 @@ private fun FormCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = CardBackground),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
@@ -359,16 +373,20 @@ private fun FormCard(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "认证信息",
+                text = "身份信息",
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 16.sp
                 )
             )
+            Text(
+                text = "用于个人实名认证，与企业端后台区分，请填写与身份证一致的信息。",
+                style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFF606266))
+            )
             OutlinedTextField(
                 value = legalPerson,
                 onValueChange = onLegalPersonChange,
-                label = { Text("法人姓名") },
+                label = { Text("姓名") },
                 enabled = enabled,
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
@@ -376,7 +394,7 @@ private fun FormCard(
             OutlinedTextField(
                 value = registrationNumber,
                 onValueChange = onRegistrationNumberChange,
-                label = { Text("统一社会信用代码") },
+                label = { Text("身份证号码") },
                 enabled = enabled,
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
@@ -386,7 +404,7 @@ private fun FormCard(
 }
 
 @Composable
-private fun LicenseUploadCard(
+private fun IdCardUploadCard(
     preview: String?,
     isApproved: Boolean,
     isSubmitting: Boolean,
@@ -395,7 +413,7 @@ private fun LicenseUploadCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = CardBackground),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
@@ -405,13 +423,13 @@ private fun LicenseUploadCard(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "营业执照",
+                text = "身份证照片",
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 16.sp
                 )
             )
-            LicensePreview(preview = preview)
+            IdCardPreview(preview = preview)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -446,17 +464,17 @@ private fun LicenseUploadCard(
                 }
             }
             Text(
-                text = "请上传清晰、完整的营业执照扫描件或照片，支持常见图片格式。",
-                style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFF909399))
+                text = "请上传本人身份证正反面照片，画面清晰无遮挡，支持常见图片格式。",
+                style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFF606266))
             )
         }
     }
 }
 
 @Composable
-private fun LicensePreview(preview: String?) {
+private fun IdCardPreview(preview: String?) {
     val gradient = Brush.linearGradient(
-        colors = listOf(Color(0xFFF8F9FB), Color(0xFFF0F4FF))
+        colors = listOf(Color(0xFFE8F7FF), Color(0xFFD7ECFF))
     )
     Card(
         shape = RoundedCornerShape(12.dp),
@@ -484,7 +502,7 @@ private fun LicensePreview(preview: String?) {
                         modifier = Modifier.size(32.dp)
                     )
                     Text(
-                        text = "上传营业执照照片",
+                        text = "上传身份证照片",
                         style = MaterialTheme.typography.bodyMedium.copy(
                             color = Color(0xFF9DA3AE),
                             fontWeight = FontWeight.Medium
@@ -494,7 +512,7 @@ private fun LicensePreview(preview: String?) {
             } else {
                 AsyncImage(
                     model = preview,
-                    contentDescription = "营业执照预览",
+                    contentDescription = "身份证预览",
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(8.dp)
@@ -510,7 +528,7 @@ private fun LicensePreview(preview: String?) {
 private fun TipsCard(statusType: VerificationStatusType) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = CardBackground),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
@@ -536,7 +554,7 @@ private fun TipsCard(statusType: VerificationStatusType) {
                 )
             }
             Text(
-                text = "确保信息与营业执照一致，审核过程中如需补充资料，客服会主动联系您。",
+                text = "确保姓名、身份证号码与上传照片一致，必要时会进行人脸识别核验以确认本人操作。",
                 style = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFF606266))
             )
             HorizontalDivider(color = CardStroke)
@@ -582,7 +600,7 @@ private fun StatusBadge(text: String, color: Color) {
     }
 }
 
-private fun persistLicenseToCache(context: Context, uri: Uri): File? {
+private fun persistIdCardToCache(context: Context, uri: Uri): File? {
     return runCatching {
         val extension = when (context.contentResolver.getType(uri)) {
             "image/png" -> "png"
@@ -590,7 +608,7 @@ private fun persistLicenseToCache(context: Context, uri: Uri): File? {
             "image/gif" -> "gif"
             else -> "jpg"
         }
-        val tempFile = File(context.cacheDir, "license-${System.currentTimeMillis()}.$extension")
+        val tempFile = File(context.cacheDir, "idcard-${System.currentTimeMillis()}.$extension")
         context.contentResolver.openInputStream(uri)?.use { input ->
             tempFile.outputStream().use { output ->
                 input.copyTo(output)

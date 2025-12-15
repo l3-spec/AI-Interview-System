@@ -85,9 +85,21 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private val AccentColor = Color(0xFFEC7C38)
-private val SurfaceBackground = Color(0xFFF5F6FB)
+private val SurfaceBackground = Color(0xFFF4F5F6)
 private val MutedText = Color(0xFF8A8D95)
-private val HeaderGradient = Brush.verticalGradient(listOf(Color(0xFF00ACC3), Color(0xFF00ACC3), Color(0xFF4FC5D8)))
+private val GradientTop = Color(0xFF00ACC3)
+private val GradientMid = Color(0xFF24C7D9)
+private val GradientBottom = Color(0xFFE9F7F9)
+private val HeaderGradient = Brush.verticalGradient(
+    colors = listOf(GradientTop, GradientMid, GradientBottom),
+    startY = 0f,
+    endY = 900f
+)
+private val ScreenGradient = Brush.verticalGradient(
+    colors = listOf(GradientTop, GradientBottom, SurfaceBackground),
+    startY = 0f,
+    endY = 1600f
+)
 private val OptionBorder = Color(0xFFE3E6ED)
 
 @Composable
@@ -220,68 +232,69 @@ private fun AssessmentHomeScreen(
     }
 
     Scaffold(
-        containerColor = SurfaceBackground
+        containerColor = Color.Transparent
     ) { padding ->
-        when {
-            isLoading && categories.isEmpty() -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = AccentColor)
-                }
-            }
-            error != null && categories.isEmpty() -> {
-                AssessmentEmptyState(
-                    title = "测评分类获取失败",
-                    description = error,
-                    actionText = "重新加载",
-                    onAction = onRetry,
-                    modifier = Modifier.padding(padding)
-                )
-            }
-            categories.isEmpty() -> {
-                AssessmentEmptyState(
-                    title = "暂未开放测评",
-                    description = "我们正在准备更多精彩的测评内容，敬请期待。",
-                    actionText = "返回",
-                    onAction = onBack,
-                    modifier = Modifier.padding(padding)
-                )
-            }
-            else -> {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    item {
-                        AssessmentHomeHeader(onBack = onBack)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(ScreenGradient)
+                .padding(padding)
+        ) {
+            when {
+                isLoading && categories.isEmpty() -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = AccentColor)
                     }
-                    // 显示所有测评卡片
-                    if (featuredAssessments.isNotEmpty()) {
-                        items(featuredAssessments, key = { it.id }) { assessment ->
-                            FeaturedAssessmentCard(
-                                assessment = assessment,
-                                onClick = { onAssessmentSelected(assessment) }
-                            )
+                }
+                error != null && categories.isEmpty() -> {
+                    AssessmentEmptyState(
+                        title = "测评分类获取失败",
+                        description = error,
+                        actionText = "重新加载",
+                        onAction = onRetry
+                    )
+                }
+                categories.isEmpty() -> {
+                    AssessmentEmptyState(
+                        title = "暂未开放测评",
+                        description = "我们正在准备更多精彩的测评内容，敬请期待。",
+                        actionText = "返回",
+                        onAction = onBack
+                    )
+                }
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        item {
+                            AssessmentHomeHeader(onBack = onBack)
                         }
-                    } else {
-                        // 如果没有精选测评，显示分类中的测评
-                        items(categories, key = { it.id }) { category ->
-                            category.assessments?.forEach { assessment ->
+                        // 显示所有测评卡片
+                        if (featuredAssessments.isNotEmpty()) {
+                            items(featuredAssessments, key = { it.id }) { assessment ->
                                 FeaturedAssessmentCard(
                                     assessment = assessment,
                                     onClick = { onAssessmentSelected(assessment) }
                                 )
                             }
+                        } else {
+                            // 如果没有精选测评，显示分类中的测评
+                            items(categories, key = { it.id }) { category ->
+                                category.assessments?.forEach { assessment ->
+                                    FeaturedAssessmentCard(
+                                        assessment = assessment,
+                                        onClick = { onAssessmentSelected(assessment) }
+                                    )
+                                }
+                            }
                         }
+                        item { Spacer(modifier = Modifier.height(16.dp)) }
                     }
-                    item { Spacer(modifier = Modifier.height(16.dp)) }
                 }
             }
         }

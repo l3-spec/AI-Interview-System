@@ -105,11 +105,11 @@ class VerificationViewModel(
         val legalPerson = current.legalPerson.trim()
         val registrationNumber = current.registrationNumber.trim()
         if (legalPerson.isEmpty()) {
-            _uiState.update { it.copy(error = "请输入法人姓名") }
+            _uiState.update { it.copy(error = "请输入姓名") }
             return
         }
         if (registrationNumber.isEmpty()) {
-            _uiState.update { it.copy(error = "请输入统一社会信用代码") }
+            _uiState.update { it.copy(error = "请输入身份证号码") }
             return
         }
 
