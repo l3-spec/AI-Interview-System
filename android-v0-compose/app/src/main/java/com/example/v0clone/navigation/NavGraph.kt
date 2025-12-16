@@ -102,8 +102,14 @@ import com.xlwl.AiMian.ui.messages.MessageDetailRoute
 import com.xlwl.AiMian.ui.profile.MyPostsRoute
 import com.xlwl.AiMian.ui.profile.ProfileScreen
 import com.xlwl.AiMian.ui.profile.ProfileSettingsRoute
+import com.xlwl.AiMian.ui.profile.ContactUsRoute
 import com.xlwl.AiMian.ui.profile.ResumeReportRoute
 import com.xlwl.AiMian.ui.profile.VerificationRoute
+import com.xlwl.AiMian.ui.profile.JobFavoritesRoute
+import com.xlwl.AiMian.ui.profile.PostFavoritesRoute
+import com.xlwl.AiMian.ui.profile.DeliveryListRoute
+import com.xlwl.AiMian.ui.profile.PersonalInfoRoute
+import com.xlwl.AiMian.ui.profile.PrivacyPermissionsRoute
 import kotlinx.coroutines.launch
 import java.net.URLDecoder
 import java.net.URLEncoder
@@ -544,7 +550,78 @@ fun AppNavHost(navController: NavHostController) {
                             popUpTo(Routes.PROFILE) { inclusive = true }
                             launchSingleTop = true
                         }
+                    },
+                    onNavigatePersonalInfo = { navController.navigate(Routes.PROFILE_PERSONAL_INFO) { launchSingleTop = true } },
+                    onNavigatePrivacy = { navController.navigate(Routes.PROFILE_PRIVACY) { launchSingleTop = true } }
+                )
+            }
+        }
+
+        composable(Routes.PROFILE_PERSONAL_INFO) {
+            if (token.isNullOrEmpty()) {
+                LaunchedEffect(Unit) {
+                    navController.navigate(LOGIN) { launchSingleTop = true }
+                }
+            } else {
+                PersonalInfoRoute(onBack = { navController.popBackStack() })
+            }
+        }
+
+        composable(Routes.PROFILE_PRIVACY) {
+            if (token.isNullOrEmpty()) {
+                LaunchedEffect(Unit) {
+                    navController.navigate(LOGIN) { launchSingleTop = true }
+                }
+            } else {
+                PrivacyPermissionsRoute(onBack = { navController.popBackStack() })
+            }
+        }
+
+        composable(Routes.PROFILE_CONTACT) {
+            if (token.isNullOrEmpty()) {
+                LaunchedEffect(Unit) {
+                    navController.navigate(LOGIN) { launchSingleTop = true }
+                }
+            } else {
+                ContactUsRoute(
+                    onBack = { navController.popBackStack() },
+                    onOpenMessages = {
+                        navController.navigate(Routes.PROFILE_MESSAGE_COMPOSE) { launchSingleTop = true }
                     }
+                )
+            }
+        }
+
+        composable(Routes.PROFILE_JOB_FAVORITES) {
+            if (token.isNullOrEmpty()) {
+                LaunchedEffect(Unit) {
+                    navController.navigate(LOGIN) { launchSingleTop = true }
+                }
+            } else {
+                JobFavoritesRoute(onBack = { navController.popBackStack() })
+            }
+        }
+
+        composable(Routes.PROFILE_POST_FAVORITES) {
+            if (token.isNullOrEmpty()) {
+                LaunchedEffect(Unit) {
+                    navController.navigate(LOGIN) { launchSingleTop = true }
+                }
+            } else {
+                PostFavoritesRoute(onBack = { navController.popBackStack() })
+            }
+        }
+
+        composable("${Routes.PROFILE_DELIVERIES}/{status}") { backStackEntry ->
+            val statusKey = backStackEntry.path("status")
+            if (token.isNullOrEmpty()) {
+                LaunchedEffect(Unit) {
+                    navController.navigate(LOGIN) { launchSingleTop = true }
+                }
+            } else {
+                DeliveryListRoute(
+                    statusKey = statusKey,
+                    onBack = { navController.popBackStack() }
                 )
             }
         }

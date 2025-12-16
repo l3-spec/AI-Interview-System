@@ -129,6 +129,15 @@ private fun LoggedInProfileContent(
             }
         }
     }
+    val handleStat = remember(onNavigate, showComingSoon) {
+        { stat: ProfileStat ->
+            if (stat.route != null) {
+                onNavigate(stat.route)
+            } else {
+                showComingSoon(stat.label)
+            }
+        }
+    }
 
     val deliveryShortcuts = remember {
         listOf(
@@ -150,16 +159,16 @@ private fun LoggedInProfileContent(
             ProfileShortcut(
                 title = "职位收藏",
                 iconRes = R.drawable.ic_profile_job_favorite,
-                route = null
+                route = Routes.PROFILE_JOB_FAVORITES
             )
         )
     }
     val deliveryStats = remember {
         listOf(
-            ProfileStat(label = "已投递", value = "0"),
-            ProfileStat(label = "被查看", value = "0"),
-            ProfileStat(label = "通过初筛", value = "0"),
-            ProfileStat(label = "不合适", value = "0")
+            ProfileStat(label = "已投递", value = "0", route = "${Routes.PROFILE_DELIVERIES}/submitted"),
+            ProfileStat(label = "被查看", value = "0", route = "${Routes.PROFILE_DELIVERIES}/viewed"),
+            ProfileStat(label = "通过初筛", value = "0", route = "${Routes.PROFILE_DELIVERIES}/passed"),
+            ProfileStat(label = "不合适", value = "0", route = "${Routes.PROFILE_DELIVERIES}/rejected")
         )
     }
     val communityShortcuts = remember {
@@ -172,7 +181,7 @@ private fun LoggedInProfileContent(
             ProfileShortcut(
                 title = "帖子收藏",
                 iconRes = R.drawable.ic_profile_post_bookmark,
-                route = null
+                route = Routes.PROFILE_POST_FAVORITES
             ),
             ProfileShortcut(
                 title = "消息中心",
@@ -189,9 +198,19 @@ private fun LoggedInProfileContent(
                 route = Routes.PROFILE_SETTINGS
             ),
             ProfileShortcut(
+                title = "个人资料",
+                iconRes = R.drawable.ic_profile_settings,
+                route = Routes.PROFILE_PERSONAL_INFO
+            ),
+            ProfileShortcut(
+                title = "隐私权限",
+                iconRes = R.drawable.ic_profile_settings,
+                route = Routes.PROFILE_PRIVACY
+            ),
+            ProfileShortcut(
                 title = "联系我们",
                 iconRes = R.drawable.ic_profile_contact,
-                route = null
+                route = Routes.PROFILE_CONTACT
             )
         )
     }
@@ -210,10 +229,11 @@ private fun LoggedInProfileContent(
                 HeaderWithDeliverySection(
                     user = user,
                     onVerifyClick = { handleAction(Routes.PROFILE_VERIFICATION, "实名认证") },
-                    onProfileDetailClick = { handleAction(null, "个人资料") },
+                    onProfileDetailClick = { handleAction(Routes.PROFILE_PERSONAL_INFO, "个人资料") },
                     deliveryShortcuts = deliveryShortcuts,
                     deliveryStats = deliveryStats,
-                    onShortcutClick = { shortcut -> handleAction(shortcut.route, shortcut.title) }
+                    onShortcutClick = { shortcut -> handleAction(shortcut.route, shortcut.title) },
+                    onStatClick = handleStat
                 )
             }
             item {
@@ -244,6 +264,7 @@ private fun HeaderWithDeliverySection(
     deliveryShortcuts: List<ProfileShortcut>,
     deliveryStats: List<ProfileStat>,
     onShortcutClick: (ProfileShortcut) -> Unit,
+    onStatClick: (ProfileStat) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val headerHeight = 200.dp
@@ -322,6 +343,7 @@ private fun HeaderWithDeliverySection(
             shortcuts = deliveryShortcuts,
             stats = deliveryStats,
             onShortcutClick = onShortcutClick,
+            onStatClick = onStatClick,
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .padding(horizontal = 12.dp)
@@ -335,6 +357,7 @@ private fun MyDeliveryCard(
     shortcuts: List<ProfileShortcut>,
     stats: List<ProfileStat>,
     onShortcutClick: (ProfileShortcut) -> Unit,
+    onStatClick: (ProfileStat) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -382,7 +405,10 @@ private fun MyDeliveryCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 stats.forEach { stat ->
-                    ProfileStatItem(stat = stat)
+                    ProfileStatItem(
+                        stat = stat,
+                        onClick = stat.route?.let { { onStatClick(stat) } }
+                    )
                 }
             }
         }
@@ -519,10 +545,15 @@ private fun ProfileShortcutItem(
 @Composable
 private fun ProfileStatItem(
     stat: ProfileStat,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null
 ) {
     Column(
-        modifier = modifier.width(48.dp),
+        modifier = modifier
+            .width(48.dp)
+            .let { base ->
+                if (onClick != null) base.clickable(onClick = onClick) else base
+            },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -608,5 +639,6 @@ private data class ProfileShortcut(
 
 private data class ProfileStat(
     val label: String,
-    val value: String
+    val value: String,
+    val route: String? = null
 )

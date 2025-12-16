@@ -77,7 +77,9 @@ private val CardShape = RoundedCornerShape(12.dp)
 fun ProfileSettingsRoute(
     authManager: AuthManager,
     onBack: () -> Unit,
-    onLogoutSuccess: () -> Unit
+    onLogoutSuccess: () -> Unit,
+    onNavigatePersonalInfo: () -> Unit,
+    onNavigatePrivacy: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -94,7 +96,11 @@ fun ProfileSettingsRoute(
     ProfileSettingsScreen(
         onBack = onBack,
         onOptionSelected = { label ->
-            Toast.makeText(context, "$label 敬请期待", Toast.LENGTH_SHORT).show()
+            when (label) {
+                "个人资料" -> onNavigatePersonalInfo()
+                "隐私与权限" -> onNavigatePrivacy()
+                else -> Toast.makeText(context, "$label 敬请期待", Toast.LENGTH_SHORT).show()
+            }
         },
         onLogoutClick = { showConfirmDialog = true }
     )

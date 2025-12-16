@@ -34,4 +34,10 @@ object Routes {
     const val PROFILE_ASSESSMENT_TAKE = "profileAssessmentsTake"
     const val PROFILE_ASSESSMENT_RESULT = "profileAssessmentsResult"
     const val PROFILE_RESUME_REPORT = "profileResumeReport"
+    const val PROFILE_CONTACT = "profileContact"
+    const val PROFILE_PERSONAL_INFO = "profilePersonalInfo"
+    const val PROFILE_PRIVACY = "profilePrivacy"
+    const val PROFILE_JOB_FAVORITES = "profileJobFavorites"
+    const val PROFILE_POST_FAVORITES = "profilePostFavorites"
+    const val PROFILE_DELIVERIES = "profileDeliveries"
 }
