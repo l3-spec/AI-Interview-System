@@ -36,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -68,6 +69,9 @@ import kotlinx.coroutines.launch
 
 private val GradientTop = Color(0xFF00ACC3)
 private val GradientBottom = Color(0xFFE9F7F9)
+private val PageGradient = Brush.verticalGradient(
+    colors = listOf(GradientTop, GradientBottom, GradientBottom)
+)
 private val CardBackground = Color.White.copy(alpha = 0.96f)
 private val AccentOrange = Color(0xFFEC7C38)
 private val CardStroke = Color(0xFFE6E7EB)
@@ -147,21 +151,15 @@ private fun VerificationScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(GradientTop, GradientBottom),
-                    startY = 0f,
-                    endY = 720f
-                )
-            )
+            .background(PageGradient)
     ) {
         Scaffold(
             topBar = {
                 CompactTopBar(
                     title = "实名认证",
                     onBack = onBack,
-                    containerColor = Color.White,
-                    contentColor = Color.Black
+                    containerColor = Color.Transparent,
+                    contentColor = Color.White
                 )
             },
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
@@ -389,7 +387,13 @@ private fun FormCard(
                 label = { Text("姓名") },
                 enabled = enabled,
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true
+                singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = AccentOrange,
+                    unfocusedBorderColor = Color(0xFFE0E6EC),
+                    focusedContainerColor = Color(0xFFF9FBFD),
+                    unfocusedContainerColor = Color(0xFFF9FBFD)
+                )
             )
             OutlinedTextField(
                 value = registrationNumber,
@@ -397,7 +401,13 @@ private fun FormCard(
                 label = { Text("身份证号码") },
                 enabled = enabled,
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true
+                singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = AccentOrange,
+                    unfocusedBorderColor = Color(0xFFE0E6EC),
+                    focusedContainerColor = Color(0xFFF9FBFD),
+                    unfocusedContainerColor = Color(0xFFF9FBFD)
+                )
             )
         }
     }
@@ -473,8 +483,8 @@ private fun IdCardUploadCard(
 
 @Composable
 private fun IdCardPreview(preview: String?) {
-    val gradient = Brush.linearGradient(
-        colors = listOf(Color(0xFFE8F7FF), Color(0xFFD7ECFF))
+    val gradient = Brush.verticalGradient(
+        colors = listOf(Color(0xFFE9F7F9), Color(0xFFDDF1F7))
     )
     Card(
         shape = RoundedCornerShape(12.dp),
