@@ -44,6 +44,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
@@ -109,9 +110,11 @@ private fun AssessmentTakeTopBar(
     totalQuestions: Int,
     onBack: () -> Unit
 ) {
-    Surface(color = Color.White, shadowElevation = 0.dp) {
+    Surface(color = Color.Transparent, shadowElevation = 0.dp) {
         Column(
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(HeaderGradient)
         ) {
             Row(
                 modifier = Modifier
@@ -120,13 +123,18 @@ private fun AssessmentTakeTopBar(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBack) {
-                    Icon(imageVector = Icons.Filled.Close, contentDescription = "关闭")
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "关闭",
+                        tint = Color.White
+                    )
                 }
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    color = Color.White,
                     modifier = Modifier.weight(1f)
                 )
                 // 显示进度：如 "2/48"
@@ -134,7 +142,7 @@ private fun AssessmentTakeTopBar(
                     text = "$currentIndex/$totalQuestions",
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF242B31)
+                        color = Color.White
                     ),
                     modifier = Modifier.padding(end = 8.dp)
                 )
@@ -146,14 +154,14 @@ private fun AssessmentTakeTopBar(
                     .height(2.dp)
                     .padding(horizontal = 8.dp)
                     .clip(RoundedCornerShape(1.dp))
-                    .background(Color(0xFFE6E6E6))
+                    .background(Color.White.copy(alpha = 0.28f))
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxHeight()
                         .fillMaxWidth((currentIndex.toFloat() / totalQuestions.coerceAtLeast(1)))
                         .clip(RoundedCornerShape(1.dp))
-                        .background(AccentColor)
+                        .background(Color.White)
                 )
             }
         }
@@ -855,6 +863,7 @@ private fun AssessmentDetailScreen(
     onStart: () -> Unit
 ) {
     Scaffold(
+        modifier = Modifier.background(ScreenGradient),
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
@@ -875,10 +884,16 @@ private fun AssessmentDetailScreen(
                             contentDescription = "返回"
                         )
                     }
-                }
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White
+                )
             )
         },
-        containerColor = SurfaceBackground,
+        containerColor = Color.Transparent,
         bottomBar = {
             if (detail != null) {
                 Button(
@@ -901,50 +916,52 @@ private fun AssessmentDetailScreen(
             }
         }
     ) { padding ->
-        when {
-            isLoading && detail == null -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = AccentColor)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(ScreenGradient)
+                .padding(padding)
+        ) {
+            when {
+                isLoading && detail == null -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = AccentColor)
+                    }
                 }
-            }
-            error != null && detail == null -> {
-                AssessmentEmptyState(
-                    title = "加载失败",
-                    description = error,
-                    actionText = "重试",
-                    onAction = onRetry,
-                    modifier = Modifier.padding(padding)
-                )
-            }
-            detail != null -> {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 20.dp),
-                    verticalArrangement = Arrangement.spacedBy(18.dp)
-                ) {
-                    item {
-                        DetailHeader(detail)
-                    }
-                    item {
-                        DetailStats(detail)
-                    }
-                    if (detail.guidelines.isNotEmpty()) {
+                error != null && detail == null -> {
+                    AssessmentEmptyState(
+                        title = "加载失败",
+                        description = error,
+                        actionText = "重试",
+                        onAction = onRetry
+                    )
+                }
+                detail != null -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 20.dp),
+                        verticalArrangement = Arrangement.spacedBy(18.dp)
+                    ) {
                         item {
-                            DetailGuidelines(detail.guidelines)
+                            DetailHeader(detail)
                         }
-                    }
-                    item {
-                        DetailDescription(detail)
-                    }
-                    item {
-                        DetailQuestionPreview(detail)
+                        item {
+                            DetailStats(detail)
+                        }
+                        if (detail.guidelines.isNotEmpty()) {
+                            item {
+                                DetailGuidelines(detail.guidelines)
+                            }
+                        }
+                        item {
+                            DetailDescription(detail)
+                        }
+                        item {
+                            DetailQuestionPreview(detail)
+                        }
                     }
                 }
             }
@@ -1235,6 +1252,7 @@ private fun AssessmentTakeScreen(
     }
 
     Scaffold(
+        modifier = Modifier.background(ScreenGradient),
         topBar = {
             AssessmentTakeTopBar(
                 title = detail?.title ?: assessmentTitle ?: "测评答题",
@@ -1243,87 +1261,89 @@ private fun AssessmentTakeScreen(
                 onBack = onBack
             )
         },
-        containerColor = Color.White
+        containerColor = Color.Transparent
     ) { padding ->
-        when {
-            isLoading && detail == null -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = AccentColor)
-                }
-            }
-            error != null && detail == null -> {
-                AssessmentEmptyState(
-                    title = "加载失败",
-                    description = error,
-                    actionText = "重试",
-                    onAction = onRetry,
-                    modifier = Modifier.padding(padding)
-                )
-            }
-            detail != null && detail.questions.isNotEmpty() -> {
-                val question = detail.questions[currentIndex]
-                val answerState = answers.getOrPut(question.id) { AnswerState() }
-                val isFirstQuestion = currentIndex == 0
-
-                val handleNext: () -> Unit = {
-                    val state = answers.getOrPut(detail.questions[currentIndex].id) { AnswerState() }
-                    if (!state.isAnswered(detail.questions[currentIndex].questionType)) {
-                        Toast.makeText(context, "请先完成当前题目", Toast.LENGTH_SHORT).show()
-                    } else if (currentIndex < detail.questions.size - 1) {
-                        currentIndex++
-                    } else {
-                        showConfirmDialog = true
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(ScreenGradient)
+                .padding(padding)
+        ) {
+            when {
+                isLoading && detail == null -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = AccentColor)
                     }
                 }
+                error != null && detail == null -> {
+                    AssessmentEmptyState(
+                        title = "加载失败",
+                        description = error,
+                        actionText = "重试",
+                        onAction = onRetry
+                    )
+                }
+                detail != null && detail.questions.isNotEmpty() -> {
+                    val question = detail.questions[currentIndex]
+                    val answerState = answers.getOrPut(question.id) { AnswerState() }
+                    val isFirstQuestion = currentIndex == 0
 
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    // 第一题显示介绍和指南部分
-                    if (isFirstQuestion) {
-                        item {
-                            AssessmentIntroBanner(detail)
+                    val handleNext: () -> Unit = {
+                        val state = answers.getOrPut(detail.questions[currentIndex].id) { AnswerState() }
+                        if (!state.isAnswered(detail.questions[currentIndex].questionType)) {
+                            Toast.makeText(context, "请先完成当前题目", Toast.LENGTH_SHORT).show()
+                        } else if (currentIndex < detail.questions.size - 1) {
+                            currentIndex++
+                        } else {
+                            showConfirmDialog = true
                         }
                     }
-                    item {
-                        QuestionCard(
-                            question = question,
-                            answerState = answerState,
-                            questionNumber = currentIndex + 1,
-                            onAnswered = handleNext
-                        )
-                    }
-                    item {
-                        AnswerControls(
-                            canGoPrevious = currentIndex > 0,
-                            isLast = currentIndex == detail.questions.size - 1,
-                            onPrevious = { if (currentIndex > 0) currentIndex-- },
-                            onNext = handleNext
-                        )
-                    }
-                    // 底部信息（仅第一题显示）
-                    if (isFirstQuestion) {
+
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        // 第一题显示介绍和指南部分
+                        if (isFirstQuestion) {
+                            item {
+                                AssessmentIntroBanner(detail)
+                            }
+                        }
                         item {
-                            Text(
-                                text = "完成MBTI测试后，您将获得\n你的MBTI人格类型，你的人格优劣势分析",
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    color = MutedText,
-                                    lineHeight = 18.sp,
-                                    textAlign = TextAlign.Center
-                                ),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 8.dp)
+                            QuestionCard(
+                                question = question,
+                                answerState = answerState,
+                                questionNumber = currentIndex + 1,
+                                onAnswered = handleNext
                             )
+                        }
+                        item {
+                            AnswerControls(
+                                canGoPrevious = currentIndex > 0,
+                                isLast = currentIndex == detail.questions.size - 1,
+                                onPrevious = { if (currentIndex > 0) currentIndex-- },
+                                onNext = handleNext
+                            )
+                        }
+                        // 底部信息（仅第一题显示）
+                        if (isFirstQuestion) {
+                            item {
+                                Text(
+                                    text = "完成MBTI测试后，您将获得\n你的MBTI人格类型，你的人格优劣势分析",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = MutedText,
+                                        lineHeight = 18.sp,
+                                        textAlign = TextAlign.Center
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 8.dp)
+                                )
+                            }
                         }
                     }
                 }
