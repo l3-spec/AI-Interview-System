@@ -102,6 +102,7 @@ struct AiInterviewEntryView: View {
   @EnvironmentObject private var appState: AppState
   @Environment(\.dismiss) private var dismiss
   @StateObject private var viewModel = AiInterviewFlowViewModel()
+  @State private var showLogin = false
 
   var body: some View {
     NavigationStack {
@@ -149,6 +150,10 @@ struct AiInterviewEntryView: View {
         }
 
         PrimaryButton(title: "开始面试", isLoading: viewModel.isCreating) {
+          guard appState.isLoggedIn else {
+            showLogin = true
+            return
+          }
           Task { await viewModel.start(using: appState) }
         }
 
@@ -159,6 +164,13 @@ struct AiInterviewEntryView: View {
         }
       }
       .padding(16)
+    }
+    .sheet(isPresented: $showLogin) {
+      LoginView { data in
+        appState.updateAuth(token: data.token, user: data.user)
+        showLogin = false
+      }
+      .environmentObject(appState)
     }
   }
 }

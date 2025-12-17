@@ -69,4 +69,28 @@ final class ContentService {
   func recordPromotedJobClick(id: String) async throws {
     let _: ApiResponseMessage = try await client.post("content/promoted-jobs/\(id)/click", body: EmptyResponse())
   }
+
+  func createUserPost(title: String, content: String, tags: [String], images: [Data] = []) async throws -> UserPost {
+    let fields: [String: String] = [
+      "title": title,
+      "content": content,
+      "tags": String(data: try JSONEncoder().encode(tags), encoding: .utf8) ?? "[]"
+    ]
+
+    let files: [MultipartFile] = images.enumerated().map { index, data in
+      MultipartFile(
+        name: "postImages",
+        filename: "post-\(index + 1).jpg",
+        data: data,
+        contentType: "image/jpeg"
+      )
+    }
+
+    return try await client.upload(
+      "content/posts",
+      fields: fields,
+      files: files,
+      authorized: true
+    )
+  }
 }

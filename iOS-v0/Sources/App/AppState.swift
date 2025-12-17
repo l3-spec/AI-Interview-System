@@ -11,6 +11,7 @@ final class AppState: ObservableObject {
   @Published var currentUser: User?
   @Published var selectedTab: AppTab = .home
   @Published var isLoading: Bool = false
+  @Published var sharedJobKeyword: String = ""
 
   let apiClient: APIClient
   let authService: AuthService
@@ -39,6 +40,10 @@ final class AppState: ObservableObject {
 
     self.authToken = authStore.loadToken()
     self.currentUser = authStore.loadUser()
+  }
+
+  var isLoggedIn: Bool {
+    authToken != nil
   }
 
   func updateAuth(token: String?, user: User?) {

@@ -24,6 +24,13 @@ struct ApiResponseMessage: Decodable, Sendable {
 
 struct EmptyResponse: Codable, Sendable {}
 
+struct MultipartFile: Sendable {
+  let name: String
+  let filename: String
+  let data: Data
+  let contentType: String
+}
+
 enum APIError: LocalizedError {
   case invalidURL
   case server(code: Int, message: String)
@@ -109,6 +116,41 @@ final class APIClient {
       request.httpBody = body
     }
 
+    return try await perform(request: request)
+  }
+
+  func upload<T: Decodable & Sendable>(
+    _ path: String,
+    method: HTTPMethod = .post,
+    fields: [String: String],
+    files: [MultipartFile],
+    authorized: Bool = false
+  ) async throws -> T {
+    guard let url = buildURL(path: path, query: []) else { throw APIError.invalidURL }
+
+    let boundary = "Boundary-\(UUID().uuidString)"
+    var request = URLRequest(url: url)
+    request.httpMethod = method.rawValue
+    request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+    request.setValue("application/json", forHTTPHeaderField: "Accept")
+    if authorized, let token = tokenProvider() {
+      request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    }
+    request.httpBody = buildMultipartBody(boundary: boundary, fields: fields, files: files)
+
+    return try await perform(request: request)
+  }
+
+  private func buildURL(path: String, query: [URLQueryItem]) -> URL? {
+    let trimmed = path.hasPrefix("/") ? String(path.dropFirst()) : path
+    var components = URLComponents(url: config.baseURL.appendingPathComponent(trimmed), resolvingAgainstBaseURL: false)
+    if !query.isEmpty {
+      components?.queryItems = query
+    }
+    return components?.url
+  }
+
+  private func perform<T: Decodable & Sendable>(request: URLRequest) async throws -> T {
     let (data, response) = try await session.data(for: request)
     guard let http = response as? HTTPURLResponse else { throw APIError.unknown }
     guard 200..<300 ~= http.statusCode else {
@@ -119,7 +161,6 @@ final class APIClient {
       throw APIError.server(code: http.statusCode, message: "请求失败(\(http.statusCode))")
     }
 
-    // Attempt direct decode first
     if let decoded = try? decoder.decode(T.self, from: data) {
       return decoded
     }
@@ -139,12 +180,33 @@ final class APIClient {
     throw APIError.decodingFailed(raw)
   }
 
-  private func buildURL(path: String, query: [URLQueryItem]) -> URL? {
-    let trimmed = path.hasPrefix("/") ? String(path.dropFirst()) : path
-    var components = URLComponents(url: config.baseURL.appendingPathComponent(trimmed), resolvingAgainstBaseURL: false)
-    if !query.isEmpty {
-      components?.queryItems = query
+  private func buildMultipartBody(boundary: String, fields: [String: String], files: [MultipartFile]) -> Data {
+    var body = Data()
+    let lineBreak = "\r\n"
+
+    for (name, value) in fields {
+      body.append("--\(boundary)\(lineBreak)")
+      body.append("Content-Disposition: form-data; name=\"\(name)\"\(lineBreak)\(lineBreak)")
+      body.append("\(value)\(lineBreak)")
     }
-    return components?.url
+
+    for file in files {
+      body.append("--\(boundary)\(lineBreak)")
+      body.append("Content-Disposition: form-data; name=\"\(file.name)\"; filename=\"\(file.filename)\"\(lineBreak)")
+      body.append("Content-Type: \(file.contentType)\(lineBreak)\(lineBreak)")
+      body.append(file.data)
+      body.append(lineBreak)
+    }
+
+    body.append("--\(boundary)--\(lineBreak)")
+    return body
+  }
+}
+
+private extension Data {
+  mutating func append(_ string: String) {
+    if let data = string.data(using: .utf8) {
+      append(data)
+    }
   }
 }
