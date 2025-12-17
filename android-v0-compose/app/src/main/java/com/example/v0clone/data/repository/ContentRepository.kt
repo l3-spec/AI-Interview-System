@@ -273,6 +273,22 @@ class ContentRepository(private val apiService: ApiService) {
             Result.failure(e)
         }
     }
+
+    /**
+     * 删除当前用户帖子
+     */
+    suspend fun deleteMyPost(postId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.deleteMyPost(postId)
+            if (response.success) {
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception(response.message ?: "删除帖子失败"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
     
     // ==================== 首页相关 ====================
     

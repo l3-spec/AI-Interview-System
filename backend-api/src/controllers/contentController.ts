@@ -531,6 +531,48 @@ export const createUserPost = async (req: Request, res: Response) => {
 };
 
 /**
+ * 删除当前用户的帖子
+ * DELETE /api/content/posts/:id
+ */
+export const deleteMyPost = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: '用户未认证',
+      });
+    }
+
+    const { id } = req.params;
+    const post = await prisma.userPost.findUnique({
+      where: { id },
+      select: { id: true, userId: true },
+    });
+
+    if (!post || post.userId !== req.user.id) {
+      return res.status(404).json({ success: false, message: '帖子不存在或已删除' });
+    }
+
+    await prisma.userPost.update({
+      where: { id },
+      data: {
+        status: 'DELETED',
+        isHot: false,
+      },
+    });
+
+    res.json({ success: true, message: '帖子已删除' });
+  } catch (error: any) {
+    console.error('删除帖子失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '服务器错误',
+      error: error.message,
+    });
+  }
+};
+
+/**
  * 获取大咖分享列表
  * GET /api/content/expert-posts
  */

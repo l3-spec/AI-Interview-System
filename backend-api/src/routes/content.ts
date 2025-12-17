@@ -8,6 +8,7 @@ import {
   recordPromotedJobClick,
   createUserPost,
   getMyPosts,
+  deleteMyPost,
 } from '../controllers/contentController';
 import { authenticateToken, optionalAuthenticate, requireUser } from '../middleware/auth';
 import { uploadMultiple } from '../middleware/upload';
@@ -24,6 +25,7 @@ router.post(
   uploadMultiple('postImages', 9),
   createUserPost
 );
+router.delete('/posts/:id', authenticateToken, requireUser, deleteMyPost);
 router.get('/my-posts', authenticateToken, requireUser, getMyPosts);
 
 // 大咖分享路由

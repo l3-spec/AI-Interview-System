@@ -141,6 +141,14 @@ interface ApiService {
         @Part postImages: List<MultipartBody.Part>
     ): ApiResponse<UserPost>
 
+    /**
+     * 删除当前用户帖子
+     */
+    @DELETE("content/posts/{id}")
+    suspend fun deleteMyPost(
+        @Path("id") postId: String
+    ): ApiResponse<Unit>
+
     // ==================== 消息中心相关 ====================
 
     /**

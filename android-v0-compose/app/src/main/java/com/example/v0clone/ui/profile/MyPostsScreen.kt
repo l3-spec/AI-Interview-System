@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,6 +22,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -68,6 +72,8 @@ fun MyPostsRoute(
     var isLoading by remember { mutableStateOf(true) }
     var isRefreshing by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var deletingId by remember { mutableStateOf<String?>(null) }
+    var isDeleting by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val refreshSignal by backStackEntry.savedStateHandle
         .getStateFlow("should_refresh_my_posts", false)
@@ -94,6 +100,23 @@ fun MyPostsRoute(
         }
     }
 
+    val handleDelete = remember(repository) {
+        { postId: String ->
+            scope.launch {
+                isDeleting = true
+                val result = repository.deleteMyPost(postId)
+                result.onSuccess {
+                    posts = posts.filterNot { it.id == postId }
+                    error = null
+                }.onFailure {
+                    error = it.message ?: "删除失败，请稍后再试"
+                }
+                isDeleting = false
+                deletingId = null
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         loadPosts(false)
     }
@@ -109,11 +132,16 @@ fun MyPostsRoute(
         posts = posts,
         isLoading = isLoading,
         isRefreshing = isRefreshing,
+        isDeleting = isDeleting,
+        deletingId = deletingId,
         error = error,
         onBack = onBack,
         onRetry = { loadPosts(true) },
         onCreatePost = onCreatePost,
-        onPostClick = onPostClick
+        onPostClick = onPostClick,
+        onDeleteRequest = { postId -> deletingId = postId },
+        onConfirmDelete = handleDelete,
+        onDismissDelete = { deletingId = null }
     )
 }
 
@@ -122,11 +150,16 @@ private fun MyPostsScreen(
     posts: List<UserPost>,
     isLoading: Boolean,
     isRefreshing: Boolean,
+    isDeleting: Boolean,
+    deletingId: String?,
     error: String?,
     onBack: () -> Unit,
     onRetry: () -> Unit,
     onCreatePost: () -> Unit,
-    onPostClick: (String) -> Unit
+    onPostClick: (String) -> Unit,
+    onDeleteRequest: (String) -> Unit,
+    onConfirmDelete: (String) -> Unit,
+    onDismissDelete: () -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -216,19 +249,29 @@ private fun MyPostsScreen(
                     items(posts, key = { it.id }) { post ->
                         MyPostCard(
                             post = post,
-                            onClick = { onPostClick(post.id) }
+                            onClick = { onPostClick(post.id) },
+                            onDelete = { onDeleteRequest(post.id) }
                         )
                     }
                 }
             }
         }
     }
+
+    if (deletingId != null) {
+        ConfirmDeleteDialog(
+            onConfirm = { onConfirmDelete(deletingId) },
+            onDismiss = onDismissDelete,
+            isProcessing = isDeleting
+        )
+    }
 }
 
 @Composable
 private fun MyPostCard(
     post: UserPost,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDelete: () -> Unit
 ) {
     Card(
         modifier = Modifier
@@ -308,16 +351,62 @@ private fun MyPostCard(
                         fontSize = 12.sp
                     )
                 )
-                Text(
-                    text = post.createdAt.take(16),
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        color = Color(0xFF9CA0A8),
-                        fontSize = 12.sp
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = post.createdAt.take(16),
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = Color(0xFF9CA0A8),
+                            fontSize = 12.sp
+                        )
                     )
-                )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "删除",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = Color(0xFFEC7C38),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        modifier = Modifier.clickable(onClick = onDelete)
+                    )
+                }
             }
         }
     }
+}
+
+@Composable
+private fun ConfirmDeleteDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    isProcessing: Boolean
+) {
+    AlertDialog(
+        onDismissRequest = { if (!isProcessing) onDismiss() },
+        title = { Text(text = "删除帖子") },
+        text = { Text(text = "删除后将无法恢复，确认删除？") },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                enabled = !isProcessing,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEC7C38))
+            ) {
+                Text(if (isProcessing) "删除中..." else "确认删除")
+            }
+        },
+        dismissButton = {
+            Button(
+                onClick = onDismiss,
+                enabled = !isProcessing,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFF0F2F6),
+                    contentColor = Color(0xFF4C4F57)
+                )
+            ) {
+                Text("取消")
+            }
+        }
+    )
 }
 
 @Composable
