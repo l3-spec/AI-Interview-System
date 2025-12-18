@@ -39,6 +39,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -50,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -165,102 +167,125 @@ private fun MyPostsScreen(
     onDismissDelete: () -> Unit
 ) {
     val navPadding = WindowInsets.navigationBars.asPaddingValues()
-    Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        text = "我的发布",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.SemiBold
+    val screenGradient = Brush.verticalGradient(
+        colors = listOf(
+            Color(0xFF00ACC3),
+            Color(0xFFE9F7F9),
+            Color.White
+        ),
+        startY = 0f,
+        endY = 1600f
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(screenGradient)
+    ) {
+        Scaffold(
+            topBar = {
+                CenterAlignedTopAppBar(
+                    title = {
+                        Text(
+                            text = "我的发布",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
                         )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                                contentDescription = "返回"
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = onCreatePost) {
+                            Icon(
+                                imageVector = Icons.Outlined.Add,
+                                contentDescription = "发布"
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                        containerColor = Color.Transparent,
+                        scrolledContainerColor = Color.Transparent,
+                        titleContentColor = Color.White,
+                        navigationIconContentColor = Color.White,
+                        actionIconContentColor = Color.White
                     )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                            contentDescription = "返回"
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(onClick = onCreatePost) {
-                        Icon(
-                            imageVector = Icons.Outlined.Add,
-                            contentDescription = "发布"
-                        )
+                )
+            },
+            containerColor = Color.Transparent
+        ) { padding ->
+            when {
+                isLoading && posts.isEmpty() -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = Color(0xFFEC7C38))
                     }
                 }
-            )
-        },
-        containerColor = Color(0xFFF5F6F9)
-    ) { padding ->
-        when {
-            isLoading && posts.isEmpty() -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = Color(0xFFEC7C38))
+                error != null && posts.isEmpty() -> {
+                    MyPostsEmptyState(
+                        title = "加载失败",
+                        description = error,
+                        actionLabel = "重试",
+                        onAction = onRetry,
+                        modifier = Modifier.padding(padding)
+                    )
                 }
-            }
-            error != null && posts.isEmpty() -> {
-                MyPostsEmptyState(
-                    title = "加载失败",
-                    description = error,
-                    actionLabel = "重试",
-                    onAction = onRetry,
-                    modifier = Modifier.padding(padding)
-                )
-            }
-            posts.isEmpty() -> {
-                MyPostsEmptyState(
-                    title = "还没有发布内容",
-                    description = "分享你的职场动态、经验或问题，和社区一起交流成长。",
-                    actionLabel = "立即发布",
-                    onAction = onCreatePost,
-                    modifier = Modifier.padding(padding)
-                )
-            }
-            else -> {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentPadding = PaddingValues(
-                        start = 16.dp,
-                        end = 16.dp,
-                        top = 16.dp,
-                        bottom = navPadding.calculateBottomPadding() + 24.dp
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    if (isRefreshing) {
-                        item {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    strokeWidth = 2.dp,
-                                    color = Color(0xFFEC7C38)
-                                )
+                posts.isEmpty() -> {
+                    MyPostsEmptyState(
+                        title = "还没有发布内容",
+                        description = "分享你的职场动态、经验或问题，和社区一起交流成长。",
+                        actionLabel = "立即发布",
+                        onAction = onCreatePost,
+                        modifier = Modifier.padding(padding)
+                    )
+                }
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding),
+                        contentPadding = PaddingValues(
+                            start = 16.dp,
+                            end = 16.dp,
+                            top = 12.dp,
+                            bottom = navPadding.calculateBottomPadding() + 32.dp
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        if (isRefreshing) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp,
+                                        color = Color(0xFFEC7C38)
+                                    )
+                                }
                             }
                         }
-                    }
-                    items(posts, key = { it.id }) { post ->
-                        MyPostCard(
-                            post = post,
-                            onClick = { onPostClick(post.id) },
-                            onDelete = { onDeleteRequest(post.id) }
-                        )
+                        items(posts, key = { it.id }) { post ->
+                            MyPostCard(
+                                post = post,
+                                onClick = { onPostClick(post.id) },
+                                onDelete = { onDeleteRequest(post.id) }
+                            )
+                        }
                     }
                 }
             }
@@ -286,8 +311,8 @@ private fun MyPostCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.94f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         shape = RoundedCornerShape(16.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {

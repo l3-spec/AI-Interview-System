@@ -114,11 +114,12 @@ fun PostDetailRoute(
             modifier = Modifier.fillMaxSize(),
             containerColor = Color.Transparent,
             topBar = {
+                val titleText = detail?.title ?: ""
                 Surface(color = Color.Transparent) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(52.dp)
+                            .height(56.dp)
                             .padding(horizontal = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -127,6 +128,18 @@ fun PostDetailRoute(
                                 imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
                                 contentDescription = "返回",
                                 tint = PrimaryText
+                            )
+                        }
+                        if (titleText.isNotBlank()) {
+                            Text(
+                                text = titleText,
+                                color = PrimaryText,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                modifier = Modifier
+                                    .padding(start = 4.dp)
+                                    .weight(1f)
                             )
                         }
                     }
@@ -243,19 +256,10 @@ private fun PostHeader(detail: PostDetail) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(12.dp), // 根据Figma设计：padding 12px
-        verticalArrangement = Arrangement.spacedBy(10.dp) // 根据Figma设计：间距10px
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        // 标题 - 根据Figma设计：20sp，Semibold，黑色
-        Text(
-            text = detail.title,
-            color = PrimaryText,
-            fontSize = 20.sp, // 根据Figma设计：20sp
-            fontWeight = FontWeight.SemiBold, // PingFang SC Semibold
-            lineHeight = 21.sp, // 根据Figma设计：行高21sp
-            letterSpacing = (-0.32).sp // 根据Figma设计：letterSpacing -0.32px
-        )
-        // 发布日期和浏览数
+        // 仅保留发布日期和浏览数，标题已移至顶部栏
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)

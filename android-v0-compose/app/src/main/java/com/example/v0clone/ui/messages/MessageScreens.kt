@@ -86,7 +86,15 @@ private val AccentOrange = Color(0xFFEC7C38)
 private val MutedText = Color(0xFF868A93)
 private val BubbleUser = Brush.verticalGradient(listOf(Color(0xFFFFA768), Color(0xFFEC7C38)))
 private val BubbleSystem = Color.White
-private val ChatBackground = Color(0xFFF6F7FB)
+private val ScreenGradient = Brush.verticalGradient(
+    colors = listOf(
+        Color(0xFF00ACC3),
+        Color(0xFFE9F7F9),
+        Color.White
+    ),
+    startY = 0f,
+    endY = 1600f
+)
 
 private val dateFormatter = DateTimeFormatter.ofPattern("MM-dd HH:mm")
 private val chatDateFormatter = DateTimeFormatter.ofPattern("M月d日 HH:mm")
@@ -178,9 +186,11 @@ private fun MessageCenterScreen(
             CompactTopBar(
                 title = "消息",
                 onBack = onBack,
-                containerColor = Color.White,
-                contentColor = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.background(ScreenGradient),
+                containerColor = Color.Transparent,
+                contentColor = Color.White,
                 shadowElevation = 0.dp,
+                dense = true,
                 actions = {
                     IconButton(onClick = onCompose) {
                         Icon(
@@ -191,11 +201,12 @@ private fun MessageCenterScreen(
                 }
             )
         },
-        containerColor = Color.White
+        containerColor = Color.Transparent
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(ScreenGradient)
                 .padding(padding)
                 .padding(
                     bottom = WindowInsets.navigationBars
@@ -671,12 +682,13 @@ private fun MessageDetailScreen(
                 onBack = onBack
             )
         },
-        containerColor = ChatBackground
+        containerColor = Color.Transparent
     ) { padding ->
         val navPadding = WindowInsets.navigationBars.asPaddingValues()
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(ScreenGradient)
                 .padding(padding)
                 .padding(bottom = navPadding.calculateBottomPadding())
         ) {
@@ -732,18 +744,23 @@ private fun ChatTopBar(
     subtitle: String,
     onBack: () -> Unit
 ) {
-    Surface(color = Color.White, shadowElevation = 0.dp) {
+    Surface(color = Color.Transparent, shadowElevation = 0.dp) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .background(ScreenGradient)
                 .statusBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(horizontal = 12.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onBack) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.size(36.dp)
+            ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                    contentDescription = "返回"
+                    contentDescription = "返回",
+                    tint = Color.White
                 )
             }
             Column(
@@ -752,14 +769,19 @@ private fun ChatTopBar(
             ) {
                 Text(
                     text = name,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White
+                    ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 if (subtitle.isNotBlank()) {
                     Text(
                         text = subtitle,
-                        style = MaterialTheme.typography.bodySmall.copy(color = MutedText),
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = Color.White.copy(alpha = 0.85f)
+                        ),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -926,15 +948,19 @@ fun MessageComposeRoute(
             CompactTopBar(
                 title = "留言反馈",
                 onBack = onBack,
-                containerColor = Color.White,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-                shadowElevation = 0.dp
+                modifier = Modifier.background(ScreenGradient),
+                containerColor = Color.Transparent,
+                contentColor = Color.White,
+                shadowElevation = 0.dp,
+                dense = true
             )
-        }
+        },
+        containerColor = Color.Transparent
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(ScreenGradient)
                 .padding(padding)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)

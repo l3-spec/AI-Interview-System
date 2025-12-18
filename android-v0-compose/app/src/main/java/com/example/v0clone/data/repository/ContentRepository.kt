@@ -283,10 +283,21 @@ class ContentRepository(private val apiService: ApiService) {
             if (response.success) {
                 Result.success(Unit)
             } else {
-                Result.failure(Exception(response.message ?: "删除帖子失败"))
+                // 兼容部分网关对 DELETE path 的代理问题，降级为 query 方式
+                val fallback = apiService.deleteMyPostByQuery(postId)
+                if (fallback.success) {
+                    Result.success(Unit)
+                } else {
+                    Result.failure(Exception(fallback.message ?: "删除帖子失败"))
+                }
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            // 若路径被网关吞掉导致 404，再尝试 query 形式
+            return@withContext runCatching {
+                val fallback = apiService.deleteMyPostByQuery(postId)
+                if (fallback.success) Result.success(Unit)
+                else Result.failure(Exception(fallback.message ?: "删除帖子失败"))
+            }.getOrElse { inner -> Result.failure(inner) }
         }
     }
     

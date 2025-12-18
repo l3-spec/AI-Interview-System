@@ -35,8 +35,12 @@ fun CompactTopBar(
     actions: @Composable RowScope.() -> Unit = {},
     containerColor: Color = MaterialTheme.colorScheme.surface,
     contentColor: Color = MaterialTheme.colorScheme.onSurface,
-    shadowElevation: Dp = 0.dp
+    shadowElevation: Dp = 0.dp,
+    dense: Boolean = false
 ) {
+    val barHeight = if (dense) 48.dp else 52.dp
+    val iconSize = if (dense) 32.dp else 36.dp
+
     Surface(
         color = containerColor,
         contentColor = contentColor,
@@ -47,7 +51,7 @@ fun CompactTopBar(
             modifier = modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .height(52.dp)
+                .height(barHeight)
                 .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -55,7 +59,7 @@ fun CompactTopBar(
                 IconButton(
                     onClick = onBack,
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(iconSize)
                         .clip(CircleShape)
                 ) {
                     Icon(
@@ -64,7 +68,7 @@ fun CompactTopBar(
                     )
                 }
             } else {
-                Box(modifier = Modifier.size(36.dp))
+                Box(modifier = Modifier.size(iconSize))
             }
 
             Text(
@@ -79,7 +83,7 @@ fun CompactTopBar(
             )
 
             Row(
-                modifier = Modifier.widthIn(min = 36.dp),
+                modifier = Modifier.widthIn(min = iconSize),
                 verticalAlignment = Alignment.CenterVertically,
                 content = actions
             )

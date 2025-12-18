@@ -149,6 +149,14 @@ interface ApiService {
         @Path("id") postId: String
     ): ApiResponse<Unit>
 
+    /**
+     * 删除当前用户帖子（查询参数形式，兼容部分网关）
+     */
+    @DELETE("content/posts/")
+    suspend fun deleteMyPostByQuery(
+        @Query("id") postId: String
+    ): ApiResponse<Unit>
+
     // ==================== 消息中心相关 ====================
 
     /**
