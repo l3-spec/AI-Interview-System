@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -63,6 +66,7 @@ fun ContactUsRoute(
     onOpenMessages: () -> Unit
 ) {
     val scrollState = rememberScrollState()
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
     Scaffold(
         topBar = {
             CompactTopBar(
@@ -84,7 +88,8 @@ fun ContactUsRoute(
                     .fillMaxSize()
                     .padding(padding)
                     .verticalScroll(scrollState)
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .padding(bottom = navPadding.calculateBottomPadding() + 16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 ContactHeroCard(onOpenMessages = onOpenMessages)

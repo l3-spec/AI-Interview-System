@@ -1,6 +1,7 @@
 package com.xlwl.AiMian.ui.circle
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +13,9 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -43,6 +47,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -71,7 +76,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 // 根据Figma设计规范定义颜色
-private val ScreenBackground = Color.White
+private val ScreenGradient = Brush.verticalGradient(
+    colors = listOf(
+        Color(0xFF00ACC3),
+        Color(0xFFE9F7F9),
+        Color.White
+    ),
+    startY = 0f,
+    endY = 1400f
+)
 private val PrimaryText = Color(0xFF000000) // 根据Figma设计：黑色 #000000
 private val SecondaryText = Color(0xFFB5B7B8) // 根据Figma设计：灰色占位 #B5B7B8
 private val MutedText = Color(0xFF858687) // 根据Figma设计：次要文字 #858687
@@ -92,88 +105,92 @@ fun PostDetailRoute(
     )
     val uiState by viewModel.uiState.collectAsState()
     val detail = uiState.detail
-
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        containerColor = ScreenBackground,
-        topBar = {
-            Surface(color = Color.White) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(47.dp)
-                        .padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                            contentDescription = "返回",
-                            tint = PrimaryText
-                        )
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(ScreenGradient)
+    ) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = Color.Transparent,
+            topBar = {
+                Surface(color = Color.Transparent) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                                contentDescription = "返回",
+                                tint = PrimaryText
+                            )
+                        }
                     }
                 }
-            }
-        },
-        bottomBar = {
-            detail?.let {
-                PostDetailBottomBar(
-                    likeCount = it.likeCount,
-                    collectCount = it.collectCount,
-                    commentCount = it.commentCount
-                )
-            }
-        }
-    ) { innerPadding ->
-        when {
-            uiState.isLoading -> {
-                PostDetailLoading(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding)
-                )
-            }
-            detail != null -> {
-                val gallery = remember(detail) { detail.galleryImages.take(2) }
-                // 根据Figma设计：内容区域布局
-                // 顺序：标题和元信息 -> 作者信息 -> 主图 -> 正文 -> 内联图片 -> 评论区域
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding),
-                    contentPadding = PaddingValues(
-                        start = 0.dp,
-                        end = 0.dp,
-                        top = 0.dp,
-                        bottom = 120.dp // 底部留出空间给操作栏
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(0.dp) // 间距由各组件内部控制
-                ) {
-                    item { PostHeader(detail) }
-                    item { PostAuthor(detail.author) }
-                    detail.heroImageUrl?.let { hero ->
-                        item { PostHeroImage(hero) }
-                    }
-                    if (detail.sections.isNotEmpty()) {
-                        item { PostBodyText(detail.sections) }
-                    }
-                    if (gallery.isNotEmpty()) {
-                        item { PostInlineGallery(gallery) }
-                    }
-                    item { PostCommentsHeader(count = detail.commentCount) }
-                    items(detail.comments, key = { it.id }) { comment ->
-                        PostCommentItem(comment)
-                    }
+            },
+            bottomBar = {
+                detail?.let {
+                    PostDetailBottomBar(
+                        likeCount = it.likeCount,
+                        collectCount = it.collectCount,
+                        commentCount = it.commentCount
+                    )
                 }
             }
-            else -> {
-                PostDetailErrorState(
-                    message = uiState.error ?: "内容加载失败",
-                    onRetry = { viewModel.reload() },
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding)
-                )
+        ) { innerPadding ->
+            when {
+                uiState.isLoading -> {
+                    PostDetailLoading(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding)
+                    )
+                }
+                detail != null -> {
+                    val gallery = remember(detail) { detail.galleryImages.take(2) }
+                    val navPadding = WindowInsets.navigationBars.asPaddingValues()
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding),
+                        contentPadding = PaddingValues(
+                            start = 16.dp,
+                            end = 16.dp,
+                            top = 8.dp,
+                            bottom = navPadding.calculateBottomPadding() + 96.dp
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(0.dp)
+                    ) {
+                        item { PostHeader(detail) }
+                        item { PostAuthor(detail.author) }
+                        detail.heroImageUrl?.let { hero ->
+                            item { PostHeroImage(hero) }
+                        }
+                        if (detail.sections.isNotEmpty()) {
+                            item { PostBodyText(detail.sections) }
+                        }
+                        if (gallery.isNotEmpty()) {
+                            item { PostInlineGallery(gallery) }
+                        }
+                        item { PostCommentsHeader(count = detail.commentCount) }
+                        items(detail.comments, key = { it.id }) { comment ->
+                            PostCommentItem(comment)
+                        }
+                    }
+                }
+                else -> {
+                    PostDetailErrorState(
+                        message = uiState.error ?: "内容加载失败",
+                        onRetry = { viewModel.reload() },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding)
+                    )
+                }
             }
         }
     }
@@ -589,6 +606,7 @@ private fun CommentInputPlaceholder() {
  */
 @Composable
 private fun PostDetailBottomBar(likeCount: Int, collectCount: Int, commentCount: Int) {
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
     Surface(color = Color.White, shadowElevation = 8.dp) {
         Column(modifier = Modifier.fillMaxWidth()) {
             HorizontalDivider(color = DividerColor)
@@ -596,7 +614,7 @@ private fun PostDetailBottomBar(likeCount: Int, collectCount: Int, commentCount:
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 10.dp) // 根据Figma设计：内边距
-                    .padding(bottom = 36.dp), // 根据Figma设计：底部36px（安全区域）
+                    .padding(bottom = navPadding.calculateBottomPadding() + 24.dp), // 安全区域 + 额外间距
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp) // 根据Figma设计：间距10px
             ) {

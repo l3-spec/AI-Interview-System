@@ -414,5 +414,3 @@ private fun ExpertCard(e: Expert) {
         }
     }
 }
-
-

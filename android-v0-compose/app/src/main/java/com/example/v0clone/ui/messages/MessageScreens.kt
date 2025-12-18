@@ -19,6 +19,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -35,7 +39,7 @@ import androidx.compose.material.icons.outlined.MarkEmailUnread
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -193,6 +197,11 @@ private fun MessageCenterScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .padding(
+                    bottom = WindowInsets.navigationBars
+                        .asPaddingValues()
+                        .calculateBottomPadding() + 48.dp
+                )
         ) {
             // 搜索栏
             SearchBar(
@@ -283,11 +292,12 @@ private fun MessageList(
     isRefreshing: Boolean,
     onMessageClick: (String) -> Unit
 ) {
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(0.dp), // 移除间距，使用分隔线
         contentPadding = PaddingValues(
-            bottom = 16.dp
+            bottom = navPadding.calculateBottomPadding() + 32.dp
         )
     ) {
         if (isRefreshing) {
@@ -564,7 +574,7 @@ private fun MessageItemCard(
         }
         }
         // 分隔线
-        Divider(
+        HorizontalDivider(
             color = Color(0xFFE9ECF1),
             thickness = 0.5.dp,
             modifier = Modifier.padding(horizontal = 16.dp)
@@ -663,10 +673,12 @@ private fun MessageDetailScreen(
         },
         containerColor = ChatBackground
     ) { padding ->
+        val navPadding = WindowInsets.navigationBars.asPaddingValues()
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .padding(bottom = navPadding.calculateBottomPadding())
         ) {
             when {
                 isLoading && detail == null -> {
@@ -692,21 +704,22 @@ private fun MessageDetailScreen(
                                     listState = listState,
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .padding(bottom = 96.dp)
-                        )
-                        Column(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .fillMaxWidth()
-                        ) {
-                            Divider(color = Color(0xFFE2E5EC))
-                            MessageInputBar(
-                                enabled = !isSending,
-                                onSend = onSend,
-                                isSending = isSending
-                            )
-                        }
-                    }
+                                        .padding(bottom = navPadding.calculateBottomPadding() + 72.dp)
+                                )
+                                Column(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .fillMaxWidth()
+                                        .navigationBarsPadding()
+                                ) {
+                                    HorizontalDivider(color = Color(0xFFE2E5EC))
+                                    MessageInputBar(
+                                        enabled = !isSending,
+                                        onSend = onSend,
+                                        isSending = isSending
+                                    )
+                                }
+                            }
                 }
             }
         }

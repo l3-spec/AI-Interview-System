@@ -15,6 +15,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -177,7 +180,8 @@ private fun ResumeReportListScreen(
 ) {
   val headerHeight = 96.dp
   val listTopPadding = headerHeight
-  val listBottomPadding = 140.dp
+  val navPadding = WindowInsets.navigationBars.asPaddingValues()
+  val listBottomPadding = navPadding.calculateBottomPadding() + 72.dp
   Box(
     modifier = Modifier
       .fillMaxSize()

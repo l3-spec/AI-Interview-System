@@ -64,6 +64,7 @@ fun HomeScreen(
     val listState = rememberLazyListState()
     val density = LocalDensity.current
     val maxOffsetPx = with(density) { HomeTopBarMaxOffset.toPx() }
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
     val topBarProgress by remember(maxOffsetPx) {
         derivedStateOf {
             val index = listState.firstVisibleItemIndex
@@ -129,7 +130,7 @@ fun HomeScreen(
             contentPadding = PaddingValues(
                 start = 12.dp,
                 end = 12.dp,
-                bottom = 120.dp
+                bottom = navPadding.calculateBottomPadding() + 64.dp
             ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -213,12 +214,12 @@ private fun HomeHeader(
     modifier: Modifier = Modifier
 ) {
     val barHeight = lerp(HomeTopBarExpandedHeight, HomeTopBarCollapsedHeight, progress)
-    val horizontalPadding = lerp(16.dp, 14.dp, progress)
+    val horizontalPadding = lerp(18.dp, 14.dp, progress)
     val verticalPadding = lerp(12.dp, 10.dp, progress)
-    val titleSize = lerp(26.sp, 22.sp, progress)
-    val fieldHeight = lerp(42.dp, 38.dp, progress)
-    val searchIconSize = lerp(18.dp, 16.dp, progress)
-    val rowSpacing = lerp(14.dp, 10.dp, progress)
+    val titleSize = lerp(24.sp, 20.sp, progress)
+    val fieldHeight = lerp(44.dp, 40.dp, progress)
+    val searchIconSize = lerp(20.dp, 18.dp, progress)
+    val rowSpacing = lerp(16.dp, 12.dp, progress)
     val bottomPadding = lerp(8.dp, 6.dp, progress)
 
     Column(
@@ -250,7 +251,7 @@ private fun HomeHeader(
             )
             Surface(
                 color = Color.White,
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(16.dp),
                 shadowElevation = 6.dp,
                 tonalElevation = 0.dp,
                 modifier = Modifier
@@ -302,7 +303,7 @@ private fun BannerCarousel(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(161.dp)
-                .clip(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(12.dp))
                 .clickable { 
                     if (banners.isNotEmpty()) {
                         onBannerClick(banners[currentIndex % banners.size])
@@ -352,7 +353,7 @@ private fun BannerCarousel(
                     
                     Text(
                         text = banner.title,
-                        fontSize = 24.sp,
+                        fontSize = 22.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
                         lineHeight = 26.sp
@@ -362,7 +363,7 @@ private fun BannerCarousel(
                     
                     Text(
                         text = banner.subtitle,
-                        fontSize = 12.sp,
+                        fontSize = 13.sp,
                         color = Color.White.copy(alpha = 0.9f)
                     )
                 }
@@ -379,6 +380,7 @@ private fun BannerCarousel(
             ) {
                 banners.forEachIndexed { index, _ ->
                     val isActive = index == currentIndex % banners.size
+                    val activeColor = Color(0xFFEC7C38)
                     Box(
                         modifier = Modifier
                             .padding(horizontal = 3.dp)
@@ -386,8 +388,8 @@ private fun BannerCarousel(
                             .height(4.dp)
                             .clip(RoundedCornerShape(4.dp))
                             .background(
-                                if (isActive) AccentOrange
-                                else Color.White
+                                if (isActive) activeColor
+                                else Color.White.copy(alpha = 0.2f)
                             )
                     )
                 }
@@ -489,7 +491,7 @@ private fun MasonryGrid(
         modifier = modifier
             .fillMaxWidth()
             .clickable { onClick() },
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(
             containerColor = Color.White
         ),
@@ -511,7 +513,7 @@ private fun MasonryGrid(
             )
 
             Column(
-                modifier = Modifier.padding(4.dp)
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
             ) {
                 Text(
                     text = card.title,
@@ -531,9 +533,9 @@ private fun MasonryGrid(
                     card.tags.take(2).forEach { tag ->
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(AccentOrange.copy(alpha = 0.1f))
-                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(AccentOrange.copy(alpha = 0.06f))
+                                .padding(horizontal = 10.dp, vertical = 2.dp)
                         ) {
                             Text(
                                 text = tag,
@@ -550,7 +552,7 @@ private fun MasonryGrid(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 4.dp, bottom = 4.dp, start = 4.dp, end = 4.dp),
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {

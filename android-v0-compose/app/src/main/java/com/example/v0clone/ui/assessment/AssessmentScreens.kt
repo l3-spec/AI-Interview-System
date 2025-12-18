@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -33,7 +36,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -238,6 +241,8 @@ private fun AssessmentHomeScreen(
     val featuredAssessments = remember(categories) {
         categories.flatMap { it.assessments.orEmpty() }
     }
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
+    val listBottomPadding = navPadding.calculateBottomPadding() + 48.dp
 
     Scaffold(
         containerColor = Color.Transparent
@@ -247,6 +252,7 @@ private fun AssessmentHomeScreen(
                 .fillMaxSize()
                 .background(ScreenGradient)
                 .padding(padding)
+                .padding(bottom = navPadding.calculateBottomPadding() + 32.dp)
         ) {
             when {
                 isLoading && categories.isEmpty() -> {
@@ -301,7 +307,7 @@ private fun AssessmentHomeScreen(
                                 }
                             }
                         }
-                        item { Spacer(modifier = Modifier.height(16.dp)) }
+                        item { Spacer(modifier = Modifier.height(listBottomPadding)) }
                     }
                 }
             }
@@ -360,7 +366,7 @@ private fun AssessmentHomeHeader(onBack: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 18.dp),
+                .padding(horizontal = 18.dp, vertical = 18.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(
@@ -462,26 +468,27 @@ private fun FeaturedAssessmentCard(
             
             // 中间内容
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = assessment.title,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 16.sp
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = assessment.description ?: "找到最适合你的职业方向，从认识自己开始",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        color = MutedText,
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp
-                    ),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+            Text(
+                text = assessment.title,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
+                    lineHeight = 22.sp
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = assessment.description ?: "找到最适合你的职业方向，从认识自己开始",
+                style = MaterialTheme.typography.bodySmall.copy(
+                    color = MutedText,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp
+                ),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
             }
             
             // 右侧箭头
@@ -794,7 +801,8 @@ private fun Chip(text: String) {
             text = text,
             style = MaterialTheme.typography.labelSmall.copy(
                 color = Color(0xFF515667),
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.Medium,
+                        lineHeight = 22.sp
             ),
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
         )
@@ -862,6 +870,7 @@ private fun AssessmentDetailScreen(
     onRetry: () -> Unit,
     onStart: () -> Unit
 ) {
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
     Scaffold(
         modifier = Modifier.background(ScreenGradient),
         topBar = {
@@ -921,6 +930,7 @@ private fun AssessmentDetailScreen(
                 .fillMaxSize()
                 .background(ScreenGradient)
                 .padding(padding)
+                .padding(bottom = navPadding.calculateBottomPadding() + 24.dp)
         ) {
             when {
                 isLoading && detail == null -> {
@@ -1146,7 +1156,7 @@ private fun DetailQuestionPreview(detail: AssessmentDetail) {
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Divider(color = Color(0xFFE7E9F0))
+                    HorizontalDivider(color = Color(0xFFE7E9F0))
                 }
             }
             Text(
@@ -1244,6 +1254,7 @@ private fun AssessmentTakeScreen(
     var currentIndex by remember(detail) { mutableStateOf(0) }
     val answers = remember(detail) { mutableStateMapOf<String, AnswerState>() }
     var showConfirmDialog by rememberSaveable { mutableStateOf(false) }
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
 
     LaunchedEffect(detail) {
         detail?.questions?.forEach { question ->
@@ -1268,6 +1279,7 @@ private fun AssessmentTakeScreen(
                 .fillMaxSize()
                 .background(ScreenGradient)
                 .padding(padding)
+                .padding(bottom = navPadding.calculateBottomPadding() + 24.dp)
         ) {
             when {
                 isLoading && detail == null -> {
@@ -1304,7 +1316,10 @@ private fun AssessmentTakeScreen(
 
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
+                        contentPadding = PaddingValues(
+                            horizontal = 16.dp,
+                            vertical = 16.dp + navPadding.calculateBottomPadding()
+                        ),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         // 第一题显示介绍和指南部分
@@ -1466,7 +1481,8 @@ private fun QuestionCard(
                 text = "$questionNumber. ${question.questionText}",
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.SemiBold,
-                    lineHeight = 22.sp
+                    lineHeight = 22.sp,
+                    fontSize = 17.sp
                 )
             )
         when (question.questionType.uppercase()) {
@@ -1649,6 +1665,7 @@ fun AssessmentResultRoute(
     onBack: () -> Unit,
     onViewRecords: (() -> Unit)?
 ) {
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
@@ -1679,13 +1696,16 @@ fun AssessmentResultRoute(
                 description = "请完成测评后查看结果。",
                 actionText = "返回",
                 onAction = onBack,
-                modifier = Modifier.padding(padding)
+                modifier = Modifier
+                    .padding(padding)
+                    .padding(bottom = navPadding.calculateBottomPadding())
             )
         } else {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding),
+                    .padding(padding)
+                    .padding(bottom = navPadding.calculateBottomPadding()),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {

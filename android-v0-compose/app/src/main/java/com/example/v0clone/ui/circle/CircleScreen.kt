@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -132,6 +135,7 @@ private fun CircleScreen(
         }
     }
     val currentUiState by rememberUpdatedState(uiState)
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
 
     LaunchedEffect(listState) {
         snapshotFlow {
@@ -180,7 +184,7 @@ private fun CircleScreen(
             contentPadding = PaddingValues(
                 start = 12.dp,
                 end = 12.dp,
-                bottom = 140.dp
+                bottom = navPadding.calculateBottomPadding() + 72.dp
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -265,7 +269,10 @@ private fun CircleScreen(
         CreatePostDock(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 16.dp, bottom = 174.dp), // 根据Figma设计：距离底部174px
+                .padding(
+                    end = 16.dp,
+                    bottom = navPadding.calculateBottomPadding() + 96.dp
+                ),
             onClick = onCreatePost
         )
     }
@@ -336,7 +343,7 @@ private fun CirclePostCard(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(4.dp),
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)  // Figma gap
             ) {
                 // 标题和标签
@@ -374,7 +381,7 @@ private fun CirclePostCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(4.dp),
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -567,11 +574,11 @@ private fun CreatePostDock(
 ) {
     Surface(
         modifier = modifier
-            .size(48.dp) // 根据Figma设计：48x48px
-            .clip(CircleShape)
+            .size(60.dp) // 提升触达面积
+            .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onClick),
         color = AccentOrange, // 根据Figma设计：橙色 #EC7C38
-        shadowElevation = 2.dp // 根据Figma设计：阴影 0px 2px 2px 0px rgba(0,0,0,0.25)
+        shadowElevation = 6.dp // 更柔和的浮起感
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
@@ -601,16 +608,16 @@ private fun CircleHeader(
     modifier: Modifier = Modifier
 ) {
     val barHeight = lerp(CircleTopBarExpandedHeight, CircleTopBarCollapsedHeight, progress)
-    val horizontalPadding = lerp(16.dp, 14.dp, progress)
+    val horizontalPadding = lerp(18.dp, 14.dp, progress)
     val verticalPadding = lerp(12.dp, 10.dp, progress)
-    val titleSize = lerp(26.sp, 22.sp, progress)
+    val titleSize = lerp(24.sp, 20.sp, progress)
     val subtitleSize = lerp(14.sp, 12.sp, progress)
-    val fieldHeight = lerp(42.dp, 38.dp, progress)
-    val searchIconSize = lerp(14.dp, 12.dp, progress)
-    val rowSpacing = lerp(24.dp, 14.dp, progress)
+    val fieldHeight = lerp(44.dp, 40.dp, progress)
+    val searchIconSize = lerp(18.dp, 16.dp, progress)
+    val rowSpacing = lerp(18.dp, 12.dp, progress)
     val containerTopPadding = lerp(0.dp, 0.dp, progress)
-    val containerBottomPadding = lerp(14.dp, 10.dp, progress)
-    val searchCorner = lerp(14.dp, 12.dp, progress)
+    val containerBottomPadding = lerp(14.dp, 12.dp, progress)
+    val searchCorner = lerp(16.dp, 14.dp, progress)
 
     Column(
         modifier = modifier
@@ -669,7 +676,7 @@ private fun CircleHeader(
                 Row(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 20.dp),
+                        .padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp) // 根据Figma设计：间距10px
                 ) {

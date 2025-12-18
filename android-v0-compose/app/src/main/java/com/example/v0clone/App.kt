@@ -74,6 +74,7 @@ fun V0App() {
         currentRoute == Routes.LOGIN ||
         currentRoute == Routes.CREATE_POST ||
         currentRoute == Routes.REGISTER ||
+        currentRoute.startsWith("content") ||
         currentRoute == Routes.AI ||
         currentRoute == Routes.DIGITAL_INTERVIEW ||
         currentRoute == Routes.INTERVIEW_COMPLETE ||

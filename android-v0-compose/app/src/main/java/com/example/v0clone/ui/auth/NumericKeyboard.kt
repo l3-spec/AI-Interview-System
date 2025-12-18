@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -57,6 +58,7 @@ fun NumericKeyboard(
                 color = Color(0xFFD1D3D9) // 根据Figma设计：背景色 #D1D3D9
             )
             .height(290.dp) // 根据Figma设计：高度 290px
+            .navigationBarsPadding()
     ) {
         // 根据Figma设计：键盘内边距和间距
         Column(

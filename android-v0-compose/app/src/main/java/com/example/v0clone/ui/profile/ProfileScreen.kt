@@ -18,6 +18,9 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -220,9 +223,10 @@ private fun LoggedInProfileContent(
             .fillMaxSize()
             .background(ProfilePageGradient)
     ) {
+        val navPadding = WindowInsets.navigationBars.asPaddingValues()
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 120.dp),
+            contentPadding = PaddingValues(bottom = navPadding.calculateBottomPadding() + 64.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             item {

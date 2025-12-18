@@ -161,5 +161,3 @@ fun HeroBanner() {
         }
     }
 }
-
-

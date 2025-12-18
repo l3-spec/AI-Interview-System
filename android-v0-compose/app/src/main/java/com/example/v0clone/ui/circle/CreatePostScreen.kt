@@ -24,6 +24,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -44,7 +48,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -185,6 +189,7 @@ private fun CreatePostScreen(
         listOf("#AI", "#职业转型", "#Offer分享")
     }
     val scrollState = rememberScrollState()
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
 
     // 计算当前已使用的图片数量
     val currentImageCount = remember(contentBlocks) {
@@ -360,6 +365,7 @@ private fun CreatePostScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .navigationBarsPadding()
                         .padding(horizontal = 16.dp, vertical = 10.dp)
                 ) {
                     Button(
@@ -415,6 +421,7 @@ private fun CreatePostScreen(
                 .fillMaxSize()
                 .background(Color.White)
                 .padding(innerPadding)
+                .padding(bottom = navPadding.calculateBottomPadding())
                 .verticalScroll(scrollState)
         ) {
             TitleSection(
@@ -690,7 +697,7 @@ private fun TitleSection(
                 )
             )
         }
-        Divider(
+        HorizontalDivider(
             color = PlaceholderColor.copy(alpha = 0.6f),
             thickness = 0.25.dp // 根据Figma设计：0.25px
         )

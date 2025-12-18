@@ -21,6 +21,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -126,6 +129,7 @@ fun JobsScreen(
     val listState = rememberLazyListState()
     val density = LocalDensity.current
     val maxOffsetPx = with(density) { JobsTopBarMaxOffset.toPx() }
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
     val topBarProgress by remember(maxOffsetPx) {
         derivedStateOf {
             if (maxOffsetPx <= 0f) return@derivedStateOf 1f
@@ -204,7 +208,7 @@ fun JobsScreen(
         LazyColumn(
             state = listState,
             contentPadding = PaddingValues(
-                bottom = 120.dp,
+                bottom = navPadding.calculateBottomPadding() + 68.dp,
                 start = 12.dp,
                 end = 12.dp
             ),
@@ -318,16 +322,16 @@ private fun JobsHeader(
 ) {
     val density = LocalDensity.current
     val barHeight = lerp(JobsTopBarExpandedHeight, JobsTopBarCollapsedHeight, progress)
-    val horizontalPadding = lerp(16.dp, 14.dp, progress)
+    val horizontalPadding = lerp(18.dp, 14.dp, progress)
     val verticalPadding = lerp(12.dp, 10.dp, progress)
-    val titleSize = lerp(26.sp, 22.sp, progress)
-    val fieldHeight = lerp(42.dp, 38.dp, progress)
-    val searchIconSize = lerp(18.dp, 16.dp, progress)
-    val closeIconSize = lerp(18.dp, 16.dp, progress)
-    val rowSpacing = lerp(14.dp, 10.dp, progress)
+    val titleSize = lerp(24.sp, 20.sp, progress)
+    val fieldHeight = lerp(44.dp, 40.dp, progress)
+    val searchIconSize = lerp(20.dp, 18.dp, progress)
+    val closeIconSize = lerp(20.dp, 18.dp, progress)
+    val rowSpacing = lerp(16.dp, 12.dp, progress)
     val translateYPx = 0f
-    val spacingBelowSearch = lerp(14.dp, 10.dp, progress)
-    val bottomPadding = lerp(14.dp, 10.dp, progress)
+    val spacingBelowSearch = lerp(14.dp, 12.dp, progress)
+    val bottomPadding = lerp(14.dp, 12.dp, progress)
 
     Column(
         modifier = modifier
@@ -357,7 +361,7 @@ private fun JobsHeader(
             )
             Surface(
                 color = Color.White,
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(16.dp),
                 shadowElevation = 6.dp,
                 tonalElevation = 0.dp,
                 modifier = Modifier
@@ -635,8 +639,8 @@ private fun JobCard(
 ) {
     Surface(
         color = Color.White,
-        shape = RoundedCornerShape(12.dp),
-        shadowElevation = 4.dp,
+        shape = RoundedCornerShape(10.dp),
+        shadowElevation = 3.dp,
         tonalElevation = 0.dp,
         border = BorderStroke(1.dp, CardBorder),
         modifier = Modifier
@@ -644,8 +648,8 @@ private fun JobCard(
             .clickable(onClick = onCardClick)
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -655,8 +659,9 @@ private fun JobCard(
                 Text(
                     text = job.title.ifBlank { "前端开发" },
                     color = TextPrimary,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    lineHeight = 22.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
@@ -664,8 +669,8 @@ private fun JobCard(
                 Text(
                     text = job.salary.ifBlank { "薪资面议" },
                     color = AccentOrange,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(start = 8.dp)
                 )
             }
@@ -680,14 +685,14 @@ private fun JobCard(
 
             if (tagCandidates.isNotEmpty()) {
                 FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     tagCandidates.take(3).forEach { tag ->
                         Surface(
                             color = CardTagBackground,
-                            shape = RoundedCornerShape(6.dp),
+                            shape = RoundedCornerShape(10.dp),
                             border = BorderStroke(1.dp, CardBorder)
                         ) {
                             Text(

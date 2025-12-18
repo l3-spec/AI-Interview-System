@@ -14,6 +14,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -87,6 +90,7 @@ fun AiInterviewPage(
   var loading by remember { mutableStateOf(true) }
   var errorMessage by remember { mutableStateOf<String?>(null) }
   var selectedPositionKey by remember { mutableStateOf<String?>(null) }
+  val navPadding = WindowInsets.navigationBars.asPaddingValues()
 
   LaunchedEffect(jobDictionaryRepository) {
     loading = true
@@ -128,6 +132,7 @@ fun AiInterviewPage(
       .background(PageBackground)
       .statusBarsPadding()
       .padding(horizontal = 16.dp, vertical = 12.dp)
+      .padding(bottom = navPadding.calculateBottomPadding())
   ) {
     TopBar(onBack)
     Text(
@@ -145,7 +150,7 @@ fun AiInterviewPage(
     Row(
       modifier = Modifier
         .fillMaxSize()
-        .padding(bottom = 24.dp),
+        .padding(bottom = navPadding.calculateBottomPadding() + 24.dp),
       horizontalArrangement = Arrangement.spacedBy(18.dp)
     ) {
       CategoryList(

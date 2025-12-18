@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -181,7 +182,7 @@ private fun JobDetailScreen(
               text = "职位详情",
               style = MaterialTheme.typography.titleMedium.copy(
                 fontWeight = FontWeight.Bold,
-                fontSize = 17.sp,
+                fontSize = 18.sp,
                 color = TextPrimary
               ),
               modifier = Modifier.weight(1f),
@@ -724,7 +725,7 @@ private fun RecommendedJobCard(
 private fun TagChip(text: String) {
   Surface(
     color = ChipBackground,
-    shape = RoundedCornerShape(4.dp),
+    shape = RoundedCornerShape(10.dp),
     tonalElevation = 0.dp,
     shadowElevation = 0.dp
   ) {
@@ -750,7 +751,9 @@ private fun JobDetailBottomBar(
   onApply: () -> Unit
 ) {
   Surface(
-    modifier = Modifier.fillMaxWidth(),
+    modifier = Modifier
+      .fillMaxWidth()
+      .navigationBarsPadding(),
     color = Color.White,
     tonalElevation = 0.dp,
     shadowElevation = 8.dp
@@ -769,10 +772,10 @@ private fun JobDetailBottomBar(
             containerColor = AccentOrange,
             disabledContainerColor = AccentOrange.copy(alpha = 0.6f)
         ),
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(14.dp),
         modifier = Modifier
           .fillMaxWidth()
-          .height(48.dp)
+          .height(52.dp)
       ) {
         when {
           isCheckingResume || isApplying -> {

@@ -15,6 +15,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -32,7 +35,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -136,6 +139,7 @@ private fun ProfileSettingsScreen(
     onLogoutClick: () -> Unit
 ) {
     val scrollState = rememberScrollState()
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
     Scaffold(
         topBar = {
             CompactTopBar(
@@ -157,7 +161,8 @@ private fun ProfileSettingsScreen(
                     .fillMaxSize()
                     .padding(padding)
                     .verticalScroll(scrollState)
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                    .padding(bottom = navPadding.calculateBottomPadding() + 24.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 SettingSection(
@@ -249,7 +254,7 @@ private fun SettingSection(
                 options.forEachIndexed { index, option ->
                     SettingRow(option = option, onClick = { onOptionSelected(option.label) })
                     if (index != options.lastIndex) {
-                        Divider(
+                        HorizontalDivider(
                             color = DividerColor,
                             thickness = 0.6.dp,
                             modifier = Modifier.padding(horizontal = 16.dp)

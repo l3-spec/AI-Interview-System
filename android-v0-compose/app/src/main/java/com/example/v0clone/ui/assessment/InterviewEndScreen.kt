@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -66,7 +66,7 @@ fun InterviewEndScreen(
             onClick = onNavigateHome,
             modifier = Modifier.align(Alignment.TopStart)
         ) {
-            Icon(imageVector = Icons.Filled.ArrowBack, contentDescription = "返回")
+            Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
         }
 
         Column(
@@ -181,10 +181,10 @@ private fun Illustration(
             val wavePath = Path().apply {
                 moveTo(0f, height * 0.75f)
                 // 第一个波浪
-                quadraticBezierTo(width * 0.15f, height * 0.65f, width * 0.3f, height * 0.7f)
-                quadraticBezierTo(width * 0.45f, height * 0.75f, width * 0.6f, height * 0.7f)
-                quadraticBezierTo(width * 0.75f, height * 0.65f, width * 0.9f, height * 0.7f)
-                quadraticBezierTo(width * 0.95f, height * 0.72f, width, height * 0.7f)
+                quadraticTo(width * 0.15f, height * 0.65f, width * 0.3f, height * 0.7f)
+                quadraticTo(width * 0.45f, height * 0.75f, width * 0.6f, height * 0.7f)
+                quadraticTo(width * 0.75f, height * 0.65f, width * 0.9f, height * 0.7f)
+                quadraticTo(width * 0.95f, height * 0.72f, width, height * 0.7f)
                 lineTo(width, height)
                 lineTo(0f, height)
                 close()
