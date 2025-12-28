@@ -500,8 +500,15 @@ router.post('/submit-answer',
       .withMessage('答案文本长度不能超过2000个字符'),
     body('answerVideoUrl')
       .optional()
-      .isURL()
-      .withMessage('answerVideoUrl 必须是有效的URL'),
+      .custom((value) => {
+        if (typeof value !== 'string' || value.trim().length === 0) {
+          throw new Error('answerVideoUrl 无效');
+        }
+        if (/^https?:\/\//i.test(value)) {
+          return true;
+        }
+        return true;
+      }),
     body('answerVideoPath')
       .optional()
       .isString()

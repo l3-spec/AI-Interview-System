@@ -13,7 +13,8 @@ import {
     message,
     Input,
     Select,
-    Tabs
+    Tabs,
+    Collapse
 } from 'antd';
 import { SearchOutlined, EyeOutlined, ReloadOutlined, PlayCircleOutlined, DownloadOutlined, RedoOutlined } from '@ant-design/icons';
 import { aiInterviewApi } from '../services/api';
@@ -60,6 +61,16 @@ interface Question {
     duration?: number;
 }
 
+interface AnalysisLog {
+    id: string;
+    action: string;
+    module: string;
+    description: string;
+    result: 'SUCCESS' | 'FAILED' | 'WARNING';
+    errorMsg?: string | null;
+    createdAt: string;
+}
+
 interface AnalysisReport {
     overallScore: number;
     competencies: {
@@ -76,6 +87,28 @@ interface AnalysisReport {
         ratio: number;
     };
     tips: string;
+    metrics?: {
+        videoConfidenceScore?: number | null;
+        emotionDistribution?: Record<string, number> | null;
+        emotionStability?: number | null;
+        speechQuality?: number | null;
+        bodyLanguageScore?: number | null;
+        postureStability?: number | null;
+        gazeFocus?: number | null;
+    };
+    insights?: {
+        video?: Array<{
+            frameMetrics?: Array<{
+                timeMs: number;
+                pose?: { pitch: number; yaw: number; roll: number } | null;
+                gaze?: { pitch: number; yaw: number; roll: number } | null;
+                eyeOpen?: number | null;
+                faceQuality?: number | null;
+                faceRect?: { left: number; top: number; width: number; height: number } | null;
+                rawFace?: Record<string, any> | null;
+            }>;
+        }>;
+    };
     status: string;
     error?: string;
     generatedAt: string;
@@ -115,9 +148,92 @@ const InterviewAnalysisManagement: React.FC = () => {
     const [analysisReport, setAnalysisReport] = useState<AnalysisReport | null>(null);
     const [questions, setQuestions] = useState<Question[]>([]);
     const [detailLoading, setDetailLoading] = useState(false);
+    const [analysisActionLoading, setAnalysisActionLoading] = useState(false);
+    const [analysisLogs, setAnalysisLogs] = useState<AnalysisLog[]>([]);
+    const [analysisLogsLoading, setAnalysisLogsLoading] = useState(false);
     const [detailActiveTab, setDetailActiveTab] = useState('questions');
     const [videoPlayerVisible, setVideoPlayerVisible] = useState(false);
     const [currentVideoUrl, setCurrentVideoUrl] = useState<string>('');
+
+    const buildFrameMetricsRows = () => {
+        const rawVideos = analysisReport?.insights?.video;
+        const videos = Array.isArray(rawVideos) ? rawVideos : [];
+        if (!videos.length) {
+            return [];
+        }
+        const rows: Array<Record<string, any>> = [];
+        videos.forEach((video, videoIndex) => {
+            const frames = Array.isArray(video.frameMetrics) ? video.frameMetrics : [];
+            frames.forEach((frame, frameIndex) => {
+                rows.push({
+                    videoIndex,
+                    frameIndex,
+                    timeMs: frame.timeMs ?? '',
+                    pose_pitch: frame.pose?.pitch ?? '',
+                    pose_yaw: frame.pose?.yaw ?? '',
+                    pose_roll: frame.pose?.roll ?? '',
+                    gaze_pitch: frame.gaze?.pitch ?? '',
+                    gaze_yaw: frame.gaze?.yaw ?? '',
+                    gaze_roll: frame.gaze?.roll ?? '',
+                    eyeOpen: frame.eyeOpen ?? '',
+                    faceQuality: frame.faceQuality ?? '',
+                    faceRect_left: frame.faceRect?.left ?? '',
+                    faceRect_top: frame.faceRect?.top ?? '',
+                    faceRect_width: frame.faceRect?.width ?? '',
+                    faceRect_height: frame.faceRect?.height ?? '',
+                    rawFace: frame.rawFace ? JSON.stringify(frame.rawFace) : ''
+                });
+            });
+        });
+        return rows;
+    };
+
+    const escapeCsvValue = (value: any) => {
+        if (value === null || value === undefined) {
+            return '';
+        }
+        const text = String(value);
+        return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    };
+
+    const handleExportFrameMetrics = () => {
+        const rows = buildFrameMetricsRows();
+        if (!rows.length) {
+            message.warning('暂无 frameMetrics 数据可导出');
+            return;
+        }
+        const headers = Object.keys(rows[0]);
+        const csvLines = [headers.join(',')];
+        rows.forEach((row) => {
+            csvLines.push(headers.map((key) => escapeCsvValue(row[key])).join(','));
+        });
+        const csvContent = `\uFEFF${csvLines.join('\n')}`;
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `frame_metrics_${currentSession?.id || 'analysis'}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
+
+    const buildRawFaceSnapshot = () => {
+        const rawVideos = analysisReport?.insights?.video;
+        const videos = Array.isArray(rawVideos) ? rawVideos : [];
+        if (!videos.length) {
+            return [];
+        }
+        return videos.map((video, videoIndex) => ({
+            videoIndex,
+            frames: (video.frameMetrics || []).map((frame, frameIndex) => ({
+                frameIndex,
+                timeMs: frame.timeMs,
+                rawFace: frame.rawFace || null
+            }))
+        }));
+    };
 
     const fetchSessions = async (page = 1, pageSize = 10) => {
         setSessionsLoading(true);
@@ -174,14 +290,10 @@ const InterviewAnalysisManagement: React.FC = () => {
         }
     }, [activeTab, sessionsFilters, tasksFilters]);
 
-    const handleViewAnalysis = async (record: InterviewSession) => {
-        setCurrentSession(record);
-        setDetailVisible(true);
+    const fetchAnalysisDetail = async (sessionId: string) => {
         setDetailLoading(true);
-        setDetailActiveTab('questions'); // 默认显示问题标签页
-        setVideoPlayerVisible(false); // 关闭视频播放器
         try {
-            const res = await aiInterviewApi.getSessionAnalysis(record.id);
+            const res = await aiInterviewApi.getSessionAnalysis(sessionId);
             if (res.success && res.data) {
                 setAnalysisReport(res.data.report);
                 setQuestions(res.data.questions || []);
@@ -193,6 +305,74 @@ const InterviewAnalysisManagement: React.FC = () => {
             message.error('获取分析详情失败');
         } finally {
             setDetailLoading(false);
+        }
+    };
+
+    const fetchAnalysisLogs = async (sessionId: string) => {
+        setAnalysisLogsLoading(true);
+        try {
+            const res = await aiInterviewApi.getAnalysisLogs(sessionId);
+            if (res.success && res.data) {
+                const list = res.data.list || res.data.logs || [];
+                setAnalysisLogs(list);
+            } else {
+                setAnalysisLogs([]);
+            }
+        } catch (error) {
+            message.error('获取分析日志失败');
+            setAnalysisLogs([]);
+        } finally {
+            setAnalysisLogsLoading(false);
+        }
+    };
+
+    const handleViewAnalysis = async (record: InterviewSession) => {
+        setCurrentSession(record);
+        setDetailVisible(true);
+        setDetailActiveTab('questions'); // 默认显示问题标签页
+        setVideoPlayerVisible(false); // 关闭视频播放器
+        setAnalysisLogs([]);
+        await Promise.all([
+            fetchAnalysisDetail(record.id),
+            fetchAnalysisLogs(record.id)
+        ]);
+    };
+
+    const handleRefreshAnalysis = async () => {
+        if (!currentSession) {
+            return;
+        }
+        await Promise.all([
+            fetchAnalysisDetail(currentSession.id),
+            fetchAnalysisLogs(currentSession.id)
+        ]);
+    };
+
+    const handleRefreshAnalysisLogs = async () => {
+        if (!currentSession) {
+            return;
+        }
+        await fetchAnalysisLogs(currentSession.id);
+    };
+
+    const handleGenerateAnalysis = async () => {
+        if (!currentSession) {
+            return;
+        }
+        setAnalysisActionLoading(true);
+        try {
+            const res = await aiInterviewApi.retryAnalysisTask(currentSession.id);
+            if (res.success) {
+                message.success(res.message || '分析任务已加入队列');
+                await fetchAnalysisLogs(currentSession.id);
+            } else {
+                message.error(res.message || '生成分析报告失败');
+            }
+        } catch (error) {
+            const serverMessage = (error as any)?.response?.data?.message;
+            message.error(serverMessage || '生成分析报告失败');
+        } finally {
+            setAnalysisActionLoading(false);
         }
     };
 
@@ -236,7 +416,9 @@ const InterviewAnalysisManagement: React.FC = () => {
                         message.error('重试失败');
                     }
                 } catch (error) {
-                    message.error('重试失败：' + (error instanceof Error ? error.message : '未知错误'));
+                    const serverMessage = (error as any)?.response?.data?.message;
+                    const fallback = error instanceof Error ? error.message : '未知错误';
+                    message.error(`重试失败：${serverMessage || fallback}`);
                 }
             }
         });
@@ -389,6 +571,73 @@ const InterviewAnalysisManagement: React.FC = () => {
         }
     ];
 
+    const analysisLogColumns = [
+        {
+            title: '时间',
+            dataIndex: 'createdAt',
+            key: 'createdAt',
+            width: 160,
+            render: (text: string) => new Date(text).toLocaleString()
+        },
+        {
+            title: '动作',
+            dataIndex: 'action',
+            key: 'action',
+            width: 180
+        },
+        {
+            title: '结果',
+            dataIndex: 'result',
+            key: 'result',
+            width: 90,
+            render: (result: string) => {
+                const colors: Record<string, string> = {
+                    SUCCESS: 'green',
+                    FAILED: 'red',
+                    WARNING: 'orange'
+                };
+                return <Tag color={colors[result] || 'default'}>{result}</Tag>;
+            }
+        },
+        {
+            title: '描述',
+            dataIndex: 'description',
+            key: 'description'
+        },
+        {
+            title: '错误',
+            dataIndex: 'errorMsg',
+            key: 'errorMsg',
+            render: (text: string | null) => text ? <Text type="danger">{text}</Text> : '-'
+        }
+    ];
+
+    const renderAnalysisLogsCard = () => (
+        <Card
+            title="分析日志"
+            extra={
+                <Button
+                    size="small"
+                    icon={<ReloadOutlined />}
+                    onClick={handleRefreshAnalysisLogs}
+                    loading={analysisLogsLoading}
+                >
+                    刷新
+                </Button>
+            }
+        >
+            <Table
+                rowKey="id"
+                size="small"
+                columns={analysisLogColumns}
+                dataSource={analysisLogs}
+                loading={analysisLogsLoading}
+                pagination={false}
+                locale={{ emptyText: '暂无分析日志' }}
+            />
+        </Card>
+    );
+
     return (
         <div style={{ padding: 24 }}>
             <Card title="AI面试/简历分析管理">
@@ -536,6 +785,68 @@ const InterviewAnalysisManagement: React.FC = () => {
                                         </Descriptions>
                                     </Card>
 
+                                    <Card title="客观指标">
+                                        <Descriptions bordered column={2}>
+                                            <Descriptions.Item label="视频自信度">
+                                                {analysisReport.metrics?.videoConfidenceScore != null ? (
+                                                    <Progress percent={Math.round(analysisReport.metrics.videoConfidenceScore)} size="small" />
+                                                ) : '-'}
+                                            </Descriptions.Item>
+                                            <Descriptions.Item label="情绪稳定性">
+                                                {analysisReport.metrics?.emotionStability != null ? (
+                                                    <Progress percent={Math.round(analysisReport.metrics.emotionStability)} size="small" />
+                                                ) : '-'}
+                                            </Descriptions.Item>
+                                            <Descriptions.Item label="语音质量">
+                                                {analysisReport.metrics?.speechQuality != null ? (
+                                                    <Progress percent={Math.round(analysisReport.metrics.speechQuality)} size="small" />
+                                                ) : '-'}
+                                            </Descriptions.Item>
+                                            <Descriptions.Item label="肢体语言">
+                                                {analysisReport.metrics?.bodyLanguageScore != null ? (
+                                                    <Progress percent={Math.round(analysisReport.metrics.bodyLanguageScore)} size="small" />
+                                                ) : '-'}
+                                            </Descriptions.Item>
+                                            <Descriptions.Item label="姿态稳定性">
+                                                {analysisReport.metrics?.postureStability != null ? (
+                                                    <Progress percent={Math.round(analysisReport.metrics.postureStability)} size="small" />
+                                                ) : '-'}
+                                            </Descriptions.Item>
+                                            <Descriptions.Item label="视线专注度">
+                                                {analysisReport.metrics?.gazeFocus != null ? (
+                                                    <Progress percent={Math.round(analysisReport.metrics.gazeFocus)} size="small" />
+                                                ) : '-'}
+                                            </Descriptions.Item>
+                                        </Descriptions>
+                                    </Card>
+
+                                    <Card
+                                        title="原始 DetectFace 字段"
+                                        extra={
+                                            <Button
+                                                size="small"
+                                                icon={<DownloadOutlined />}
+                                                onClick={handleExportFrameMetrics}
+                                            >
+                                                导出 CSV
+                                            </Button>
+                                        }
+                                    >
+                                        <Collapse
+                                            items={[
+                                                {
+                                                    key: 'detectface-raw',
+                                                    label: '查看 DetectFace 原始字段（frameMetrics.rawFace）',
+                                                    children: (
+                                                        <pre style={{ margin: 0, maxHeight: 360, overflow: 'auto', background: '#fafafa', padding: 12 }}>
+                                                            {JSON.stringify(buildRawFaceSnapshot(), null, 2)}
+                                                        </pre>
+                                                    )
+                                                }
+                                            ]}
+                                        />
+                                    </Card>
+
                                     <Card title="能力维度分析">
                                         <List
                                             grid={{ gutter: 16, column: 2 }}
@@ -577,11 +888,35 @@ const InterviewAnalysisManagement: React.FC = () => {
                                     <Card title="职场建议">
                                         <Paragraph>{analysisReport.tips}</Paragraph>
                                     </Card>
+
+                                    {renderAnalysisLogsCard()}
                                 </Space>
                             ) : (
-                                <div style={{ textAlign: 'center', padding: 50 }}>
-                                    <Text type="secondary">暂无分析报告</Text>
-                                </div>
+                                <Space direction="vertical" size="large" style={{ width: '100%' }}>
+                                    <div style={{ textAlign: 'center', padding: 50 }}>
+                                        <Space direction="vertical" size="middle">
+                                            <Text type="secondary">暂无分析报告</Text>
+                                            <Space>
+                                                <Button
+                                                    type="primary"
+                                                    onClick={handleGenerateAnalysis}
+                                                    loading={analysisActionLoading}
+                                                    disabled={currentSession?.status !== 'COMPLETED'}
+                                                >
+                                                    生成分析报告
+                                                </Button>
+                                                <Button icon={<ReloadOutlined />} onClick={handleRefreshAnalysis}>
+                                                    刷新
+                                                </Button>
+                                            </Space>
+                                            {currentSession?.status && currentSession.status !== 'COMPLETED' ? (
+                                                <Text type="secondary">面试状态为 {currentSession.status}，完成后才能生成报告</Text>
+                                            ) : null}
+                                        </Space>
+                                    </div>
+
+                                    {renderAnalysisLogsCard()}
+                                </Space>
                             )}
                         </Tabs.TabPane>
                     </Tabs>

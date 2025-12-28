@@ -811,6 +811,17 @@ export const aiInterviewApi = {
   getSessionAnalysis: async (sessionId: string): Promise<ApiResponse<any>> => {
     return await apiClient.get(`/admin/ai-interviews/${sessionId}/analysis`);
   },
+  getAnalysisLogs: async (sessionId: string, params?: Record<string, any>): Promise<ApiResponse<any>> => {
+    return await apiClient.get('/admin/logs', {
+      params: {
+        module: 'INTERVIEW_ANALYSIS',
+        search: sessionId,
+        page: 1,
+        pageSize: 50,
+        ...params
+      }
+    });
+  },
   getAnalysisTasks: async (params?: Record<string, any>): Promise<ApiResponse<PaginationResult<any>>> => {
     return await apiClient.get('/admin/ai-interviews/tasks', { params });
   },

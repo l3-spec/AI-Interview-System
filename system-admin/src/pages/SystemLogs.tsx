@@ -284,6 +284,7 @@ const SystemLogs: React.FC = () => {
       case 'ADMIN_MANAGEMENT': return '管理员管理';
       case 'DASHBOARD': return '仪表板';
       case 'SUBSCRIPTION_MANAGEMENT': return '订阅管理';
+      case 'INTERVIEW_ANALYSIS': return '面试分析';
       default: return module;
     }
   };
@@ -339,6 +340,7 @@ const SystemLogs: React.FC = () => {
               <option value="ADMIN_MANAGEMENT">管理员管理</option>
               <option value="DASHBOARD">仪表板</option>
               <option value="SUBSCRIPTION_MANAGEMENT">订阅管理</option>
+              <option value="INTERVIEW_ANALYSIS">面试分析</option>
             </select>
           </div>
 

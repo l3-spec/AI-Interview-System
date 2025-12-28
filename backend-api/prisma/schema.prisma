@@ -432,6 +432,8 @@ model AIInterviewAnalysisReport {
   emotionDistribution  String? @db.Text @map("emotion_distribution") // JSON: 情绪分布统计
   speechQuality        Float?  @map("speech_quality") // 语音质量评分 0-100
   bodyLanguageScore    Float?  @map("body_language_score") // 肢体语言评分 0-100
+  postureStability     Float?  @map("posture_stability") // 姿态稳定性 0-100
+  gazeFocus            Float?  @map("gaze_focus") // 视线专注度 0-100
   videoInsights        String? @db.Text @map("video_insights") // JSON: 详细视频分析结果
 
   createdAt           DateTime @default(now()) @map("created_at")

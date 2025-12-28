@@ -1,4 +1,13 @@
 import Core from '@alicloud/pop-core';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import { ossService } from './ossService';
+import { extractObjectKeyFromUrl } from '../utils/videoUrlResolver';
+
+const execFileAsync = promisify(execFile);
 
 /**
  * 情绪分析结果
@@ -6,6 +15,30 @@ import Core from '@alicloud/pop-core';
 interface EmotionResult {
     type: string; // 情绪类型: neutral, happiness, surprise, sadness, anger, disgust, fear
     confidence: number; // 置信度 0-1
+}
+
+interface FacePose {
+    pitch: number;
+    yaw: number;
+    roll: number;
+}
+
+interface FrameAnalysis {
+    emotions: EmotionResult[];
+    pose?: FacePose | null;
+    gaze?: FacePose | null;
+    eyeOpen?: number | null;
+    faceQuality?: number | null;
+    faceRect?: FaceRect | null;
+    timeMs: number;
+    rawFace?: Record<string, any> | null;
+}
+
+interface FaceRect {
+    top: number;
+    left: number;
+    width: number;
+    height: number;
 }
 
 /**
@@ -16,6 +49,18 @@ interface VideoAnalysisResult {
     overallConfidence: number; // 综合自信度 0-100
     dominantEmotion: string; // 主导情绪
     emotionStability: number; // 情绪稳定性 0-100
+    postureStability?: number; // 姿态稳定性 0-100
+    gazeFocus?: number; // 视线专注度 0-100
+    headPose?: FacePose; // 平均头部姿态
+    frameMetrics?: Array<{
+        timeMs: number;
+        pose?: FacePose | null;
+        gaze?: FacePose | null;
+        eyeOpen?: number | null;
+        faceQuality?: number | null;
+        faceRect?: FaceRect | null;
+        rawFace?: Record<string, any> | null;
+    }>;
 }
 
 /**
@@ -25,22 +70,29 @@ interface VideoAnalysisResult {
 class AliyunVideoAIService {
     private client?: Core; // 可选属性，未配置时为undefined
     private enabled: boolean;
+    private debug: boolean;
+    private ffmpegPath: string = 'ffmpeg';
 
     constructor() {
+        this.ffmpegPath = this.resolveFfmpegPath();
         const accessKeyId = process.env.ALIYUN_ACCESS_KEY_ID;
         const accessKeySecret = process.env.ALIYUN_ACCESS_KEY_SECRET;
+        const region = process.env.ALIYUN_FACEBODY_REGION || 'cn-shanghai';
+        const endpoint = process.env.ALIYUN_FACEBODY_ENDPOINT || `https://facebody.${region}.aliyuncs.com`;
 
         if (!accessKeyId || !accessKeySecret) {
             console.warn('[AliyunVideoAI] 未配置阿里云密钥，视频分析功能将被禁用');
             this.enabled = false;
+            this.debug = false;
             return;
         }
 
         this.enabled = true;
+        this.debug = process.env.ALIYUN_FACEBODY_DEBUG === 'true';
         this.client = new Core({
             accessKeyId,
             accessKeySecret,
-            endpoint: 'https://facebody.cn-shanghai.aliyuncs.com',
+            endpoint,
             apiVersion: '2019-12-30'
         });
 
@@ -66,17 +118,44 @@ class AliyunVideoAIService {
             // 2. 对每一帧调用表情识别API
             // 3. 聚合结果并计算统计指标
 
-            // 当前简化实现：仅分析视频封面或第一帧
-            const emotions = await this.analyzeVideoFrames(videoUrl);
+            const frameResults = await this.analyzeVideoFrames(videoUrl);
+            const emotions = frameResults.flatMap(frame => frame.emotions);
+
+            const postureScores = frameResults
+                .map(frame => this.calculatePostureScore(frame.pose))
+                .filter(score => typeof score === 'number') as number[];
+            const gazeScores = frameResults
+                .map(frame => this.calculateGazeScore(frame.gaze, frame.eyeOpen, frame.pose))
+                .filter(score => typeof score === 'number') as number[];
+
+            const postureStability = this.calculateStabilityFromScores(postureScores);
+            const gazeFocus = gazeScores.length
+                ? Math.round(gazeScores.reduce((sum, v) => sum + v, 0) / gazeScores.length)
+                : undefined;
+
+            const avgPose = this.averagePose(frameResults.map(frame => frame.pose).filter(Boolean) as FacePose[]);
+            const frameMetrics = frameResults.map(frame => ({
+                timeMs: frame.timeMs,
+                pose: frame.pose ?? null,
+                gaze: frame.gaze ?? null,
+                eyeOpen: frame.eyeOpen ?? null,
+                faceQuality: frame.faceQuality ?? null,
+                faceRect: frame.faceRect ?? null,
+                rawFace: frame.rawFace ?? null
+            }));
 
             const result = {
                 emotions,
                 overallConfidence: this.calculateOverallConfidence(emotions),
                 dominantEmotion: this.getDominantEmotion(emotions),
-                emotionStability: this.calculateEmotionStability(emotions)
+                emotionStability: this.calculateEmotionStability(emotions),
+                postureStability,
+                gazeFocus,
+                headPose: avgPose || undefined,
+                frameMetrics
             };
 
-            console.log(`[AliyunVideoAI] 分析完成: 主导情绪=${result.dominantEmotion}, 自信度=${result.overallConfidence}`);
+            console.log(`[AliyunVideoAI] 分析完成: 主导情绪=${result.dominantEmotion}, 自信度=${result.overallConfidence}, 姿态稳定=${result.postureStability ?? 'N/A'}, 视线专注=${result.gazeFocus ?? 'N/A'}`);
             return result;
 
         } catch (error) {
@@ -89,50 +168,613 @@ class AliyunVideoAIService {
      * 分析视频帧（提取关键帧并识别表情）
      * 简化实现：仅分析视频封面
      */
-    private async analyzeVideoFrames(videoUrl: string): Promise<EmotionResult[]> {
+    private async analyzeVideoFrames(videoUrl: string): Promise<FrameAnalysis[]> {
         if (!this.client) {
             // 客户端未初始化，返回默认值
-            return [{ type: 'neutral', confidence: 0.6 }];
+            return [{
+                emotions: [{ type: 'neutral', confidence: 0.6 }],
+                pose: null,
+                gaze: null,
+                eyeOpen: null,
+                faceQuality: null,
+                faceRect: null,
+                timeMs: 0,
+                rawFace: null
+            }];
         }
 
         try {
-            // 将视频URL转换为封面图URL（假设OSS支持?x-oss-process=video/snapshot）
-            const snapshotUrl = `${videoUrl}?x-oss-process=video/snapshot,t_1000,f_jpg,w_0,h_0,m_fast`;
+            const frameResults: FrameAnalysis[] = [];
+            const times = this.parseSnapshotTimes(process.env.VIDEO_SNAPSHOT_TIMES_MS);
+            let extractedFrames: Array<{ timeMs: number; path: string }> = [];
+            let cleanup: (() => void) | null = null;
 
-            const params = {
-                RegionId: 'cn-shanghai',
-                ImageURL: snapshotUrl
-            };
+            try {
+                const extraction = await this.extractFramesWithFfmpeg(videoUrl, times);
+                extractedFrames = extraction.frames;
+                cleanup = extraction.cleanup;
+            } catch (error) {
+                console.warn('[AliyunVideoAI] 本地抽帧失败，回退到OSS截帧:', error);
+            }
 
-            const response = await this.client.request('RecognizeExpression', params, {
-                method: 'POST'
-            });
+            try {
+                if (extractedFrames.length > 0) {
+                    for (const frame of extractedFrames) {
+                        try {
+                            const imageData = fs.readFileSync(frame.path).toString('base64');
+                            const emotions = await this.recognizeExpression({ data: imageData });
+                            const faceAttributes = await this.detectFaceAttributes({ data: imageData });
 
-            return this.parseEmotionResponse(response);
+                            frameResults.push({
+                                emotions,
+                                pose: faceAttributes.pose,
+                                gaze: faceAttributes.gaze,
+                                eyeOpen: faceAttributes.eyeOpen,
+                                faceQuality: faceAttributes.faceQuality,
+                                faceRect: faceAttributes.faceRect,
+                                timeMs: frame.timeMs,
+                                rawFace: faceAttributes.rawFace
+                            });
+                        } catch (error) {
+                            console.warn('[AliyunVideoAI] 单帧分析失败，跳过该帧:', error);
+                        }
+                    }
+                }
+
+                if (!frameResults.length) {
+                    const snapshotUrls = await this.buildSnapshotUrls(videoUrl);
+                    for (const snapshot of snapshotUrls) {
+                        try {
+                            const emotions = await this.recognizeExpression({ url: snapshot.url });
+                            const faceAttributes = await this.detectFaceAttributes({ url: snapshot.url });
+
+                            frameResults.push({
+                                emotions,
+                                pose: faceAttributes.pose,
+                                gaze: faceAttributes.gaze,
+                                eyeOpen: faceAttributes.eyeOpen,
+                                faceQuality: faceAttributes.faceQuality,
+                                faceRect: faceAttributes.faceRect,
+                                timeMs: snapshot.timeMs,
+                                rawFace: faceAttributes.rawFace
+                            });
+                        } catch (error) {
+                            console.warn('[AliyunVideoAI] 单帧分析失败，跳过该帧:', error);
+                        }
+                    }
+                }
+            } finally {
+                if (cleanup) {
+                    cleanup();
+                }
+            }
+
+            return frameResults.length
+                ? frameResults
+                : [{
+                emotions: [{ type: 'neutral', confidence: 0.6 }],
+                pose: null,
+                gaze: null,
+                eyeOpen: null,
+                faceQuality: null,
+                faceRect: null,
+                timeMs: 0,
+                rawFace: null
+            }];
 
         } catch (error) {
             console.warn('[AliyunVideoAI] 帧分析失败，使用模拟数据:', error);
             // 返回模拟数据以便测试
-            return [
-                { type: 'neutral', confidence: 0.6 },
-                { type: 'happiness', confidence: 0.3 }
-            ];
+            return [{
+                emotions: [
+                    { type: 'neutral', confidence: 0.6 },
+                    { type: 'happiness', confidence: 0.3 }
+                ],
+                pose: null,
+                gaze: null,
+                eyeOpen: null,
+                faceQuality: null,
+                faceRect: null,
+                timeMs: 0,
+                rawFace: null
+            }];
         }
+    }
+
+    private resolveFfmpegPath(): string {
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const resolved = require('ffmpeg-static');
+            if (typeof resolved === 'string' && resolved) {
+                return resolved;
+            }
+            if (resolved && typeof resolved.default === 'string') {
+                return resolved.default;
+            }
+        } catch (error) {
+            // ignore
+        }
+        return 'ffmpeg';
+    }
+
+    private async extractFramesWithFfmpeg(
+        videoUrl: string,
+        times: number[]
+    ): Promise<{ frames: Array<{ timeMs: number; path: string }>; cleanup: () => void }> {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-interview-frames-'));
+        const frames: Array<{ timeMs: number; path: string }> = [];
+
+        const cleanup = () => {
+            try {
+                fs.rmSync(tempDir, { recursive: true, force: true });
+            } catch (error) {
+                console.warn('[AliyunVideoAI] 清理临时帧文件失败:', error);
+            }
+        };
+
+        for (const timeMs of times) {
+            const outputPath = path.join(tempDir, `frame_${timeMs}.jpg`);
+            const seconds = Math.max(0, timeMs / 1000);
+            try {
+                await execFileAsync(this.ffmpegPath, [
+                    '-y',
+                    '-ss', seconds.toFixed(3),
+                    '-i', videoUrl,
+                    '-frames:v', '1',
+                    '-q:v', '2',
+                    '-vf', 'scale=640:-1',
+                    '-an',
+                    '-sn',
+                    outputPath
+                ]);
+                if (fs.existsSync(outputPath)) {
+                    frames.push({ timeMs, path: outputPath });
+                }
+            } catch (error) {
+                console.warn(`[AliyunVideoAI] 抽帧失败 time=${timeMs}ms:`, error);
+            }
+        }
+
+        if (!frames.length) {
+            cleanup();
+        }
+
+        return { frames, cleanup };
+    }
+
+    private async buildSnapshotUrls(videoUrl: string): Promise<Array<{ url: string; timeMs: number }>> {
+        const times = this.parseSnapshotTimes(process.env.VIDEO_SNAPSHOT_TIMES_MS);
+        const objectKey = extractObjectKeyFromUrl(videoUrl);
+        const urls: Array<{ url: string; timeMs: number }> = [];
+
+        for (const t of times) {
+            const process = `video/snapshot,t_${t},f_jpg,w_0,h_0,m_fast`;
+            let snapshotUrl: string | null = null;
+
+            if (objectKey) {
+                try {
+                    snapshotUrl = await ossService.generateSignedProcessUrl(objectKey, process, 3600);
+                } catch (error) {
+                    console.warn('[AliyunVideoAI] 生成签名截帧URL失败，尝试直接拼接:', error);
+                }
+            }
+
+            if (!snapshotUrl) {
+                snapshotUrl = this.appendProcessToUrl(videoUrl, process);
+            }
+
+            urls.push({ url: snapshotUrl, timeMs: t });
+        }
+
+        return urls;
+    }
+
+    private parseSnapshotTimes(raw?: string | null): number[] {
+        if (raw) {
+            const parsed = raw
+                .split(',')
+                .map(value => parseInt(value.trim(), 10))
+                .filter(value => Number.isFinite(value) && value > 0);
+            if (parsed.length) {
+                return parsed.slice(0, 5);
+            }
+        }
+        return [1000, 3000, 5000];
+    }
+
+    private appendProcessToUrl(url: string, process: string): string {
+        const separator = url.includes('?') ? '&' : '?';
+        return `${url}${separator}x-oss-process=${encodeURIComponent(process)}`;
+    }
+
+    private async detectFaceAttributes(image: { url?: string; data?: string }): Promise<{
+        pose?: FacePose | null;
+        gaze?: FacePose | null;
+        eyeOpen?: number | null;
+        faceQuality?: number | null;
+        faceRect?: FaceRect | null;
+        rawFace?: Record<string, any> | null;
+    }> {
+        if (!this.client) {
+            return {
+                pose: null,
+                gaze: null,
+                eyeOpen: null,
+                faceQuality: null,
+                faceRect: null,
+                rawFace: null
+            };
+        }
+
+        try {
+            const params: Record<string, any> = {
+                RegionId: process.env.ALIYUN_FACEBODY_REGION || 'cn-shanghai'
+            };
+
+            if (image.data) {
+                params.ImageData = image.data;
+            } else if (image.url) {
+                params.ImageURL = image.url;
+            } else {
+                return {
+                    pose: null,
+                    gaze: null,
+                    eyeOpen: null,
+                    faceQuality: null,
+                    faceRect: null,
+                    rawFace: null
+                };
+            }
+
+            const response = await this.client.request('DetectFace', params, {
+                method: 'POST'
+            });
+
+            if (this.debug) {
+                this.logFaceResponse(response);
+            }
+
+            const element = this.extractFaceElement(response);
+            const pose = this.extractPose(element);
+            const gaze = this.extractGaze(element);
+            const eyeOpen = this.extractEyeOpen(element);
+            const faceQuality = this.extractFaceQuality(element);
+            const faceRect = this.extractFaceRect(element);
+            const rawFace = this.extractRawFaceData(element);
+
+            return { pose, gaze, eyeOpen, faceQuality, faceRect, rawFace };
+        } catch (error) {
+            console.warn('[AliyunVideoAI] 姿态/视线识别失败:', error);
+            return {
+                pose: null,
+                gaze: null,
+                eyeOpen: null,
+                faceQuality: null,
+                faceRect: null,
+                rawFace: null
+            };
+        }
+    }
+
+    private logFaceResponse(response: any) {
+        try {
+            const data = response?.Data || response;
+            const sample = {
+                keys: Object.keys(data || {}),
+                elementKeys: Object.keys(this.extractFaceElement(response) || {})
+            };
+            console.log('[AliyunVideoAI] Facebody响应摘要:', sample);
+        } catch (error) {
+            console.warn('[AliyunVideoAI] Facebody响应摘要失败:', error);
+        }
+    }
+
+    private extractFaceElement(response: any): any | null {
+        const data = response?.Data || response;
+        const candidates = [
+            data?.Elements,
+            data?.Faces,
+            data?.FaceInfos,
+            data?.FaceList,
+            data?.FaceAttributes,
+            data?.FaceAttribute
+        ];
+
+        for (const candidate of candidates) {
+            if (Array.isArray(candidate) && candidate.length > 0) {
+                return candidate[0];
+            }
+            if (candidate && typeof candidate === 'object') {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private extractPose(element: any): FacePose | null {
+        if (!element) {
+            return null;
+        }
+
+        const candidates = [
+            element.HeadPose,
+            element.Pose,
+            element.FacePose,
+            element.FaceAttributes?.HeadPose,
+            element.FaceAttributes?.Pose,
+            element.FaceAttribute?.HeadPose,
+            element.FaceAttribute?.Pose,
+            element.FaceAttributes?.HeadPoseResult,
+            element.FaceAttributes?.PoseResult,
+            element.FaceAttribute?.HeadPoseResult,
+            element.FaceAttribute?.PoseResult,
+            element.HeadPoseResult,
+            element.HeadPoseResults?.[0],
+            element.HeadPoseInfo
+        ];
+
+        for (const candidate of candidates) {
+            const pose = this.normalizePose(candidate);
+            if (pose) {
+                return pose;
+            }
+        }
+        return null;
+    }
+
+    private extractGaze(element: any): FacePose | null {
+        if (!element) {
+            return null;
+        }
+
+        const candidates = [
+            element.Gaze,
+            element.EyeGaze,
+            element.GazeInfo,
+            element.FaceAttributes?.Gaze,
+            element.FaceAttributes?.EyeGaze
+        ];
+
+        for (const candidate of candidates) {
+            const gaze = this.normalizePose(candidate);
+            if (gaze) {
+                return gaze;
+            }
+        }
+        return null;
+    }
+
+    private extractEyeOpen(element: any): number | null {
+        if (!element) {
+            return null;
+        }
+        const candidates = [
+            element.EyeOpen,
+            element.EyeOpenScore,
+            element.FaceAttributes?.EyeOpen,
+            element.FaceAttributes?.EyeOpenScore,
+            element.FaceAttribute?.EyeOpen,
+            element.FaceAttributes?.EyeStatus,
+            element.FaceAttribute?.EyeStatus
+        ];
+
+        for (const candidate of candidates) {
+            const value = this.toNumber(candidate);
+            if (value !== null) {
+                return this.clampScore(value * (value <= 1 ? 100 : 1));
+            }
+        }
+
+        const left = this.toNumber(element.LeftEyeOpen ?? element.LeftEyeOpenScore);
+        const right = this.toNumber(element.RightEyeOpen ?? element.RightEyeOpenScore);
+        if (left !== null || right !== null) {
+            const leftScore = left !== null ? left : right ?? 0;
+            const rightScore = right !== null ? right : left ?? 0;
+            return this.clampScore(((leftScore + rightScore) / 2) * (Math.max(leftScore, rightScore) <= 1 ? 100 : 1));
+        }
+
+        const eyeStatus = element.EyeStatus || element.FaceAttributes?.EyeStatus || element.FaceAttribute?.EyeStatus;
+        if (eyeStatus && typeof eyeStatus === 'object') {
+            const leftStatus = this.toNumber(eyeStatus.Left ?? eyeStatus.left ?? eyeStatus.LeftEye ?? eyeStatus.leftEye);
+            const rightStatus = this.toNumber(eyeStatus.Right ?? eyeStatus.right ?? eyeStatus.RightEye ?? eyeStatus.rightEye);
+            if (leftStatus !== null || rightStatus !== null) {
+                const leftValue = leftStatus !== null ? leftStatus : rightStatus ?? 0;
+                const rightValue = rightStatus !== null ? rightStatus : leftStatus ?? 0;
+                return this.clampScore(((leftValue + rightValue) / 2) * (Math.max(leftValue, rightValue) <= 1 ? 100 : 1));
+            }
+        }
+
+        return null;
+    }
+
+    private extractFaceQuality(element: any): number | null {
+        if (!element) {
+            return null;
+        }
+        const candidates = [
+            element.FaceQuality,
+            element.FaceQualityScore,
+            element.Quality,
+            element.QualityScore,
+            element.FaceAttributes?.FaceQuality,
+            element.FaceAttributes?.FaceQualityScore,
+            element.FaceAttribute?.FaceQuality,
+            element.FaceAttribute?.FaceQualityScore
+        ];
+
+        for (const candidate of candidates) {
+            const value = this.toNumber(candidate);
+            if (value !== null) {
+                return this.clampScore(value * (value <= 1 ? 100 : 1));
+            }
+        }
+        return null;
+    }
+
+    private extractFaceRect(element: any): FaceRect | null {
+        if (!element) {
+            return null;
+        }
+        const candidates = [
+            element.FaceRect,
+            element.BoundingBox,
+            element.FaceBoundingBox,
+            element.FaceAttributes?.FaceRect,
+            element.FaceAttribute?.FaceRect
+        ];
+
+        for (const candidate of candidates) {
+            if (!candidate || typeof candidate !== 'object') {
+                continue;
+            }
+            const left = this.toNumber(candidate.Left ?? candidate.left ?? candidate.X ?? candidate.x);
+            const top = this.toNumber(candidate.Top ?? candidate.top ?? candidate.Y ?? candidate.y);
+            const width = this.toNumber(candidate.Width ?? candidate.width ?? candidate.W ?? candidate.w);
+            const height = this.toNumber(candidate.Height ?? candidate.height ?? candidate.H ?? candidate.h);
+            if (left !== null && top !== null && width !== null && height !== null) {
+                return { left, top, width, height };
+            }
+        }
+        return null;
+    }
+
+    private extractRawFaceData(element: any): Record<string, any> | null {
+        if (!element) {
+            return null;
+        }
+
+        return {
+            headPose: element.HeadPose ?? element.FaceAttributes?.HeadPose ?? element.FaceAttribute?.HeadPose ?? null,
+            gaze: element.Gaze ?? element.FaceAttributes?.Gaze ?? element.FaceAttribute?.Gaze ?? null,
+            eyeStatus: element.EyeStatus ?? element.FaceAttributes?.EyeStatus ?? element.FaceAttribute?.EyeStatus ?? null,
+            faceQuality: element.FaceQuality ?? element.FaceAttributes?.FaceQuality ?? element.FaceAttribute?.FaceQuality ?? null,
+            faceRect: element.FaceRect ?? element.FaceAttributes?.FaceRect ?? element.FaceAttribute?.FaceRect ?? null
+        };
+    }
+
+    private normalizePose(candidate: any): FacePose | null {
+        if (!candidate) {
+            return null;
+        }
+        if (Array.isArray(candidate) && candidate.length >= 3) {
+            const values = candidate.map((item: any) => this.toNumber(item)).filter(value => value !== null) as number[];
+            if (values.length >= 3) {
+                return { pitch: values[0], yaw: values[1], roll: values[2] };
+            }
+        }
+
+        const pose = Array.isArray(candidate) ? candidate[0] : candidate;
+        const pitch = this.toNumber(
+            pose.Pitch ?? pose.pitch ?? pose.AnglePitch ?? pose.pitchAngle ?? pose.UpDown ?? pose.upDown
+        );
+        const yaw = this.toNumber(
+            pose.Yaw ?? pose.yaw ?? pose.AngleYaw ?? pose.yawAngle ?? pose.LeftRight ?? pose.leftRight
+        );
+        const roll = this.toNumber(
+            pose.Roll ?? pose.roll ?? pose.AngleRoll ?? pose.rollAngle ?? pose.Tilt ?? pose.tilt
+        );
+
+        if (pitch === null || yaw === null || roll === null) {
+            return null;
+        }
+
+        return { pitch, yaw, roll };
+    }
+
+    private calculatePostureScore(pose?: FacePose | null): number | null {
+        if (!pose) {
+            return null;
+        }
+        const deviation = Math.abs(pose.pitch) + Math.abs(pose.yaw) + Math.abs(pose.roll);
+        return this.clampScore(100 - deviation * 1.2);
+    }
+
+    private calculateGazeScore(
+        gaze?: FacePose | null,
+        eyeOpen?: number | null,
+        pose?: FacePose | null
+    ): number | null {
+        const source = gaze || pose;
+        if (!source) {
+            return null;
+        }
+        const deviation = Math.abs(source.pitch) * 2 + Math.abs(source.yaw) * 2;
+        let score = 100 - deviation;
+        if (eyeOpen !== null && eyeOpen !== undefined && eyeOpen < 30) {
+            score -= 15;
+        }
+        return this.clampScore(score);
+    }
+
+    private calculateStabilityFromScores(scores: number[]): number | undefined {
+        if (!scores.length) {
+            return undefined;
+        }
+        if (scores.length === 1) {
+            return Math.round(scores[0]);
+        }
+        const avg = scores.reduce((sum, v) => sum + v, 0) / scores.length;
+        const variance = scores.reduce((sum, v) => sum + Math.pow(v - avg, 2), 0) / scores.length;
+        const std = Math.sqrt(variance);
+        return Math.round(this.clampScore(avg - std * 0.6));
+    }
+
+    private averagePose(poses: FacePose[]): FacePose | null {
+        if (!poses.length) {
+            return null;
+        }
+        const avg = poses.reduce(
+            (acc, pose) => {
+                acc.pitch += pose.pitch;
+                acc.yaw += pose.yaw;
+                acc.roll += pose.roll;
+                return acc;
+            },
+            { pitch: 0, yaw: 0, roll: 0 }
+        );
+        return {
+            pitch: Number((avg.pitch / poses.length).toFixed(2)),
+            yaw: Number((avg.yaw / poses.length).toFixed(2)),
+            roll: Number((avg.roll / poses.length).toFixed(2))
+        };
+    }
+
+    private toNumber(value: any): number | null {
+        if (value === null || value === undefined) {
+            return null;
+        }
+        const num = Number(value);
+        return Number.isFinite(num) ? num : null;
+    }
+
+    private clampScore(value: number): number {
+        if (!Number.isFinite(value)) {
+            return 0;
+        }
+        return Math.max(0, Math.min(100, Math.round(value)));
     }
 
     /**
      * 表情识别API（单张图片）
      */
-    async recognizeExpression(imageUrl: string): Promise<EmotionResult[]> {
+    async recognizeExpression(image: { url?: string; data?: string }): Promise<EmotionResult[]> {
         if (!this.enabled || !this.client) {
             return [{ type: 'neutral', confidence: 1.0 }];
         }
 
         try {
-            const params = {
-                RegionId: 'cn-shanghai',
-                ImageURL: imageUrl
+            const params: Record<string, any> = {
+                RegionId: process.env.ALIYUN_FACEBODY_REGION || 'cn-shanghai'
             };
+
+            if (image.data) {
+                params.ImageData = image.data;
+            } else if (image.url) {
+                params.ImageURL = image.url;
+            } else {
+                return [{ type: 'neutral', confidence: 1.0 }];
+            }
 
             const response = await this.client.request('RecognizeExpression', params, {
                 method: 'POST'
@@ -267,7 +909,10 @@ class AliyunVideoAIService {
             emotions: [{ type: 'neutral', confidence: 1.0 }],
             overallConfidence: 60,
             dominantEmotion: 'neutral',
-            emotionStability: 70
+            emotionStability: 70,
+            postureStability: 70,
+            gazeFocus: 70,
+            headPose: { pitch: 0, yaw: 0, roll: 0 }
         };
     }
 

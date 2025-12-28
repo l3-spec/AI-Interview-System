@@ -1,8 +1,10 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
+import fs from 'fs';
 import { deepseekService } from './deepseekService';
 import { videoGenerationQueue } from '../queues/videoGenerationQueue';
 import { interviewMediaService } from './interviewMediaService';
+import { buildObjectKey, resolveVideoUrl } from '../utils/videoUrlResolver';
 
 const prisma = new PrismaClient();
 
@@ -568,6 +570,8 @@ class AIInterviewService {
         };
       }
 
+      const normalized = this.normalizeVideoInfo(sessionId, videoUrl, videoPath, questionIndex);
+
       // 更新问题答案
       await prisma.aIInterviewQuestion.updateMany({
         where: {
@@ -576,8 +580,8 @@ class AIInterviewService {
         },
         data: {
           answerText,
-          answerVideoUrl: videoUrl,
-          answerVideoPath: videoPath,
+          answerVideoUrl: normalized.videoUrl,
+          answerVideoPath: normalized.videoPath,
           answerDuration: duration,
           answeredAt: new Date(),
         },
@@ -657,10 +661,12 @@ class AIInterviewService {
     durationMs?: number
   ): Promise<{ success: boolean; message?: string; error?: string }> {
     try {
+      const normalized = this.normalizeVideoInfo(sessionId, videoUrl, undefined, questionIndex);
       const updateResult = await prisma.aIInterviewQuestion.updateMany({
         where: { sessionId, questionIndex },
         data: {
-          answerVideoUrl: videoUrl,
+          answerVideoUrl: normalized.videoUrl,
+          answerVideoPath: normalized.videoPath,
           answerDuration: durationMs ? Math.max(1, Math.round(durationMs / 1000)) : undefined,
           answeredAt: new Date(),
         },
@@ -683,6 +689,32 @@ class AIInterviewService {
         error: error instanceof Error ? error.message : '绑定面试视频链接失败',
       };
     }
+  }
+
+  private normalizeVideoInfo(
+    sessionId: string,
+    videoUrl?: string,
+    videoPath?: string,
+    questionIndex?: number
+  ): { videoUrl?: string; videoPath?: string } {
+    const isLocalPath = videoPath && fs.existsSync(videoPath);
+    const objectKey = buildObjectKey({
+      sessionId,
+      answerVideoUrl: videoUrl,
+      answerVideoPath: isLocalPath ? undefined : videoPath,
+      questionIndex
+    });
+    const resolvedUrl = resolveVideoUrl({
+      sessionId,
+      answerVideoUrl: videoUrl,
+      answerVideoPath: isLocalPath ? undefined : videoPath,
+      questionIndex
+    });
+
+    return {
+      videoUrl: resolvedUrl || videoUrl,
+      videoPath: isLocalPath ? videoPath : objectKey || videoPath
+    };
   }
 
   /**
@@ -712,7 +744,7 @@ class AIInterviewService {
 
       // 检查每个问题是否至少有视频或文本答案之一
       const missingBoth = (session.questions || []).filter(
-        q => !q.answerVideoUrl && (!q.answerText || q.answerText.trim().length === 0)
+        q => !q.answerVideoUrl && !q.answerVideoPath && (!q.answerText || q.answerText.trim().length === 0)
       );
 
       if (missingBoth.length > 0) {
