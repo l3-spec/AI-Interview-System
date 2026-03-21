@@ -1,0 +1,120 @@
+package com.xlwl.AiMian.ui.auth
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.xlwl.AiMian.R
+import com.xlwl.AiMian.ui.design.StarLinkAccentOrange
+import com.xlwl.AiMian.ui.design.StarLinkLinkBlue
+import com.xlwl.AiMian.ui.design.StarLinkPlaceholderGray
+import com.xlwl.AiMian.ui.design.StarLinkPrimaryText
+import com.xlwl.AiMian.ui.design.StarLinkWhite
+import androidx.compose.foundation.shape.CircleShape
+
+@Composable
+fun AuthBrandLockup(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        Image(
+            painter = painterResource(id = R.drawable.login_logo),
+            contentDescription = "STAR-LINK FUTURE",
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Fit
+        )
+    }
+}
+
+@Composable
+fun FigmaAgreementCheckbox(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Box(
+        modifier = Modifier
+            .size(14.dp)
+            .clip(CircleShape)
+            .background(
+                color = if (checked) StarLinkAccentOrange else StarLinkWhite,
+                shape = CircleShape
+            )
+            .border(
+                width = 1.dp,
+                color = if (checked) StarLinkAccentOrange else StarLinkPlaceholderGray,
+                shape = CircleShape
+            )
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                role = Role.Checkbox
+            ) { onCheckedChange(!checked) }
+            .semantics {
+                toggleableState = if (checked) ToggleableState.On else ToggleableState.Off
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        if (checked) {
+            Icon(
+                imageVector = Icons.Filled.Check,
+                contentDescription = null,
+                tint = StarLinkWhite,
+                modifier = Modifier.size(9.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun FigmaAgreementText(modifier: Modifier = Modifier) {
+    val agreementText = buildAnnotatedString {
+        append("我已阅读并同意")
+        withStyle(style = SpanStyle(color = StarLinkLinkBlue)) {
+            append("《用户须知》")
+        }
+        append("和")
+        withStyle(style = SpanStyle(color = StarLinkLinkBlue)) {
+            append("《隐私条款》")
+        }
+    }
+
+    Text(
+        text = agreementText,
+        style = TextStyle(
+            color = StarLinkPrimaryText,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Light,
+            lineHeight = 21.sp,
+            letterSpacing = (-0.32).sp
+        ),
+        modifier = modifier
+    )
+}

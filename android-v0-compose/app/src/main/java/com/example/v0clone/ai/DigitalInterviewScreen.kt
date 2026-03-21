@@ -555,7 +555,15 @@ fun DigitalInterviewScreen(
             onDigitalHumanStatus = { status -> duixStatus = status }
         )
 
-        // 第二层：UI 控制层（中间层，zIndex 中等，不拦截触摸事件）
+        // 数字人说话时的光环脉冲效果
+        SpeakingAuraOverlay(
+            isSpeaking = isDigitalHumanSpeaking,
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(0.5f)
+        )
+
+        // 第二层：UI 控制层
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -566,11 +574,25 @@ fun DigitalInterviewScreen(
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
-                TopSection(
-                    currentQuestion = uiState.currentQuestion,
-                    totalQuestions = uiState.totalQuestions
-                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularInterviewProgress(
+                        current = uiState.currentQuestion,
+                        total = uiState.totalQuestions,
+                        modifier = Modifier.size(44.dp)
+                    )
 
+                    InterviewStateIndicator(
+                        isRecording = isRecording,
+                        isSpeaking = isDigitalHumanSpeaking,
+                        isThinking = isProcessing,
+                        isConnected = connectionState == ConnectionState.CONNECTED
+                    )
+                }
             }
 
             BottomSection(
@@ -926,11 +948,11 @@ private fun BottomSection(
 
         ConversationPanel(
             partialTranscript = partialTranscript,
-            // 优先显示实时推送的数字人文本，如果没有则显示UI状态中的题目文本
             latestDigitalHumanText = latestDigitalHumanText ?: uiState.questionText,
             conversation = conversation,
             isRecording = isRecording,
             isDigitalHumanSpeaking = isDigitalHumanSpeaking,
+            isProcessing = isProcessing,
             connectionState = connectionState
         )
 
@@ -1004,21 +1026,18 @@ private fun ConversationPanel(
     conversation: List<ConversationMessage>,
     isRecording: Boolean,
     isDigitalHumanSpeaking: Boolean,
+    isProcessing: Boolean,
     connectionState: ConnectionState
 ) {
-    // Determine what to show in the subtitle area
     val display = when {
-        // 1. User is speaking (High Priority)
         isRecording -> {
             val text = if (partialTranscript.isNotBlank()) partialTranscript else "..."
             RoleDisplay("我", text, Color(0xFFEC7C38), 550)
         }
-        // 2. Digital Human is speaking
         isDigitalHumanSpeaking -> {
             val text = if (!latestDigitalHumanText.isNullOrBlank()) latestDigitalHumanText else "..."
             RoleDisplay("面试官", text, Color(0xFF43C1C9), 1100)
         }
-        // 3. Fallback to last message
         else -> {
             val lastMsg = conversation.lastOrNull()
             if (lastMsg != null) {
@@ -1030,7 +1049,6 @@ private fun ConversationPanel(
                     blinkMs = if (isUser) 550 else 1100
                 )
             } else {
-                // 4. Initial state
                 RoleDisplay("", "非常荣幸认识您，让我们像朋友视频那样聊聊工作，您可以介绍一下。", Color.Gray, 900)
             }
         }
@@ -1043,18 +1061,34 @@ private fun ConversationPanel(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color.Black.copy(alpha = 0.4f)) // Slightly darker for better readability
-            .padding(horizontal = 16.dp, vertical = 18.dp),
+            .clip(RoundedCornerShape(20.dp))
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF1A1A2E).copy(alpha = 0.85f),
+                        Color(0xFF0D0D1A).copy(alpha = 0.92f)
+                    )
+                )
+            )
+            .border(
+                width = 0.5.dp,
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.12f),
+                        Color.White.copy(alpha = 0.04f)
+                    )
+                ),
+                shape = RoundedCornerShape(20.dp)
+            )
+            .padding(horizontal = 16.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.Center
     ) {
         if (roleLabel.isNotBlank()) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(bottom = 6.dp)
+                modifier = Modifier.padding(bottom = 8.dp)
             ) {
-                // Only show indicator if actively speaking/recording
                 if (isRecording || isDigitalHumanSpeaking) {
                     AnimatedRecordingIndicator(
                         modifier = Modifier.size(10.dp),
@@ -1065,7 +1099,7 @@ private fun ConversationPanel(
                 }
                 Text(
                     text = roleLabel,
-                    color = activeColor, // Use the active color for the label too
+                    color = activeColor,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -1076,9 +1110,35 @@ private fun ConversationPanel(
             text = contentText,
             color = Color.White,
             fontSize = 16.sp,
-            lineHeight = 22.sp,
+            lineHeight = 24.sp,
             fontWeight = FontWeight.Medium
         )
+
+        if (isRecording) {
+            Spacer(modifier = Modifier.height(12.dp))
+            VoiceWaveformVisualizer(
+                isActive = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
+        if (isProcessing && !isRecording && !isDigitalHumanSpeaking) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "面试官正在思考",
+                    color = Color(0xFF43C1C9).copy(alpha = 0.8f),
+                    fontSize = 13.sp
+                )
+                ThinkingDotsAnimation(
+                    isVisible = true,
+                    color = Color(0xFF43C1C9)
+                )
+            }
+        }
     }
 }
 

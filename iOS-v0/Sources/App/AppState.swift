@@ -10,6 +10,7 @@ final class AppState: ObservableObject {
   @Published var authToken: String?
   @Published var currentUser: User?
   @Published var selectedTab: AppTab = .home
+  @Published var currentRoute: AppRoute = .home
   @Published var isLoading: Bool = false
   @Published var sharedJobKeyword: String = ""
 
@@ -26,8 +27,9 @@ final class AppState: ObservableObject {
 
   init() {
     let config = APIConfig.load()
-    let client = APIClient(config: config) { [weak authStore] in
-      authStore?.loadToken()
+    let store = authStore
+    let client = APIClient(config: config) {
+      store.loadToken()
     }
     self.apiClient = client
     self.authService = AuthService(client: client)
@@ -40,10 +42,35 @@ final class AppState: ObservableObject {
 
     self.authToken = authStore.loadToken()
     self.currentUser = authStore.loadUser()
+    
+    // 监听 401 未授权错误
+    NotificationCenter.default.addObserver(
+      forName: .apiUnauthorized,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      Task { @MainActor in
+        self?.handleUnauthorized()
+      }
+    }
+  }
+  
+  deinit {
+    NotificationCenter.default.removeObserver(self)
   }
 
   var isLoggedIn: Bool {
     authToken != nil
+  }
+  
+  /// 是否应该隐藏底栏
+  var shouldHideBottomBar: Bool {
+    AppRoute.shouldHideBottomBar(for: currentRoute, isLoggedIn: isLoggedIn)
+  }
+  
+  /// AI 按钮是否选中
+  var isAiSelected: Bool {
+    AppRoute.isAiRoute(currentRoute)
   }
 
   func updateAuth(token: String?, user: User?) {
@@ -55,5 +82,39 @@ final class AppState: ObservableObject {
 
   func signOut() {
     updateAuth(token: nil, user: nil)
+  }
+  
+  /// 处理未授权错误
+  private func handleUnauthorized() {
+    signOut()
+    // 可以在这里触发导航到登录页
+  }
+  
+  /// 更新当前路由
+  func updateRoute(_ route: AppRoute) {
+    currentRoute = route
+    if let tab = AppRoute.routeToTabIndex(route) {
+      selectedTab = tab
+    }
+  }
+  
+  // AuthStore 代理方法
+  var interviewGuideSeen: Bool {
+    get { authStore.interviewGuideSeen }
+    set { authStore.interviewGuideSeen = newValue }
+  }
+  
+  var lastAiJobId: String? {
+    get { authStore.lastAiJobId }
+    set { authStore.lastAiJobId = newValue }
+  }
+  
+  var lastAiCategoryId: String? {
+    get { authStore.lastAiCategoryId }
+    set { authStore.lastAiCategoryId = newValue }
+  }
+  
+  func setLastAiJobSelection(jobId: String?, categoryId: String?) {
+    authStore.setLastAiJobSelection(jobId: jobId, categoryId: categoryId)
   }
 }

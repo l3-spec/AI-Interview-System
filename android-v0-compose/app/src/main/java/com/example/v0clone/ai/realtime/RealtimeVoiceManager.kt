@@ -1247,6 +1247,7 @@ class RealtimeVoiceManager(private val context: Context) {
 
     private var lastMouthUpdate = 0L
     private var mouthUpdateCount = 0
+    private var smoothedMouthValue = 0f
     
     private fun updateDigitalHumanMouth(waveform: ByteArray) {
         if (waveform.isEmpty()) {
@@ -1268,9 +1269,10 @@ class RealtimeVoiceManager(private val context: Context) {
             val rms = sqrt(sum / waveform.size)
             // 使用更合理的映射：将RMS值映射到0-1范围，并添加平滑处理
             // RMS通常在0-0.3之间，我们将其映射到0-0.8的嘴型范围
-            val mouthOpenness = (rms * 3f).coerceIn(0f, 0.8f)  // 调整放大倍数，避免过度开口
-            
-            // 更新数字人嘴型
+            val rawMouth = (rms * 3f).coerceIn(0f, 0.8f)
+            smoothedMouthValue += 0.35f * (rawMouth - smoothedMouthValue)
+            val mouthOpenness = smoothedMouthValue
+
             val controller = digitalHumanController
             if (controller != null) {
                 controller.updateMouthOpenness(mouthOpenness)

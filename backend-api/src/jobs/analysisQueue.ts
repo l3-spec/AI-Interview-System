@@ -47,7 +47,7 @@ class AnalysisQueue {
             return;
         }
 
-        prisma.$connect().catch(error => {
+        prisma.$connect().catch((error: unknown) => {
             console.warn('[AnalysisQueue] Prisma connect failed, will retry on next poll:', error);
         });
 

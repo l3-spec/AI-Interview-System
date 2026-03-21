@@ -153,6 +153,18 @@ final class APIClient {
   private func perform<T: Decodable & Sendable>(request: URLRequest) async throws -> T {
     let (data, response) = try await session.data(for: request)
     guard let http = response as? HTTPURLResponse else { throw APIError.unknown }
+    
+    // 处理 401 未授权错误
+    if http.statusCode == 401 {
+      // 通知上层清理本地凭据，触发重新登录
+      NotificationCenter.default.post(name: .apiUnauthorized, object: nil)
+      if let apiMessage = try? decoder.decode(ApiResponseMessage.self, from: data),
+         let message = apiMessage.message ?? apiMessage.error {
+        throw APIError.server(code: http.statusCode, message: message)
+      }
+      throw APIError.server(code: http.statusCode, message: "身份验证失败，请重新登录")
+    }
+    
     guard 200..<300 ~= http.statusCode else {
       if let apiMessage = try? decoder.decode(ApiResponseMessage.self, from: data),
          let message = apiMessage.message ?? apiMessage.error {
@@ -209,4 +221,8 @@ private extension Data {
       append(data)
     }
   }
+}
+
+extension Notification.Name {
+  static let apiUnauthorized = Notification.Name("apiUnauthorized")
 }
