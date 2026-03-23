@@ -94,7 +94,7 @@ private val AccentOrange = Color(0xFFF28B3F)
 private val CardTagBackground = Color(0xFFF5F7FA)
 private val CardTagText = Color(0xFF5F6773)
 private val CardBorder = Color(0xFFE6E8EB)
-private val SearchPlaceholder = Color(0xFFA6ABB1)
+private val SearchPlaceholder = Color(0xFFB5B7B8)
 private val FilterGradientTop = Color(0xFF51ABB9)
 private val FilterFieldBorder = Color(0xFFD9D9D9)
 private val FilterChipDefaultBackground = Color(0xFFF4F5F8)
@@ -108,6 +108,7 @@ private val JobsTopBarMaxOffset = 120.dp
 private val JobsHeaderApproxHeight = JobsTopBarExpandedHeight + 126.dp
 private val PreferenceChipBackground = Color(0xFFDFFBFF)
 private val PreferenceChipOutline = Color(0xFF00ACC3)
+private val FigmaLetterSpacing = (-0.32).sp
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -322,13 +323,13 @@ private fun JobsHeader(
 ) {
     val density = LocalDensity.current
     val barHeight = lerp(JobsTopBarExpandedHeight, JobsTopBarCollapsedHeight, progress)
-    val horizontalPadding = lerp(18.dp, 14.dp, progress)
-    val verticalPadding = lerp(12.dp, 10.dp, progress)
+    val horizontalPadding = lerp(12.dp, 12.dp, progress)
+    val verticalPadding = lerp(15.dp, 11.dp, progress)
     val titleSize = lerp(24.sp, 20.sp, progress)
-    val fieldHeight = lerp(44.dp, 40.dp, progress)
-    val searchIconSize = lerp(20.dp, 18.dp, progress)
-    val closeIconSize = lerp(20.dp, 18.dp, progress)
-    val rowSpacing = lerp(16.dp, 12.dp, progress)
+    val fieldHeight = lerp(32.dp, 30.dp, progress)
+    val searchIconSize = lerp(12.dp, 12.dp, progress)
+    val closeIconSize = lerp(16.dp, 14.dp, progress)
+    val rowSpacing = lerp(32.dp, 20.dp, progress)
     val translateYPx = 0f
     val spacingBelowSearch = lerp(14.dp, 12.dp, progress)
     val bottomPadding = lerp(14.dp, 12.dp, progress)
@@ -357,12 +358,13 @@ private fun JobsHeader(
                 text = "职岗",
                 fontSize = titleSize,
                 fontWeight = FontWeight.SemiBold,
-                color = TextPrimary
+                color = TextPrimary,
+                letterSpacing = FigmaLetterSpacing
             )
             Surface(
                 color = Color.White,
-                shape = RoundedCornerShape(16.dp),
-                shadowElevation = 6.dp,
+                shape = RoundedCornerShape(8.dp),
+                shadowElevation = 0.dp,
                 tonalElevation = 0.dp,
                 modifier = Modifier
                     .height(fieldHeight)
@@ -388,7 +390,7 @@ private fun JobsHeader(
                         Row(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(horizontal = 12.dp, vertical = 4.dp),
+                                .padding(horizontal = 24.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
@@ -397,14 +399,16 @@ private fun JobsHeader(
                                 tint = SearchPlaceholder,
                                 modifier = Modifier.size(searchIconSize)
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
                             Box(modifier = Modifier.weight(1f)) {
                                 if (searchText.isBlank()) {
                                     Text(
                                         text = "搜索",
                                         color = SearchPlaceholder,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Normal
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Light,
+                                        lineHeight = 21.sp,
+                                        letterSpacing = FigmaLetterSpacing
                                     )
                                 }
                                 innerTextField()
@@ -482,8 +486,9 @@ private fun JobsIntentionCard(
             Text(
                 text = titleText,
                 color = TextPrimary,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = FigmaLetterSpacing,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -605,8 +610,9 @@ private fun SortTab(label: String, active: Boolean, onClick: () -> Unit) {
     Text(
         text = label,
         color = if (active) TextPrimary else TextSecondary,
-        fontSize = 15.sp,
-        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+        fontSize = 14.sp,
+        fontWeight = if (active) FontWeight.Medium else FontWeight.Normal,
+        letterSpacing = FigmaLetterSpacing,
         modifier = Modifier.clickable(onClick = onClick)
     )
 }
@@ -639,8 +645,8 @@ private fun JobCard(
 ) {
     Surface(
         color = Color.White,
-        shape = RoundedCornerShape(10.dp),
-        shadowElevation = 3.dp,
+        shape = RoundedCornerShape(8.dp),
+        shadowElevation = 0.dp,
         tonalElevation = 0.dp,
         border = BorderStroke(1.dp, CardBorder),
         modifier = Modifier
@@ -659,9 +665,10 @@ private fun JobCard(
                 Text(
                     text = job.title.ifBlank { "前端开发" },
                     color = TextPrimary,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    lineHeight = 22.sp,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    lineHeight = 21.sp,
+                    letterSpacing = FigmaLetterSpacing,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
@@ -669,8 +676,9 @@ private fun JobCard(
                 Text(
                     text = job.salary.ifBlank { "薪资面议" },
                     color = AccentOrange,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = FigmaLetterSpacing,
                     modifier = Modifier.padding(start = 8.dp)
                 )
             }

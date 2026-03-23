@@ -8,13 +8,13 @@ Last updated: 2026-03-21
 | Route / Surface | Android implementation | Figma mapping | Audit status | Notes |
 |---|---|---|---|---|
 | Shared bottom navigation / AI CTA | `android-v0-compose/app/src/main/java/com/example/v0clone/App.kt` | `220:2239` `Tab` | Audited | Refined to a custom notched union silhouette and exact row/CTA spacing from design context. |
-| Home | `android-v0-compose/app/src/main/java/com/example/v0clone/ui/home/HomeScreen.kt` | Pending exact node lookup | Pending | Likely shares top gradient language with main tab screens; current layout not yet mapped. |
-| Jobs | `android-v0-compose/app/src/main/java/com/example/v0clone/ui/jobs/JobsScreen.kt` | Pending exact node lookup | Pending | High-traffic screen; not yet inspected against Figma nodes. |
+| Home | `android-v0-compose/app/src/main/java/com/example/v0clone/ui/home/HomeScreen.kt` | Shared exact nodes: `48:586` `职圈`, `48:730` `搜索框`, `220:1361`, `220:1368`, `220:1405` | Partial, blocked on page mapping | Header/search/feed cards tightened against confirmed main-tab nodes, but the exact Home artboard is still unresolved. |
+| Jobs | `android-v0-compose/app/src/main/java/com/example/v0clone/ui/jobs/JobsScreen.kt` | Shared exact nodes: `48:586` `职圈`, `48:730` `搜索框`, `220:1361` | Partial, blocked on page mapping | Search/title geometry was recalibrated from confirmed main-tab nodes; the exact Jobs artboard is still unresolved. |
 | Edit intention | `android-v0-compose/app/src/main/java/com/example/v0clone/ui/jobs/EditIntentionJobScreen.kt` | Pending exact node lookup | Pending | Navigation reachable from jobs. |
 | Job selection | `android-v0-compose/app/src/main/java/com/example/v0clone/ui/jobs/JobSelectionScreen.kt` | Pending exact node lookup | Pending | Shared with job preference flow. |
 | Company detail | `android-v0-compose/app/src/main/java/com/example/v0clone/ui/jobs/CompanyDetailScreen.kt` | Pending exact node lookup | Pending | Detailed screen; not yet compared. |
 | Job detail | `android-v0-compose/app/src/main/java/com/example/v0clone/ui/jobs/JobDetailScreen.kt` | Pending exact node lookup | Pending | Detailed screen; not yet compared. |
-| AI job selection | `android-v0-compose/app/src/main/java/com/example/v0clone/ui/ai/AiJobSelectionScreen.kt` | Pending exact node lookup | Pending | AI entry surface. |
+| AI job selection | `android-v0-compose/app/src/main/java/com/example/v0clone/ui/ai/AiJobSelectionScreen.kt` | Pending exact node lookup | Blocked on mapping | No exact AI job-selection artboard was resolved in this pass. |
 | AI guide | `android-v0-compose/app/src/main/java/com/example/v0clone/ai/guide/InterviewGuideRoute.kt` | Pending exact node lookup | Pending | User-visible onboarding flow. |
 | AI prep | `android-v0-compose/app/src/main/java/com/example/v0clone/ai/prep/PrepRoute.kt` | Pending exact node lookup | Pending | Follow-up to AI job selection. |
 | AI session | `android-v0-compose/app/src/main/java/com/example/v0clone/ai/session/InterviewSessionRoute.kt` | Pending exact node lookup | Pending | Needs separate fidelity audit after auth/jobs. |
@@ -44,6 +44,11 @@ Last updated: 2026-03-21
   - `122:2247` `键盘输入`
   - `220:2239` `Tab`
   - `48:586` `职圈`
+- Confirmed via MCP design context and reused as shared main-tab calibration nodes:
+  - `48:730` `搜索框`
+  - `220:1361` search field
+  - `220:1368` masonry card
+  - `220:1405` masonry card
 - Confirmed via root metadata:
   - `54:1677` `我的`
   - `465:1401` `消息中心`
@@ -53,7 +58,8 @@ Last updated: 2026-03-21
 
 - `App.kt`: the first Figma pass still used a rounded rectangle instead of the `220:2239` union/notch silhouette and used looser row spacing than the Figma instance.
 - `LoginMainScreen.kt`: the standalone auth entry surface still has no exact frame mapping in Figma, so its overall layout cannot be accepted as a strict-fidelity implementation yet.
-- `HomeScreen.kt`, `JobsScreen.kt`, `DigitalInterviewScreen.kt`: still pending exact Figma-node lookup, so fidelity work has not started there yet.
+- `HomeScreen.kt`, `JobsScreen.kt`: component-level fidelity has been improved using confirmed main-tab nodes, but both still lack their own exact artboard mappings.
+- `AiJobSelectionScreen.kt`, `DigitalInterviewScreen.kt`: still pending exact Figma-node lookup, so page-level fidelity work remains blocked.
 
 ## Implementation Status
 
@@ -62,8 +68,11 @@ Last updated: 2026-03-21
 - Done: rebuilt `CodeLoginScreen.kt` against node `122:2247`.
 - Done: rebuilt `NumericKeyboard.kt` against node `220:1211`.
 - Done: refined `App.kt` against node `220:2239` with a custom notched union shape, 59dp center CTA, 32dp tab gaps, and 36.5dp item widths.
+- Done: tightened `HomeScreen.kt` header/search/feed card geometry against confirmed shared main-tab nodes from `48:586`.
+- Done: tightened `JobsScreen.kt` header/search/title/card geometry against confirmed shared main-tab nodes from `48:586`.
 - Blocked: `LoginMainScreen.kt` still needs its own exact Figma node before any further layout changes.
-- Pending: exact-node lookup and fidelity audit for Home, Jobs, AI core screens, and detailed profile/message states.
+- Blocked: `AiJobSelectionScreen.kt` still needs its own exact Figma node before any layout changes in this pass.
+- Pending: exact-node lookup and fidelity audit for AI core screens and detailed profile/message states.
 
 ## Surface Audit Details
 
@@ -131,11 +140,66 @@ Last updated: 2026-03-21
 - Acceptance result:
   - Blocked pending exact node mapping. This surface should be revisited before calling the auth flow fully complete.
 
+### Home
+
+- Android: `android-v0-compose/app/src/main/java/com/example/v0clone/ui/home/HomeScreen.kt`
+- Figma nodes:
+  - Exact Home artboard unresolved
+  - Shared calibration nodes used this pass:
+    - `48:586` `职圈`
+    - `48:730` `搜索框`
+    - `220:1361` search field
+    - `220:1368` masonry card
+    - `220:1405` masonry card
+- Mismatch findings:
+  - The top search bar was still using inferred 44dp geometry, 16dp radius, oversized icon sizing, and looser title-to-search spacing than the confirmed main-tab surface.
+  - Feed cards still used 10dp corners, elevated Material styling, chip pills, and heavier footer spacing that diverged from the confirmed masonry card component.
+  - The exact Home artboard itself remains unresolved, so the banner block and overall page composition still cannot be accepted as strict fidelity.
+- Implementation decision:
+  - Tighten the header to the confirmed main-tab search geometry: 32dp field height, 8dp radius, 24dp inner padding, 12dp icon size, 10dp icon gap, and Figma letter spacing.
+  - Rebuild feed cards toward the confirmed masonry card language: 8dp corners, flat white surfaces, 4dp inner paddings, inline orange metadata instead of pills, and lighter 12sp footer typography.
+  - Leave the banner untouched until the exact Home page artboard is resolved.
+- Acceptance result:
+  - Blocked pending exact Home artboard mapping. Shared component fidelity improved materially, but the page cannot be marked accepted yet.
+
+### Jobs
+
+- Android: `android-v0-compose/app/src/main/java/com/example/v0clone/ui/jobs/JobsScreen.kt`
+- Figma nodes:
+  - Exact Jobs artboard unresolved
+  - Shared calibration nodes used this pass:
+    - `48:586` `职圈`
+    - `48:730` `搜索框`
+    - `220:1361` search field
+- Mismatch findings:
+  - The jobs header was still using an inferred 44dp search field, 16dp radius, larger placeholder typography, and looser spacing than the confirmed main-tab header language.
+  - The intention title and job-card typography were heavier and rounder than the confirmed tab-surface text treatment.
+  - The exact Jobs artboard remains unresolved, so filters, sort row, and list composition cannot be fully accepted as strict fidelity.
+- Implementation decision:
+  - Tighten the header/search bar to the confirmed search component geometry and letter spacing from the mapped main-tab node.
+  - Normalize the intention title to 24sp semibold with Figma spacing, and flatten list cards from 10dp/raised styling to 8dp/flatter styling with lighter 14sp text treatment.
+  - Leave the rest of the page structurally intact until the exact Jobs artboard is resolved.
+- Acceptance result:
+  - Blocked pending exact Jobs artboard mapping. Shared component fidelity improved, but page-level acceptance is still not possible.
+
+### AI Job Selection
+
+- Android: `android-v0-compose/app/src/main/java/com/example/v0clone/ui/ai/AiJobSelectionScreen.kt`
+- Figma nodes:
+  - Exact AI job-selection artboard unresolved
+- Mismatch findings:
+  - This surface still has no resolved page node, so any spacing or hierarchy adjustment would be inferential.
+- Implementation decision:
+  - Skip layout edits in this pass rather than fabricate a mapping.
+- Acceptance result:
+  - Blocked pending exact node mapping.
+
 ## Acceptance Notes
 
 - Current first-pass changes are traceable to confirmed Figma nodes or to shared token values extracted from those nodes.
 - The center tab bar background in Figma uses a custom union/vector shape; Compose now uses a custom notched shape that is materially closer, though it is still an approximation rather than the exact exported vector path.
 - The shipped login brand asset is a combined mark, while the Figma auth frame separates the symbol and wordmark; the current patch removes duplicated text and uses the combined asset as the closest available source.
 - `LoginMainScreen.kt` still requires an exact standalone Figma frame before its overall layout can be accepted as strict fidelity.
-- Additional exact-match work is blocked until more screen-specific Figma node IDs are resolved for Home, Jobs, and the AI interview flow.
+- `HomeScreen.kt` and `JobsScreen.kt` now borrow exact shared main-tab component geometry from `48:586`, but both still need their own artboard mappings before final acceptance.
+- Additional exact-match work is blocked until more screen-specific Figma node IDs are resolved for Home, Jobs, AI job selection, and the AI interview flow.
 - Local Gradle verification could not be completed in this sandbox because the wrapper distribution cannot be downloaded without network access.

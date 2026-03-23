@@ -21,6 +21,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -45,14 +46,16 @@ private val GradientTop = Color(0xFF00ACC3)
 private val GradientBottom = Color(0xFFE9F7F9)
 private val PageBackground = Color(0xFFF4F5F6)
 private val AccentOrange = Color(0xFFF28B3F)
-private val PlaceholderGray = Color(0xFFA6ABB1)
-private val TextPrimary = Color(0xFF2D3036)
+private val PlaceholderGray = Color(0xFFB5B7B8)
+private val TextPrimary = Color(0xFF000000)
 private val CardTitleColor = TextPrimary
-private val CardSubtleText = Color(0xFF8C929A)
+private val CardSubtleText = Color(0xFFB5B7B8)
 private val HomeTopBarExpandedHeight = 76.dp
 private val HomeTopBarCollapsedHeight = 54.dp
 private val HomeTopBarMaxOffset = 120.dp
 private val HomeHeaderApproxHeight = HomeTopBarExpandedHeight + 64.dp
+private val FigmaLetterSpacing = (-0.32).sp
+
 @Composable
 fun HomeScreen(
     repository: ContentRepository,
@@ -214,13 +217,13 @@ private fun HomeHeader(
     modifier: Modifier = Modifier
 ) {
     val barHeight = lerp(HomeTopBarExpandedHeight, HomeTopBarCollapsedHeight, progress)
-    val horizontalPadding = lerp(18.dp, 14.dp, progress)
-    val verticalPadding = lerp(12.dp, 10.dp, progress)
+    val horizontalPadding = lerp(12.dp, 12.dp, progress)
+    val verticalPadding = lerp(15.dp, 11.dp, progress)
     val titleSize = lerp(24.sp, 20.sp, progress)
-    val fieldHeight = lerp(44.dp, 40.dp, progress)
-    val searchIconSize = lerp(20.dp, 18.dp, progress)
-    val rowSpacing = lerp(16.dp, 12.dp, progress)
-    val bottomPadding = lerp(8.dp, 6.dp, progress)
+    val fieldHeight = lerp(32.dp, 30.dp, progress)
+    val searchIconSize = lerp(12.dp, 12.dp, progress)
+    val rowSpacing = lerp(32.dp, 20.dp, progress)
+    val bottomPadding = lerp(12.dp, 8.dp, progress)
 
     Column(
         modifier = modifier
@@ -247,12 +250,13 @@ private fun HomeHeader(
                 text = "首页",
                 fontSize = titleSize,
                 fontWeight = FontWeight.SemiBold,
-                color = TextPrimary
+                color = TextPrimary,
+                letterSpacing = FigmaLetterSpacing
             )
             Surface(
                 color = Color.White,
-                shape = RoundedCornerShape(16.dp),
-                shadowElevation = 6.dp,
+                shape = RoundedCornerShape(8.dp),
+                shadowElevation = 0.dp,
                 tonalElevation = 0.dp,
                 modifier = Modifier
                     .height(fieldHeight)
@@ -262,7 +266,7 @@ private fun HomeHeader(
                 Row(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                        .padding(horizontal = 24.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
@@ -271,13 +275,17 @@ private fun HomeHeader(
                         tint = PlaceholderGray,
                         modifier = Modifier.size(searchIconSize)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
                     Box(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "搜索",
                             color = PlaceholderGray,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Normal
+                            style = TextStyle(
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Light,
+                                lineHeight = 21.sp,
+                                letterSpacing = FigmaLetterSpacing
+                            )
                         )
                     }
                 }
@@ -491,13 +499,13 @@ private fun MasonryGrid(
         modifier = modifier
             .fillMaxWidth()
             .clickable { onClick() },
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(
             containerColor = Color.White
         ),
         elevation = CardDefaults.cardElevation(
-            defaultElevation = 2.dp,
-            pressedElevation = 4.dp
+            defaultElevation = 0.dp,
+            pressedElevation = 0.dp
         )
     ) {
         Column {
@@ -513,7 +521,8 @@ private fun MasonryGrid(
             )
 
             Column(
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 Text(
                     text = card.title,
@@ -522,63 +531,47 @@ private fun MasonryGrid(
                     color = CardTitleColor,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    lineHeight = 21.sp
+                    lineHeight = 21.sp,
+                    letterSpacing = FigmaLetterSpacing
                 )
 
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    card.tags.take(2).forEach { tag ->
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(AccentOrange.copy(alpha = 0.06f))
-                                .padding(horizontal = 10.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = tag,
-                                fontSize = 12.sp,
-                                color = AccentOrange,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
+                val tagLine = card.tags
+                    .take(2)
+                    .filter { it.isNotBlank() }
+                    .joinToString(" ") { "#$it" }
+                if (tagLine.isNotBlank()) {
+                    Text(
+                        text = tagLine,
+                        fontSize = 12.sp,
+                        color = AccentOrange,
+                        fontWeight = FontWeight.Normal,
+                        lineHeight = 21.sp,
+                        letterSpacing = FigmaLetterSpacing
+                    )
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
-
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
                         if (card.avatarUrl.isNullOrBlank()) {
                             Box(
                                 modifier = Modifier
                                     .size(24.dp)
                                     .clip(CircleShape)
-                                    .background(
-                                        brush = Brush.linearGradient(
-                                            colors = listOf(
-                                                AccentOrange,
-                                                AccentOrange
-                                            )
-                                        )
-                                    ),
+                                    .background(AccentOrange.copy(alpha = 0.18f)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = card.author.take(1),
                                     fontSize = 12.sp,
                                     color = Color.White,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Medium
                                 )
                             }
                         } else {
@@ -592,17 +585,21 @@ private fun MasonryGrid(
                             )
                         }
 
-                        Spacer(modifier = Modifier.width(8.dp))
-
                         Text(
                             text = card.author,
                             fontSize = 12.sp,
-                            color = TextPrimary
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Light,
+                            lineHeight = 21.sp,
+                            letterSpacing = FigmaLetterSpacing,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
 
                     Row(
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.RemoveRedEye,
@@ -616,7 +613,10 @@ private fun MasonryGrid(
                         Text(
                             text = card.views,
                             fontSize = 12.sp,
-                            color = CardSubtleText
+                            color = CardSubtleText,
+                            fontWeight = FontWeight.Light,
+                            lineHeight = 21.sp,
+                            letterSpacing = FigmaLetterSpacing
                         )
                     }
                 }

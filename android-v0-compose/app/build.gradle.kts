@@ -27,7 +27,7 @@ plugins {
 //val defaultApiHost ="https://app.api.xlwl-ai.com/"
 //val defaultApiHost = "192.168.0.103"
 //val defaultApiHost = "10.0.1.61"
-val defaultApiHost = "192.168.10.75"
+val defaultApiHost = "192.168.10.77"
 val defaultApiPort = 3001
 val defaultApiPath = "api"
 
