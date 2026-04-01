@@ -31,6 +31,10 @@ val defaultApiHost = "10.0.1.77"
 val defaultApiPort = 3001
 val defaultApiPath = "api"
 
+// 火山引擎 TTS 配置
+val defaultVolcanoAppId = ""
+val defaultVolcanoApiKey = ""
+
 val defaultDuixBaseConfigUrl = "https://github.com/GuijiAI/duix.ai/releases/download/v1.0.0/gj_dh_res.zip"
 // 预置在 assets/duix/model/Oliver.zip；URL 仅用于标识模型名，实际会优先从本地 assets 解压
 val defaultDuixModelUrl = "https://duix-local/Oliver.zip"
@@ -96,6 +100,16 @@ android {
             "String",
             "DUIX_MODEL_URL",
             "\"${duixModelUrl.escapeForBuildConfig()}\""
+        )
+        buildConfigField(
+            "String",
+            "VOLCANO_APP_ID",
+            "\"${(project.findProperty("volcano_app_id") as? String)?.escapeForBuildConfig() ?: defaultVolcanoAppId.escapeForBuildConfig()}\""
+        )
+        buildConfigField(
+            "String",
+            "VOLCANO_API_KEY",
+            "\"${(project.findProperty("volcano_api_key") as? String)?.escapeForBuildConfig() ?: defaultVolcanoApiKey.escapeForBuildConfig()}\""
         )
 
         resValue("string", "api_host", resolvedApiHost)

@@ -19,6 +19,24 @@ private fun resolveUrl(raw: String?, fallback: String, ensureTrailingSlash: Bool
 }
 
 object AppConfig {
+
+    // ============================================================
+    // 火山引擎 TTS 配置（用于数字人唇形同步）
+    // 请在 build.gradle.kts 中配置：
+    //   volcano_app_id=your_volcano_app_id
+    //   volcano_api_key=your_volcano_api_key
+    // ============================================================
+    val volcanoAppId: String by lazy {
+        BuildConfig.VOLCANO_APP_ID.takeIf { it.isNotBlank() } ?: ""
+    }
+
+    val volcanoApiKey: String by lazy {
+        BuildConfig.VOLCANO_API_KEY.takeIf { it.isNotBlank() } ?: ""
+    }
+
+    val isVolcanoEnabled: Boolean
+        get() = volcanoAppId.isNotBlank() && volcanoApiKey.isNotBlank()
+
     val apiBaseUrl: String by lazy {
         resolveUrl(BuildConfig.API_BASE_URL, defaultApiBaseUrl, ensureTrailingSlash = true)
     }
