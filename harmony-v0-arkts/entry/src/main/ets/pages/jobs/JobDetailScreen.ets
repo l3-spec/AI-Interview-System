@@ -454,7 +454,7 @@ export struct JobDetailScreen {
         }
         .width(24)
         .height(24)
-        .backgroundColor(AccentOrange.copy((alpha: 0.18) as any))
+        .backgroundColor(Color.fromARGB(46, 236, 124, 56))
         .borderRadius(12)
         .justifyContent(FlexAlign.Center)
 
@@ -528,7 +528,7 @@ export struct JobDetailScreen {
     .backgroundColor(Color.White)
     .shadow({
       radius: 8,
-      color: Color.Black.copy((alpha: 0.1) as any),
+      color: Color.fromARGB(26, 0, 0, 0),
       offsetY: -2
     })
     .justifyContent(FlexAlign.Center)

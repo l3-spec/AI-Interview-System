@@ -227,7 +227,7 @@ export struct TopicAggregationScreen {
             .fontWeight(FontWeight.SemiBold)
             .fontColor(Color.White)
         }
-        .backgroundColor(Color.White.copy((alpha: 0.15) as any))
+        .backgroundColor(Color.fromARGB(38, 255, 255, 255))
         .borderRadius(12)
         .padding({ left: 12, right: 12, top: 6, bottom: 6 })
 
@@ -241,7 +241,7 @@ export struct TopicAggregationScreen {
 
         Text(this.detail.description)
           .fontSize(14)
-          .fontColor(Color.White.copy((alpha: 0.9) as any))
+          .fontColor(Color.fromARGB(230, 255, 255, 255))
           .margin({ top: 12 })
           .lineHeight(22)
       }
@@ -293,7 +293,7 @@ export struct TopicAggregationScreen {
       .borderRadius(20)
       .shadow({
         radius: 3,
-        color: Color.Black.copy((alpha: 0.05) as any),
+        color: Color.fromARGB(13, 0, 0, 0),
         offsetY: 2
       })
 
@@ -326,7 +326,7 @@ export struct TopicAggregationScreen {
       .borderRadius(20)
       .shadow({
         radius: 3,
-        color: Color.Black.copy((alpha: 0.05) as any),
+        color: Color.fromARGB(13, 0, 0, 0),
         offsetY: 2
       })
       .margin({ left: 12 })
@@ -350,7 +350,7 @@ export struct TopicAggregationScreen {
         }
         .width(44)
         .height(44)
-        .backgroundColor(post.avatarColor.copy((alpha: 0.16) as any))
+        .backgroundColor(Color.fromARGB(41, 255, 140, 66))
         .borderRadius(22)
         .justifyContent(FlexAlign.Center)
 
@@ -375,7 +375,7 @@ export struct TopicAggregationScreen {
             .fontSize(12)
             .fontColor(AccentBlue)
         }
-        .backgroundColor(AccentBlue.copy((alpha: 0.12) as any))
+        .backgroundColor(Color.fromARGB(31, 102, 126, 234))
         .borderRadius(12)
         .padding({ left: 12, right: 12, top: 6, bottom: 6 })
       }
@@ -421,7 +421,7 @@ export struct TopicAggregationScreen {
     .borderRadius(22)
     .shadow({
       radius: 2,
-      color: Color.Black.copy((alpha: 0.05) as any),
+      color: Color.fromARGB(13, 0, 0, 0),
       offsetY: 2
     })
     .margin({ top: 8 })

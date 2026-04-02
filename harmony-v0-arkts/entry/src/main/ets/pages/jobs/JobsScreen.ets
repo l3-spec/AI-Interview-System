@@ -533,7 +533,7 @@ export struct JobsScreen {
           }
           .width(42)
           .height(42)
-          .backgroundColor(AccentOrange.copy((alpha: 0.18) as any))
+          .backgroundColor(Color.fromARGB(46, 236, 124, 56))
           .borderRadius(21)
           .justifyContent(FlexAlign.Center)
 

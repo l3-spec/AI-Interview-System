@@ -301,7 +301,7 @@ export struct PostDetailScreen {
         }
         .width(36)
         .height(36)
-        .backgroundColor(this.detail.author.avatarColor.copy((alpha: 0.16) as any))
+        .backgroundColor(Color.fromARGB(41, 236, 124, 56))
         .borderRadius(18)
         .justifyContent(FlexAlign.Center)
       }
@@ -363,7 +363,7 @@ export struct PostDetailScreen {
       }
       .width(36)
       .height(36)
-      .backgroundColor(comment.avatarColor.copy((alpha: 0.16) as any))
+      .backgroundColor(Color.fromARGB(41, 236, 124, 56))
       .borderRadius(18)
       .justifyContent(FlexAlign.Center)
 
@@ -493,7 +493,7 @@ export struct PostDetailScreen {
     .width('100%')
     .shadow({
       radius: 8,
-      color: Color.Black.copy((alpha: 0.1) as any)
+      color: Color.fromARGB(26, 0, 0, 0)
     })
   }
 }

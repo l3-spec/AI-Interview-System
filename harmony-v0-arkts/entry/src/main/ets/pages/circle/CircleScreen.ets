@@ -241,7 +241,7 @@ export struct CircleScreen {
 
         Text('大咖分享')
           .fontSize(14)
-          .fontColor(PrimaryText.copy((alpha: 0.55) as any))
+          .fontColor(Color.fromARGB(140, 0, 0, 0))
           .fontWeight(FontWeight.Medium)
 
         // 搜索框
@@ -264,7 +264,7 @@ export struct CircleScreen {
         .justifyContent(FlexAlign.Center)
         .shadow({
           radius: 6,
-          color: Color.Black.copy((alpha: 0.08) as any)
+          color: Color.fromARGB(20, 0, 0, 0)
         })
         .onClick(() => {
           this.props.onSearchClick?.();
@@ -353,7 +353,7 @@ export struct CircleScreen {
               .fontColor(Color.White)
               .fontWeight(FontWeight.Medium)
           }
-          .backgroundColor(AccentOrange.copy((alpha: 0.9) as any))
+          .backgroundColor(Color.fromARGB(229, 236, 124, 56))
           .borderRadius({
             topLeft: 0,
             topRight: CardCorner,
@@ -516,7 +516,7 @@ export struct CircleScreen {
       .borderRadius(16)
       .shadow({
         radius: 6,
-        color: Color.Black.copy((alpha: 0.25) as any),
+        color: Color.fromARGB(64, 0, 0, 0),
         offsetY: 2
       })
       .justifyContent(FlexAlign.Center)

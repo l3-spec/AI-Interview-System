@@ -129,7 +129,7 @@ export struct CreatePostScreen {
         Column()
           .width('100%')
           .height(0.25)
-          .backgroundColor(PlaceholderColor.copy((alpha: 0.6) as any))
+          .backgroundColor(Color.fromARGB(153, 181, 183, 184))
       }
       .width('100%')
       .padding({ left: 16, right: 16 })
@@ -180,7 +180,7 @@ export struct CreatePostScreen {
             }
             .width(24)
             .height(24)
-            .backgroundColor(Color.Black.copy((alpha: 0.45) as any))
+            .backgroundColor(Color.fromARGB(115, 0, 0, 0))
             .borderRadius(12)
             .position({ x: 88, y: -2 })
             .onClick(() => {
@@ -227,7 +227,7 @@ export struct CreatePostScreen {
               .fontColor(AccentOrange)
               .padding({ left: 12, right: 12, top: 2, bottom: 2 })
           }
-          .backgroundColor(AccentOrange.copy((alpha: 0.12) as any))
+          .backgroundColor(Color.fromARGB(31, 236, 124, 56))
           .borderRadius(25)
           .border({
             width: 0.5,
@@ -264,7 +264,7 @@ export struct CreatePostScreen {
           Column()
             .width(0.5)
             .height(17)
-            .backgroundColor(PlaceholderColor.copy((alpha: 0.6) as any))
+            .backgroundColor(Color.fromARGB(153, 181, 183, 184))
         }
         .margin({ left: 8 })
         .height(17)

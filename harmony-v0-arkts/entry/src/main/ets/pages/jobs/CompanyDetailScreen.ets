@@ -246,7 +246,7 @@ export struct CompanyDetailScreen {
             .fontColor(Color.White)
         }
         .padding({ left: 18, right: 18, top: 6, bottom: 6 })
-        .backgroundColor(Color.White.copy((alpha: 0.18) as any))
+        .backgroundColor(Color.fromARGB(46, 255, 255, 255))
         .borderRadius(12)
 
         Text(this.profile.name)
@@ -257,7 +257,7 @@ export struct CompanyDetailScreen {
 
         Text(this.profile.tagline)
           .fontSize(14)
-          .fontColor(Color.White.copy((alpha: 0.9) as any))
+          .fontColor(Color.fromARGB(230, 255, 255, 255))
           .margin({ top: 6 })
 
         // 地点
@@ -265,11 +265,11 @@ export struct CompanyDetailScreen {
           Image($r('sys.media.ohos_ic_public_location'))
             .width(14)
             .height(14)
-            .fillColor(Color.White.copy((alpha: 0.9) as any))
+            .fillColor(Color.fromARGB(230, 255, 255, 255))
 
           Text(this.profile.location)
             .fontSize(12)
-            .fontColor(Color.White.copy((alpha: 0.92) as any))
+            .fontColor(Color.fromARGB(235, 255, 255, 255))
             .margin({ left: 6 })
         }
         .margin({ top: 18 })
@@ -285,11 +285,11 @@ export struct CompanyDetailScreen {
 
               Text(stat.label)
                 .fontSize(12)
-                .fontColor(Color.White.copy((alpha: 0.86) as any))
+                .fontColor(Color.fromARGB(219, 255, 255, 255))
             }
             .layoutWeight(1)
             .padding({ left: 14, right: 14, top: 12, bottom: 12 })
-            .backgroundColor(Color.White.copy((alpha: 0.18) as any))
+            .backgroundColor(Color.fromARGB(46, 255, 255, 255))
             .borderRadius(16)
           })
         }
@@ -375,7 +375,7 @@ export struct CompanyDetailScreen {
           }
           .width(20)
           .height(20)
-          .backgroundColor(AccentBlue.copy((alpha: 0.12) as any))
+          .backgroundColor(Color.fromARGB(31, 102, 126, 234))
           .borderRadius(10)
           .justifyContent(FlexAlign.Center)
 
@@ -409,7 +409,7 @@ export struct CompanyDetailScreen {
         }
         .width(46)
         .height(46)
-        .backgroundColor(job.badgeColor.copy((alpha: 0.16) as any))
+        .backgroundColor(Color.fromARGB(41, 255, 125, 56))
         .borderRadius(14)
         .justifyContent(FlexAlign.Center)
 
@@ -442,7 +442,7 @@ export struct CompanyDetailScreen {
             .fontColor(job.badgeColor)
             .margin({ left: 6 })
         }
-        .backgroundColor(job.badgeColor.copy((alpha: 0.12) as any))
+        .backgroundColor(Color.fromARGB(31, 255, 125, 56))
         .borderRadius(12)
         .padding({ left: 12, right: 12, top: 6, bottom: 6 })
         .margin({ right: 12 })
@@ -459,7 +459,7 @@ export struct CompanyDetailScreen {
             .fontColor(Color.fromARGB(255, 99, 102, 241))
             .margin({ left: 6 })
         }
-        .backgroundColor(Color.fromARGB(255, 99, 102, 241).copy((alpha: 0.12) as any))
+        .backgroundColor(Color.fromARGB(31, 99, 102, 241))
         .borderRadius(12)
         .padding({ left: 12, right: 12, top: 6, bottom: 6 })
       }
@@ -491,7 +491,7 @@ export struct CompanyDetailScreen {
     .margin({ top: 8 })
     .shadow({
       radius: 3,
-      color: Color.Black.copy((alpha: 0.05) as any),
+      color: Color.fromARGB(13, 0, 0, 0),
       offsetY: 2
     })
     .onClick(() => {
