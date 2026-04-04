@@ -54,7 +54,7 @@ import com.xlwl.AiMian.ui.design.StarLinkAccentOrange
 import com.xlwl.AiMian.ui.design.StarLinkPlaceholderGray
 import com.xlwl.AiMian.ui.design.StarLinkWhite
 
-private val BottomBarShape = RoundedCornerShape(24.dp)
+private val BottomBarShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
 
 data class BottomNavigationItemData(
     val label: String,
@@ -128,7 +128,7 @@ fun V0App() {
                         onAiClick = {
                             navController.navigate(Routes.AI) { launchSingleTop = true }
                         },
-                        modifier = Modifier.padding(bottom = bottomInset)
+                        bottomInset = bottomInset
                     )
                 }
             }
@@ -141,6 +141,7 @@ private fun FrostedGlassBottomBar(
     selectedIndex: Int,
     onSelected: (Int) -> Unit,
     onAiClick: () -> Unit,
+    bottomInset: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier
 ) {
     val navItems = listOf(
@@ -153,13 +154,12 @@ private fun FrostedGlassBottomBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp)
     ) {
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .height(86.dp)
+                .height(72.dp + bottomInset)
                 .clip(BottomBarShape)
                 .background(
                     brush = Brush.verticalGradient(
@@ -189,8 +189,9 @@ private fun FrostedGlassBottomBar(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .height(86.dp)
-                .padding(horizontal = 24.dp, vertical = 14.dp),
+                .height(72.dp + bottomInset)
+                .padding(bottom = bottomInset)
+                .padding(horizontal = 24.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.Bottom
         ) {
@@ -213,7 +214,7 @@ private fun FrostedGlassBottomBar(
             ),
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .offset(y = (-6).dp)
+                .offset(y = (-20).dp)
                 .size(72.dp)
                 .shadow(12.dp, CircleShape, clip = false)
         ) {
