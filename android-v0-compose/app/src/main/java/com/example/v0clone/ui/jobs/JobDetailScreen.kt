@@ -92,7 +92,11 @@ fun JobDetailRoute(
   val uiState by viewModel.uiState.collectAsState()
   val jobDetail = uiState.job
 
-  val activity = LocalContext.current as? Activity
+  val context = LocalContext.current
+  val activity = generateSequence(context) { (it as? android.content.ContextWrapper)?.baseContext }
+      .filterIsInstance<Activity>()
+      .firstOrNull()
+      
   DisposableEffect(activity) {
     if (activity != null) {
       val window = activity.window
