@@ -63,7 +63,6 @@ import android.app.Activity
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.view.WindowCompat
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.foundation.layout.statusBarsPadding
 
 private val PageBackground = Color(0xFFF5F5F5) // Slightly lighter gray
 private val AccentOrange = Color(0xFFFF7D38) // More vibrant orange from design
@@ -195,7 +194,6 @@ private fun JobDetailScreen(
       Column(modifier = Modifier
         .fillMaxWidth()
         .background(Color.White)
-        .statusBarsPadding()
       ) {
           Row(
             modifier = Modifier
