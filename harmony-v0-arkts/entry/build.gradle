@@ -1,0 +1,15 @@
+// HarmonyOS Stage model - entry module build configuration
+ohos {
+    compileSdkVersion 5
+    compatibleSdkVersion 5
+    defaultConfig {
+        consumerNumFiles = 1
+    }
+    buildFeatures {
+        compileSdkVersion = 5
+    }
+    buildType {
+        debug {}
+        release {}
+    }
+}

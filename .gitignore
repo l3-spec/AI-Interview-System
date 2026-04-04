@@ -34,3 +34,6 @@ release/
 debug/
 Caches/
 uploads/duix-sdk/
+*.jpg
+*.mp4
+*.png

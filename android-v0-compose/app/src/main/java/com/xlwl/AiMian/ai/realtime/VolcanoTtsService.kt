@@ -224,9 +224,9 @@ class VolcanoTtsService(private val context: Context) {
 
     private fun estimateVisemeDuration(c: Char, baseMs: Long): Long {
         return when {
-            c.isWhitespace() -> baseMs * 0.5
-            c in "，。、！？；：" -> baseMs * 1.5  // 标点符号停顿更长
-            c in "aeiou" -> baseMs * 1.2  // 元音稍长
+            c.isWhitespace() -> (baseMs * 0.5).toLong()
+            c in "，。、！？；：" -> (baseMs * 1.5).toLong()
+            c in "aeiou" -> (baseMs * 1.2).toLong()
             else -> baseMs
         }
     }

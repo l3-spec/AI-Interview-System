@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>HR商学院导师端</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue',Helvetica,Arial,sans-serif;background:#1a1a2e;display:flex;justify-content:center;align-items:flex-start;min-height:100vh;padding:20px 0}
+.phone{width:375px;min-height:700px;background:#fff;border-radius:40px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.3);position:relative}
+.status{height:44px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;position:relative;z-index:10;border-bottom:1px solid #eee}
+.status::before{content:'9:41';position:absolute;left:24px}
+.status-ico{display:flex;gap:4px;position:absolute;right:24px;align-items:center}
+.sig,.wif{height:10px;background:#333;border-radius:2px}
+.sig{width:14px}
+.wif{width:10px;border-radius:50%}
+.bat{height:10px;width:20px;border:1px solid #333;border-radius:2px;position:relative}
+.bat::after{content:'';position:absolute;right:-4px;top:50%;transform:translateY(-50%);width:2px;height:6px;background:#333;border-radius:0 1px 1px 0}
+.screen{height:calc(100% - 44px);overflow-y:auto;position:relative}
+.screen::-webkit-scrollbar{display:none}
+
+/* ===== 全局隐藏/显示 ===== */
+.screen>div{display:none}
+.screen>div.on{display:flex;flex-direction:column}
+
+/* ===== 授权页 ===== */
+#auth{background:linear-gradient(135deg,#667eea,#764ba2);align-items:center;justify-content:center;text-align:center;color:#fff;padding:40px 30px;min-height:100%}
+#auth .ico{width:80px;height:80px;background:#fff;border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:36px;margin-bottom:24px;box-shadow:0 10px 30px rgba(0,0,0,0.2)}
+#auth h1{font-size:26px;font-weight:700;margin-bottom:8px}
+#auth .sub{font-size:13px;opacity:0.75;margin-bottom:40px}
+.btn-wh{width:280px;height:50px;background:#fff;border-radius:25px;color:#667eea;font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,0.15);border:none;margin:0 auto}
+.btn-wh:active{transform:scale(0.97)}
+.skip{color:rgba(255,255,255,0.65);font-size:12px;margin-top:16px;cursor:pointer}
+.auth-tips{background:rgba(255,255,255,0.12);border-radius:12px;padding:14px 18px;margin:30px 20px 0;text-align:left;font-size:12px;line-height:2}
+.auth-tips div{display:flex;justify-content:space-between}
+
+/* ===== 身份选择页 ===== */
+#iden{background:#f8f9ff}
+.id-hd{background:linear-gradient(135deg,#667eea,#764ba2);padding:36px 20px 24px;text-align:center;color:#fff}
+.id-hd h2{font-size:20px;margin-bottom:6px}
+.id-hd p{font-size:12px;opacity:0.75}
+.id-cards{padding:16px}
+.id-card{background:#fff;border-radius:14px;padding:18px;display:flex;align-items:center;gap:14px;margin-bottom:12px;cursor:pointer;border:2px solid transparent;transition:all 0.2s;box-shadow:0 2px 10px rgba(0,0,0,0.05)}
+.id-card.sel{border-color:#667eea}
+.id-card.sel::after{content:'✓';position:absolute:top 10px;right:10px;width:20px;height:20px;background:#667eea;border-radius:50%;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px}
+.id-card{position:relative}
+.ic{width:50px;height:50px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0}
+.ic-a{background:linear-gradient(135deg,#667eea,#764ba2)}
+.ic-c{background:linear-gradient(135deg,#f093fb,#f5576c)}
+.id-card h3{font-size:15px;margin-bottom:3px}
+.id-card p{font-size:11px;color:#aaa;line-height:1.4}
+.btn-nxt{width:calc(100% - 32px);margin:8px 16px 20px}
+.btn-nxt button{width:100%;height:48px;background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:24px;color:#fff;font-size:15px;font-weight:600;cursor:pointer}
+
+/* ===== 首页 ===== */
+#home{background:#f5f5f5}
+.home-hd{background:linear-gradient(135deg,#667eea,#764ba2);padding:14px 16px 50px;color:#fff}
+.home-top{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.ava{width:46px;height:46px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px}
+.ui{flex:1}
+.ui h3{font-size:16px;font-weight:600}
+.ui p{font-size:11px;opacity:0.7;margin-top:2px}
+.bdg{background:rgba(255,255,255,0.2);padding:3px 10px;border-radius:10px;font-size:10px}
+.htab{display:flex;gap:6px;background:rgba(255,255,255,0.15);border-radius:10px;padding:3px}
+.htab span{flex:1;text-align:center;padding:8px;border-radius:8px;font-size:12px;cursor:pointer;transition:all 0.2s}
+.htab span.sel{background:#fff;color:#667eea;font-weight:600}
+.hc{margin:-36px 12px 0;display:flex;flex-direction:column;gap:12px}
+.sk{background:#fff;border-radius:16px;padding:18px;box-shadow:0 2px 10px rgba(0,0,0,0.05)}
+.sk-h{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.sk-ic{width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px}
+.sk-ic-a{background:linear-gradient(135deg,#667eea,#764ba2)}
+.sk-ic-c{background:linear-gradient(135deg,#f093fb,#f5576c)}
+.sk-txt h4{font-size:15px;font-weight:600}
+.sk-txt .tg{display:inline-block;background:#f0f0ff;color:#667eea;font-size:9px;padding:2px 7px;border-radius:4px;margin-top:3px}
+.sk-txt .lv{font-size:10px;color:#bbb;margin-top:2px}
+.sk>p{font-size:12px;color:#666;line-height:1.7;margin-bottom:12px}
+.tags{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px}
+.tag{background:#f5f5f5;font-size:10px;padding:3px 9px;border-radius:20px;color:#666}
+.vd{background:#f9f9f9;border-radius:10px;height:110px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;margin-bottom:12px}
+.play{width:38px;height:38px;background:linear-gradient(135deg,#667eea,#764ba2);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px}
+.vd span{font-size:11px;color:#aaa}
+.btn-ap{width:100%;height:44px;background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:22px;color:#fff;font-size:14px;font-weight:600;cursor:pointer}
+
+/* 收益卡 */
+.icard{background:linear-gradient(135deg,#667eea,#764ba2);border-radius:16px;padding:18px 16px;color:#fff;margin-bottom:12px}
+.icard h5{font-size:11px;opacity:0.75;margin-bottom:4px}
+.am{font-size:30px;font-weight:700;margin-bottom:2px}
+.am small{font-size:14px}
+.icard .tr{font-size:11px;opacity:0.65}
+.ist{display:flex;gap:8px;margin-top:14px}
+.ist>div{flex:1;background:rgba(255,255,255,0.15);border-radius:8px;padding:10px;text-align:center}
+.ist .n{font-size:17px;font-weight:700}
+.ist .d{font-size:10px;opacity:0.7;margin-top:2px}
+
+/* 订单卡 */
+.oc{background:#fff;border-radius:12px;padding:14px;box-shadow:0 2px 8px rgba(0,0,0,0.04)}
+.oh{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.oid{font-size:11px;color:#aaa}
+.os{padding:2px 9px;border-radius:8px;font-size:10px;font-weight:600}
+.os.nw{background:#e8f5ff;color:#007aff}
+.os.ac{background:#f0f0ff;color:#667eea}
+.stu{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.stav{width:38px;height:38px;background:linear-gradient(135deg,#667eea,#764ba2);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px}
+.stu h5{font-size:13px;font-weight:600}
+.stu p{font-size:11px;color:#aaa}
+.otags{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px}
+.otags .tag{font-size:10px;padding:2px 8px}
+.odsc{font-size:12px;color:#666;line-height:1.5;background:#f9f9f9;padding:8px;border-radius:6px;margin-bottom:10px}
+.oact{display:flex;gap:8px}
+.oact button{flex:1;height:35px;border-radius:17px;font-size:12px;font-weight:600;cursor:pointer;border:none}
+.oact .acp{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}
+.oact .rj{background:#f5f5f5;color:#aaa}
+.oact .ch{background:#f0f0ff;color:#667eea}
+
+/* 我的 */
+.mc{background:#fff;border-radius:16px;padding:16px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,0.04)}
+.mc-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.mc-h h4{font-size:14px;font-weight:600}
+.mc-h span{font-size:11px;color:#aaa}
+.lvrow{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.lvbad{padding:3px 10px;background:linear-gradient(135deg,#667eea,#764ba2);border-radius:8px;color:#fff;font-size:10px;font-weight:600}
+.lvbar{flex:1;height:5px;background:#f0f0f0;border-radius:3px;overflow:hidden}
+.lvfill{height:100%;background:linear-gradient(90deg,#667eea,#764ba2);border-radius:3px;width:60%}
+.iov{display:flex}
+.iov>div{flex:1;text-align:center;padding:8px 0}
+.iov .n{font-size:16px;font-weight:700;color:#333}
+.iov .l{font-size:10px;color:#aaa;margin-top:3px}
+.iv{width:1px;background:#f0f0f0}
+.mritem{display:flex;align-items:center;padding:13px 0;border-bottom:1px solid #f5f5f5;cursor:pointer}
+.mritem:last-child{border-bottom:none}
+.mritem .ic{font-size:20px;margin-right:10px;width:24px;text-align:center}
+.mritem span{flex:1;font-size:13px}
+.mritem .ar{font-size:12px;color:#ccc}
+.rt{display:flex;gap:2px;color:#ff9500;font-size:12px}
+.rt .e{color:#ddd}
+
+/* 悬浮 */
+.fab{position:absolute;bottom:70px;left:50%;transform:translateX(-50%);width:54px;height:54px;background:linear-gradient(135deg,#667eea,#764ba2);border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:20px;box-shadow:0 6px 20px rgba(102,126,234,0.5);cursor:pointer;z-index:30}
+.fab .bd{position:absolute;top:-2px;right:-2px;width:18px;height:18px;background:#f5576c;border-radius:50%;font-size:9px;display:flex;align-items:center;justify-content:center}
+.bnav{position:absolute;bottom:0;left:0;right:0;height:58px;background:#fff;display:flex;box-shadow:0 -2px 10px rgba(0,0,0,0.05);z-index:20}
+.bnav>div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;font-size:10px;color:#aaa}
+.bnav>div.sel{color:#667eea}
+.bnav .ic{font-size:20px;margin-bottom:2px}
+
+/* ===== 申请页 ===== */
+#aply{background:#f5f5f5}
+.ap-hd{background:#fff;padding:14px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #f0f0f0}
+.ap-hd .bk{font-size:20px;cursor:pointer}
+.ap-hd h2{font-size:15px;flex:1;text-align:center;margin-right:28px}
+.stps{background:#fff;padding:16px;display:flex;margin-bottom:12px}
+.stp{display:flex;flex-direction:column;align-items:center;gap:5px;font-size:10px;color:#bbb;flex:1;position:relative}
+.stp::after{content:'';position:absolute;top:12px;left:calc(50% + 14px);width:calc(100% - 28px);height:2px;background:#eee}
+.stp:last-child::after{display:none}
+.stp.done::after{background:#667eea}
+.stp.sel,.stp.done{color:#667eea}
+.stp.sel .n{background:#667eea;color:#fff;animation:pu 2s infinite}
+.stp.done .n{background:#667eea;color:#fff}
+.stp .n{width:24px;height:24px;border-radius:50%;background:#eee;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600}
+@keyframes pu{0%,100%{opacity:1}50%{opacity:0.4}}
+
+/* 表单 */
+.frm{padding:0 12px 80px}
+.fsec{background:#fff;border-radius:12px;padding:14px;margin-bottom:10px}
+.fsec h4{font-size:13px;font-weight:600;padding-bottom:10px;border-bottom:1px solid #f5f5f5;margin-bottom:8px}
+.frow{display:flex;align-items:center;padding:9px 0;border-bottom:1px solid #f5f5f5}
+.frow:last-child{border-bottom:none}
+.frow label{font-size:13px;color:#888;width:70px;flex-shrink:0}
+.frow input{flex:1;border:none;font-size:13px;outline:none;color:#333;background:transparent}
+.frow .ar{font-size:14px;color:#ccc}
+.upar{border:2px dashed #ddd;border-radius:10px;padding:22px;text-align:center;cursor:pointer;margin-top:8px}
+.upar .ic{font-size:28px;color:#bbb;margin-bottom:6px}
+.upar p{font-size:12px;color:#aaa}
+.upar small{display:block;font-size:10px;color:#ccc;margin-top:4px}
+.nbtn{width:100%;height:48px;background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:24px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;margin-top:14px}
+.sk-txt.sel{background:#f0f0ff;padding:5px 12px;border-radius:20px;font-size:12px;color:#667eea}
+
+/* 状态卡 */
+.stc{background:#fff;border-radius:12px;padding:28px 20px;text-align:center;margin:12px}
+.stc .ic{font-size:54px;margin-bottom:14px}
+.stc h3{font-size:17px;margin-bottom:8px}
+.stc p{font-size:12px;color:#aaa;line-height:1.6}
+
+/* 时间线 */
+.tl{background:#fff;border-radius:12px;margin:12px;padding:18px 14px}
+.ti{display:flex;gap:10px;padding-bottom:18px;position:relative}
+.ti:last-child{padding-bottom:0}
+.ti::before{content:'';position:absolute;left:11px;top:24px;bottom:0;width:2px;background:#eee}
+.ti:last-child::before{display:none}
+.tdot{width:24px;height:24px;border-radius:50%;background:#eee;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;z-index:1}
+.ti.done .tdot,.ti.active .tdot{background:#667eea;color:#fff}
+.ti.active .tdot{animation:pu 2s infinite}
+.tc h5{font-size:13px;font-weight:600}
+.tc p{font-size:11px;color:#aaa;margin-top:2px}
+
+/* 培训中 */
+.trc{background:linear-gradient(135deg,#667eea15,#764ba215);border-radius:12px;padding:20px;margin:12px;text-align:center;border:1px solid #667eea20}
+.trc .ic{font-size:42px;margin-bottom:10px}
+.trc h4{color:#667eea;font-size:15px}
+.trc p{font-size:12px;color:#888;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="status">
+    <div class="status-ico"><span class="sig"></span><span class="wif"></span><span class="bat"></span></div>
+  </div>
+  <div class="screen">
+
+    <!-- ========== 1. 授权页 ========== -->
+    <div id="auth" class="on">
+      <div class="ico">🎓</div>
+      <h1>HR商学院</h1>
+      <p class="sub">专业指导师培训与接单平台</p>
+      <button class="btn-wh" onclick="goto('iden')">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="#667eea"><path d="M8.69 6.95c.68-.55 1.51-.85 2.37-.85 2.05 0 3.71 1.66 3.71 3.71s-1.66 3.71-3.71 3.71c-.86 0-1.69-.3-2.37-.85C6.18 11.04 4.5 13.68 4.5 16.71c0 3.52 2.87 6.38 6.39 6.38 3.52 0 6.39-2.86 6.39-6.38 0-3.03-1.68-5.67-4.59-7.14z"/></svg>
+        微信一键授权
+      </button>
+      <p class="skip" onclick="goto('iden')">暂不授权，直接进入 →</p>
+      <div class="auth-tips">
+        <div><span>头像</span><span>微信头像 ✓</span></div>
+        <div><span>昵称</span><span>微信昵称 ✓</span></div>
+        <div><span>手机</span><span>用于联系 ✓</span></div>
+      </div>
+    </div>
+
+    <!-- ========== 2. 身份选择 ========== -->
+    <div id="iden">
+      <div class="id-hd">
+        <h2>选择您的指导师身份</h2>
+        <p>可切换身份接不同类型订单</p>
+      </div>
+      <div class="id-cards">
+        <div class="id-card sel" id="ca" onclick="pickId('a')">
+          <div class="ic ic-a">📚</div>
+          <div><h3>学业指导师</h3><p>帮助学员提升学业技能、考取证书、完成学习任务</p></div>
+        </div>
+        <div class="id-card" id="cb" onclick="pickId('c')">
+          <div class="ic ic-c">💼</div>
+          <div><h3>就业指导师</h3><p>帮助学员提升面试技巧、职业规划、就业能力</p></div>
+        </div>
+      </div>
+      <div class="btn-nxt"><button onclick="goto('home')">确认身份，进入平台</button></div>
+    </div>
+
+    <!-- ========== 3. 首页 ========== -->
+    <div id="home">
+      <div class="home-hd">
+        <div class="home-top">
+          <div class="ava">👨‍🏫</div>
+          <div class="ui">
+            <h3>张老师</h3>
+            <p>学业指导师 · Lv.3</p>
+          </div>
+          <span class="bdg">认证</span>
+        </div>
+        <div class="htab">
+          <span class="sel" onclick="htab(0,this)">技能介绍</span>
+          <span onclick="htab(1,this)">我的订单</span>
+          <span onclick="htab(2,this)">我的</span>
+        </div>
+      </div>
+
+      <!-- 技能介绍 -->
+      <div id="hp0" class="hc">
+        <div class="sk">
+          <div class="sk-h">
+            <div class="sk-ic sk-ic-a">📚</div>
+            <div class="sk-txt">
+              <h4>学业指导服务</h4>
+              <span class="tg">学业指导师</span>
+              <div class="lv">Lv.3 · 已服务 128 位学员</div>
+            </div>
+          </div>
+          <p>专注为在校学生和职场新人提供专业的学业规划、证书考取、论文写作、考研指导等服务。已帮助超过500位学员成功提升学业成绩和综合能力。</p>
+          <div class="tags">
+            <span class="tag">📝 论文指导</span>
+            <span class="tag">📖 考证培训</span>
+            <span class="tag">🎓 考研规划</span>
+            <span class="tag">📋 作业辅导</span>
+          </div>
+          <div class="vd">
+            <div class="play">▶</div>
+            <span>免费宣传视频 · 2分30秒</span>
+          </div>
+          <button class="btn-ap" onclick="goto('aply')">申请成为指导师</button>
+        </div>
+      </div>
+
+      <!-- 我的订单 -->
+      <div id="hp1" class="hc" style="display:none">
+        <div class="icard">
+          <h5>本月收益</h5>
+          <div class="am"><small>¥</small>8,680</div>
+          <div class="tr">较上月 +23.5% ↑</div>
+          <div class="ist">
+            <div><div class="n">42</div><div class="d">完成订单</div></div>
+            <div><div class="n">38</div><div class="d">进行中</div></div>
+            <div><div class="n">4.9</div><div class="d">平均评分</div></div>
+          </div>
+        </div>
+        <div class="oc">
+          <div class="oh">
+            <span class="oid">订单 #2024031501</span>
+            <span class="os nw">新订单</span>
+          </div>
+          <div class="stu">
+            <div class="stav">李</div>
+            <div><h5>李同学</h5><p>华东理工大学 · 大三</p></div>
+          </div>
+          <div class="otags"><span class="tag">论文指导</span><span class="tag">本科论文</span><span class="tag">加急</span></div>
+          <div class="odsc">需要指导本科毕业论文，方向是人力资源管理，预计字数15000字，4月底交初稿。</div>
+          <div class="oact">
+            <button class="acp" onclick="alert('已接单！对方会收到通知')">接单</button>
+            <button class="ch" onclick="alert('打开聊天')">💬 聊</button>
+            <button class="rj" onclick="alert('已拒绝')">拒</button>
+          </div>
+        </div>
+        <div class="oc">
+          <div class="oh">
+            <span class="oid">订单 #2024031418</span>
+            <span class="os ac">进行中</span>
+          </div>
+          <div class="stu">
+            <div class="stav">王</div>
+            <div><h5>王同学</h5><p>上海交通大学 · 研二</p></div>
+          </div>
+          <div class="otags"><span class="tag">考证培训</span><span class="tag">人力资源师</span></div>
+          <div class="odsc">备考人力资源管理师二级，需要系统复习计划和真题辅导。</div>
+          <div class="oact">
+            <button class="acp" onclick="alert('查看详情')">查看详情</button>
+            <button class="ch" onclick="alert('打开聊天')">💬 聊</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 我的 -->
+      <div id="hp2" class="hc" style="display:none">
+        <div class="mc">
+          <div class="lvrow">
+            <span class="lvbad">Lv.3</span>
+            <div class="lvbar"><div class="lvfill"></div></div>
+            <span style="font-size:10px;color:#aaa">60%</span>
+          </div>
+          <div class="iov">
+            <div><div class="n">¥12,480</div><div class="l">累计收益</div></div>
+            <div class="iv"></div>
+            <div><div class="n">186</div><div class="l">服务学员</div></div>
+            <div class="iv"></div>
+            <div><div class="n">4.9</div><div class="l">平均评分</div></div>
+          </div>
+        </div>
+        <div class="mc">
+          <div class="mc-h"><h4>我的评价</h4><span>全部 →</span></div>
+          <div style="margin-bottom:10px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <div style="width:30px;height:30px;background:linear-gradient(135deg,#667eea,#764ba2);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px">陈</div>
+              <div><div style="font-size:12px;font-weight:600">陈学员</div><div class="rt">★★★★★ <span style="font-size:10px;color:#aaa">3天前</span></div></div>
+            </div>
+            <p style="font-size:12px;color:#666;line-height:1.5">老师非常耐心，论文框架讲得很清晰，对我帮助很大！</p>
+          </div>
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <div style="width:30px;height:30px;background:linear-gradient(135deg,#f093fb,#f5576c);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px">林</div>
+              <div><div style="font-size:12px;font-weight:600">林学员</div><div class="rt">★★★★★ <span style="font-size:10px;color:#aaa">1周前</span></div></div>
+            </div>
+            <p style="font-size:12px;color:#666;line-height:1.5">考证复习计划很实用，一次就过了二级！</p>
+          </div>
+        </div>
+        <div class="mc">
+          <div class="mritem" onclick="alert('收益明细')"><span class="ic">💰</span><span>收益明细</span><span class="ar">→</span></div>
+          <div class="mritem" onclick="alert('我的证书')"><span class="ic">📜</span><span>我的证书</span><span class="ar">→</span></div>
+          <div class="mritem" onclick="alert('资质认证')"><span class="ic">✅</span><span>资质认证</span><span class="ar">→</span></div>
+          <div class="mritem" onclick="alert('联系客服')"><span class="ic">📞</span><span>联系客服</span><span class="ar">→</span></div>
+        </div>
+      </div>
+
+      <!-- 悬浮申请按钮 -->
+      <div class="fab" onclick="goto('aply')">申<div class="bd">1</div></div>
+
+      <!-- 底部导航 -->
+      <div class="bnav">
+        <div class="sel" onclick="goto('home')"><span class="ic">🏠</span>首页</div>
+        <div onclick="htab2(1)"><span class="ic">📋</span>订单</div>
+        <div onclick="alert('消息')"><span class="ic">💬</span>消息</div>
+        <div onclick="htab2(2)"><span class="ic">👤</span>我的</div>
+      </div>
+    </div>
+
+    <!-- ========== 4. 申请流程 ========== -->
+    <div id="aply">
+      <div class="ap-hd">
+        <span class="bk" onclick="goto('home')">←</span>
+        <h2>申请成为指导师</h2>
+      </div>
+
+      <!-- 步骤条 -->
+      <div class="stps">
+        <div class        <div class="stp sel" id="s1"><div class="n">1</div><span>资料</span></div>
+        <div class="stp" id="s2"><div class="n">2</div><span>审核</span></div>
+        <div class="stp" id="s3"><div class="n">3</div><span>付费</span></div>
+        <div class="stp" id="s4"><div class="n">4</div><span>培训</span></div>
+        <div class="stp" id="s5"><div class="n">5</div><span>拿证</span></div>
+      </div>
+
+      <!-- 步骤1：填资料 -->
+      <div id="f1" class="frm">
+        <div class="fsec">
+          <h4>基本信息</h4>
+          <div class="frow"><label>姓名</label><input type="text" value="张老师" placeholder="真实姓名"></div>
+          <div class="frow"><label>手机号</label><input type="tel" value="138****8888"><span class="ar">→</span></div>
+          <div class="frow"><label>身份证</label><input type="text" placeholder="实名认证必填"><span class="ar">→</span></div>
+        </div>
+        <div class="fsec">
+          <h4>资质证明</h4>
+          <p style="font-size:11px;color:#aaa;margin-bottom:10px">上传证书、从业证明等材料</p>
+          <div class="upar"><div class="ic">📤</div><p>点击上传图片</p><small>JPG/PNG，不超过5MB</small></div>
+        </div>
+        <div class="fsec">
+          <h4>擅长领域</h4>
+          <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:8px">
+            <span class="sk-txt sel" onclick="this.classList.toggle('sel')">论文指导</span>
+            <span class="sk-txt" onclick="this.classList.toggle('sel')">考证培训</span>
+            <span class="sk-txt" onclick="this.classList.toggle('sel')">考研规划</span>
+            <span class="sk-txt" onclick="this.classList.toggle('sel')">职业规划</span>
+            <span class="sk-txt" onclick="this.classList.toggle('sel')">面试技巧</span>
+          </div>
+        </div>
+        <button class="nbtn" onclick="goStep(2)">提交申请</button>
+      </div>
+
+      <!-- 步骤2：审核中 -->
+      <div id="f2" style="display:none">
+        <div class="stc"><div class="ic">⏳</div><h3>资料审核中</h3><p>预计 1-2 个工作日内完成审核<br>请保持手机畅通</p></div>
+        <div class="tl">
+          <div class="ti done"><div class="tdot">✓</div><div class="tc"><h5>提交资料</h5><p>2024-03-28 10:30</p></div></div>
+          <div class="ti active"><div class="tdot">2</div><div class="tc"><h5>人工审核</h5><p>预计 1-2 个工作日</p></div></div>
+          <div class="ti"><div class="tdot">3</div><div class="tc"><h5>付费培训</h5><p>审核通过后进行</p></div></div>
+          <div class="ti"><div class="tdot">4</div><div class="tc"><h5>完成培训</h5><p>线下/线上培训</p></div></div>
+          <div class="ti"><div class="tdot">5</div><div class="tc"><h5>上传证书</h5><p>获取指导师资格</p></div></div>
+        </div>
+      </div>
+
+      <!-- 步骤3：待付费 -->
+      <div id="f3" style="display:none">
+        <div class="stc"><div class="ic">✅</div><h3>审核通过！</h3><p>恭喜！您的资料已通过审核<br>请支付培训费用以继续</p></div>
+        <div style="padding:0 12px">
+          <div class="fsec" style="display:flex;justify-content:space-between;align-items:center">
+            <div><div style="font-size:14px;font-weight:600">指导师培训课程</div><div style="font-size:11px;color:#aaa;margin-top:4px">含线上课程+线下工作坊+认证费</div></div>
+            <div style="text-align:right"><div style="font-size:20px;font-weight:700;color:#667eea">¥299</div><div style="font-size:10px;color:#ccc;text-decoration:line-through">原价 ¥899</div></div>
+          </div>
+          <button class="nbtn" onclick="goStep(4)">立即支付 ¥299</button>
+        </div>
+      </div>
+
+      <!-- 步骤4：培训中 -->
+      <div id="f4" style="display:none">
+        <div class="trc"><div class="ic">🎓</div><h4>培训进行中</h4><p>已完成线上课程 3/5<br>线下工作坊时间：4月15日</p></div>
+        <div class="tl">
+          <div class="ti done"><div class="tdot">✓</div><div class="tc"><h5>提交资料</h5><p>已完成</p></div></div>
+          <div class="ti done"><div class="tdot">✓</div><div class="tc"><h5>人工审核</h5><p>已通过</p></div></div>
+          <div class="ti done"><div class="tdot">✓</div><div class="tc"><h5>付费培训</h5><p>已完成</p></div></div>
+          <div class="ti active"><div class="tdot">4</div><div class="tc"><h5>线下培训</h5><p>4月15日 · 杭州</p></div></div>
+          <div class="ti"><div class="tdot">5</div><div class="tc"><h5>上传证书</h5><p>培训完成后</p></div></div>
+        </div>
+        <div class="fsec" style="margin:12px">
+          <h4>培训任务</h4>
+          <div style="margin-top:10px">
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f5f5f5">
+              <div style="width:22px;height:22px;background:#667eea22;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#667eea;font-size:10px">✓</div>
+              <div style="flex:1"><div style="font-size:13px">完成线上视频课程</div><div style="font-size:10px;color:#aaa">3/5 已完成</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f5f5f5">
+              <div style="width:22px;height:22px;background:#667eea22;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#667eea;font-size:10px">✓</div>
+              <div style="flex:1"><div style="font-size:13px">提交作业×2</div><div style="font-size:10px;color:#aaa">2/2 已提交</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 0">
+              <div style="width:22px;height:22px;background:#f0f0f0;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:10px">4</div>
+              <div style="flex:1"><div style="font-size:13px">参加线下工作坊</div><div style="font-size:10px;color:#aaa">4月15日 · 杭州</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 步骤5：拿证 -->
+      <div id="f5" style="display:none">
+        <div class="stc"><div class="ic">🎉</div><h3>培训完成！</h3><p>恭喜完成全部培训课程<br>请上传您的证书完成最终认证</p></div>
+        <div style="padding:0 12px">
+          <div class="fsec">
+            <h4>上传证书</h4>
+            <div class="upar" style="margin-top:12px"><div class="ic">📜</div><p>上传电子版证书照片</p><small>证书：人力资源管理师（二级）</small></div>
+          </div>
+          <button class="nbtn" onclick="goStep(6)">提交认证</button>
+        </div>
+      </div>
+
+      <!-- 步骤6：成功 -->
+      <div id="f6" style="display:none">
+        <div class="stc"><div class="ic">🎊</div><h3>认证成功！</h3><p>恭喜您正式成为HR商学院指导师<br>可以开始接单了！</p></div>
+        <div style="padding:12px"><button class="nbtn" onclick="goto('home')">进入平台接单 →</button></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+var curId='a',curStep=1,curTab=0;
+
+function goto(id){document.querySelectorAll('.screen>div').forEach(function(d){d.classList.remove('on')});document.getElementById(id).classList.add('on');window.scrollTo(0,0)}
+
+function pickId(t){curId=t;document.getElementById('ca').classList.remove('sel');document.getElementById('cb').classList.remove('sel');document.getElementById('c'+t).classList.add('sel')}
+
+function htab(n,el){curTab=n;var tabs=el.parentElement.querySelectorAll('span');tabs.forEach(function(t){t.classList.remove('sel')});el.classList.add('sel');document.getElementById('hp0').style.display='none';document.getElementById('hp1').style.display='none';document.getElementById('hp2').style.display='none';document.getElementById('hp'+n).style.display='flex'}
+
+function ht2(n){document.querySelectorAll('.bnav>div').forEach(function(d,i){d.classList.remove('sel');if(i===0)d.classList.add('sel')});document.querySelectorAll('#home .htab span').forEach(function(t){t.classList.remove('sel')});document.querySelector('#home .htab span').classList.add('sel');document.getElementById('hp0').style.display='none';document.getElementById('hp1').style.display='none';document.getElementById('hp2').style.display='none';document.getElementById('hp'+n).style.display='flex';document.getElementById('hp'+n).style.flexDirection='column'}
+
+function ht2t(n){document.querySelectorAll('#home .htab span').forEach(function(t){t.classList.remove('sel')});document.querySelectorAll('#home .htab span')[n].classList.add('sel');document.getElementById('hp0').style.display='none';document.getElementById('hp1').style.display='none';document.getElementById('hp2').style.display='none';document.getElementById('hp'+n).style.display='flex';document.getElementById('hp'+n).style.flexDirection='column'}
+
+function goStep(n){
+  curStep=n;
+  for(var i=1;i<=5;i++){var s=document.getElementById('s'+i);s.classList.remove('sel','done');if(i<n)s.classList.add('done');if(i===n)s.classList.add('sel')}
+  document.getElementById('f1').style.display='none';document.getElementById('f2').style.display='none';document.getElementById('f3').style.display='none';document.getElementById('f4').style.display='none';document.getElementById('f5').style.display='none';document.getElementById('f6').style.display='none';
+  document.getElementById('f'+n).style.display='block';
+  if(n<6)document.getElementById('f'+n).className='frm';
+  window.scrollTo(0,0);
+  if(n===2)setTimeout(function(){goStep(3)},3000);
+}
+</script>
+</body>
+</html>

@@ -211,16 +211,16 @@ fun LoginMainScreen(
                     .height(48.dp),
                     shape = RoundedCornerShape(24.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = StarLinkWhite,
-                        contentColor = StarLinkPlaceholderGray
+                        containerColor = Color.Transparent,
+                        contentColor = StarLinkWhite
                     ),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, StarLinkPlaceholderGray)
+                    border = androidx.compose.foundation.BorderStroke(1.dp, StarLinkWhite.copy(alpha = 0.5f))
                 ) {
                     Text(
                         text = "验证码登陆",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
-                        color = StarLinkPlaceholderGray
+                        color = StarLinkWhite
                     )
                 }
 

@@ -27,7 +27,8 @@ plugins {
 //val defaultApiHost ="https://app.api.xlwl-ai.com/"
 //val defaultApiHost = "192.168.0.103"
 //val defaultApiHost = "10.0.1.61"
-val defaultApiHost = "10.0.1.77"
+//val defaultApiHost = "10.0.1.77"
+val defaultApiHost = "192.168.10.62"
 val defaultApiPort = 3001
 val defaultApiPath = "api"
 
@@ -164,6 +165,7 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.0")
     implementation("io.coil-kt:coil-compose:2.6.0")
     implementation("io.coil-kt:coil-gif:2.6.0")
+    implementation("io.coil-kt:coil-svg:2.6.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
 
     // Retrofit for networking

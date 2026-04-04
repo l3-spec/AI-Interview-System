@@ -1,8 +1,17 @@
 /**
  * LoginScreen - 手机号+验证码登录
+ * 品牌：STARLINK FUTURE（柚汀科技）
  */
 
 import { getAuthService } from '../../services/AuthService';
+
+const AccentTeal = Color.fromARGB(255, 0, 172, 195);
+const AccentOrange = Color.fromARGB(255, 236, 124, 56);
+const TextDark = Color.fromARGB(255, 36, 37, 39);
+const TextGray = Color.fromARGB(255, 181, 183, 184);
+const BgLight = Color.fromARGB(255, 250, 250, 250);
+const BorderGray = Color.fromARGB(255, 220, 220, 220);
+const WhiteColor = Color.White;
 
 interface LoginScreenProps {
   onLoginSuccess: (token: string, userJson: string) => void;
@@ -19,6 +28,7 @@ export struct LoginScreen {
   @State errorMsg: string | null = null;
   @State infoMsg: string | null = null;
   @State countdown: number = 0;
+  @State agreed: boolean = true;
 
   private authService = getAuthService();
   private countdownTimer: number = -1;
@@ -32,43 +42,65 @@ export struct LoginScreen {
 
   build() {
     Stack() {
-      // 渐变背景
+      // 渐变背景：顶部青色 → 底部浅蓝白
       Column() {
         Column()
           .width('100%')
           .height('100%')
-          .backgroundColor(Color.fromARGB(255, 255, 214, 186))
+          .linearGradient({
+            direction: GradientDirection.Top,
+            colors: [[AccentTeal, 0.0], [Color.fromARGB(255, 227, 244, 251), 1.0]]
+          })
       }
       .width('100%')
       .height('100%')
 
       Column() {
-        // 标题
-        Column({ space: 8 }) {
-          Text('欢迎回来')
-            .fontSize(28)
-            .fontWeight(FontWeight.Bold)
-            .fontColor(Color.fromARGB(255, 44, 44, 44))
-          Text('登录您的账户')
-            .fontSize(16)
-            .fontColor(Color.fromARGB(255, 179, 102, 102))
-        }
-        .margin({ top: 60, bottom: 40 })
+        // Logo 区域
+        Column() {
+          // Logo 占位图标（橙色圆形曲线）
+          Column()
+            .width(100)
+            .height(100)
+            .backgroundColor(AccentOrange)
+            .borderRadius(50)
+            .justifyContent(FlexAlign.Center)
+            .alignItems(HorizontalAlign.Center) {
+              Text('🤖')
+                .fontSize(48)
+            }
 
-        // 表单卡片
+          // 品牌文字
+          Row() {
+            Text('STARLINK')
+              .fontSize(24)
+              .fontWeight(FontWeight.Bold)
+              .fontColor(AccentTeal)
+            Text(' FUTURE')
+              .fontSize(24)
+              .fontWeight(FontWeight.Bold)
+              .fontColor(AccentOrange)
+          }
+          .margin({ top: 16 })
+        }
+        .margin({ top: 80 })
+
+        Blank()
+
+        // 登录表单卡片
         Column() {
           // 手机号
           Column({ space: 6 }) {
             Text('手机号')
               .fontSize(12)
-              .fontColor(Color.fromARGB(255, 179, 102, 102))
+              .fontColor(TextGray)
               .margin({ left: 4 })
             TextInput({ placeholder: '请输入11位手机号', text: this.phone })
               .width('100%')
               .height(48)
               .fontSize(16)
-              .backgroundColor(Color.fromARGB(255, 250, 250, 250))
-              .border({ width: 1, color: Color.fromARGB(255, 220, 220, 220), radius: 12 })
+              .backgroundColor(BgLight)
+              .border({ width: 1, color: BorderGray, radius: 12 })
               .type(InputType.PhoneNumber)
               .onChange((v: string) => {
                 this.phone = v.replace(/[^0-9]/g, '').substring(0, 11);
@@ -80,15 +112,15 @@ export struct LoginScreen {
           Column({ space: 6 }) {
             Text('验证码')
               .fontSize(12)
-              .fontColor(Color.fromARGB(255, 179, 102, 102))
+              .fontColor(TextGray)
               .margin({ left: 4, top: 16 })
             Row({ space: 12 }) {
               TextInput({ placeholder: '请输入验证码', text: this.code })
                 .layoutWeight(1)
                 .height(48)
                 .fontSize(16)
-                .backgroundColor(Color.fromARGB(255, 250, 250, 250))
-                .border({ width: 1, color: Color.fromARGB(255, 220, 220, 220), radius: 12 })
+                .backgroundColor(BgLight)
+                .border({ width: 1, color: BorderGray, radius: 12 })
                 .type(InputType.Number)
                 .onChange((v: string) => {
                   this.code = v.replace(/[^0-9]/g, '').substring(0, 6);
@@ -97,10 +129,10 @@ export struct LoginScreen {
               Button(this.countdown > 0 ? `${this.countdown}s` : '发送验证码')
                 .height(48)
                 .fontSize(14)
-                .fontColor(Color.White)
+                .fontColor(WhiteColor)
                 .backgroundColor(
                   this.phone.length === 11 && this.countdown === 0
-                    ? Color.fromARGB(255, 255, 140, 66)
+                    ? AccentOrange
                     : Color.fromARGB(255, 255, 194, 159)
                 )
                 .width(120)
@@ -111,15 +143,13 @@ export struct LoginScreen {
             }
           }
 
-          // 错误提示
+          // 错误/提示
           if (this.errorMsg) {
             Text(this.errorMsg)
               .fontSize(12)
               .fontColor(Color.Red)
               .margin({ top: 12 })
           }
-
-          // 信息提示
           if (this.infoMsg) {
             Text(this.infoMsg)
               .fontSize(12)
@@ -127,16 +157,16 @@ export struct LoginScreen {
               .margin({ top: 8 })
           }
 
-          // 登录按钮
-          Button('登录', { type: ButtonType.Capsule })
+          // 主按钮
+          Button('授权手机号登陆', { type: ButtonType.Capsule })
             .width('100%')
-            .height(48)
+            .height(52)
             .fontSize(16)
             .fontWeight(FontWeight.SemiBold)
-            .fontColor(Color.White)
+            .fontColor(WhiteColor)
             .backgroundColor(
               this.phone.length === 11 && this.code.length === 6
-                ? Color.fromARGB(255, 255, 140, 66)
+                ? AccentOrange
                 : Color.fromARGB(255, 255, 194, 159)
             )
             .margin({ top: 24 })
@@ -144,24 +174,53 @@ export struct LoginScreen {
               this.handleLogin();
             })
 
-          // 注册链接
+          // 次按钮
+          Button('验证码登陆', { type: ButtonType.Capsule })
+            .width('100%')
+            .height(52)
+            .fontSize(16)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(TextGray)
+            .backgroundColor(WhiteColor)
+            .border({
+              width: 1,
+              color: BorderGray,
+              radius: 26
+            })
+            .margin({ top: 14 })
+            .onClick(() => {
+              this.handleCodeLogin();
+            })
+
+          // 协议
           Row() {
-            Text('还没有账号？')
-              .fontSize(14)
-              .fontColor(Color.fromARGB(255, 179, 102, 102))
-            Button('立即注册')
-              .fontSize(14)
-              .fontWeight(FontWeight.SemiBold)
-              .fontColor(Color.fromARGB(255, 255, 140, 66))
-              .backgroundColor(Color.Transparent)
-              .onClick(() => {
-                this.props?.onGoRegister?.();
-              })
+            Checkbox({
+              isChecked: this.agreed,
+              onChange: (v: boolean) => {
+                this.agreed = v;
+              },
+              selectedColor: AccentOrange,
+              shape: CheckboxShape.ROUNDED_SQUARE
+            })
+              .width(20)
+              .height(20)
+            Text('我已阅读并同意')
+              .fontSize(12)
+              .fontColor(TextGray)
+            Text('《用户须知》')
+              .fontSize(12)
+              .fontColor(AccentTeal)
+            Text('和')
+              .fontSize(12)
+              .fontColor(TextGray)
+            Text('《隐私条款》')
+              .fontSize(12)
+              .fontColor(AccentTeal)
           }
-          .margin({ top: 16 })
+          .margin({ top: 20 })
         }
         .padding(24)
-        .backgroundColor(Color.White)
+        .backgroundColor(WhiteColor)
         .borderRadius(16)
         .shadow({
           radius: 12,
@@ -171,7 +230,7 @@ export struct LoginScreen {
       }
       .width('100%')
       .height('100%')
-      .padding({ left: 24, right: 24 })
+      .padding({ left: 24, right: 24, bottom: 40 })
 
       // Loading 遮罩
       if (this.loading) {
@@ -184,10 +243,10 @@ export struct LoginScreen {
             LoadingProgress()
               .width(40)
               .height(40)
-              .color(Color.fromARGB(255, 255, 140, 66))
+              .color(AccentOrange)
             Text('登录中...')
               .fontSize(14)
-              .fontColor(Color.White)
+              .fontColor(WhiteColor)
               .margin({ top: 12 })
           }
           .width(120)
@@ -266,5 +325,10 @@ export struct LoginScreen {
       this.loading = false;
       this.errorMsg = '登录失败，请检查网络';
     }
+  }
+
+  private async handleCodeLogin(): Promise<void> {
+    // 验证码登录逻辑
+    this.props?.onGoRegister?.();
   }
 }

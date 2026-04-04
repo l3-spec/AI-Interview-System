@@ -5,9 +5,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
@@ -40,15 +45,25 @@ import androidx.compose.foundation.shape.CircleShape
 
 @Composable
 fun AuthBrandLockup(modifier: Modifier = Modifier) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val imageLoader = remember(context) {
+        coil.ImageLoader.Builder(context)
+            .components {
+                add(coil.decode.SvgDecoder.Factory())
+            }
+            .build()
+    }
+
     Box(
         modifier = modifier,
         contentAlignment = Alignment.Center
     ) {
-        Image(
-            painter = painterResource(id = R.drawable.login_logo),
-            contentDescription = "STAR-LINK FUTURE",
+        coil.compose.AsyncImage(
+            model = R.raw.ic_splash_logo_new,
+            imageLoader = imageLoader,
+            contentDescription = "STARLINK FUTURE Logo",
             modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Fit
+            contentScale = androidx.compose.ui.layout.ContentScale.Fit
         )
     }
 }

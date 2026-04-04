@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 柚汀科技 STARLINK FUTURE 品牌 Logo -->
+<!-- 圆形图标：青色上半部(S) + 橙色下半部(F/S曲线) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="200dp"
+    android:viewportWidth="200"
+    android:viewportHeight="200">
+
+    <!-- 青色上半部：STARLINK 首字母 S -->
+    <!-- 外圈弧形 -->
+    <path
+        android:pathData="M100,15 A85,85 0 0,1 100,185 A85,85 0 0,1 100,15"
+        android:strokeWidth="0"
+        android:fillColor="#00000000"/>
+    
+    <!-- S 上半圆弧（青色）-->
+    <path
+        android:pathData="M60,85 Q60,45 100,45 Q140,45 140,75 Q140,105 100,105 Q75,105 75,85"
+        android:strokeWidth="18"
+        android:strokeColor="#00ADC1"
+        android:fillColor="#00000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+
+    <!-- S 顶部小弧（青色）-->
+    <path
+        android:pathData="M72,65 Q72,52 100,52 Q120,52 120,65"
+        android:strokeWidth="12"
+        android:strokeColor="#00ADC1"
+        android:fillColor="#00000000"
+        android:strokeLineCap="round"/>
+
+    <!-- 橙色下半部：FUTURE 首字母 F/S曲线 -->
+    <!-- 外圈弧形 -->
+    <path
+        android:pathData="M100,15 A85,85 0 1,1 100,185 A85,85 0 1,1 100,15"
+        android:strokeWidth="0"
+        android:fillColor="#00000000"/>
+
+    <!-- F 下半弧（橙色）-->
+    <path
+        android:pathData="M140,115 Q140,155 100,155 Q60,155 60,115"
+        android:strokeWidth="18"
+        android:strokeColor="#EC7C38"
+        android:fillColor="#00000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+
+    <!-- F 右侧小弧（橙色）-->
+    <path
+        android:pathData="M128,135 Q128,148 100,148 Q80,148 80,135"
+        android:strokeWidth="12"
+        android:strokeColor="#EC7C38"
+        android:fillColor="#00000000"
+        android:strokeLineCap="round"/>
+
+</vector>

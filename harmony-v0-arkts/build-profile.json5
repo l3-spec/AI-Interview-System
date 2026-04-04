@@ -1,28 +1,15 @@
 {
   "app": {
-    "signingConfigs": [
+    "compileSdkVersion": 5,
+    "compatibleSdkVersion": 5,
+    "products": [
       {
         "name": "default",
-        "type": "HarmonyOS",
-        "material": {
-          "storeFile": "",
-          "storePassword": "",
-          "keyAlias": "",
-          "keyPassword": ""
-        }
+        "buildType": "debug",
+        "signingConfig": "default"
       }
     ],
-    "buildMode": {
-      "debug": {
-        "compileOptions": {
-          "sourceMap": true
-        }
-      },
-      "release": {
-        "compileOptions": {
-          "sourceMap": false
-        }
-      }
-    }
+    "signingConfigs": [],
+    "buildMode": {}
   }
 }

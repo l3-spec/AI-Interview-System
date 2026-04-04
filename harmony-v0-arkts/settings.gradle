@@ -1,0 +1,2 @@
+// HarmonyOS Stage model - project module configuration
+include '[:entry]'
