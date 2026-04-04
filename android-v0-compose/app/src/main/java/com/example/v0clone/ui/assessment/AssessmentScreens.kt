@@ -245,7 +245,8 @@ private fun AssessmentHomeScreen(
     val listBottomPadding = navPadding.calculateBottomPadding() + 48.dp
 
     Scaffold(
-        containerColor = Color.Transparent
+        containerColor = Color.Transparent,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { padding ->
         Box(
             modifier = Modifier
@@ -644,8 +645,10 @@ private fun AssessmentCategoryScreen(
     onAssessmentSelected: (Assessment) -> Unit
 ) {
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             CenterAlignedTopAppBar(
+                windowInsets = WindowInsets(0, 0, 0, 0),
                 title = {
                     Text(
                         text = title,
@@ -873,8 +876,10 @@ private fun AssessmentDetailScreen(
     val navPadding = WindowInsets.navigationBars.asPaddingValues()
     Scaffold(
         modifier = Modifier.background(ScreenGradient),
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             CenterAlignedTopAppBar(
+                windowInsets = WindowInsets(0, 0, 0, 0),
                 title = {
                     Text(
                         text = detail?.title ?: "测评详情",
@@ -1264,6 +1269,7 @@ private fun AssessmentTakeScreen(
 
     Scaffold(
         modifier = Modifier.background(ScreenGradient),
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             AssessmentTakeTopBar(
                 title = detail?.title ?: assessmentTitle ?: "测评答题",
@@ -1667,8 +1673,10 @@ fun AssessmentResultRoute(
 ) {
     val navPadding = WindowInsets.navigationBars.asPaddingValues()
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             CenterAlignedTopAppBar(
+                windowInsets = WindowInsets(0, 0, 0, 0),
                 title = {
                     Text(
                         text = "测评结果",

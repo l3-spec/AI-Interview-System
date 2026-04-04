@@ -327,7 +327,6 @@ private fun TopSection(
         modifier = Modifier
             .fillMaxWidth()
             .background(GradientTop)
-            .statusBarsPadding()
             .padding(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 10.dp)
     ) {
         Row(
