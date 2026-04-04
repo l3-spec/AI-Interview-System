@@ -40,6 +40,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -58,6 +59,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.SubcomposeAsyncImage
 import com.xlwl.AiMian.data.repository.AiInterviewRepository
 import com.xlwl.AiMian.data.repository.JobRepository
+import android.app.Activity
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.view.WindowCompat
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.foundation.layout.statusBarsPadding
 
 private val PageBackground = Color(0xFFF5F5F5) // Slightly lighter gray
 private val AccentOrange = Color(0xFFFF7D38) // More vibrant orange from design
@@ -85,6 +91,26 @@ fun JobDetailRoute(
   )
   val uiState by viewModel.uiState.collectAsState()
   val jobDetail = uiState.job
+
+  val activity = LocalContext.current as? Activity
+  DisposableEffect(activity) {
+    if (activity != null) {
+      val window = activity.window
+      val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+      val originalStatusBarColor = window.statusBarColor
+      val originalDarkIcons = insetsController.isAppearanceLightStatusBars
+
+      window.statusBarColor = android.graphics.Color.TRANSPARENT
+      insetsController.isAppearanceLightStatusBars = true // Dark icons
+
+      onDispose {
+        window.statusBarColor = originalStatusBarColor
+        insetsController.isAppearanceLightStatusBars = originalDarkIcons
+      }
+    } else {
+      onDispose {}
+    }
+  }
 
   LaunchedEffect(viewModel) {
     viewModel.events.collect { event ->
@@ -162,11 +188,14 @@ private fun JobDetailScreen(
         .padding(bottom = innerPadding.calculateBottomPadding())
     ) {
       // Custom Header
-      Column(modifier = Modifier.fillMaxWidth()) {
+      Column(modifier = Modifier
+        .fillMaxWidth()
+        .background(Color.White)
+        .statusBarsPadding()
+      ) {
           Row(
             modifier = Modifier
               .fillMaxWidth()
-              .background(Color.White)
               .height(44.dp) // Compact fixed height
               .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -751,9 +780,7 @@ private fun JobDetailBottomBar(
   onApply: () -> Unit
 ) {
   Surface(
-    modifier = Modifier
-      .fillMaxWidth()
-      .navigationBarsPadding(),
+    modifier = Modifier.fillMaxWidth(),
     color = Color.White,
     tonalElevation = 0.dp,
     shadowElevation = 8.dp
@@ -761,6 +788,7 @@ private fun JobDetailBottomBar(
     Column(
       modifier = Modifier
         .fillMaxWidth()
+        .navigationBarsPadding()
         .padding(horizontal = 16.dp, vertical = 12.dp),
       horizontalAlignment = Alignment.CenterHorizontally,
       verticalArrangement = Arrangement.spacedBy(8.dp)
