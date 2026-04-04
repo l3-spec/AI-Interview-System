@@ -42,10 +42,10 @@ import com.xlwl.AiMian.data.repository.ContentRepository
  * 3. 上拉加载更多 ✅
  * 4. 深色底部导航样式 ✅
  */
-private val GradientTop = Color(0xFF00ACC3)
-private val GradientBottom = Color(0xFFE9F7F9)
-private val PageBackground = Color(0xFFF4F5F6)
-private val AccentOrange = Color(0xFFF28B3F)
+private val GradientTop = Color(0xFF00ADC1)
+private val GradientBottom = Color(0xFFE3F4FB)
+private val PageBackground = Color(0xFFEBEBEB)
+private val AccentOrange = Color(0xFFEC7C38)
 private val PlaceholderGray = Color(0xFFB5B7B8)
 private val TextPrimary = Color(0xFF000000)
 private val CardTitleColor = TextPrimary

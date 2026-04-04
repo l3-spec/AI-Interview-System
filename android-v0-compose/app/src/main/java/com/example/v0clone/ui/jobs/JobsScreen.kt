@@ -85,14 +85,14 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import java.util.Locale
 
-private val GradientTop = Color(0xFF00ACC3)
-private val GradientBottom = Color(0xFFE9F7F9)
-private val PageBackground = Color(0xFFF4F5F6)
-private val TextPrimary = Color(0xFF2D3036)
-private val TextSecondary = Color(0xFF8C929A)
-private val AccentOrange = Color(0xFFF28B3F)
-private val CardTagBackground = Color(0xFFF5F7FA)
-private val CardTagText = Color(0xFF5F6773)
+private val GradientTop = Color(0xFF00ADC1)
+private val GradientBottom = Color(0xFFE3F4FB)
+private val PageBackground = Color(0xFFEBEBEB)
+private val TextPrimary = Color(0xFF000000)
+private val TextSecondary = Color(0xFFB5B7B8)
+private val AccentOrange = Color(0xFFEC7C38)
+private val CardTagBackground = Color(0xFFF3F8FB)
+private val CardTagText = Color(0xFF000000)
 private val CardBorder = Color(0xFFE6E8EB)
 private val SearchPlaceholder = Color(0xFFB5B7B8)
 private val FilterGradientTop = Color(0xFF51ABB9)
@@ -100,14 +100,14 @@ private val FilterFieldBorder = Color(0xFFD9D9D9)
 private val FilterChipDefaultBackground = Color(0xFFF4F5F8)
 private val FilterChipDefaultBorder = Color(0xFFE6E8EB)
 private val FilterChipSelectedBackground = Color(0xFFDFFBFF)
-private val FilterChipSelectedText = Color(0xFF00ACC3)
+private val FilterChipSelectedText = Color(0xFF00ADC1)
 private val DividerGray = Color(0xFFE5E7EB)
 private val JobsTopBarExpandedHeight = 76.dp
 private val JobsTopBarCollapsedHeight = 54.dp
 private val JobsTopBarMaxOffset = 120.dp
 private val JobsHeaderApproxHeight = JobsTopBarExpandedHeight + 126.dp
 private val PreferenceChipBackground = Color(0xFFDFFBFF)
-private val PreferenceChipOutline = Color(0xFF00ACC3)
+private val PreferenceChipOutline = Color(0xFF00ADC1)
 private val FigmaLetterSpacing = (-0.32).sp
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -665,8 +665,8 @@ private fun JobCard(
                 Text(
                     text = job.title.ifBlank { "前端开发" },
                     color = TextPrimary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
                     lineHeight = 21.sp,
                     letterSpacing = FigmaLetterSpacing,
                     maxLines = 1,
@@ -674,10 +674,10 @@ private fun JobCard(
                     modifier = Modifier.weight(1f)
                 )
                 Text(
-                    text = job.salary.ifBlank { "薪资面议" },
+                    text = job.salary.ifBlank { "10-20K" },
                     color = AccentOrange,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
                     letterSpacing = FigmaLetterSpacing,
                     modifier = Modifier.padding(start = 8.dp)
                 )
@@ -700,14 +700,14 @@ private fun JobCard(
                     tagCandidates.take(3).forEach { tag ->
                         Surface(
                             color = CardTagBackground,
-                            shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.dp, CardBorder)
+                            shape = RoundedCornerShape(4.dp),
+                            border = null
                         ) {
                             Text(
                                 text = tag,
                                 color = CardTagText,
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
+                                fontWeight = FontWeight.Light,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                             )
                         }
@@ -753,8 +753,8 @@ private fun JobCard(
                     Text(
                         text = job.company.ifBlank { "公司名称" },
                         color = TextPrimary,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Light,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -763,7 +763,7 @@ private fun JobCard(
                         text = job.companyTagline.ifBlank { "公司的简单介绍" },
                         color = TextSecondary,
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.Normal,
+                        fontWeight = FontWeight.Light,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )

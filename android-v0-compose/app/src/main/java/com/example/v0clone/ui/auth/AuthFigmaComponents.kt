@@ -45,25 +45,15 @@ import androidx.compose.foundation.shape.CircleShape
 
 @Composable
 fun AuthBrandLockup(modifier: Modifier = Modifier) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val imageLoader = remember(context) {
-        coil.ImageLoader.Builder(context)
-            .components {
-                add(coil.decode.SvgDecoder.Factory())
-            }
-            .build()
-    }
-
     Box(
         modifier = modifier,
         contentAlignment = Alignment.Center
     ) {
-        coil.compose.AsyncImage(
-            model = R.raw.ic_splash_logo_new,
-            imageLoader = imageLoader,
+        Image(
+            painter = painterResource(id = R.drawable.ic_splash_logo_new_png),
             contentDescription = "STARLINK FUTURE Logo",
             modifier = Modifier.fillMaxSize(),
-            contentScale = androidx.compose.ui.layout.ContentScale.Fit
+            contentScale = ContentScale.Fit
         )
     }
 }
