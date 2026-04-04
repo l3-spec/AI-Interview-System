@@ -50,7 +50,6 @@ fun CompactTopBar(
         Row(
             modifier = modifier
                 .fillMaxWidth()
-                .statusBarsPadding()
                 .height(barHeight)
                 .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically

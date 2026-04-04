@@ -630,7 +630,6 @@ private fun CircleHeader(
                     endY = 520f
                 )
             )
-            .statusBarsPadding()
             .padding(
                 top = containerTopPadding,
                 bottom = containerBottomPadding,

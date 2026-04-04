@@ -957,7 +957,6 @@ private fun JobFiltersSheet(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .statusBarsPadding()
             ) {
                 FilterHeader(onBack = onDismiss)
 
