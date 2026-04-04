@@ -94,12 +94,12 @@ fun V0App() {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(top = innerPadding.calculateTopPadding())
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = if (hideBottomBar) 0.dp else bottomInset)
+                    // Allow screens to draw bottom edge-to-edge for gesture bar blending
             ) {
                 AppNavHost(navController = navController)
             }

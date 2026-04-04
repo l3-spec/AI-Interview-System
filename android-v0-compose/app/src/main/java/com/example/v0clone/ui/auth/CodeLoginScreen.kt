@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -144,6 +147,8 @@ fun CodeLoginScreen(
         }
     }
 
+    val navPadding = androidx.compose.foundation.layout.WindowInsets.navigationBars.asPaddingValues()
+
     fun updateKeyboardState() {
         val shouldShow = phoneFocused || codeFocused
         showKeyboard = shouldShow
@@ -169,8 +174,9 @@ fun CodeLoginScreen(
             .fillMaxSize()
             .background(starLinkHeroGradient())
     ) {
+        val bottomInset = navPadding.calculateBottomPadding()
         val keyboardHeight = 290.dp
-        val cardHeight = 416.dp
+        val cardHeight = 416.dp + bottomInset
         val brandLockupHeight = 143.dp
         val brandTop = 90.dp
         val desiredGap = 120.dp
@@ -207,7 +213,7 @@ fun CodeLoginScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(start = 48.dp, end = 48.dp, top = 32.dp, bottom = 96.dp),
+                        .padding(start = 48.dp, end = 48.dp, top = 32.dp, bottom = 96.dp + bottomInset),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
