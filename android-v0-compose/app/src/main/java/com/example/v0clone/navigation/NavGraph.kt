@@ -45,7 +45,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import com.google.gson.Gson
-import com.xlwl.AiMian.ai.guide.InterviewGuideRoute
+
 import com.xlwl.AiMian.data.api.AiInterviewApi
 import com.xlwl.AiMian.data.api.ApiService
 import com.xlwl.AiMian.data.api.OssApi
@@ -371,28 +371,15 @@ fun AppNavHost(navController: NavHostController) {
                     onStartInterview = { position, category, jobId ->
                         val safePosition = position.ifBlank { "AI 面试岗位" }
                         val safeCategory = category.ifBlank { "通用岗位" }
-                        if (hasSeenGuide) {
-                            navController.currentBackStackEntry?.savedStateHandle?.set("selected_position", safePosition)
-                            navController.currentBackStackEntry?.savedStateHandle?.set("selected_category", safeCategory)
-                            if (jobId.isNullOrBlank()) {
-                                navController.currentBackStackEntry?.savedStateHandle?.remove<String>("selected_job_id")
-                            } else {
-                                navController.currentBackStackEntry?.savedStateHandle?.set("selected_job_id", jobId)
-                            }
-                            navController.navigate(Routes.DIGITAL_INTERVIEW) {
-                                launchSingleTop = true
-                            }
+                        navController.currentBackStackEntry?.savedStateHandle?.set("selected_position", safePosition)
+                        navController.currentBackStackEntry?.savedStateHandle?.set("selected_category", safeCategory)
+                        if (jobId.isNullOrBlank()) {
+                            navController.currentBackStackEntry?.savedStateHandle?.remove<String>("selected_job_id")
                         } else {
-                            if (jobId.isNullOrBlank()) {
-                                navController.currentBackStackEntry?.savedStateHandle?.remove<String>("selected_job_id")
-                            } else {
-                                navController.currentBackStackEntry?.savedStateHandle?.set("selected_job_id", jobId)
-                            }
-                            navController.navigate(
-                                "${Routes.GUIDE}/${URLEncoder.encode(safePosition, "UTF-8")}/${URLEncoder.encode(safeCategory, "UTF-8")}"
-                            ) {
-                                launchSingleTop = true
-                            }
+                            navController.currentBackStackEntry?.savedStateHandle?.set("selected_job_id", jobId)
+                        }
+                        navController.navigate(Routes.DIGITAL_INTERVIEW) {
+                            launchSingleTop = true
                         }
                     }
                 )
@@ -430,37 +417,7 @@ fun AppNavHost(navController: NavHostController) {
             }
         }
 
-        composable("${Routes.GUIDE}/{position}/{category}") { backStackEntry ->
-            val encodedPosition = backStackEntry.path("position")
-            val encodedCategory = backStackEntry.path("category")
-            val position = encodedPosition?.let { URLDecoder.decode(it, "UTF-8") } ?: ""
-            val category = encodedCategory?.let { URLDecoder.decode(it, "UTF-8") } ?: ""
-            val aiEntry = navController.previousBackStackEntry
-            val selectedJobId = aiEntry?.savedStateHandle?.get<String>("selected_job_id")
-            if (token.isNullOrEmpty()) {
-                LaunchedEffect(Unit) {
-                    navController.navigate(LOGIN) {
-                        launchSingleTop = true
-                    }
-                }
-            } else {
-                InterviewGuideRoute(
-                    position = position,
-                    category = category,
-                    jobId = selectedJobId,
-                    repository = aiInterviewRepository,
-                    onBack = { navController.popBackStack() },
-                    onContinue = { flowState ->
-                        coroutineScope.launch { authManager.setInterviewGuideSeen(true) }
-                        aiEntry?.savedStateHandle?.set("ai_interview_flow", flowState)
-                        val encoded = URLEncoder.encode(flowState.jobTarget, "UTF-8")
-                        navController.navigate("${Routes.PREP}/$encoded") {
-                            launchSingleTop = true
-                        }
-                    }
-                )
-            }
-        }
+
 
         // 职圈页面
         composable(Routes.CIRCLE) { backStackEntry ->
