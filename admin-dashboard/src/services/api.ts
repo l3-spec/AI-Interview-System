@@ -367,6 +367,10 @@ const mapApiJobToJob = (job: any): Job => {
 };
 
 const mapApiCompanyToCompany = (company: any): Company => {
+  const stats = parseCompanyStats(company.stats);
+  const companyStage =
+    stats.find((item) => (item?.label || '').trim() === '融资阶段')?.value || '';
+
   return {
     id: company.id,
     name: company.name || '',
@@ -380,9 +384,10 @@ const mapApiCompanyToCompany = (company: any): Company => {
     logo: company.logo || '',
     tagline: company.tagline || '',
     focusArea: company.focusArea || '',
+    companyStage: company.companyStage || companyStage,
     promotionPage: company.promotionPage || '',
     themeColors: parseJsonArray<string>(company.themeColors),
-    stats: parseCompanyStats(company.stats),
+    stats,
     highlights: parseJsonArray<string>(company.highlights),
     culture: parseJsonArray<string>(company.culture),
     locations: parseJsonArray<string>(company.locations),
@@ -408,6 +413,7 @@ const serializeCompanyPayload = (company: Partial<Company>) => {
     contact: company.contact,
     tagline: company.tagline,
     focusArea: company.focusArea,
+    companyStage: company.companyStage,
     promotionPage: company.promotionPage,
     themeColors: Array.isArray(company.themeColors) ? company.themeColors : undefined,
     highlights: Array.isArray(company.highlights) ? company.highlights : undefined,

@@ -55,6 +55,140 @@ interface SessionData {
   startedAt?: Date;
 }
 
+interface ResumeReportBestMatch {
+  title: string;
+  description: string;
+  matchRatio: number;
+}
+
+interface ResumeReportCompetency {
+  name: string;
+  score: number;
+  ratingLabel: string;
+  description: string;
+}
+
+interface ResumeReportRecommendedJob {
+  title: string;
+  salaryRange: string;
+  tags: string[];
+  companyName: string;
+  companyDescription: string;
+  location: string;
+}
+
+interface ResumeReportData {
+  title: string;
+  testedAt: string;
+  bestMatch: ResumeReportBestMatch;
+  competencies: ResumeReportCompetency[];
+  tips: string;
+  generatedNote: string;
+  recommendedJobs: ResumeReportRecommendedJob[];
+}
+
+type JobPreferenceMatch = {
+  positionIds: Set<string>;
+  categoryNames: Set<string>;
+  positionNames: Set<string>;
+};
+
+const REPORT_COMPETENCY_ORDER: Array<{
+  name: string;
+  fallbackKey:
+    | 'technicalScore'
+    | 'teamworkScore'
+    | 'communicationScore'
+    | 'adaptabilityScore'
+    | 'learningScore'
+    | 'problemSolvingScore';
+}> = [
+  { name: '学习研究', fallbackKey: 'technicalScore' },
+  { name: '团队协作', fallbackKey: 'teamworkScore' },
+  { name: '人际沟通', fallbackKey: 'communicationScore' },
+  { name: '压力承受', fallbackKey: 'adaptabilityScore' },
+  { name: '成就导向', fallbackKey: 'learningScore' },
+  { name: '开放创新', fallbackKey: 'problemSolvingScore' },
+];
+
+const parseJsonArray = (value?: string | null): string[] => {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter(item => typeof item === 'string') : [];
+  } catch (error) {
+    console.warn('[AIInterviewService] JSON 数组解析失败:', error);
+    return [];
+  }
+};
+
+const extractCompanyStageFromStats = (value?: string | null): string => {
+  if (!value) {
+    return '';
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) {
+      return '';
+    }
+
+    const target = parsed.find((item: any) => {
+      const label = typeof item?.label === 'string' ? item.label.trim() : '';
+      return label === '融资阶段';
+    });
+
+    return typeof target?.value === 'string' ? target.value.trim() : '';
+  } catch (error) {
+    console.warn('[AIInterviewService] 解析公司融资阶段失败:', error);
+    return '';
+  }
+};
+
+const splitMultiline = (value?: string | null): string[] => {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split('\n')
+    .map(item => item.trim())
+    .filter(Boolean);
+};
+
+const formatMonthDay = (date: Date): string => `${date.getMonth() + 1}月${date.getDate()}日`;
+
+const formatTestedAt = (date: Date): string => {
+  const hour = String(date.getHours()).padStart(2, '0');
+  const minute = String(date.getMinutes()).padStart(2, '0');
+  return `测试日期 ${formatMonthDay(date)} ${hour}:${minute}`;
+};
+
+const toRatio = (value?: number | null, fallback = 0): number => {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return fallback;
+  }
+
+  if (value > 1) {
+    return Math.max(0, Math.min(1, value / 100));
+  }
+
+  return Math.max(0, Math.min(1, value));
+};
+
+const toRatingLabel = (score: number): string => {
+  if (score >= 0.9) return '优秀';
+  if (score >= 0.8) return '良好';
+  if (score >= 0.7) return '中等';
+  if (score >= 0.6) return '及格';
+  return '待提升';
+};
+
+const normalizeText = (value?: string | null): string => (value || '').trim().toLowerCase();
+
 class AIInterviewService {
   /**
    * 创建AI面试会话
@@ -988,6 +1122,424 @@ class AIInterviewService {
         error: error instanceof Error ? error.message : '删除面试会话失败',
       };
     }
+  }
+
+  async getInterviewResumeReport(
+    sessionId: string,
+    userId?: string
+  ): Promise<{
+    success: boolean;
+    report?: ResumeReportData;
+    error?: string;
+    code?: 'NOT_FOUND' | 'FORBIDDEN' | 'NOT_READY';
+  }> {
+    try {
+      const session = await prisma.aIInterviewSession.findUnique({
+        where: { id: sessionId },
+        include: {
+          analysisReport: true,
+        },
+      });
+
+      if (!session) {
+        return {
+          success: false,
+          error: '面试会话不存在',
+          code: 'NOT_FOUND',
+        };
+      }
+
+      if (userId && session.userId !== userId) {
+        return {
+          success: false,
+          error: '无权查看该面试报告',
+          code: 'FORBIDDEN',
+        };
+      }
+
+      if (session.status !== 'COMPLETED') {
+        return {
+          success: false,
+          error: '面试尚未完成，暂无报告',
+          code: 'NOT_READY',
+        };
+      }
+
+      if (!session.analysisReport || session.analysisReport.analysisStatus !== 'COMPLETED') {
+        return {
+          success: false,
+          error: '分析报告尚未生成完成',
+          code: 'NOT_READY',
+        };
+      }
+
+      const reportRecord = session.analysisReport;
+      const completedAt = session.completedAt || session.startedAt || session.createdAt;
+      const generatedAt = reportRecord.generatedAt || reportRecord.updatedAt || new Date();
+      const companyTarget = await this.resolveSessionCompanyTarget(session);
+      const title =
+        companyTarget
+          ? `${companyTarget}视频简历报告`
+          : `${session.jobSubCategory?.trim() || session.jobTarget.trim() || '综合'}职岗的视频简历报告`;
+      const bestMatch = this.buildResumeBestMatch(session, reportRecord);
+      const competencies = this.buildResumeCompetencies(reportRecord);
+      const tips = this.buildResumeTips(reportRecord);
+      const recommendedJobs = await this.getRecommendedJobsForReport(session, bestMatch.title);
+
+      return {
+        success: true,
+        report: {
+          title,
+          testedAt: formatTestedAt(completedAt),
+          bestMatch,
+          competencies,
+          tips,
+          generatedNote: `报告生成于${formatMonthDay(generatedAt)} 报告有效期自测评日起一年内有效`,
+          recommendedJobs,
+        },
+      };
+    } catch (error) {
+      console.error('获取面试报告失败:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '获取面试报告失败',
+      };
+    }
+  }
+
+  private buildResumeBestMatch(session: any, report: any): ResumeReportBestMatch {
+    const title =
+      report.jobMatchTitle?.trim() ||
+      session.jobSubCategory?.trim() ||
+      session.jobCategory?.trim() ||
+      session.jobTarget?.trim() ||
+      '综合岗位';
+
+    const description =
+      report.jobMatchDescription?.trim() ||
+      `候选人在${title}相关能力维度上表现较为均衡，建议优先关注该方向岗位。`;
+
+    const matchRatio = report.jobMatchRatio != null
+      ? toRatio(report.jobMatchRatio)
+      : toRatio(report.overallScore, 0.75);
+
+    return {
+      title,
+      description,
+      matchRatio,
+    };
+  }
+
+  private buildResumeCompetencies(report: any): ResumeReportCompetency[] {
+    const parsedCompetencies = this.parseCompetencyDetails(report.competenciesJson);
+    const competencyMap = new Map(parsedCompetencies.map((item: any) => [item.name, item]));
+
+    return REPORT_COMPETENCY_ORDER.map(({ name, fallbackKey }) => {
+      const detail = competencyMap.get(name);
+      const score = detail?.score != null
+        ? toRatio(Number(detail.score))
+        : toRatio(report[fallbackKey], 0.75);
+      const description =
+        typeof detail?.description === 'string' && detail.description.trim().length > 0
+          ? detail.description.trim()
+          : this.getDefaultCompetencyDescription(name);
+
+      return {
+        name,
+        score,
+        ratingLabel:
+          typeof detail?.level === 'string' && detail.level.trim().length > 0
+            ? detail.level.trim()
+            : toRatingLabel(score),
+        description,
+      };
+    });
+  }
+
+  private parseCompetencyDetails(value?: string | null): Array<{
+    name: string;
+    score?: number;
+    level?: string;
+    description?: string;
+  }> {
+    if (!value) {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      console.warn('[AIInterviewService] 解析 competenciesJson 失败:', error);
+      return [];
+    }
+  }
+
+  private getDefaultCompetencyDescription(name: string): string {
+    const descriptionMap: Record<string, string> = {
+      '学习研究': '对新知识与复杂问题保持持续学习和深入研究的意识。',
+      '团队协作': '能够在协作场景中主动配合团队推进目标达成。',
+      '人际沟通': '表达较为清晰，具备基础的沟通与协调能力。',
+      '压力承受': '在有压力的情境下仍能保持相对稳定的表现。',
+      '成就导向': '关注目标结果，愿意为达成任务持续投入。',
+      '开放创新': '愿意接受新事物，并尝试更有效的解决思路。',
+    };
+
+    return descriptionMap[name] || '具备与岗位相关的基础能力表现。';
+  }
+
+  private buildResumeTips(report: any): string {
+    if (typeof report.tips === 'string' && report.tips.trim().length > 0) {
+      return report.tips.trim();
+    }
+
+    const strengths = parseJsonArray(report.strengths);
+    const improvements = parseJsonArray(report.improvements);
+    const segments: string[] = [];
+
+    if (strengths.length > 0) {
+      segments.push(`你的优势主要体现在${strengths.slice(0, 2).join('、')}`);
+    }
+
+    if (improvements.length > 0) {
+      segments.push(`后续可以重点关注${improvements.slice(0, 2).join('、')}`);
+    }
+
+    return segments.join('。') || '整体表现稳定，建议继续结合真实案例强化表达深度。';
+  }
+
+  private async resolveSessionCompanyTarget(session: any): Promise<string> {
+    const directValue = typeof session.companyTarget === 'string' ? session.companyTarget.trim() : '';
+    if (directValue.length > 0) {
+      return directValue;
+    }
+
+    if (!session.jobId) {
+      return '';
+    }
+
+    try {
+      const job = await prisma.job.findUnique({
+        where: { id: session.jobId },
+        select: {
+          company: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      });
+
+      return job?.company?.name?.trim() || '';
+    } catch (error) {
+      return '';
+    }
+  }
+
+  private async getRecommendedJobsForReport(
+    session: any,
+    bestMatchTitle: string
+  ): Promise<ResumeReportRecommendedJob[]> {
+    const preferenceMatch = await this.getUserPreferenceMatch(session.userId);
+    const jobs = await prisma.job.findMany({
+      where: {
+        status: 'ACTIVE',
+        isPublished: true,
+      },
+      include: {
+        company: {
+          select: {
+            name: true,
+            industry: true,
+            scale: true,
+            stats: true,
+          },
+        },
+        dictionaryPosition: {
+          select: {
+            id: true,
+            name: true,
+            category: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [
+        { updatedAt: 'desc' },
+        { createdAt: 'desc' },
+      ],
+      take: 80,
+    });
+
+    const rankedJobs = jobs
+      .map(job => ({
+        job,
+        score: this.scoreRecommendedJob(job, session, bestMatchTitle, preferenceMatch),
+      }))
+      .filter(item => item.score > 0)
+      .sort((a, b) => b.score - a.score || b.job.updatedAt.getTime() - a.job.updatedAt.getTime())
+      .slice(0, 6)
+      .map(item => this.formatRecommendedJob(item.job));
+
+    if (rankedJobs.length > 0) {
+      return rankedJobs;
+    }
+
+    return jobs.slice(0, 6).map(job => this.formatRecommendedJob(job));
+  }
+
+  private async getUserPreferenceMatch(userId: string): Promise<JobPreferenceMatch> {
+    try {
+      const preferences = await prisma.userJobPreference.findMany({
+        where: { userId },
+        include: {
+          position: {
+            select: {
+              id: true,
+              name: true,
+              category: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      return {
+        positionIds: new Set(
+          preferences
+            .map(item => item.position?.id)
+            .filter((value): value is string => typeof value === 'string' && value.length > 0)
+        ),
+        categoryNames: new Set(
+          preferences
+            .map(item => normalizeText(item.position?.category?.name))
+            .filter(value => value.length > 0)
+        ),
+        positionNames: new Set(
+          preferences
+            .map(item => normalizeText(item.position?.name))
+            .filter(value => value.length > 0)
+        ),
+      };
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === 'P2021' || error.code === 'P2022')
+      ) {
+        console.warn('[AIInterviewService] 用户岗位偏好表暂不可用，已跳过推荐加权。');
+        return {
+          positionIds: new Set<string>(),
+          categoryNames: new Set<string>(),
+          positionNames: new Set<string>(),
+        };
+      }
+
+      throw error;
+    }
+  }
+
+  private scoreRecommendedJob(
+    job: any,
+    session: any,
+    bestMatchTitle: string,
+    preferenceMatch: JobPreferenceMatch
+  ): number {
+    const targetTerms = [
+      session.jobTarget,
+      session.jobSubCategory,
+      session.jobCategory,
+      bestMatchTitle,
+    ]
+      .map((value: string | null | undefined) => normalizeText(value))
+      .filter((value: string) => value.length > 0);
+
+    const jobTitle = normalizeText(job.title);
+    const jobCategory = normalizeText(job.category);
+    const dictionaryName = normalizeText(job.dictionaryPosition?.name);
+    const dictionaryCategory = normalizeText(job.dictionaryPosition?.category?.name);
+
+    let score = 0;
+
+    if (session.jobId && job.id === session.jobId) {
+      score += 120;
+    }
+
+    targetTerms.forEach(term => {
+      if (!term) {
+        return;
+      }
+
+      if (jobTitle && (jobTitle.includes(term) || term.includes(jobTitle))) {
+        score += 50;
+      }
+
+      if (jobCategory && (jobCategory.includes(term) || term.includes(jobCategory))) {
+        score += 25;
+      }
+
+      if (dictionaryName && (dictionaryName.includes(term) || term.includes(dictionaryName))) {
+        score += 35;
+      }
+
+      if (
+        dictionaryCategory &&
+        (dictionaryCategory.includes(term) || term.includes(dictionaryCategory))
+      ) {
+        score += 20;
+      }
+    });
+
+    if (job.dictionaryPosition?.id && preferenceMatch.positionIds.has(job.dictionaryPosition.id)) {
+      score += 45;
+    }
+
+    if (dictionaryName && preferenceMatch.positionNames.has(dictionaryName)) {
+      score += 35;
+    }
+
+    if (dictionaryCategory && preferenceMatch.categoryNames.has(dictionaryCategory)) {
+      score += 20;
+    }
+
+    if (
+      session.companyTarget &&
+      normalizeText(job.company?.name).includes(normalizeText(session.companyTarget))
+    ) {
+      score += 15;
+    }
+
+    return score;
+  }
+
+  private formatRecommendedJob(job: any): ResumeReportRecommendedJob {
+    const tags = [
+      job.education,
+      job.experience,
+      ...splitMultiline(job.benefits).slice(0, 2),
+      ...parseJsonArray(job.skills).slice(0, 2),
+    ]
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .slice(0, 3);
+
+    const companyStage = extractCompanyStageFromStats(job.company?.stats);
+    const companyDescription = [companyStage || job.company?.industry, job.company?.scale]
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .join(' | ');
+
+    return {
+      title: job.title,
+      salaryRange: job.salary || '面议',
+      tags,
+      companyName: job.company?.name || '企业信息待完善',
+      companyDescription: companyDescription || '企业信息待完善',
+      location: job.location || '地点待定',
+    };
   }
 
   /**

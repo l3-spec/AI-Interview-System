@@ -2,6 +2,68 @@ import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
+const COMPANY_STAGE_LABEL = '融资阶段';
+
+const parseJsonArray = <T>(value: string | null, fallback: T[]): T[] => {
+  if (!value) {
+    return fallback;
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch (error) {
+    return fallback;
+  }
+};
+
+const parseStatsArray = (value: string | null) => {
+  if (!value) {
+    return [] as Array<{ label: string; value: string; accent?: string }>;
+  }
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((item) => !!item && typeof item === 'object');
+    }
+    return [];
+  } catch (error) {
+    return [];
+  }
+};
+
+const extractCompanyStage = (
+  stats: Array<{ label?: string; value?: string; accent?: string }>
+): string => {
+  const item = stats.find((entry) => (entry?.label || '').trim() === COMPANY_STAGE_LABEL);
+  return (item?.value || '').trim();
+};
+
+const mergeCompanyStageIntoStats = (
+  rawStats: unknown,
+  companyStage?: string
+): Array<{ label: string; value: string; accent?: string }> => {
+  const stats = Array.isArray(rawStats)
+    ? rawStats
+        .filter((item): item is { label?: string; value?: string; accent?: string } => Boolean(item && typeof item === 'object'))
+        .map((item) => ({
+          label: (item.label || '').trim(),
+          value: (item.value || '').trim(),
+          accent: item.accent ? item.accent.trim() : undefined,
+        }))
+        .filter((item) => item.label.length > 0 && item.value.length > 0 && item.label !== COMPANY_STAGE_LABEL)
+    : [];
+
+  const normalizedStage = (companyStage || '').trim();
+  if (normalizedStage.length > 0) {
+    stats.unshift({
+      label: COMPANY_STAGE_LABEL,
+      value: normalizedStage,
+      accent: '#6366F1',
+    });
+  }
+
+  return stats;
+};
 
 // 获取企业信息
 export const getCompanyProfile = async (req: Request, res: Response) => {
@@ -49,32 +111,7 @@ export const getCompanyProfile = async (req: Request, res: Response) => {
       });
     }
 
-    const parseJsonArray = <T>(value: string | null, fallback: T[]): T[] => {
-      if (!value) {
-        return fallback;
-      }
-      try {
-        const parsed = JSON.parse(value);
-        return Array.isArray(parsed) ? parsed : fallback;
-      } catch (error) {
-        return fallback;
-      }
-    };
-
-    const parseStatsArray = (value: string | null) => {
-      if (!value) {
-        return [] as Array<{ label: string; value: string; accent?: string }>;
-      }
-      try {
-        const parsed = JSON.parse(value);
-        if (Array.isArray(parsed)) {
-          return parsed.filter((item) => !!item && typeof item === 'object');
-        }
-        return [];
-      } catch (error) {
-        return [];
-      }
-    };
+    const stats = parseStatsArray(company.stats);
 
     const formattedCompany = {
       ...company,
@@ -82,7 +119,8 @@ export const getCompanyProfile = async (req: Request, res: Response) => {
       highlights: parseJsonArray<string>(company.highlights, []),
       culture: parseJsonArray<string>(company.culture, []),
       locations: parseJsonArray<string>(company.locations, []),
-      stats: parseStatsArray(company.stats),
+      stats,
+      companyStage: extractCompanyStage(stats),
     };
 
     res.json({
@@ -123,6 +161,7 @@ export const updateCompanyProfile = async (req: Request, res: Response) => {
       'logo',
       'tagline',
       'focusArea',
+      'companyStage',
       'themeColors',
       'stats',
       'highlights',
@@ -142,18 +181,28 @@ export const updateCompanyProfile = async (req: Request, res: Response) => {
             filteredData[field] = null;
           }
         } else if (field === 'stats') {
-          if (Array.isArray(updateData[field])) {
-            filteredData[field] = JSON.stringify(updateData[field]);
-          } else if (typeof updateData[field] === 'string') {
-            filteredData[field] = updateData[field];
-          } else {
-            filteredData[field] = null;
-          }
+          continue;
+        } else if (field === 'companyStage') {
+          continue;
         } else {
           filteredData[field] = updateData[field];
         }
       }
     }
+
+    const existingCompany = await prisma.company.findUnique({
+      where: { id: companyId },
+      select: { stats: true },
+    });
+
+    const existingStats = parseStatsArray(existingCompany?.stats || null);
+    const effectiveStats = updateData.stats !== undefined ? updateData.stats : existingStats;
+    const effectiveCompanyStage =
+      updateData.companyStage !== undefined
+        ? updateData.companyStage
+        : extractCompanyStage(existingStats);
+    const normalizedStats = mergeCompanyStageIntoStats(effectiveStats, effectiveCompanyStage);
+    filteredData.stats = JSON.stringify(normalizedStats);
 
     const updatedCompany = await prisma.company.update({
       where: { id: companyId },
@@ -203,9 +252,8 @@ export const updateCompanyProfile = async (req: Request, res: Response) => {
         locations: filteredData.locations
           ? JSON.parse(filteredData.locations)
           : (updatedCompany.locations ? JSON.parse(updatedCompany.locations) : []),
-        stats: filteredData.stats
-          ? JSON.parse(filteredData.stats)
-          : (updatedCompany.stats ? JSON.parse(updatedCompany.stats) : []),
+        stats: normalizedStats,
+        companyStage: extractCompanyStage(normalizedStats),
       }
     });
   } catch (error) {

@@ -1356,6 +1356,97 @@ router.post('/preview-parse',
 
 /**
  * @swagger
+ * /api/ai-interview/sessions/{sessionId}/report:
+ *   get:
+ *     summary: 获取视频简历报告 🧾
+ *     description: 返回适配客户端 ResumeReport 数据模型的面试报告结构
+ *     tags: [🤖 AI面试系统]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: 面试会话ID
+ *     responses:
+ *       200:
+ *         description: 获取报告成功
+ *       403:
+ *         description: 无权访问该报告
+ *       404:
+ *         description: 会话不存在
+ *       409:
+ *         description: 面试未完成或分析报告尚未生成
+ */
+router.get('/sessions/:sessionId/report',
+  authenticateToken,
+  [
+    param('sessionId')
+      .isUUID()
+      .withMessage('会话ID格式无效'),
+  ],
+  async (req: any, res: any) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: '请求参数错误',
+          errors: errors.array(),
+        });
+      }
+
+      const { sessionId } = req.params;
+      const userId = req.user?.type === 'user' ? req.user.id : undefined;
+      const result = await aiInterviewService.getInterviewResumeReport(sessionId, userId);
+
+      if (!result.success) {
+        if (result.code === 'FORBIDDEN') {
+          return res.status(403).json({
+            success: false,
+            message: result.error,
+          });
+        }
+
+        if (result.code === 'NOT_FOUND') {
+          return res.status(404).json({
+            success: false,
+            message: result.error,
+          });
+        }
+
+        if (result.code === 'NOT_READY') {
+          return res.status(409).json({
+            success: false,
+            message: result.error,
+          });
+        }
+
+        return res.status(500).json({
+          success: false,
+          message: result.error || '获取面试报告失败',
+        });
+      }
+
+      res.json({
+        success: true,
+        data: result.report,
+      });
+    } catch (error) {
+      console.error('获取视频简历报告接口错误:', error);
+      res.status(500).json({
+        success: false,
+        message: '服务器内部错误',
+      });
+    }
+  }
+);
+
+/**
+ * @swagger
  * /api/ai-interview/sessions/{sessionId}/analysis:
  *   get:
  *     summary: 获取面试分析报告 📊

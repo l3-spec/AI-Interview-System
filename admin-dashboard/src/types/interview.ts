@@ -38,6 +38,7 @@ export interface Company {
   logo?: string;
   tagline?: string;
   focusArea?: string;
+  companyStage?: string;
   promotionPage?: string;
   themeColors: string[];
   stats: CompanyStat[];
