@@ -2,6 +2,11 @@ import { prisma } from '../lib/prisma';
 import { deepseekService } from './deepseekService';
 import { aliyunVideoAIService, type VideoAnalysisResult } from './aliyunVideoAIService';
 import { speechMetricsService, type SpeechMetricsSummary } from './speechMetricsService';
+import {
+    voiceprintAnalysisService,
+    type VoiceprintAnalysisSummary,
+    type VoiceprintQuestionResult
+} from './voiceprintAnalysisService';
 import { resolveVideoAccessUrl, resolveVideoUrl } from '../utils/videoUrlResolver';
 import { logSystemAction } from '../utils/systemLog';
 
@@ -95,6 +100,68 @@ interface AnalysisResult {
     postureStability?: number;
     gazeFocus?: number;
     videoAnalysisResults?: VideoAnalysisResult[];
+    integrity?: IntegrityReport;
+    voiceprint?: VoiceprintAnalysisSummary;
+}
+
+interface IntegrityCheck {
+    key: string;
+    label: string;
+    status: 'PASS' | 'WARN' | 'FAIL';
+    required: boolean;
+    message: string;
+}
+
+interface IntegrityQuestionStatus {
+    questionIndex?: number;
+    hasVideo: boolean;
+    videoResolved: boolean;
+    audioExtracted: boolean;
+    asrCompleted: boolean;
+    transcriptSource: string;
+    frameAnalysisReady: boolean;
+    voiceprintReady: boolean;
+    issues: string[];
+}
+
+interface IntegrityReport {
+    checks: IntegrityCheck[];
+    summary: {
+        totalQuestions: number;
+        answeredVideoCount: number;
+        resolvedVideoCount: number;
+        audioExtractedCount: number;
+        asrCompletedCount: number;
+        frameAnalysisReadyCount: number;
+        voiceprintReadyCount: number;
+    };
+    questions: IntegrityQuestionStatus[];
+}
+
+interface QuestionAnalysisInput {
+    questionIndex: number;
+    questionText: string;
+    answerText?: string | null;
+    answerVideoUrl?: string | null;
+    answerVideoPath?: string | null;
+    answerDuration?: number | null;
+}
+
+interface PreparedAnswer {
+    questionIndex: number;
+    question: string;
+    answer: string;
+    rawAnswerText?: string;
+    videoUrl?: string;
+}
+
+interface VideoAnalysisBundle {
+    results: VideoAnalysisResult[];
+    perQuestion: Map<number, VideoAnalysisResult>;
+    resolvedVideoCount: number;
+    analyzedCount: number;
+    serviceEnabled: boolean;
+    errorCount: number;
 }
 
 export class AnalysisService {
@@ -149,13 +216,7 @@ export class AnalysisService {
                 throw new Error(`面试会话未完成，无法分析: ${session.status}`);
             }
 
-            const questions = (session.questions || []) as Array<{
-                questionIndex: number;
-                answerVideoUrl?: string | null;
-                answerVideoPath?: string | null;
-                answerText?: string | null;
-                answerDuration?: number | null;
-            }>;
+            const questions = (session.questions || []) as QuestionAnalysisInput[];
 
             // 统计缺失答案情况（不阻止分析）
             const missingBoth = questions.filter(
@@ -214,34 +275,7 @@ export class AnalysisService {
                 sessionId
             });
 
-            // 3. 准备分析数据
-            const questionsAndAnswers = session.questions.map((q: any) => ({
-                question: q.questionText,
-                answer: q.answerText && q.answerText.trim().length > 0 ? q.answerText : EMPTY_ANSWER_PLACEHOLDER,
-                videoUrl: resolveVideoUrl({
-                    sessionId,
-                    answerVideoUrl: q.answerVideoUrl,
-                    answerVideoPath: q.answerVideoPath,
-                    questionIndex: q.questionIndex
-                }) || undefined
-            }));
-
-            if (questionsAndAnswers.length === 0) {
-                throw new Error('没有可分析的问题和答案');
-            }
-
-            // 4. 使用LLM执行文本分析
-            const textAnalysisResult = await this.performLLMAnalysis({
-                jobTarget: session.jobTarget,
-                jobCategory: session.jobCategory,
-                companyTarget: session.companyTarget,
-                background: session.background,
-                userInfo: session.user,
-                questionsAndAnswers,
-                answerStats
-            });
-
-            // 5. 执行语音指标分析（ASR、语速、停顿、音量稳定性）
+            // 3. 执行语音指标分析（ASR、语速、停顿、音量稳定性）
             console.log('[AnalysisService] 开始语音指标分析...');
             let speechMetrics: SpeechMetricsSummary | undefined;
             try {
@@ -257,17 +291,57 @@ export class AnalysisService {
                 });
             }
 
-            // 6. 执行视频分析（表情、情绪稳定性）
+            this.ensurePipelineRequirements(sessionId, {
+                questions,
+                speechMetrics
+            });
+
+            const questionsAndAnswers = this.prepareQuestionsAndAnswers(sessionId, questions, speechMetrics);
+            if (questionsAndAnswers.length === 0) {
+                throw new Error('没有可分析的问题和答案');
+            }
+
+            // 4. 使用LLM执行文本分析
+            const textAnalysisResult = await this.performLLMAnalysis({
+                jobTarget: session.jobTarget,
+                jobCategory: session.jobCategory,
+                companyTarget: session.companyTarget,
+                background: session.background,
+                userInfo: session.user,
+                questionsAndAnswers,
+                answerStats
+            });
+
+            // 5. 执行视频分析（表情、情绪稳定性）
             console.log(`[AnalysisService] 开始视频分析...`);
-            const videoAnalysisResults = await this.performVideoAnalysis(sessionId, questions);
+            const videoAnalysis = await this.performVideoAnalysis(sessionId, questions);
+
+            this.ensureVideoRequirements(sessionId, {
+                questions,
+                videoAnalysis
+            });
+
+            // 6. 执行声纹一致性分析
+            console.log('[AnalysisService] 开始声纹一致性分析...');
+            const voiceprint = await this.performVoiceprintAnalysis(sessionId, questions);
+            this.ensureVoiceprintRequirements(sessionId, voiceprint);
+
+            const integrity = this.buildIntegrityReport({
+                questions,
+                speechMetrics,
+                videoAnalysis,
+                voiceprint
+            });
 
             // 7. 融合文本、语音与视频分析结果
             const combinedResult = this.combineAnalysisResults(
                 textAnalysisResult,
-                videoAnalysisResults,
+                videoAnalysis.results,
                 speechMetrics,
                 questionsAndAnswers,
-                answerStats
+                answerStats,
+                integrity,
+                voiceprint
             );
 
             // 8. 保存综合分析报告
@@ -318,10 +392,111 @@ export class AnalysisService {
     /**
      * 执行视频分析
      */
+    private getPipelineRequirements() {
+        return {
+            requireAsr: process.env.ANALYSIS_REQUIRE_ASR === 'true',
+            requireVideoAI: process.env.ANALYSIS_REQUIRE_VIDEO_AI === 'true',
+            requireVoiceprint: process.env.ANALYSIS_REQUIRE_VOICEPRINT === 'true'
+        };
+    }
+
+    private prepareQuestionsAndAnswers(
+        sessionId: string,
+        questions: QuestionAnalysisInput[],
+        speechMetrics?: SpeechMetricsSummary
+    ): PreparedAnswer[] {
+        const transcriptByQuestion = new Map<number, string>();
+        speechMetrics?.samples?.forEach(sample => {
+            if (typeof sample.questionIndex === 'number' && sample.transcript?.trim()) {
+                transcriptByQuestion.set(sample.questionIndex, sample.transcript.trim());
+            }
+        });
+
+        return questions.map((question) => {
+            const answerText = question.answerText?.trim();
+            const transcript = transcriptByQuestion.get(question.questionIndex);
+            return {
+                questionIndex: question.questionIndex,
+                question: question.questionText,
+                rawAnswerText: answerText || undefined,
+                answer: answerText || transcript || EMPTY_ANSWER_PLACEHOLDER,
+                videoUrl: resolveVideoUrl({
+                    sessionId,
+                    answerVideoUrl: question.answerVideoUrl,
+                    answerVideoPath: question.answerVideoPath,
+                    questionIndex: question.questionIndex
+                }) || undefined
+            };
+        });
+    }
+
+    private ensurePipelineRequirements(
+        sessionId: string,
+        params: {
+            questions: QuestionAnalysisInput[];
+            speechMetrics?: SpeechMetricsSummary;
+        }
+    ) {
+        const requirements = this.getPipelineRequirements();
+        const videoAnswerCount = params.questions.filter(q => q.answerVideoUrl || q.answerVideoPath).length;
+        if (!requirements.requireAsr || videoAnswerCount === 0) {
+            return;
+        }
+
+        if (!speechMetricsService.isAsrEnabled()) {
+            throw new Error(`[${sessionId}] 当前要求 ASR 为硬依赖，但阿里云 ASR 未配置`);
+        }
+
+        if (!params.speechMetrics) {
+            throw new Error(`[${sessionId}] 当前要求 ASR 为硬依赖，但语音指标结果缺失`);
+        }
+
+        if (params.speechMetrics.asrAttemptCount === 0) {
+            throw new Error(`[${sessionId}] 当前要求 ASR 为硬依赖，但没有任何视频样本成功进入 ASR 链路`);
+        }
+    }
+
+    private ensureVideoRequirements(
+        sessionId: string,
+        params: {
+            questions: QuestionAnalysisInput[];
+            videoAnalysis: VideoAnalysisBundle;
+        }
+    ) {
+        const requirements = this.getPipelineRequirements();
+        const videoAnswerCount = params.questions.filter(q => q.answerVideoUrl || q.answerVideoPath).length;
+        if (!requirements.requireVideoAI || videoAnswerCount === 0) {
+            return;
+        }
+
+        if (!params.videoAnalysis.serviceEnabled) {
+            throw new Error(`[${sessionId}] 当前要求视频分析为硬依赖，但阿里云视频分析未启用`);
+        }
+
+        if (params.videoAnalysis.analyzedCount === 0 && params.videoAnalysis.resolvedVideoCount > 0) {
+            throw new Error(`[${sessionId}] 当前要求视频分析为硬依赖，但没有任何视频完成帧分析`);
+        }
+    }
+
+    private ensureVoiceprintRequirements(sessionId: string, voiceprint: VoiceprintAnalysisSummary) {
+        const requirements = this.getPipelineRequirements();
+        if (!requirements.requireVoiceprint) {
+            return;
+        }
+
+        if (!voiceprint.enabled) {
+            throw new Error(`[${sessionId}] 当前要求声纹分析为硬依赖，但声纹服务已禁用`);
+        }
+
+        if (voiceprint.status === 'DISABLED') {
+            throw new Error(`[${sessionId}] 当前要求声纹分析为硬依赖，但声纹服务不可用`);
+        }
+    }
+
     private async performVideoAnalysis(
         sessionId: string,
         questions: Array<{ questionIndex?: number; answerVideoUrl?: string | null; answerVideoPath?: string | null }>
-    ): Promise<VideoAnalysisResult[]> {
+    ): Promise<VideoAnalysisBundle> {
         if (!aliyunVideoAIService.isEnabled()) {
             console.log('[AnalysisService] 阿里云视频分析未启用，跳过视频分析');
             await this.logAnalysisEvent({
@@ -330,11 +505,20 @@ export class AnalysisService {
                 sessionId,
                 result: 'WARNING'
             });
-            return [];
+            return {
+                results: [],
+                perQuestion: new Map(),
+                resolvedVideoCount: 0,
+                analyzedCount: 0,
+                serviceEnabled: false,
+                errorCount: 0
+            };
         }
 
         const results: VideoAnalysisResult[] = [];
+        const perQuestion = new Map<number, VideoAnalysisResult>();
         let errorCount = 0;
+        let resolvedVideoCount = 0;
 
         for (const question of questions) {
             const videoUrl = await resolveVideoAccessUrl({
@@ -344,11 +528,19 @@ export class AnalysisService {
                 questionIndex: question.questionIndex
             });
             if (videoUrl) {
+                resolvedVideoCount += 1;
                 try {
                     const result = await aliyunVideoAIService.analyzeAnswerVideo(
                         videoUrl
                     );
-                    results.push(result);
+                    const enrichedResult = {
+                        ...result,
+                        questionIndex: question.questionIndex
+                    } as VideoAnalysisResult;
+                    results.push(enrichedResult);
+                    if (typeof question.questionIndex === 'number') {
+                        perQuestion.set(question.questionIndex, enrichedResult);
+                    }
                 } catch (error) {
                     console.error('[AnalysisService] 单个视频分析失败:', error);
                     errorCount += 1;
@@ -366,7 +558,152 @@ export class AnalysisService {
             });
         }
 
-        return results;
+        return {
+            results,
+            perQuestion,
+            resolvedVideoCount,
+            analyzedCount: results.length,
+            serviceEnabled: true,
+            errorCount
+        };
+    }
+
+    private async performVoiceprintAnalysis(
+        sessionId: string,
+        questions: QuestionAnalysisInput[]
+    ): Promise<VoiceprintAnalysisSummary> {
+        return voiceprintAnalysisService.analyzeQuestions(
+            sessionId,
+            questions
+                .filter(question => question.answerVideoUrl || question.answerVideoPath)
+                .map(question => ({
+                    questionIndex: question.questionIndex,
+                    answerVideoPath: question.answerVideoPath,
+                    answerVideoUrl: question.answerVideoUrl
+                }))
+        );
+    }
+
+    private buildIntegrityReport(params: {
+        questions: QuestionAnalysisInput[];
+        speechMetrics?: SpeechMetricsSummary;
+        videoAnalysis: VideoAnalysisBundle;
+        voiceprint: VoiceprintAnalysisSummary;
+    }): IntegrityReport {
+        const speechByQuestion = new Map<number, SpeechMetricsSummary['samples'][number]>();
+        params.speechMetrics?.samples?.forEach(sample => {
+            if (typeof sample.questionIndex === 'number') {
+                speechByQuestion.set(sample.questionIndex, sample);
+            }
+        });
+        const voiceprintByQuestion = new Map<number, VoiceprintQuestionResult>();
+        params.voiceprint.questions.forEach(question => {
+            if (typeof question.questionIndex === 'number') {
+                voiceprintByQuestion.set(question.questionIndex, question);
+            }
+        });
+
+        const questionStatuses = params.questions.map(question => {
+            const speech = speechByQuestion.get(question.questionIndex);
+            const voiceprint = voiceprintByQuestion.get(question.questionIndex);
+            const hasVideo = Boolean(question.answerVideoUrl || question.answerVideoPath);
+            const frameAnalysisReady = params.videoAnalysis.perQuestion.has(question.questionIndex);
+            const issues = [
+                ...(speech?.issues || []),
+                ...(voiceprint?.issue ? [voiceprint.issue] : []),
+            ];
+
+            return {
+                questionIndex: question.questionIndex,
+                hasVideo,
+                videoResolved: Boolean(speech?.videoResolved),
+                audioExtracted: Boolean(speech?.audioExtracted),
+                asrCompleted: Boolean(speech?.asrCompleted),
+                transcriptSource: speech?.transcriptSource || 'empty',
+                frameAnalysisReady,
+                voiceprintReady: Boolean(voiceprint?.analyzed),
+                issues,
+            };
+        });
+
+        const summary = {
+            totalQuestions: params.questions.length,
+            answeredVideoCount: questionStatuses.filter(item => item.hasVideo).length,
+            resolvedVideoCount: questionStatuses.filter(item => item.videoResolved).length,
+            audioExtractedCount: questionStatuses.filter(item => item.audioExtracted).length,
+            asrCompletedCount: questionStatuses.filter(item => item.asrCompleted).length,
+            frameAnalysisReadyCount: questionStatuses.filter(item => item.frameAnalysisReady).length,
+            voiceprintReadyCount: questionStatuses.filter(item => item.voiceprintReady).length,
+        };
+
+        const requirements = this.getPipelineRequirements();
+        const checks: IntegrityCheck[] = [
+            {
+                key: 'video_input',
+                label: '视频输入完整',
+                required: true,
+                status: summary.answeredVideoCount > 0 ? 'PASS' : 'FAIL',
+                message: summary.answeredVideoCount > 0
+                    ? `共收到 ${summary.answeredVideoCount} 段答题视频`
+                    : '未检测到可分析的视频答案'
+            },
+            {
+                key: 'audio_extraction',
+                label: '音频抽取链路',
+                required: true,
+                status: summary.audioExtractedCount === summary.answeredVideoCount
+                    ? 'PASS'
+                    : summary.audioExtractedCount > 0 ? 'WARN' : 'FAIL',
+                message: `成功抽取 ${summary.audioExtractedCount}/${summary.answeredVideoCount} 段视频音频`
+            },
+            {
+                key: 'asr_pipeline',
+                label: 'ASR 转写链路',
+                required: requirements.requireAsr,
+                status: !summary.answeredVideoCount
+                    ? 'WARN'
+                    : params.speechMetrics?.asrAttemptCount
+                        ? 'PASS'
+                        : speechMetricsService.isAsrEnabled() ? 'WARN' : 'FAIL',
+                message: speechMetricsService.isAsrEnabled()
+                    ? `ASR 已执行 ${params.speechMetrics?.asrAttemptCount || 0} 次，成功完成 ${params.speechMetrics?.asrCompletedCount || 0} 次`
+                    : '阿里云 ASR 当前未启用'
+            },
+            {
+                key: 'video_ai',
+                label: '关键帧/表情分析',
+                required: requirements.requireVideoAI,
+                status: !summary.answeredVideoCount
+                    ? 'WARN'
+                    : summary.frameAnalysisReadyCount === summary.answeredVideoCount
+                        ? 'PASS'
+                        : summary.frameAnalysisReadyCount > 0 ? 'WARN' : 'FAIL',
+                message: params.videoAnalysis.serviceEnabled
+                    ? `完成 ${summary.frameAnalysisReadyCount}/${summary.answeredVideoCount} 段视频的关键帧分析`
+                    : '阿里云视频分析未启用'
+            },
+            {
+                key: 'voiceprint',
+                label: '声纹一致性',
+                required: requirements.requireVoiceprint,
+                status: params.voiceprint.status === 'CONSISTENT'
+                    ? 'PASS'
+                    : params.voiceprint.status === 'INCONSISTENT'
+                        ? 'WARN'
+                        : params.voiceprint.status === 'INSUFFICIENT'
+                            ? 'WARN'
+                            : 'FAIL',
+                message: params.voiceprint.status === 'DISABLED'
+                    ? '声纹分析未启用'
+                    : `声纹状态 ${params.voiceprint.status}，可用样本 ${params.voiceprint.analyzedSampleCount}`
+            }
+        ];
+
+        return {
+            checks,
+            summary,
+            questions: questionStatuses
+        };
     }
 
     /**
@@ -377,7 +714,9 @@ export class AnalysisService {
         videoAnalysisResults: VideoAnalysisResult[],
         speechMetrics: SpeechMetricsSummary | undefined,
         questionsAndAnswers: Array<{ question: string; answer: string }>,
-        answerStats?: AnswerStats
+        answerStats?: AnswerStats,
+        integrity?: IntegrityReport,
+        voiceprint?: VoiceprintAnalysisSummary
     ): AnalysisResult {
         const videoSummary = this.summarizeVideoAnalysis(videoAnalysisResults);
         const transcript = this.resolveTranscript(questionsAndAnswers, speechMetrics);
@@ -418,7 +757,9 @@ export class AnalysisService {
             bodyLanguageScore,
             postureStability: videoSummary?.avgPostureStability,
             gazeFocus: videoSummary?.avgGazeFocus,
-            videoAnalysisResults
+            videoAnalysisResults,
+            integrity,
+            voiceprint
         };
     }
 
@@ -838,9 +1179,8 @@ export class AnalysisService {
             return parsed;
 
         } catch (error) {
-            console.warn('[AnalysisService] LLM分析失败，使用备用分析逻辑', error);
-            // 如果LLM调用失败，使用规则化的备用分析
-            return this.fallbackAnalysis(params);
+            console.warn('[AnalysisService] LLM分析失败，等待任务重试', error);
+            throw error;
         }
     }
 
@@ -1019,57 +1359,6 @@ ${qaText}
     }
 
     /**
-     * 备用分析逻辑（当LLM调用失败时使用）
-     */
-    private fallbackAnalysis(params: any): AnalysisResult {
-        console.log('[AnalysisService] 使用备用分析逻辑');
-
-        const baseScore = 75;
-        const randomVariance = () => (Math.random() - 0.5) * 10;
-
-        const competencies = {
-            opennessInnovation: Math.max(0.6, Math.min(1.0, (baseScore + randomVariance()) / 100)),
-            learningResearch: Math.max(0.6, Math.min(1.0, (baseScore + randomVariance()) / 100)),
-            achievementOrientation: Math.max(0.6, Math.min(1.0, (baseScore + randomVariance()) / 100)),
-            teamwork: Math.max(0.6, Math.min(1.0, (baseScore + randomVariance()) / 100)),
-            interpersonalCommunication: Math.max(0.6, Math.min(1.0, (baseScore + randomVariance()) / 100)),
-            stressTolerance: Math.max(0.6, Math.min(1.0, (baseScore + randomVariance()) / 100))
-        };
-
-        const avgScore = Object.values(competencies).reduce((a, b) => a + b, 0) / 6;
-
-        const competenciesDetailed: DimensionDetail[] = [
-            { key: 'opennessInnovation', name: '开放创新', score: competencies.opennessInnovation, level: this.getLevel(competencies.opennessInnovation * 100), description: '对新事物保持开放态度，愿意尝试新方法' },
-            { key: 'learningResearch', name: '学习研究', score: competencies.learningResearch, level: this.getLevel(competencies.learningResearch * 100), description: '持续学习意愿积极，善于总结复盘' },
-            { key: 'achievementOrientation', name: '成就导向', score: competencies.achievementOrientation, level: this.getLevel(competencies.achievementOrientation * 100), description: '目标意识明确，关注结果交付' },
-            { key: 'teamwork', name: '团队协作', score: competencies.teamwork, level: this.getLevel(competencies.teamwork * 100), description: '具备团队合作意识，愿意协同共建' },
-            { key: 'interpersonalCommunication', name: '人际沟通', score: competencies.interpersonalCommunication, level: this.getLevel(competencies.interpersonalCommunication * 100), description: '表达清晰，沟通协调能力较好' },
-            { key: 'stressTolerance', name: '压力承受', score: competencies.stressTolerance, level: this.getLevel(competencies.stressTolerance * 100), description: '在压力情境下保持相对稳定' }
-        ];
-
-        return {
-            overallScore: Math.round(avgScore * 100),
-            competencies,
-            competenciesDetailed,
-            strengths: [
-                '回答问题思路清晰',
-                '对目标职位有一定了解',
-                '表现出学习意愿'
-            ],
-            improvements: [
-                '可以更多结合具体实例来阐述',
-                '建议加强对行业动态的关注'
-            ],
-            jobMatch: {
-                title: params.jobTarget || '目标职位',
-                description: '候选人具备基本素质，通过培训可胜任相关工作',
-                matchRatio: 0.75
-            },
-            tips: '建议持续学习，提升专业技能，注重实践经验的积累。'
-        };
-    }
-
-    /**
      * 保存分析报告到数据库
      */
     private async saveAnalysisReport(sessionId: string, result: any): Promise<void> {
@@ -1104,7 +1393,9 @@ ${qaText}
                 JSON.stringify({
                     video: result.videoAnalysisResults || [],
                     speech: result.speechMetrics || null,
-                    objectiveScores: result.objectiveScores || null
+                    objectiveScores: result.objectiveScores || null,
+                    integrity: result.integrity || null,
+                    voiceprint: result.voiceprint || null
                 }) : null
         };
 
@@ -1162,6 +1453,8 @@ ${qaText}
                 postureStability,
                 gazeFocus
             },
+            integrity: insights?.integrity || null,
+            voiceprint: insights?.voiceprint || null,
             insights,
             analysisStatus: report.analysisStatus,
             generatedAt: report.generatedAt.toISOString()

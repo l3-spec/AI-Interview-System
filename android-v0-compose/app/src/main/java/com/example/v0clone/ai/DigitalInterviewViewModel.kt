@@ -155,14 +155,13 @@ class DigitalInterviewViewModel(
                 
             } catch (e: Exception) {
                 Log.e("DigitalInterviewVM", "Submit answer failed (silent)", e)
-                // Do not show error overlay for background upload failure to avoid interrupting user
-                // _uiState.update { 
-                //     it.copy(
-                //         isUploading = false, 
-                //         errorMessage = "提交失败: ${e.message}",
-                //         statusMessage = null
-                //     ) 
-                // }
+                _uiState.update {
+                    it.copy(
+                        isUploading = false,
+                        errorMessage = "答案上传或提交失败，请恢复网络后继续当前题",
+                        statusMessage = null
+                    )
+                }
             }
         }
     }

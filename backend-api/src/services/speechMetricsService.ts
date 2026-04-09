@@ -17,6 +17,13 @@ export interface SpeechMetricsSample {
   fillerRatio?: number | null; // 0-1
   volumeStability?: number | null; // 0-100
   speechQuality?: number | null; // 0-100
+  videoProvided?: boolean;
+  videoResolved?: boolean;
+  audioExtracted?: boolean;
+  asrAttempted?: boolean;
+  asrCompleted?: boolean;
+  transcriptSource?: 'manual_text' | 'video_asr' | 'video_audio_only' | 'empty';
+  issues?: string[];
 }
 
 export interface SpeechMetricsSummary {
@@ -27,6 +34,10 @@ export interface SpeechMetricsSummary {
   avgFillerRatio?: number | null;
   avgVolumeStability?: number | null;
   speechQuality?: number | null;
+  asrEnabled: boolean;
+  audioExtractSuccessCount: number;
+  asrAttemptCount: number;
+  asrCompletedCount: number;
   samples: SpeechMetricsSample[];
 }
 
@@ -42,8 +53,8 @@ class SpeechMetricsService {
 
   constructor() {
     const appKey = process.env.ALIYUN_NLS_APP_KEY;
-    const accessKeyId = process.env.ALIYUN_ACCESS_KEY_ID;
-    const accessKeySecret = process.env.ALIYUN_ACCESS_KEY_SECRET;
+    const accessKeyId = process.env.ALIYUN_NLS_ACCESS_KEY_ID || process.env.ALIYUN_ACCESS_KEY_ID;
+    const accessKeySecret = process.env.ALIYUN_NLS_ACCESS_KEY_SECRET || process.env.ALIYUN_ACCESS_KEY_SECRET;
     if (appKey && accessKeyId && accessKeySecret) {
       this.asrService = new AliyunASRService({
         appKey,
@@ -62,6 +73,10 @@ class SpeechMetricsService {
     }
   }
 
+  isAsrEnabled(): boolean {
+    return this.asrEnabled;
+  }
+
   async analyzeQuestions(
     sessionId: string,
     questions: Array<{
@@ -74,24 +89,72 @@ class SpeechMetricsService {
   ): Promise<SpeechMetricsSummary> {
     const samples: SpeechMetricsSample[] = [];
     let fullTranscript = '';
+    let audioExtractSuccessCount = 0;
+    let asrAttemptCount = 0;
+    let asrCompletedCount = 0;
 
     for (const question of questions) {
       const answerText = question.answerText?.trim() || '';
       let transcript = answerText;
       let audioResult: AudioExtractResult | null = null;
+      let videoResolved = false;
+      let audioExtracted = false;
+      let asrAttempted = false;
+      let asrCompleted = false;
+      let transcriptSource: SpeechMetricsSample['transcriptSource'] = answerText ? 'manual_text' : 'empty';
+      const issues: string[] = [];
+      const hasVideo = Boolean(question.answerVideoPath || question.answerVideoUrl);
 
-      if (!transcript && (question.answerVideoPath || question.answerVideoUrl)) {
-        audioResult = await this.extractAudio(sessionId, question.answerVideoPath, question.answerVideoUrl, question.questionIndex);
+      let resolvedSource: string | null = null;
+      if (hasVideo) {
+        resolvedSource = await this.resolveSource(
+          sessionId,
+          question.answerVideoPath,
+          question.answerVideoUrl,
+          question.questionIndex
+        );
+        videoResolved = Boolean(resolvedSource);
+        if (!resolvedSource) {
+          issues.push('无法访问视频源');
+        }
+      }
+
+      if (!transcript && resolvedSource) {
+        audioResult = await this.extractAudioFromSource(resolvedSource);
+        audioExtracted = Boolean(audioResult);
+        if (audioExtracted) {
+          audioExtractSuccessCount += 1;
+        } else {
+          issues.push('音频提取失败');
+        }
         if (audioResult && this.asrEnabled && this.asrService) {
+          asrAttempted = true;
+          asrAttemptCount += 1;
           try {
             const asrResult = await this.asrService.recognize(audioResult.buffer, audioResult.sampleRate);
             transcript = asrResult.text || '';
+            asrCompleted = true;
+            asrCompletedCount += 1;
+            transcriptSource = 'video_asr';
           } catch (error) {
             console.warn('[SpeechMetrics] ASR识别失败，跳过该题:', error);
+            issues.push(error instanceof Error ? error.message : 'ASR识别失败');
           }
+        } else if (audioResult) {
+          transcriptSource = 'video_audio_only';
         }
-      } else if (question.answerVideoPath || question.answerVideoUrl) {
-        audioResult = await this.extractAudio(sessionId, question.answerVideoPath, question.answerVideoUrl, question.questionIndex);
+      } else if (resolvedSource) {
+        audioResult = await this.extractAudioFromSource(resolvedSource);
+        audioExtracted = Boolean(audioResult);
+        if (audioExtracted) {
+          audioExtractSuccessCount += 1;
+        } else {
+          issues.push('音频提取失败');
+        }
+      }
+
+      if (!transcriptSource) {
+        transcriptSource = transcript ? 'manual_text' : 'empty';
       }
 
       const durationSec = question.answerDuration
@@ -107,7 +170,18 @@ class SpeechMetricsService {
         pauseRatio: metrics.pauseRatio,
         fillerRatio: metrics.fillerRatio,
         volumeStability: metrics.volumeStability,
-        speechQuality: metrics.speechQuality
+        speechQuality: metrics.speechQuality,
+        videoProvided: hasVideo,
+        videoResolved,
+        audioExtracted,
+        asrAttempted,
+        asrCompleted,
+        transcriptSource: transcript
+          ? transcriptSource === 'empty'
+            ? 'manual_text'
+            : transcriptSource
+          : transcriptSource,
+        issues
       });
 
       if (transcript) {
@@ -129,17 +203,15 @@ class SpeechMetricsService {
       avgFillerRatio,
       avgVolumeStability,
       speechQuality,
+      asrEnabled: this.asrEnabled,
+      audioExtractSuccessCount,
+      asrAttemptCount,
+      asrCompletedCount,
       samples
     };
   }
 
-  private async extractAudio(
-    sessionId: string,
-    videoPath?: string | null,
-    videoUrl?: string | null,
-    questionIndex?: number | null
-  ): Promise<AudioExtractResult | null> {
-    const source = await this.resolveSource(sessionId, videoPath, videoUrl, questionIndex);
+  private async extractAudioFromSource(source: string | null): Promise<AudioExtractResult | null> {
     if (!source) {
       return null;
     }

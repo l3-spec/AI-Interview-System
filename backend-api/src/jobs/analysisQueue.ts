@@ -17,8 +17,9 @@ interface QueueTask {
 class AnalysisQueue {
     private queue: QueueTask[] = [];
     private processing = false;
-    private pollInterval = 5000; // 5秒轮询一次
+    private pollInterval = Number(process.env.ANALYSIS_QUEUE_POLL_INTERVAL_MS || 5000);
     private intervalId?: NodeJS.Timeout;
+    private recoveryDelayMs = Number(process.env.ANALYSIS_RECOVERY_DELAY_MS || 60000);
 
     private async logAnalysisEvent(params: {
         action: string;
@@ -76,6 +77,33 @@ class AnalysisQueue {
      */
     async enqueueAnalysis(sessionId: string, priority = 0): Promise<string> {
         try {
+            const activeTask = await prisma.aIInterviewAnalysisTask.findFirst({
+                where: {
+                    sessionId,
+                    status: {
+                        in: ['PENDING', 'PROCESSING']
+                    }
+                },
+                orderBy: { createdAt: 'desc' }
+            });
+
+            if (activeTask) {
+                console.log(`[AnalysisQueue] Reuse active task for session: ${sessionId}`);
+                return activeTask.id;
+            }
+
+            const existingReport = await prisma.aIInterviewAnalysisReport.findUnique({
+                where: { sessionId },
+                select: {
+                    analysisStatus: true
+                }
+            });
+
+            if (existingReport?.analysisStatus === 'COMPLETED') {
+                console.log(`[AnalysisQueue] Report already completed for session: ${sessionId}`);
+                return `report:${sessionId}`;
+            }
+
             // 创建分析任务记录
             const task = await prisma.aIInterviewAnalysisTask.create({
                 data: {
@@ -116,6 +144,7 @@ class AnalysisQueue {
 
         try {
             this.processing = true;
+            await this.recoverStalledSessionIfNeeded();
 
             // 获取待处理的任务（按优先级和创建时间排序）
             const pendingTasks = await prisma.aIInterviewAnalysisTask.findMany({
@@ -143,6 +172,71 @@ class AnalysisQueue {
         } finally {
             this.processing = false;
         }
+    }
+
+    private async recoverStalledSessionIfNeeded() {
+        const candidate = await prisma.aIInterviewSession.findFirst({
+            where: {
+                status: 'COMPLETED',
+                OR: [
+                    {
+                        analysisReport: {
+                            is: null
+                        }
+                    },
+                    {
+                        analysisReport: {
+                            is: {
+                                analysisStatus: {
+                                    not: 'COMPLETED'
+                                }
+                            }
+                        }
+                    }
+                ],
+                analysisTasks: {
+                    none: {
+                        status: {
+                            in: ['PENDING', 'PROCESSING']
+                        }
+                    }
+                }
+            },
+            include: {
+                analysisTasks: {
+                    orderBy: { createdAt: 'desc' },
+                    take: 1
+                },
+                analysisReport: {
+                    select: {
+                        analysisStatus: true,
+                        updatedAt: true
+                    }
+                }
+            },
+            orderBy: {
+                updatedAt: 'asc'
+            }
+        });
+
+        if (!candidate) {
+            return;
+        }
+
+        const latestTask = candidate.analysisTasks[0];
+        const latestAttemptAt = latestTask?.updatedAt || candidate.analysisReport?.updatedAt || candidate.updatedAt;
+        if (Date.now() - latestAttemptAt.getTime() < this.recoveryDelayMs) {
+            return;
+        }
+
+        console.warn(`[AnalysisQueue] Recovering stalled analysis session: ${candidate.id}`);
+        await this.enqueueAnalysis(candidate.id, 0);
+        await this.logAnalysisEvent({
+            action: 'ANALYSIS_RECOVERY_ENQUEUED',
+            description: '检测到报告未就绪且无活跃任务，已自动重新入队',
+            sessionId: candidate.id,
+            result: 'WARNING'
+        });
     }
 
     private async handlePrismaConnectionError(error: unknown) {

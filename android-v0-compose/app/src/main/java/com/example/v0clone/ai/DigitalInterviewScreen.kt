@@ -5,6 +5,10 @@ import android.app.Activity
 import android.content.Context
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.PowerManager
 import android.util.Log
 import android.view.WindowManager
@@ -129,6 +133,11 @@ fun DigitalInterviewScreen(
     val duixModelUrl = remember { AppConfig.duixModelUrl }
     val activity = context as? Activity
     var showEducationOverlay by rememberSaveable { mutableStateOf(true) }
+    val connectivityManager = remember {
+        context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    }
+    var isNetworkAvailable by remember { mutableStateOf(context.isNetworkAvailable()) }
+    var showOfflineDialog by remember { mutableStateOf(!isNetworkAvailable) }
 
     val powerManager = remember { context.getSystemService(Context.POWER_SERVICE) as? PowerManager }
     var showPowerSaveDialog by remember { mutableStateOf(false) }
@@ -209,6 +218,33 @@ fun DigitalInterviewScreen(
         }
     }
 
+    DisposableEffect(connectivityManager) {
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                isNetworkAvailable = context.isNetworkAvailable()
+            }
+
+            override fun onLost(network: Network) {
+                isNetworkAvailable = context.isNetworkAvailable()
+            }
+
+            override fun onUnavailable() {
+                isNetworkAvailable = false
+            }
+
+            override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+                isNetworkAvailable =
+                    networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                    networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            }
+        }
+
+        connectivityManager.registerNetworkCallback(NetworkRequest.Builder().build(), callback)
+        onDispose {
+            runCatching { connectivityManager.unregisterNetworkCallback(callback) }
+        }
+    }
+
     DisposableEffect(videoRecorder) {
         onDispose {
             videoRecorder?.release()
@@ -231,6 +267,21 @@ fun DigitalInterviewScreen(
     val digitalHumanStatus = duixStatus
     var hasReportedCompletion by rememberSaveable(uiState.sessionId) { mutableStateOf(false) }
     var autoRecorderEnabled by rememberSaveable { mutableStateOf(true) }
+
+    LaunchedEffect(isNetworkAvailable) {
+        if (!isNetworkAvailable) {
+            showOfflineDialog = true
+            autoRecorderEnabled = false
+            voiceManager.handleNetworkInterrupted()
+            Toast.makeText(
+                context,
+                "网络已中断，面试已暂停。恢复网络后可继续。",
+                Toast.LENGTH_LONG
+            ).show()
+        } else {
+            autoRecorderEnabled = true
+        }
+    }
 
     // 监听题目索引变化并同步到ViewModel
     LaunchedEffect(currentQuestionIndex) {
@@ -306,8 +357,8 @@ fun DigitalInterviewScreen(
     var connectionRetryCount by remember { mutableStateOf(0) }
     val maxRetries = 3
 
-    LaunchedEffect(uiState.sessionId, hasMicrophonePermission, connectionState, connectionRetryCount) {
-        if (uiState.sessionId.isNotBlank() && hasMicrophonePermission && connectionState == ConnectionState.DISCONNECTED) {
+    LaunchedEffect(uiState.sessionId, hasMicrophonePermission, connectionState, connectionRetryCount, isNetworkAvailable) {
+        if (uiState.sessionId.isNotBlank() && hasMicrophonePermission && isNetworkAvailable && connectionState == ConnectionState.DISCONNECTED) {
             // 避免立即重连导致死循环，增加延时
             kotlinx.coroutines.delay(2000)
             
@@ -388,6 +439,7 @@ fun DigitalInterviewScreen(
     }
 
     val dynamicStatusMessage = when {
+        !isNetworkAvailable -> "网络已中断，请恢复网络后继续面试"
         digitalHumanStatus != null -> digitalHumanStatus
         connectionState == ConnectionState.CONNECTING -> "正在连接语音服务…"
         connectionState == ConnectionState.DISCONNECTED && uiState.sessionId.isNotBlank() -> "语音服务未连接"
@@ -407,6 +459,11 @@ fun DigitalInterviewScreen(
             }
             !hasMicrophonePermission -> {
                 showPermissionDialog = true
+            }
+
+            !isNetworkAvailable -> {
+                showOfflineDialog = true
+                Toast.makeText(context, "当前网络不可用，无法继续面试", Toast.LENGTH_SHORT).show()
             }
 
             connectionState != ConnectionState.CONNECTED -> {
@@ -478,10 +535,11 @@ fun DigitalInterviewScreen(
     }
 
     // 无需手动按钮，保持自动录音：当连接就绪且双方静默时自动开启录音
-    LaunchedEffect(connectionState, digitalHumanReady, isRecording, isProcessing, isDigitalHumanSpeaking, interviewCompleted) {
+    LaunchedEffect(connectionState, digitalHumanReady, isRecording, isProcessing, isDigitalHumanSpeaking, interviewCompleted, isNetworkAvailable) {
         Log.d("DigitalInterviewScreen", """
             Auto-recording check:
               autoRecorderEnabled: $autoRecorderEnabled
+              isNetworkAvailable: $isNetworkAvailable
               digitalHumanReady: $digitalHumanReady
               connectionState: $connectionState
               interviewCompleted: $interviewCompleted
@@ -491,6 +549,7 @@ fun DigitalInterviewScreen(
         """.trimIndent())
         
         if (autoRecorderEnabled &&
+            isNetworkAvailable &&
             digitalHumanReady &&
             connectionState == ConnectionState.CONNECTED &&
             !interviewCompleted &&
@@ -503,6 +562,7 @@ fun DigitalInterviewScreen(
         } else {
             val blockers = mutableListOf<String>()
             if (!autoRecorderEnabled) blockers.add("autoRecorderDisabled")
+            if (!isNetworkAvailable) blockers.add("networkUnavailable")
             if (!digitalHumanReady) blockers.add("digitalHumanNotReady")
             if (connectionState != ConnectionState.CONNECTED) blockers.add("notConnected")
             if (interviewCompleted) blockers.add("interviewCompleted")
@@ -517,8 +577,8 @@ fun DigitalInterviewScreen(
     }
 
     // Fallback: 如果数字人说完话5秒后还没开始录音，尝试手动触发
-    LaunchedEffect(isDigitalHumanSpeaking, digitalHumanReady, connectionState) {
-        if (!isDigitalHumanSpeaking && digitalHumanReady && connectionState == ConnectionState.CONNECTED && !isRecording) {
+    LaunchedEffect(isDigitalHumanSpeaking, digitalHumanReady, connectionState, isNetworkAvailable) {
+        if (!isDigitalHumanSpeaking && isNetworkAvailable && digitalHumanReady && connectionState == ConnectionState.CONNECTED && !isRecording) {
             kotlinx.coroutines.delay(5000)
             if (!isRecording && !isProcessing && !interviewCompleted) {
                 Log.w("DigitalInterviewScreen", "Fallback: Manually triggering recording after digital human finished speaking")
@@ -721,6 +781,52 @@ fun DigitalInterviewScreen(
             }
         )
     }
+
+    if (showOfflineDialog) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text(text = "网络已中断") },
+            text = {
+                Text(
+                    text = "当前 AI 面试不支持离线继续。系统已暂停录音、上传和语音链路，请恢复网络后继续。"
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (context.isNetworkAvailable()) {
+                            isNetworkAvailable = true
+                            showOfflineDialog = false
+                            onRetry()
+                            Toast.makeText(context, "网络已恢复，正在重新连接", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "网络仍未恢复", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                ) {
+                    Text("恢复后继续")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        (context as? Activity)?.finish()
+                    }
+                ) {
+                    Text("退出面试")
+                }
+            }
+        )
+    }
+}
+
+private fun Context.isNetworkAvailable(): Boolean {
+    val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        ?: return false
+    val network = connectivityManager.activeNetwork ?: return false
+    val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+    return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+        capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
 }
 
 @Composable

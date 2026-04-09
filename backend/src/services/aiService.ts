@@ -3,9 +3,10 @@ import FormData from 'form-data';
 import fs from 'fs';
 import path from 'path';
 
-// DeepSeek API配置
-const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
-const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || '';
+// OpenAI-compatible LLM API 配置
+const LLM_API_URL = process.env.LLM_API_URL || process.env.DEEPSEEK_API_URL || 'https://api.deepseek.com/v1/chat/completions';
+const LLM_API_KEY = process.env.LLM_API_KEY || process.env.DEEPSEEK_API_KEY || '';
+const LLM_MODEL = process.env.LLM_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-chat';
 
 // TTS服务配置 - 推荐使用Azure Cognitive Services
 const AZURE_TTS_KEY = process.env.AZURE_TTS_KEY || '';
@@ -25,9 +26,9 @@ export class AIService {
       const prompt = this.buildInterviewPrompt(jobPosition, jobLevel);
       
       const response = await axios.post(
-        DEEPSEEK_API_URL,
+        LLM_API_URL,
         {
-          model: 'deepseek-chat',
+          model: LLM_MODEL,
           messages: [
             {
               role: 'system',
@@ -43,7 +44,7 @@ export class AIService {
         },
         {
           headers: {
-            'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
+            'Authorization': `Bearer ${LLM_API_KEY}`,
             'Content-Type': 'application/json'
           }
         }
@@ -273,9 +274,9 @@ export class AIService {
 `;
 
       const response = await axios.post(
-        DEEPSEEK_API_URL,
+        LLM_API_URL,
         {
-          model: 'deepseek-chat',
+          model: LLM_MODEL,
           messages: [
             {
               role: 'system',
@@ -291,7 +292,7 @@ export class AIService {
         },
         {
           headers: {
-            'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
+            'Authorization': `Bearer ${LLM_API_KEY}`,
             'Content-Type': 'application/json'
           }
         }
@@ -387,9 +388,9 @@ ${answers.map((item, index) => `
 `;
 
       const response = await axios.post(
-        DEEPSEEK_API_URL,
+        LLM_API_URL,
         {
-          model: 'deepseek-chat',
+          model: LLM_MODEL,
           messages: [
             {
               role: 'system',
@@ -405,7 +406,7 @@ ${answers.map((item, index) => `
         },
         {
           headers: {
-            'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
+            'Authorization': `Bearer ${LLM_API_KEY}`,
             'Content-Type': 'application/json'
           }
         }

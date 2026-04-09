@@ -276,9 +276,16 @@ router.get('/session/:sessionId',
       }
 
       const { sessionId } = req.params;
-
-      const session = await aiInterviewService.getInterviewSession(sessionId);
+      const userId = req.user?.type === 'user' ? req.user.id : undefined;
+      const session = await aiInterviewService.getInterviewSession(sessionId, userId);
       if (!session.success || !session.session) {
+        if (session.code === 'FORBIDDEN') {
+          return res.status(403).json({
+            success: false,
+            message: session.error || '无权访问该面试会话',
+          });
+        }
+
         return res.status(404).json({
           success: false,
           message: session.error || '会话不存在',
@@ -401,8 +408,29 @@ router.get('/next-question/:sessionId',
       }
 
       const { sessionId } = req.params;
+      const userId = req.user?.type === 'user' ? req.user.id : undefined;
+      const result = await aiInterviewService.getNextQuestion(sessionId, userId);
 
-      const result = await aiInterviewService.getNextQuestion(sessionId);
+      if (!result.success) {
+        if (result.code === 'FORBIDDEN') {
+          return res.status(403).json({
+            success: false,
+            message: result.error,
+          });
+        }
+
+        if (result.code === 'NOT_FOUND') {
+          return res.status(404).json({
+            success: false,
+            message: result.error,
+          });
+        }
+
+        return res.status(409).json({
+          success: false,
+          message: result.error || '获取下一个问题失败',
+        });
+      }
 
       res.json(result);
 
@@ -423,7 +451,7 @@ router.get('/next-question/:sessionId',
  *     summary: 提交面试答案 📝
  *     description: |
  *       提交用户对某个问题的回答
- *       - 支持文本答案和视频答案
+ *       - 当前以视频答案为准，可选携带文本辅助信息
  *       - 视频文件应先上传到OSS，然后提交URL
  *       - 自动记录回答时间和时长
  *     tags: [🤖 AI面试系统]
@@ -436,13 +464,6 @@ router.get('/next-question/:sessionId',
  *           schema:
  *             $ref: '#/components/schemas/SubmitAnswerRequest'
  *           examples:
- *             文本答案:
- *               summary: 仅提交文本回答
- *               value:
- *                 sessionId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
- *                 questionIndex: 0
- *                 answerText: "我是一名有5年经验的Java开发工程师，熟悉Spring Boot、微服务架构等技术栈..."
- *                 answerDuration: 120
  *             视频答案:
  *               summary: 提交视频回答
  *               value:
@@ -530,6 +551,7 @@ router.post('/submit-answer',
       }
 
       const { sessionId, questionIndex, answerText, answerVideoUrl, answerVideoPath, answerDuration } = req.body;
+      const userId = req.user?.type === 'user' ? req.user.id : undefined;
 
       const result = await aiInterviewService.submitAnswer(
         sessionId,
@@ -537,8 +559,37 @@ router.post('/submit-answer',
         answerText,
         answerVideoUrl,
         answerVideoPath,
-        answerDuration
+        answerDuration,
+        userId
       );
+
+      if (!result.success) {
+        if (result.code === 'FORBIDDEN') {
+          return res.status(403).json({
+            success: false,
+            message: result.error,
+          });
+        }
+
+        if (result.code === 'NOT_FOUND' || result.code === 'INVALID_QUESTION') {
+          return res.status(404).json({
+            success: false,
+            message: result.error,
+          });
+        }
+
+        if (result.code === 'INVALID_STATE') {
+          return res.status(409).json({
+            success: false,
+            message: result.error,
+          });
+        }
+
+        return res.status(400).json({
+          success: false,
+          message: result.error || '提交答案失败',
+        });
+      }
 
       res.json(result);
 
@@ -617,19 +668,28 @@ router.post('/complete/:sessionId',
       }
 
       const { sessionId } = req.params;
+      const userId = req.user?.type === 'user' ? req.user.id : undefined;
+      const result = await aiInterviewService.completeInterviewSession(sessionId, userId);
 
-      const result = await aiInterviewService.completeInterviewSession(sessionId);
-
-      // 触发分析任务
-      if (result.success) {
-        try {
-          const { analysisQueue } = await import('../jobs/analysisQueue');
-          await analysisQueue.enqueueAnalysis(sessionId);
-          console.log(`[AI Interview] Analysis task enqueued for session: ${sessionId}`);
-        } catch (error) {
-          console.error('[AI Interview] Failed to enqueue analysis task:', error);
-          // 不影响complete的成功响应
+      if (!result.success) {
+        if (result.code === 'FORBIDDEN') {
+          return res.status(403).json({
+            success: false,
+            message: result.error,
+          });
         }
+
+        if (result.code === 'NOT_FOUND') {
+          return res.status(404).json({
+            success: false,
+            message: result.error,
+          });
+        }
+
+        return res.status(409).json({
+          success: false,
+          message: result.error || '完成面试失败',
+        });
       }
 
       res.json(result);

@@ -58,6 +58,35 @@ services:
       - ai-interview-network
     restart: unless-stopped
 
+  analysis-worker:
+    build:
+      context: ./backend-api
+      dockerfile: Dockerfile
+    container_name: ai-interview-analysis-worker
+    command: ["npm", "run", "start:analysis-worker"]
+    environment:
+      DATABASE_URL: "mysql://ai_interview:password123@mysql:3306/ai_interview_db"
+      REDIS_URL: "redis://redis:6379"
+      JWT_SECRET: "your-super-secret-jwt-key-here"
+      JWT_EXPIRE: "7d"
+      NODE_ENV: "production"
+      PORT: 3000
+      SMTP_HOST: "smtp.gmail.com"
+      SMTP_PORT: 587
+      SMTP_USER: "your-email@gmail.com"
+      SMTP_PASS: "your-app-password"
+      UPLOAD_DIR: "/app/uploads"
+      ADMIN_EMAIL: "admin@aiinterview.com"
+      ADMIN_PASSWORD: "admin123456"
+    volumes:
+      - upload_data:/app/uploads
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      - ai-interview-network
+    restart: unless-stopped
+
   admin-dashboard:
     build:
       context: ./admin-dashboard

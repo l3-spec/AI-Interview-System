@@ -55,6 +55,8 @@ interface SessionData {
   startedAt?: Date;
 }
 
+type SessionAccessCode = 'NOT_FOUND' | 'FORBIDDEN' | 'INVALID_STATE' | 'INVALID_QUESTION';
+
 interface ResumeReportBestMatch {
   title: string;
   description: string;
@@ -190,6 +192,75 @@ const toRatingLabel = (score: number): string => {
 const normalizeText = (value?: string | null): string => (value || '').trim().toLowerCase();
 
 class AIInterviewService {
+  private async resolveCompanyTargetInput(
+    jobId?: string,
+    companyTarget?: string
+  ): Promise<string | undefined> {
+    const directCompanyTarget =
+      typeof companyTarget === 'string' && companyTarget.trim().length > 0
+        ? companyTarget.trim()
+        : undefined;
+
+    if (directCompanyTarget) {
+      return directCompanyTarget;
+    }
+
+    if (!jobId) {
+      return undefined;
+    }
+
+    try {
+      const job = await prisma.job.findUnique({
+        where: { id: jobId },
+        select: {
+          company: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      });
+
+      return job?.company?.name?.trim() || undefined;
+    } catch (error) {
+      console.warn('[AIInterviewService] 反查岗位所属公司失败:', error);
+      return undefined;
+    }
+  }
+
+  private hasQuestionAnswer(question: {
+    answerText?: string | null;
+    answerVideoUrl?: string | null;
+    answerVideoPath?: string | null;
+  }): boolean {
+    return Boolean(
+      question.answerVideoUrl ||
+      question.answerVideoPath ||
+      (question.answerText && question.answerText.trim().length > 0)
+    );
+  }
+
+  private getNextUnansweredQuestionIndex(
+    questions: Array<{
+      questionIndex: number;
+      answerText?: string | null;
+      answerVideoUrl?: string | null;
+      answerVideoPath?: string | null;
+    }>
+  ): number {
+    const nextQuestion = questions
+      .slice()
+      .sort((a, b) => a.questionIndex - b.questionIndex)
+      .find(question => !this.hasQuestionAnswer(question));
+
+    return nextQuestion ? nextQuestion.questionIndex : questions.length;
+  }
+
+  private async queueAnalysisIfNeeded(sessionId: string, priority = 0): Promise<void> {
+    const { analysisQueue } = await import('../jobs/analysisQueue');
+    await analysisQueue.enqueueAnalysis(sessionId, priority);
+  }
+
   /**
    * 创建AI面试会话
    * 这是第4项功能的主要实现
@@ -222,6 +293,7 @@ class AIInterviewService {
 
     const normalizedJobId =
       typeof jobId === 'string' && jobId.trim().length > 0 ? jobId.trim() : undefined;
+    const normalizedCompanyTarget = await this.resolveCompanyTargetInput(normalizedJobId, companyTarget);
     const totalDurationTargetMinutes = 15;
     const minutesPerQuestion = 2.5;
     const normalizedJobCategory =
@@ -352,7 +424,7 @@ class AIInterviewService {
             jobTarget,
             jobCategory: normalizedJobCategory,
             jobSubCategory: normalizedJobSubCategory,
-            companyTarget,
+            companyTarget: normalizedCompanyTarget,
             background,
             status: 'PREPARING',
             totalQuestions,
@@ -420,7 +492,7 @@ class AIInterviewService {
       console.log('正在生成面试问题...');
       const generationResult = await deepseekService.generateInterviewQuestions({
         jobTarget,
-        companyTarget,
+        companyTarget: normalizedCompanyTarget,
         background,
         questionCount: normalizedQuestionCount,
         jobCategory: normalizedJobCategory,
@@ -456,7 +528,7 @@ class AIInterviewService {
           jobTarget,
           jobCategory: normalizedJobCategory,
           jobSubCategory: normalizedJobSubCategory,
-          companyTarget,
+          companyTarget: normalizedCompanyTarget,
           background,
           status: 'PREPARING',
           totalQuestions,
@@ -565,10 +637,11 @@ class AIInterviewService {
   /**
    * 获取面试会话详情
    */
-  async getInterviewSession(sessionId: string): Promise<{
+  async getInterviewSession(sessionId: string, userId?: string): Promise<{
     success: boolean;
     session?: SessionData;
     error?: string;
+    code?: SessionAccessCode;
   }> {
     try {
       const session = await prisma.aIInterviewSession.findUnique({
@@ -584,6 +657,15 @@ class AIInterviewService {
         return {
           success: false,
           error: '面试会话不存在',
+          code: 'NOT_FOUND',
+        };
+      }
+
+      if (userId && session.userId !== userId) {
+        return {
+          success: false,
+          error: '无权访问该面试会话',
+          code: 'FORBIDDEN',
         };
       }
 
@@ -688,13 +770,15 @@ class AIInterviewService {
     answerText: string,
     videoUrl?: string,
     videoPath?: string,
-    duration?: number
+    duration?: number,
+    userId?: string
   ): Promise<{
     success: boolean;
     message?: string;
     nextQuestion?: number;
     isCompleted?: boolean;
     error?: string;
+    code?: SessionAccessCode;
   }> {
     try {
       if (!videoUrl && !videoPath) {
@@ -704,10 +788,60 @@ class AIInterviewService {
         };
       }
 
+      const session = await prisma.aIInterviewSession.findUnique({
+        where: { id: sessionId },
+        include: {
+          questions: {
+            orderBy: { questionIndex: 'asc' },
+          },
+        },
+      });
+
+      if (!session) {
+        return {
+          success: false,
+          error: '面试会话不存在',
+          code: 'NOT_FOUND',
+        };
+      }
+
+      if (userId && session.userId !== userId) {
+        return {
+          success: false,
+          error: '无权提交该面试会话的答案',
+          code: 'FORBIDDEN',
+        };
+      }
+
+      if (!['PREPARING', 'IN_PROGRESS'].includes(session.status)) {
+        return {
+          success: false,
+          error: `当前面试状态不允许继续答题：${session.status}`,
+          code: 'INVALID_STATE',
+        };
+      }
+
+      if (questionIndex < 0 || questionIndex >= session.totalQuestions) {
+        return {
+          success: false,
+          error: '问题索引超出范围',
+          code: 'INVALID_QUESTION',
+        };
+      }
+
+      const targetQuestion = session.questions.find(question => question.questionIndex === questionIndex);
+      if (!targetQuestion) {
+        return {
+          success: false,
+          error: '面试题目不存在',
+          code: 'INVALID_QUESTION',
+        };
+      }
+
       const normalized = this.normalizeVideoInfo(sessionId, videoUrl, videoPath, questionIndex);
 
       // 更新问题答案
-      await prisma.aIInterviewQuestion.updateMany({
+      const updateResult = await prisma.aIInterviewQuestion.updateMany({
         where: {
           sessionId,
           questionIndex: questionIndex,
@@ -721,46 +855,55 @@ class AIInterviewService {
         },
       });
 
-      // 更新会话状态
-      await prisma.aIInterviewSession.update({
-        where: { id: sessionId },
-        data: {
-          currentQuestion: questionIndex + 1,
-        },
-      });
-
-      // 检查是否完成所有问题
-      const session = await prisma.aIInterviewSession.findUnique({
-        where: { id: sessionId },
-      });
-
-      if (!session) {
+      if (updateResult.count === 0) {
         return {
           success: false,
-          error: '面试会话不存在',
+          error: '提交失败，未匹配到对应题目',
+          code: 'INVALID_QUESTION',
         };
       }
 
-      const isCompleted = session.currentQuestion >= session.totalQuestions;
+      const refreshedSession = await prisma.aIInterviewSession.findUnique({
+        where: { id: sessionId },
+        include: {
+          questions: {
+            orderBy: { questionIndex: 'asc' },
+          },
+        },
+      });
+
+      if (!refreshedSession) {
+        return {
+          success: false,
+          error: '面试会话不存在',
+          code: 'NOT_FOUND',
+        };
+      }
+
+      const nextQuestionIndex = this.getNextUnansweredQuestionIndex(refreshedSession.questions);
+      const isCompleted = nextQuestionIndex >= refreshedSession.totalQuestions;
+
+      await prisma.aIInterviewSession.update({
+        where: { id: sessionId },
+        data: {
+          status: refreshedSession.status === 'PREPARING' ? 'IN_PROGRESS' : refreshedSession.status,
+          startedAt: refreshedSession.startedAt || new Date(),
+          currentQuestion: nextQuestionIndex,
+          ...(isCompleted
+            ? {
+                status: 'COMPLETED',
+                completedAt: refreshedSession.completedAt || new Date(),
+              }
+            : {}),
+        },
+      });
 
       if (isCompleted) {
-        // 完成面试
-        await prisma.aIInterviewSession.update({
-          where: { id: sessionId },
-          data: {
-            status: 'COMPLETED',
-            completedAt: new Date(),
-          },
-        });
-
-        // 自动创建分析任务
         try {
-          const { analysisQueue } = await import('../jobs/analysisQueue');
-          await analysisQueue.enqueueAnalysis(sessionId, 0);
+          await this.queueAnalysisIfNeeded(sessionId, 0);
           console.log(`[AIInterview] 已为会话 ${sessionId} 创建分析任务`);
         } catch (error) {
           console.error('[AIInterview] 创建分析任务失败:', error);
-          // 不阻塞面试完成流程，仅记录错误
         }
 
         return {
@@ -773,7 +916,7 @@ class AIInterviewService {
       return {
         success: true,
         message: '答案提交成功',
-        nextQuestion: session.currentQuestion,
+        nextQuestion: nextQuestionIndex,
         isCompleted: false,
       };
     } catch (error) {
@@ -854,10 +997,11 @@ class AIInterviewService {
   /**
    * 完成面试会话
    */
-  async completeInterviewSession(sessionId: string): Promise<{
+  async completeInterviewSession(sessionId: string, userId?: string): Promise<{
     success: boolean;
     message?: string;
     error?: string;
+    code?: SessionAccessCode;
   }> {
     try {
       const session = await prisma.aIInterviewSession.findUnique({
@@ -873,20 +1017,23 @@ class AIInterviewService {
         return {
           success: false,
           error: '面试会话不存在',
+          code: 'NOT_FOUND',
         };
       }
 
-      // 检查每个问题是否至少有视频或文本答案之一
-      const missingBoth = (session.questions || []).filter(
-        q => !q.answerVideoUrl && !q.answerVideoPath && (!q.answerText || q.answerText.trim().length === 0)
-      );
-
-      if (missingBoth.length > 0) {
+      if (userId && session.userId !== userId) {
         return {
           success: false,
-          error: `仍有题目缺少答案（视频和文本都为空）：${missingBoth
-            .map(q => q.questionIndex)
-            .join(',')}`,
+          error: '无权结束该面试会话',
+          code: 'FORBIDDEN',
+        };
+      }
+
+      if (!['PREPARING', 'IN_PROGRESS', 'COMPLETED'].includes(session.status)) {
+        return {
+          success: false,
+          error: `当前面试状态不允许结束：${session.status}`,
+          code: 'INVALID_STATE',
         };
       }
 
@@ -894,16 +1041,25 @@ class AIInterviewService {
       const duration = session.startedAt
         ? Math.floor((new Date().getTime() - session.startedAt.getTime()) / 1000)
         : 0;
+      const currentQuestion = this.getNextUnansweredQuestionIndex(session.questions);
 
       // 更新会话状态
       await prisma.aIInterviewSession.update({
         where: { id: sessionId },
         data: {
           status: 'COMPLETED',
-          completedAt: new Date(),
+          completedAt: session.completedAt || new Date(),
           duration: duration,
+          currentQuestion,
+          startedAt: session.startedAt || new Date(),
         },
       });
+
+      try {
+        await this.queueAnalysisIfNeeded(sessionId, 0);
+      } catch (error) {
+        console.error('[AIInterview] 完成面试后创建分析任务失败:', error);
+      }
 
       return {
         success: true,
@@ -1166,9 +1322,15 @@ class AIInterviewService {
       }
 
       if (!session.analysisReport || session.analysisReport.analysisStatus !== 'COMPLETED') {
+        try {
+          await this.queueAnalysisIfNeeded(sessionId, 0);
+        } catch (error) {
+          console.error('[AIInterview] 报告请求触发分析保活失败:', error);
+        }
+
         return {
           success: false,
-          error: '分析报告尚未生成完成',
+          error: '报告未生成，请耐心等待',
           code: 'NOT_READY',
         };
       }
@@ -1545,18 +1707,20 @@ class AIInterviewService {
   /**
    * 获取下一个问题
    */
-  async getNextQuestion(sessionId: string): Promise<{
+  async getNextQuestion(sessionId: string, userId?: string): Promise<{
     success: boolean;
     question?: SessionQuestion;
     isCompleted?: boolean;
     error?: string;
+    code?: SessionAccessCode;
   }> {
     try {
-      const session = await this.getInterviewSession(sessionId);
+      const session = await this.getInterviewSession(sessionId, userId);
       if (!session.success || !session.session) {
         return {
           success: false,
           error: session.error || '会话不存在',
+          code: session.code,
         };
       }
 
@@ -1581,14 +1745,6 @@ class AIInterviewService {
       if (!nextQuestion.videoUrl) {
         this.triggerQuestionMediaGeneration(sessionId, true);
       }
-
-      // 更新当前问题索引
-      await prisma.aIInterviewSession.update({
-        where: { id: sessionId },
-        data: {
-          currentQuestion: sessionData.currentQuestion + 1,
-        },
-      });
 
       return {
         success: true,

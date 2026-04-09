@@ -627,6 +627,29 @@ class RealtimeVoiceManager(private val context: Context) {
         }
     }
 
+    fun handleNetworkInterrupted() {
+        Log.w(TAG, "检测到网络中断，暂停当前面试链路")
+        try {
+            socket?.off()
+            socket?.disconnect()
+            socket = null
+        } catch (_: Exception) {
+        }
+        recordingJob?.cancel()
+        recordingJob = null
+        stopRecordingInternal()
+        releaseVisualizer()
+        try {
+            mediaPlayer?.stop()
+        } catch (_: Exception) {
+        }
+        mediaPlayer?.release()
+        mediaPlayer = null
+        _connectionState.value = ConnectionState.DISCONNECTED
+        _isProcessing.value = false
+        _partialTranscript.value = ""
+    }
+
     fun cleanup() {
         try {
             socket?.disconnect()

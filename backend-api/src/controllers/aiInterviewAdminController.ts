@@ -191,6 +191,8 @@ export const getInterviewSessionAnalysis = async (req: Request, res: Response) =
                         postureStability,
                         gazeFocus
                     },
+                    integrity: insights?.integrity || null,
+                    voiceprint: insights?.voiceprint || null,
                     insights,
                     status: session.analysisReport.analysisStatus,
                     error: session.analysisReport.analysisError,

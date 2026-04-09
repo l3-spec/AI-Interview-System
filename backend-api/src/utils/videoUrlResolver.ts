@@ -9,6 +9,25 @@ const isHttpUrl = (value?: string | null) => {
 
 const normalizeObjectKey = (value: string) => value.replace(/^\/+/, '');
 
+const isManagedOssHttpUrl = (value?: string | null) => {
+  if (!isHttpUrl(value)) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(value as string);
+    const bucket = process.env.OSS_BUCKET || 'ai-interview-videos';
+    const region = process.env.OSS_REGION || 'oss-cn-beijing';
+    const cdnDomain = (process.env.OSS_CDN_DOMAIN || '').replace(/^https?:\/\//, '');
+    const host = parsed.host;
+    const expectedOssHost = `${bucket}.${region}.aliyuncs.com`;
+
+    return host === expectedOssHost || (!!cdnDomain && host === cdnDomain);
+  } catch (error) {
+    return false;
+  }
+};
+
 export const resolveVideoUrl = (params: {
   sessionId?: string | null;
   answerVideoUrl?: string | null;
@@ -104,7 +123,11 @@ export const resolveVideoAccessUrl = async (params: {
     return null;
   }
 
-  if (isHttpUrl(params.answerVideoUrl) || isHttpUrl(params.answerVideoPath)) {
+  const shouldKeepDirectHttpUrl =
+    (isHttpUrl(params.answerVideoUrl) && !isManagedOssHttpUrl(params.answerVideoUrl)) ||
+    (isHttpUrl(params.answerVideoPath) && !isManagedOssHttpUrl(params.answerVideoPath));
+
+  if (shouldKeepDirectHttpUrl) {
     return directUrl;
   }
 
