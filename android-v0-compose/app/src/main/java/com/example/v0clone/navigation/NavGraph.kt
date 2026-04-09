@@ -71,6 +71,7 @@ import com.xlwl.AiMian.data.model.CreateAiInterviewSessionRequest
 import com.xlwl.AiMian.data.model.User
 import com.xlwl.AiMian.data.model.AssessmentDetail
 import com.xlwl.AiMian.data.model.AssessmentResult
+import com.xlwl.AiMian.data.model.HomeFeedTargetType
 import com.xlwl.AiMian.navigation.Routes.LOGIN
 import com.xlwl.AiMian.data.repository.OssRepository
 import com.xlwl.AiMian.data.repository.AppUpdateRepository
@@ -216,8 +217,26 @@ fun AppNavHost(navController: NavHostController) {
                 repository = contentRepo,
                 onCardClick = { card ->
                     requireLogin {
-                        navController.currentBackStackEntry?.savedStateHandle?.set("selected_card", card)
-                        navController.navigate("content/${URLEncoder.encode(card.id, "UTF-8")}")
+                        when (card.targetType) {
+                            HomeFeedTargetType.POST -> {
+                                navController.currentBackStackEntry?.savedStateHandle?.set("selected_card", card)
+                                navController.navigate("content/${URLEncoder.encode(card.targetId, "UTF-8")}")
+                            }
+                            HomeFeedTargetType.COMPANY -> {
+                                navController.navigate(
+                                    "${Routes.COMPANY}/${URLEncoder.encode(card.targetId, "UTF-8")}",
+                                ) {
+                                    launchSingleTop = true
+                                }
+                            }
+                            HomeFeedTargetType.JOB -> {
+                                navController.navigate(
+                                    "${Routes.JOB_DETAIL}/${URLEncoder.encode(card.targetId, "UTF-8")}",
+                                ) {
+                                    launchSingleTop = true
+                                }
+                            }
+                        }
                     }
                 },
                 onSearchClick = {

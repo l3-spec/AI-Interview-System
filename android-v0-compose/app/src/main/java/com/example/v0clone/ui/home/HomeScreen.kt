@@ -9,7 +9,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Business
 import androidx.compose.material.icons.outlined.RemoveRedEye
+import androidx.compose.material.icons.outlined.WorkOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -50,6 +52,7 @@ private val PlaceholderGray = Color(0xFFB5B7B8)
 private val TextPrimary = Color(0xFF000000)
 private val CardTitleColor = TextPrimary
 private val CardSubtleText = Color(0xFFB5B7B8)
+private val SummaryTextColor = Color(0xFF4B5563)
 private val HomeTopBarExpandedHeight = 76.dp
 private val HomeTopBarCollapsedHeight = 54.dp
 private val HomeTopBarMaxOffset = 120.dp
@@ -490,7 +493,7 @@ private fun MasonryGrid(
  * 单个内容卡片（高度自适应，保持错落视觉）
  */
 @Composable
- private fun ContentCardItem(
+private fun ContentCardItem(
     card: ContentCard,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
@@ -509,21 +512,45 @@ private fun MasonryGrid(
         )
     ) {
         Column {
-            val imageHeight = if (card.id.hashCode() % 3 == 0) 227.dp else 170.dp
+            val imageHeight = if (card.imageUrl.isNullOrBlank()) 132.dp else if (card.id.hashCode() % 3 == 0) 227.dp else 170.dp
 
-            Image(
-                painter = rememberAsyncImagePainter(card.imageUrl),
-                contentDescription = card.title,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(imageHeight),
-                contentScale = ContentScale.Crop
-            )
+            if (!card.imageUrl.isNullOrBlank()) {
+                Image(
+                    painter = rememberAsyncImagePainter(card.imageUrl),
+                    contentDescription = card.title,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(imageHeight),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                EmptyCardHero(
+                    card = card,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(imageHeight)
+                )
+            }
 
             Column(
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(5.dp)
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                card.badge?.takeIf { it.isNotBlank() }?.let { badge ->
+                    Surface(
+                        shape = RoundedCornerShape(999.dp),
+                        color = AccentOrange.copy(alpha = 0.12f)
+                    ) {
+                        Text(
+                            text = badge,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            fontSize = 11.sp,
+                            color = AccentOrange,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
                 Text(
                     text = card.title,
                     fontSize = 14.sp,
@@ -547,6 +574,17 @@ private fun MasonryGrid(
                         fontWeight = FontWeight.Normal,
                         lineHeight = 21.sp,
                         letterSpacing = FigmaLetterSpacing
+                    )
+                }
+
+                card.summary?.takeIf { it.isNotBlank() }?.let { summary ->
+                    Text(
+                        text = summary,
+                        fontSize = 12.sp,
+                        color = SummaryTextColor,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        lineHeight = 18.sp
                     )
                 }
 
@@ -601,14 +639,17 @@ private fun MasonryGrid(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
+                        val metricIcon = when {
+                            card.badge?.contains("企业") == true -> Icons.Outlined.Business
+                            card.badge?.contains("职岗") == true -> Icons.Outlined.WorkOutline
+                            else -> Icons.Outlined.RemoveRedEye
+                        }
                         Icon(
-                            imageVector = Icons.Outlined.RemoveRedEye,
-                            contentDescription = "浏览量",
+                            imageVector = metricIcon,
+                            contentDescription = "信息",
                             tint = CardSubtleText,
                             modifier = Modifier.size(14.dp)
                         )
-
-                        Spacer(modifier = Modifier.width(4.dp))
 
                         Text(
                             text = card.views,
@@ -620,6 +661,57 @@ private fun MasonryGrid(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyCardHero(
+    card: ContentCard,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier.background(
+            brush = Brush.linearGradient(
+                colors = when {
+                    card.badge?.contains("企业") == true -> listOf(Color(0xFF0EA5E9), Color(0xFFE0F2FE))
+                    card.badge?.contains("职岗") == true -> listOf(Color(0xFFF97316), Color(0xFFFFEDD5))
+                    else -> listOf(Color(0xFF14B8A6), Color(0xFFCCFBF1))
+                }
+            )
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            card.badge?.takeIf { it.isNotBlank() }?.let {
+                Text(
+                    text = it,
+                    color = Color.White.copy(alpha = 0.92f),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            Text(
+                text = card.title,
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            card.summary?.takeIf { it.isNotBlank() }?.let {
+                Text(
+                    text = it,
+                    color = Color.White.copy(alpha = 0.86f),
+                    fontSize = 12.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }

@@ -3,175 +3,81 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-/**
- * 内容类型枚举
- */
-enum ContentType {
-  ASSESSMENT = 'assessment',    // 热门测试 20%
-  USER_POST = 'user_post',      // 热门分享 40%
-  EXPERT_POST = 'expert_post',  // 大咖分享 30%
-  PROMOTED_JOB = 'promoted_job' // 热门职岗 10%
+const DEFAULT_PAGE_SIZE = 12;
+const MAX_PAGE_SIZE = 30;
+const EXTRA_FETCH_BUFFER = 6;
+const HOME_FEED_WEIGHTS = {
+  HOT_POST: 0.5,
+  HOT_COMPANY: 0.2,
+  HOT_JOB: 0.3,
+} as const;
+
+enum HomeFeedType {
+  HOT_POST = 'hot_post',
+  HOT_COMPANY = 'hot_company',
+  HOT_JOB = 'hot_job',
 }
 
+enum HomeFeedTargetType {
+  POST = 'post',
+  COMPANY = 'company',
+  JOB = 'job',
+}
+
+type HomeFeedCard = {
+  id: string;
+  type: HomeFeedType;
+  targetType: HomeFeedTargetType;
+  targetId: string;
+  title: string;
+  summary: string | null;
+  imageUrl: string | null;
+  tags: string[];
+  authorName: string;
+  authorAvatar: string | null;
+  badge: string;
+  metricLabel: string;
+  metricValue: string;
+  createdAt: Date | null;
+};
+
 /**
- * 首页内容聚合接口（瀑布流混排）
+ * 首页内容聚合接口（帖子 / 企业 / 职岗 混排）
  * GET /api/home/feed
- * 
- * 混排策略：
- * - 热门测试：20%
- * - 热门分享：40%
- * - 大咖分享：30%
- * - 热门职岗：10%
- * - 相同类型内容不连续出现
- * - 每10个卡片最多1个广告（职岗）
  */
 export const getHomeFeed = async (req: Request, res: Response) => {
   try {
-    const { page = '1', pageSize = '20' } = req.query;
+    const pageNum = Math.max(parseInt(req.query.page as string, 10) || 1, 1);
+    const pageSizeNum = Math.min(
+      Math.max(parseInt(req.query.pageSize as string, 10) || DEFAULT_PAGE_SIZE, 1),
+      MAX_PAGE_SIZE
+    );
 
-    const pageNum = parseInt(page as string);
-    const pageSizeNum = parseInt(pageSize as string);
+    const desiredCounts = computeFeedCounts(pageSizeNum);
 
-    // 根据比例计算各类型内容数量
-    const assessmentCount = Math.ceil(pageSizeNum * 0.2); // 20%
-    const userPostCount = Math.ceil(pageSizeNum * 0.4);   // 40%
-    const expertPostCount = Math.ceil(pageSizeNum * 0.3); // 30%
-    const promotedJobCount = Math.ceil(pageSizeNum * 0.1); // 10%
-
-    // 并发获取各类型内容
-    const [assessments, userPosts, expertPosts, promotedJobs] = await Promise.all([
-      // 1. 获取热门测试
-      prisma.assessment.findMany({
-        where: {
-          status: 'PUBLISHED',
-          isHot: true,
-        },
-        take: assessmentCount,
-        orderBy: [
-          { participantCount: 'desc' },
-          { rating: 'desc' },
-        ],
-        select: {
-          id: true,
-          title: true,
-          coverImage: true,
-          durationMinutes: true,
-          difficulty: true,
-          participantCount: true,
-          rating: true,
-          tags: true,
-          category: {
-            select: {
-              name: true,
-            },
-          },
-        },
-      }),
-
-      // 2. 获取热门用户分享
-      prisma.userPost.findMany({
-        where: {
-          status: 'PUBLISHED',
-          isHot: true,
-        },
-        take: userPostCount,
-        orderBy: [
-          { viewCount: 'desc' },
-          { likeCount: 'desc' },
-        ],
-        select: {
-          id: true,
-          title: true,
-          coverImage: true,
-          tags: true,
-          viewCount: true,
-          likeCount: true,
-          commentCount: true,
-          createdAt: true,
-        },
-      }),
-
-      // 3. 获取大咖分享
-      prisma.expertPost.findMany({
-        where: {
-          publishedAt: {
-            not: null,
-            lte: new Date(),
-          },
-        },
-        take: expertPostCount,
-        orderBy: [
-          { isTop: 'desc' },
-          { viewCount: 'desc' },
-        ],
-        select: {
-          id: true,
-          expertName: true,
-          expertTitle: true,
-          expertCompany: true,
-          expertAvatar: true,
-          title: true,
-          coverImage: true,
-          tags: true,
-          viewCount: true,
-          likeCount: true,
-        },
-      }),
-
-      // 4. 获取推广职位
-      getActivePromotedJobs(promotedJobCount),
+    const [postFeed, companyFeed, jobFeed] = await Promise.all([
+      getHotPostFeed(pageNum, desiredCounts[HomeFeedType.HOT_POST]),
+      getHotCompanyFeed(pageNum, desiredCounts[HomeFeedType.HOT_COMPANY]),
+      getHotJobFeed(pageNum, desiredCounts[HomeFeedType.HOT_JOB]),
     ]);
 
-    // 格式化数据
-    const formattedAssessments = assessments.map((item) => ({
-      type: ContentType.ASSESSMENT,
-      id: item.id,
-      data: {
-        ...item,
-        tags: item.tags ? JSON.parse(item.tags) : [],
-        categoryName: item.category.name,
-      },
-    }));
+    const mixedContent = mixHomeFeed({
+      [HomeFeedType.HOT_POST]: postFeed.items,
+      [HomeFeedType.HOT_COMPANY]: companyFeed.items,
+      [HomeFeedType.HOT_JOB]: jobFeed.items,
+    }, pageSizeNum);
 
-    const formattedUserPosts = userPosts.map((item) => ({
-      type: ContentType.USER_POST,
-      id: item.id,
-      data: {
-        ...item,
-        tags: item.tags ? JSON.parse(item.tags) : [],
-      },
-    }));
-
-    const formattedExpertPosts = expertPosts.map((item) => ({
-      type: ContentType.EXPERT_POST,
-      id: item.id,
-      data: {
-        ...item,
-        tags: item.tags ? JSON.parse(item.tags) : [],
-      },
-    }));
-
-    const formattedPromotedJobs = promotedJobs.map((item: any) => ({
-      type: ContentType.PROMOTED_JOB,
-      id: item.promotionId,
-      data: item,
-    }));
-
-    // 混排算法：确保内容多样性
-    const mixedContent = mixContentWithStrategy([
-      ...formattedAssessments,
-      ...formattedUserPosts,
-      ...formattedExpertPosts,
-      ...formattedPromotedJobs,
-    ]);
+    const total = postFeed.total + companyFeed.total + jobFeed.total;
+    const hasMore = postFeed.hasMore || companyFeed.hasMore || jobFeed.hasMore;
 
     res.json({
       success: true,
       data: {
         list: mixedContent,
+        total,
         page: pageNum,
         pageSize: pageSizeNum,
-        hasMore: true, // 实际应该根据数据库总数计算
+        hasMore,
       },
     });
   } catch (error: any) {
@@ -184,147 +90,439 @@ export const getHomeFeed = async (req: Request, res: Response) => {
   }
 };
 
-/**
- * 获取活跃的推广职位（包含关联的Job信息）
- */
-async function getActivePromotedJobs(limit: number) {
-  const now = new Date();
+function computeFeedCounts(pageSize: number) {
+  const postCount = Math.max(1, Math.round(pageSize * HOME_FEED_WEIGHTS.HOT_POST));
+  const companyCount = Math.max(1, Math.round(pageSize * HOME_FEED_WEIGHTS.HOT_COMPANY));
+  const jobCount = Math.max(1, pageSize - postCount - companyCount);
 
-  const promotedJobs = await prisma.promotedJob.findMany({
-    where: {
-      isActive: true,
-      startDate: { lte: now },
-      endDate: { gte: now },
-    },
-    take: limit,
-    orderBy: [
-      { promotionType: 'desc' },
-      { priority: 'desc' },
-    ],
-  });
-
-  const jobIds = promotedJobs.map((pj) => pj.jobId);
-  const jobs = await prisma.job.findMany({
-    where: {
-      id: { in: jobIds },
-      status: 'ACTIVE',
-      isPublished: true,
-    },
-    include: {
-      company: {
-        select: {
-          id: true,
-          name: true,
-          logo: true,
-        },
-      },
-    },
-  });
-
-  return promotedJobs.map((pj) => {
-    const job = jobs.find((j) => j.id === pj.jobId);
-    if (!job) return null;
-
-    return {
-      promotionId: pj.id,
-      promotionType: pj.promotionType,
-      job: {
-        id: job.id,
-        title: job.title,
-        salary: job.salary,
-        location: job.location,
-        skills: job.skills ? JSON.parse(job.skills) : [],
-        company: job.company,
-      },
-    };
-  }).filter(Boolean);
+  return {
+    [HomeFeedType.HOT_POST]: postCount,
+    [HomeFeedType.HOT_COMPANY]: companyCount,
+    [HomeFeedType.HOT_JOB]: jobCount,
+  };
 }
 
-/**
- * 内容混排策略
- * 
- * 规则：
- * 1. 相同类型内容不连续出现
- * 2. 每10个内容最多1个职岗广告
- * 3. 首屏（前6个）必须包含：至少1个测试、2个分享、1个大咖
- */
-function mixContentWithStrategy(contents: any[]): any[] {
-  // 按类型分组
-  const grouped: Record<string, any[]> = {
-    [ContentType.ASSESSMENT]: [],
-    [ContentType.USER_POST]: [],
-    [ContentType.EXPERT_POST]: [],
-    [ContentType.PROMOTED_JOB]: [],
-  };
+async function getHotPostFeed(page: number, take: number) {
+  const offset = (page - 1) * take;
+  const windowEnd = offset + take + EXTRA_FETCH_BUFFER;
 
-  contents.forEach((item) => {
-    grouped[item.type].push(item);
+  const [userTotal, expertTotal, userPosts, expertPosts] = await Promise.all([
+    prisma.userPost.count({
+      where: {
+        status: 'PUBLISHED',
+      },
+    }),
+    prisma.expertPost.count({
+      where: {
+        publishedAt: {
+          not: null,
+          lte: new Date(),
+        },
+      },
+    }),
+    prisma.userPost.findMany({
+      where: {
+        status: 'PUBLISHED',
+      },
+      take: windowEnd,
+      orderBy: [
+        { isHot: 'desc' },
+        { viewCount: 'desc' },
+        { likeCount: 'desc' },
+        { commentCount: 'desc' },
+        { createdAt: 'desc' },
+      ],
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        coverImage: true,
+        images: true,
+        tags: true,
+        viewCount: true,
+        likeCount: true,
+        commentCount: true,
+        createdAt: true,
+        user: {
+          select: {
+            name: true,
+            avatar: true,
+          },
+        },
+      },
+    }),
+    prisma.expertPost.findMany({
+      where: {
+        publishedAt: {
+          not: null,
+          lte: new Date(),
+        },
+      },
+      take: windowEnd,
+      orderBy: [
+        { isTop: 'desc' },
+        { viewCount: 'desc' },
+        { likeCount: 'desc' },
+        { commentCount: 'desc' },
+        { publishedAt: 'desc' },
+      ],
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        coverImage: true,
+        tags: true,
+        viewCount: true,
+        likeCount: true,
+        commentCount: true,
+        publishedAt: true,
+        expertName: true,
+        expertTitle: true,
+        expertCompany: true,
+        expertAvatar: true,
+      },
+    }),
+  ]);
+
+  const items = [
+    ...userPosts.map<HomeFeedCard>((item) => ({
+      id: item.id,
+      type: HomeFeedType.HOT_POST,
+      targetType: HomeFeedTargetType.POST,
+      targetId: item.id,
+      title: item.title,
+      summary: buildSummary(item.content),
+      imageUrl: item.coverImage || firstImage(item.images),
+      tags: safeParseJson<string[]>(item.tags, []),
+      authorName: item.user?.name?.trim() || 'STAR-LINK 职圈',
+      authorAvatar: item.user?.avatar || null,
+      badge: '热门帖子',
+      metricLabel: '热度',
+      metricValue: `${formatCompactCount(item.viewCount)} 浏览`,
+      createdAt: item.createdAt,
+    })),
+    ...expertPosts.map<HomeFeedCard>((item) => ({
+      id: item.id,
+      type: HomeFeedType.HOT_POST,
+      targetType: HomeFeedTargetType.POST,
+      targetId: item.id,
+      title: item.title,
+      summary: buildSummary(item.content),
+      imageUrl: item.coverImage || null,
+      tags: safeParseJson<string[]>(item.tags, []),
+      authorName: item.expertName,
+      authorAvatar: item.expertAvatar || null,
+      badge: '热门帖子',
+      metricLabel: '热度',
+      metricValue: `${formatCompactCount(item.viewCount)} 浏览`,
+      createdAt: item.publishedAt,
+    })),
+  ]
+    .sort((a, b) => scoreHomeFeedCard(b) - scoreHomeFeedCard(a))
+    .slice(offset, offset + take);
+
+  const total = userTotal + expertTotal;
+  return {
+    items,
+    total,
+    hasMore: offset + items.length < total,
+  };
+}
+
+async function getHotCompanyFeed(page: number, take: number) {
+  const skip = (page - 1) * take;
+
+  const [total, showcases] = await Promise.all([
+    prisma.companyShowcase.count({
+      where: {
+        company: {
+          isActive: true,
+        },
+      },
+    }),
+    prisma.companyShowcase.findMany({
+      skip,
+      take,
+      orderBy: [
+        { sortOrder: 'asc' },
+        { hiringCount: 'desc' },
+      ],
+      where: {
+        company: {
+          isActive: true,
+        },
+      },
+      include: {
+        company: {
+          select: {
+            id: true,
+            name: true,
+            logo: true,
+            tagline: true,
+            description: true,
+            industry: true,
+            focusArea: true,
+            isVerified: true,
+            createdAt: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  const items = showcases.map<HomeFeedCard>((item) => {
+    const tags = [item.company.industry, item.company.focusArea, item.company.isVerified ? '企业认证' : null]
+      .filter((value): value is string => Boolean(value && value.trim()));
+
+    return {
+      id: item.id,
+      type: HomeFeedType.HOT_COMPANY,
+      targetType: HomeFeedTargetType.COMPANY,
+      targetId: item.company.id,
+      title: item.company.tagline?.trim()
+        ? `${item.company.name}｜${item.company.tagline.trim()}`
+        : `${item.company.name} 正在持续扩招`,
+      summary: item.company.description
+        ? buildSummary(item.company.description)
+        : `${item.company.name} 当前开放多个方向岗位，适合持续关注与投递。`,
+      imageUrl: null,
+      tags,
+      authorName: item.company.name,
+      authorAvatar: item.company.logo || null,
+      badge: '热门企业',
+      metricLabel: '热招岗位',
+      metricValue: `${Math.max(item.hiringCount, 1)} 个热招岗位`,
+      createdAt: item.company.createdAt,
+    };
   });
 
-  const result: any[] = [];
-  let jobAdIndex = 0;
-  let lastType: string | null = null;
-
-  // 计算总轮数（确保能遍历完所有内容）
-  const totalRounds = Math.max(
-    grouped[ContentType.ASSESSMENT].length,
-    grouped[ContentType.USER_POST].length,
-    grouped[ContentType.EXPERT_POST].length,
-    grouped[ContentType.PROMOTED_JOB].length
-  );
-
-  const counters = {
-    [ContentType.ASSESSMENT]: 0,
-    [ContentType.USER_POST]: 0,
-    [ContentType.EXPERT_POST]: 0,
-    [ContentType.PROMOTED_JOB]: 0,
+  return {
+    items,
+    total,
+    hasMore: skip + items.length < total,
   };
+}
 
-  // 按照比例和规则混排
-  for (let round = 0; round < totalRounds * 2; round++) {
-    // 每10个内容插入1个职岗广告
-    if (result.length > 0 && result.length % 10 === 0) {
-      if (counters[ContentType.PROMOTED_JOB] < grouped[ContentType.PROMOTED_JOB].length) {
-        result.push(grouped[ContentType.PROMOTED_JOB][counters[ContentType.PROMOTED_JOB]]);
-        counters[ContentType.PROMOTED_JOB]++;
-        lastType = ContentType.PROMOTED_JOB;
-        continue;
-      }
-    }
+async function getHotJobFeed(page: number, take: number) {
+  const offset = (page - 1) * take;
+  const now = new Date();
+  const windowEnd = offset + take + EXTRA_FETCH_BUFFER;
 
-    // 按优先级选择内容类型（避免连续相同类型）
-    const availableTypes = [
-      ContentType.USER_POST,    // 优先级1：用户分享（数量最多）
-      ContentType.EXPERT_POST,  // 优先级2：大咖分享
-      ContentType.ASSESSMENT,   // 优先级3：测试
-    ].filter((type) => {
-      return counters[type] < grouped[type].length && type !== lastType;
+  const [promotedTotal, regularTotal, promotedJobs, regularJobs] = await Promise.all([
+    prisma.promotedJob.count({
+      where: {
+        isActive: true,
+        startDate: { lte: now },
+        endDate: { gte: now },
+        job: {
+          status: 'ACTIVE',
+          isPublished: true,
+          company: {
+            isActive: true,
+          },
+        },
+      },
+    }),
+    prisma.job.count({
+      where: {
+        status: 'ACTIVE',
+        isPublished: true,
+        company: {
+          isActive: true,
+        },
+      },
+    }),
+    prisma.promotedJob.findMany({
+      where: {
+        isActive: true,
+        startDate: { lte: now },
+        endDate: { gte: now },
+        job: {
+          status: 'ACTIVE',
+          isPublished: true,
+          company: {
+            isActive: true,
+          },
+        },
+      },
+      take: windowEnd,
+      orderBy: [
+        { priority: 'desc' },
+        { promotionType: 'desc' },
+        { createdAt: 'desc' },
+      ],
+      include: {
+        job: {
+          include: {
+            company: {
+              select: {
+                id: true,
+                name: true,
+                logo: true,
+              },
+            },
+            _count: {
+              select: {
+                applications: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+    prisma.job.findMany({
+      where: {
+        status: 'ACTIVE',
+        isPublished: true,
+        company: {
+          isActive: true,
+        },
+      },
+      take: windowEnd * 2,
+      orderBy: [
+        { updatedAt: 'desc' },
+        { createdAt: 'desc' },
+      ],
+      include: {
+        company: {
+          select: {
+            id: true,
+            name: true,
+            logo: true,
+          },
+        },
+        _count: {
+          select: {
+            applications: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  const mergedJobs = new Map<string, HomeFeedCard>();
+
+  promotedJobs.forEach((item) => {
+    mergedJobs.set(item.job.id, {
+      id: item.id,
+      type: HomeFeedType.HOT_JOB,
+      targetType: HomeFeedTargetType.JOB,
+      targetId: item.job.id,
+      title: item.job.title,
+      summary: [item.job.location, item.job.salary].filter(Boolean).join(' · ') || '立即查看岗位详情与要求',
+      imageUrl: null,
+      tags: safeParseJson<string[]>(item.job.skills, []).slice(0, 3),
+      authorName: item.job.company.name,
+      authorAvatar: item.job.company.logo || null,
+      badge: '热门职岗',
+      metricLabel: '投递热度',
+      metricValue: item.job.salary?.trim() || `${Math.max(item.job._count.applications, 1)} 人关注`,
+      createdAt: item.job.createdAt,
     });
+  });
 
-    if (availableTypes.length === 0) {
-      // 如果没有可选类型，尝试选择剩余的（允许连续）
-      const remainingTypes = [
-        ContentType.USER_POST,
-        ContentType.EXPERT_POST,
-        ContentType.ASSESSMENT,
-      ].filter((type) => counters[type] < grouped[type].length);
-
-      if (remainingTypes.length === 0) break;
-
-      const selectedType = remainingTypes[0];
-      result.push(grouped[selectedType][counters[selectedType]]);
-      counters[selectedType]++;
-      lastType = selectedType;
-    } else {
-      // 选择第一个可用类型
-      const selectedType = availableTypes[0];
-      result.push(grouped[selectedType][counters[selectedType]]);
-      counters[selectedType]++;
-      lastType = selectedType;
+  regularJobs.forEach((item) => {
+    if (mergedJobs.has(item.id)) {
+      return;
     }
+    mergedJobs.set(item.id, {
+      id: item.id,
+      type: HomeFeedType.HOT_JOB,
+      targetType: HomeFeedTargetType.JOB,
+      targetId: item.id,
+      title: item.title,
+      summary: [item.location, item.salary].filter(Boolean).join(' · ') || '立即查看岗位详情与要求',
+      imageUrl: null,
+      tags: safeParseJson<string[]>(item.skills, []).slice(0, 3),
+      authorName: item.company.name,
+      authorAvatar: item.company.logo || null,
+      badge: '热门职岗',
+      metricLabel: '投递热度',
+      metricValue: item.salary?.trim() || `${Math.max(item._count.applications, 1)} 人关注`,
+      createdAt: item.createdAt,
+    });
+  });
+
+  const items = Array.from(mergedJobs.values())
+    .sort((a, b) => scoreHomeFeedCard(b) - scoreHomeFeedCard(a))
+    .slice(offset, offset + take);
+
+  const total = Math.max(promotedTotal, regularTotal);
+  return {
+    items,
+    total,
+    hasMore: offset + items.length < total,
+  };
+}
+
+function mixHomeFeed(
+  grouped: Record<HomeFeedType, HomeFeedCard[]>,
+  pageSize: number
+) {
+  const counters: Record<HomeFeedType, number> = {
+    [HomeFeedType.HOT_POST]: 0,
+    [HomeFeedType.HOT_COMPANY]: 0,
+    [HomeFeedType.HOT_JOB]: 0,
+  };
+  const result: HomeFeedCard[] = [];
+  let lastType: HomeFeedType | null = null;
+
+  while (result.length < pageSize) {
+    const candidates = (Object.keys(grouped) as HomeFeedType[])
+      .filter((type) => counters[type] < grouped[type].length)
+      .sort((a, b) => {
+        const remainingDiff =
+          (grouped[b].length - counters[b]) - (grouped[a].length - counters[a]);
+        if (remainingDiff !== 0) {
+          return remainingDiff;
+        }
+        return HOME_FEED_WEIGHTS[b.toUpperCase() as keyof typeof HOME_FEED_WEIGHTS]
+          - HOME_FEED_WEIGHTS[a.toUpperCase() as keyof typeof HOME_FEED_WEIGHTS];
+      });
+
+    if (candidates.length === 0) {
+      break;
+    }
+
+    const preferred = candidates.find((type) => type !== lastType) || candidates[0];
+    result.push(grouped[preferred][counters[preferred]]);
+    counters[preferred] += 1;
+    lastType = preferred;
   }
 
   return result;
+}
+
+function scoreHomeFeedCard(item: HomeFeedCard) {
+  const metric = item.metricValue.replace(/[^\d]/g, '');
+  const metricScore = parseInt(metric, 10) || 0;
+  const timeScore = item.createdAt?.getTime() || 0;
+  return metricScore * 10 + Math.floor(timeScore / 1000);
+}
+
+function buildSummary(content: string | null | undefined) {
+  if (!content) {
+    return null;
+  }
+  const normalized = content.replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return null;
+  }
+  return normalized.length > 72 ? `${normalized.slice(0, 72)}...` : normalized;
+}
+
+function firstImage(images: string | null | undefined) {
+  return safeParseJson<string[]>(images, []).find((item) => item && item.trim()) || null;
+}
+
+function formatCompactCount(count: number) {
+  if (count >= 1_000_000) {
+    return `${(count / 1_000_000).toFixed(1)}M`;
+  }
+  if (count >= 1_000) {
+    return `${(count / 1_000).toFixed(1)}k`;
+  }
+  return String(count);
 }
 
 /**
@@ -436,7 +634,10 @@ export const getHomeFeaturedArticles = async (req: Request, res: Response) => {
   }
 };
 
-function safeParseJson<T>(value: string, fallback: T): T {
+function safeParseJson<T>(value: string | null | undefined, fallback: T): T {
+  if (!value) {
+    return fallback;
+  }
   try {
     return JSON.parse(value) as T;
   } catch (err) {

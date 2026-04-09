@@ -1,11 +1,13 @@
 package com.xlwl.AiMian.ui.circle
 
+import android.app.Activity
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -27,7 +30,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.Star
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -41,25 +45,30 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewModelScope
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.xlwl.AiMian.data.model.ExpertPost
 import com.xlwl.AiMian.data.model.UserPost
 import com.xlwl.AiMian.data.repository.ContentRepository
@@ -75,23 +84,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-// 根据Figma设计规范定义颜色
-private val ScreenGradient = Brush.verticalGradient(
-    colors = listOf(
-        Color(0xFF00ACC3),
-        Color(0xFFE9F7F9),
-        Color.White
-    ),
-    startY = 0f,
-    endY = 1400f
-)
-private val PrimaryText = Color(0xFF000000) // 根据Figma设计：黑色 #000000
-private val SecondaryText = Color(0xFFB5B7B8) // 根据Figma设计：灰色占位 #B5B7B8
-private val MutedText = Color(0xFF858687) // 根据Figma设计：次要文字 #858687
-private val AccentText = Color(0xFFEC7C38) // 根据Figma设计：橙色 #EC7C38
-private val DividerColor = Color(0xFFE5E7EB)
-private val SectionBackground = Color(0xFFF8F8F8)
+// ── Figma 设计色彩规范 ──────────────────────────────────────────
+private val PageBackground = Color.White
+private val PrimaryText = Color(0xFF1A1A1A)      // 标题 & 正文
+private val SecondaryText = Color(0xFF999999)     // 元信息、时间戳
+private val AccentOrange = Color(0xFFEC7C38)      // 作者名、标签
+private val DividerColor = Color(0xFFF0F0F0)      // 分割线
+private val InputFieldBg = Color(0xFFF5F5F5)      // 评论输入框底色
+private val InputFieldBorder = Color(0xFFE5E5E5)  // 评论输入框边框
 
+// ═══════════════════════════════════════════════════════════════
+//  入口
+// ═══════════════════════════════════════════════════════════════
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PostDetailRoute(
@@ -105,114 +109,159 @@ fun PostDetailRoute(
     )
     val uiState by viewModel.uiState.collectAsState()
     val detail = uiState.detail
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(ScreenGradient)
-    ) {
-        Scaffold(
-            modifier = Modifier.fillMaxSize(),
-            containerColor = Color.Transparent,
-            topBar = {
-                val titleText = detail?.title ?: ""
-                Surface(color = Color.Transparent) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp)
-                            .padding(horizontal = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = onBack) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                                contentDescription = "返回",
-                                tint = PrimaryText
-                            )
-                        }
-                        if (titleText.isNotBlank()) {
-                            Text(
-                                text = titleText,
-                                color = PrimaryText,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                modifier = Modifier
-                                    .padding(start = 4.dp)
-                                    .weight(1f)
-                            )
-                        }
+
+    // ── 状态栏：白底 + 深色图标 ──
+    val context = LocalContext.current
+    val activity = generateSequence(context) { (it as? android.content.ContextWrapper)?.baseContext }
+        .filterIsInstance<Activity>()
+        .firstOrNull()
+
+    DisposableEffect(activity) {
+        if (activity != null) {
+            val window = activity.window
+            val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+            val originalStatusBarColor = window.statusBarColor
+            val originalDarkIcons = insetsController.isAppearanceLightStatusBars
+
+            window.statusBarColor = android.graphics.Color.WHITE
+            insetsController.isAppearanceLightStatusBars = true // 深色图标
+
+            onDispose {
+                window.statusBarColor = originalStatusBarColor
+                insetsController.isAppearanceLightStatusBars = originalDarkIcons
+            }
+        } else {
+            onDispose {}
+        }
+    }
+
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        containerColor = PageBackground,
+        contentWindowInsets = WindowInsets(0),
+        topBar = {
+            // ── 顶部导航栏：返回箭头 + 标题 ──
+            Surface(
+                color = PageBackground,
+                shadowElevation = 0.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            top = WindowInsets.statusBars
+                                .asPaddingValues()
+                                .calculateTopPadding()
+                        )
+                        .height(48.dp)
+                        .padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                            contentDescription = "返回",
+                            tint = PrimaryText,
+                            modifier = Modifier.size(22.dp)
+                        )
                     }
-                }
-            },
-            bottomBar = {
-                detail?.let {
-                    PostDetailBottomBar(
-                        likeCount = it.likeCount,
-                        collectCount = it.collectCount,
-                        commentCount = it.commentCount
+                    // 标题紧跟返回箭头
+                    Text(
+                        text = detail?.title ?: "",
+                        color = PrimaryText,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 48.dp) // 右侧留白平衡
                     )
                 }
             }
-        ) { innerPadding ->
-            when {
-                uiState.isLoading -> {
-                    PostDetailLoading(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(innerPadding)
-                    )
-                }
-                detail != null -> {
-                    val gallery = remember(detail) { detail.galleryImages.take(2) }
-                    val navPadding = WindowInsets.navigationBars.asPaddingValues()
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(innerPadding),
-                        contentPadding = PaddingValues(
-                            start = 16.dp,
-                            end = 16.dp,
-                            top = 8.dp,
-                            bottom = navPadding.calculateBottomPadding() + 96.dp
-                        ),
-                        verticalArrangement = Arrangement.spacedBy(0.dp)
-                    ) {
-                        item { PostHeader(detail) }
-                        item { PostAuthor(detail.author) }
-                        detail.heroImageUrl?.let { hero ->
-                            item { PostHeroImage(hero) }
-                        }
-                        if (detail.sections.isNotEmpty()) {
-                            item { PostBodyText(detail.sections) }
-                        }
-                        if (gallery.isNotEmpty()) {
-                            item { PostInlineGallery(gallery) }
-                        }
-                        item { PostCommentsHeader(count = detail.commentCount) }
-                        items(detail.comments, key = { it.id }) { comment ->
-                            PostCommentItem(comment)
-                        }
+        },
+        bottomBar = {
+            detail?.let {
+                PostDetailBottomBar(
+                    likeCount = it.likeCount,
+                    collectCount = it.collectCount,
+                    commentCount = it.commentCount
+                )
+            }
+        }
+    ) { innerPadding ->
+        when {
+            uiState.isLoading -> {
+                PostDetailLoading(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                )
+            }
+            detail != null -> {
+                val gallery = remember(detail) { detail.galleryImages.take(2) }
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding),
+                    contentPadding = PaddingValues(bottom = 32.dp)
+                ) {
+                    // ── 标签 ──
+                    if (detail.author.tags.isNotEmpty()) {
+                        item { PostTags(detail.author.tags) }
+                    }
+
+                    // ── 作者行 + 浏览量 ──
+                    item {
+                        PostAuthorRow(
+                            author = detail.author,
+                            publishDate = detail.publishDate,
+                            viewCount = detail.viewCount
+                        )
+                    }
+
+                    // ── 主图 ──
+                    detail.heroImageUrl?.let { hero ->
+                        item { PostHeroImage(hero) }
+                    }
+
+                    // ── 正文 ──
+                    if (detail.sections.isNotEmpty()) {
+                        item { PostBodyText(detail.sections) }
+                    }
+
+                    // ── 行内图片画廊 ──
+                    if (gallery.isNotEmpty()) {
+                        item { PostInlineGallery(gallery) }
+                    }
+
+                    // ── 评论区 ──
+                    item { PostCommentsHeader(count = detail.commentCount) }
+                    items(detail.comments, key = { it.id }) { comment ->
+                        PostCommentItem(comment)
                     }
                 }
-                else -> {
-                    PostDetailErrorState(
-                        message = uiState.error ?: "内容加载失败",
-                        onRetry = { viewModel.reload() },
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(innerPadding)
-                    )
-                }
+            }
+            else -> {
+                PostDetailErrorState(
+                    message = uiState.error ?: "内容加载失败",
+                    onRetry = { viewModel.reload() },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                )
             }
         }
     }
 }
 
+// ═══════════════════════════════════════════════════════════════
+//  加载 & 错误状态
+// ═══════════════════════════════════════════════════════════════
 @Composable
 private fun PostDetailLoading(modifier: Modifier = Modifier) {
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
-        CircularProgressIndicator(color = AccentText)
+        CircularProgressIndicator(color = AccentOrange, strokeWidth = 2.dp)
     }
 }
 
@@ -223,188 +272,165 @@ private fun PostDetailErrorState(
     modifier: Modifier = Modifier
 ) {
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
             Text(
                 text = message,
-                style = MaterialTheme.typography.bodyMedium.copy(color = SecondaryText),
+                color = SecondaryText,
+                fontSize = 15.sp,
                 textAlign = TextAlign.Center
             )
             Button(
                 onClick = onRetry,
-                colors = ButtonDefaults.buttonColors(containerColor = AccentText),
-                shape = RoundedCornerShape(20.dp)
+                colors = ButtonDefaults.buttonColors(containerColor = AccentOrange),
+                shape = RoundedCornerShape(24.dp)
             ) {
-                Text(
-                    text = "重新加载",
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Text("重新加载", color = Color.White, fontWeight = FontWeight.Medium)
             }
         }
     }
 }
 
-/**
- * 帖子标题和元信息 - 根据Figma设计实现
- * Figma设计规范：
- * - 标题：20sp，Semibold，黑色，行高21sp，letterSpacing -0.32px
- * - 发布日期和浏览数：12sp，Light，灰色 #B5B7B8，行高21sp
- * - 间距：10px
- */
+// ═══════════════════════════════════════════════════════════════
+//  头像占位  — 图片加载失败时显示首字母
+// ═══════════════════════════════════════════════════════════════
 @Composable
-private fun PostHeader(detail: PostDetail) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+private fun AvatarFallback(name: String, color: Color, size: Int) {
+    Surface(
+        modifier = Modifier.size(size.dp),
+        shape = CircleShape,
+        color = color.copy(alpha = 0.15f)
     ) {
-        // 仅保留发布日期和浏览数，标题已移至顶部栏
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+        Box(contentAlignment = Alignment.Center) {
             Text(
-                text = detail.publishDate,
-                color = SecondaryText,
-                fontSize = 12.sp, // 根据Figma设计：12sp
-                fontWeight = FontWeight.Light, // PingFang SC Light
-                lineHeight = 21.sp, // 根据Figma设计：行高21sp
-                letterSpacing = (-0.32).sp
-            )
-            Icon(
-                imageVector = Icons.Outlined.Visibility,
-                contentDescription = null,
-                tint = SecondaryText,
-                modifier = Modifier.size(16.dp) // 根据Figma设计：16px图标
-            )
-            Text(
-                text = detail.viewCount,
-                color = SecondaryText,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Light,
-                lineHeight = 21.sp,
-                letterSpacing = (-0.32).sp
+                text = name.take(1),
+                color = color,
+                fontSize = (size / 2).sp,
+                fontWeight = FontWeight.Bold
             )
         }
     }
 }
 
-
-/**
- * 主图 - 根据Figma设计实现
- * Figma设计规范：
- * - 宽高比：351:197
- * - 圆角：8px
- * - 内边距：12px
- */
+// ═══════════════════════════════════════════════════════════════
+//  标签  — Figma: 橙色 #tag
+// ═══════════════════════════════════════════════════════════════
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PostHeroImage(imageUrl: String) {
-    Box(
+private fun PostTags(tags: List<String>) {
+    FlowRow(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(12.dp) // 根据Figma设计：内边距12px
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        AsyncImage(
-            model = imageUrl,
+        tags.forEach { tag ->
+            Text(
+                text = "#$tag",
+                color = AccentOrange,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 0.sp
+            )
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  作者行  — Figma: 头像 + 名字 · 日期 | 浏览量
+// ═══════════════════════════════════════════════════════════════
+@Composable
+private fun PostAuthorRow(
+    author: PostAuthor,
+    publishDate: String,
+    viewCount: String
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // 头像
+        if (!author.avatarUrl.isNullOrBlank()) {
+            SubcomposeAsyncImage(
+                model = author.avatarUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape),
+                error = {
+                    AvatarFallback(
+                        name = author.name,
+                        color = author.avatarColor,
+                        size = 32
+                    )
+                }
+            )
+        } else {
+            AvatarFallback(
+                name = author.name,
+                color = author.avatarColor,
+                size = 32
+            )
+        }
+
+        Spacer(Modifier.width(10.dp))
+
+        // 作者名
+        Text(
+            text = author.name,
+            color = PrimaryText,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+
+        Spacer(Modifier.weight(1f))
+
+        // 浏览量
+        Icon(
+            imageVector = Icons.Outlined.Visibility,
             contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .aspectRatio(351f / 197f) // 根据Figma设计：351:197
+            tint = SecondaryText,
+            modifier = Modifier.size(15.dp)
+        )
+        Spacer(Modifier.width(3.dp))
+        Text(
+            text = viewCount,
+            color = SecondaryText,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Normal
         )
     }
 }
 
-
-/**
- * 作者信息 - 根据Figma设计实现
- * Figma设计规范：
- * - 头像：36x36px
- * - 作者名字：12sp，Light，橙色 #EC7C38
- * - 作者简介：12sp，Light，灰色 #B5B7B8
- * - 间距：12px
- */
-@OptIn(ExperimentalLayoutApi::class)
+// ═══════════════════════════════════════════════════════════════
+//  主图  — Figma: 全宽，圆角 8dp
+// ═══════════════════════════════════════════════════════════════
 @Composable
-private fun PostAuthor(author: PostAuthor) {
-    Surface(
+private fun PostHeroImage(imageUrl: String) {
+    AsyncImage(
+        model = imageUrl,
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp), // 根据Figma设计：左右12px
-        color = Color.White,
-        shape = RoundedCornerShape(8.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp), // 根据Figma设计：内边距12px
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp) // 根据Figma设计：间距12px
-        ) {
-            // 头像 - 根据Figma设计：36x36px
-            if (author.avatarUrl != null) {
-                AsyncImage(
-                    model = author.avatarUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(36.dp) // 根据Figma设计：36px
-                        .clip(CircleShape)
-                )
-            } else {
-                Surface(
-                    modifier = Modifier.size(36.dp), // 根据Figma设计：36px
-                    shape = CircleShape,
-                    color = author.avatarColor.copy(alpha = 0.16f)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = author.name.take(1),
-                            color = author.avatarColor,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-
-            // 作者信息
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp) // 根据Figma设计：间距2px
-            ) {
-                Text(
-                    text = author.name,
-                    color = AccentText, // 根据Figma设计：橙色 #EC7C38
-                    fontSize = 12.sp, // 根据Figma设计：12sp
-                    fontWeight = FontWeight.Light, // PingFang SC Light
-                    lineHeight = 21.sp,
-                    letterSpacing = (-0.32).sp
-                )
-                if (author.title.isNotBlank()) {
-                    Text(
-                        text = author.title,
-                        color = SecondaryText, // 根据Figma设计：灰色 #B5B7B8
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Light,
-                        lineHeight = 21.sp,
-                        letterSpacing = (-0.32).sp
-                    )
-                }
-            }
-        }
-    }
+            .padding(horizontal = 20.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .aspectRatio(16f / 9f)
+    )
 }
 
-/**
- * 正文内容 - 根据Figma设计实现
- * Figma设计规范：
- * - 字体：14sp，Regular，黑色
- * - 行高：22sp
- * - 内边距：12px
- */
+// ═══════════════════════════════════════════════════════════════
+//  正文  — Figma: 15sp 正文，行高 24sp
+// ═══════════════════════════════════════════════════════════════
 @Composable
 private fun PostBodyText(sections: List<PostSection>) {
     if (sections.isEmpty()) return
@@ -424,39 +450,29 @@ private fun PostBodyText(sections: List<PostSection>) {
         }
     }
 
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = Color.White
-    ) {
-        Text(
-            text = content,
-            color = PrimaryText,
-            fontSize = 14.sp, // 根据Figma设计：14sp
-            fontWeight = FontWeight.Normal, // PingFang SC Regular
-            lineHeight = 22.sp, // 根据Figma设计：行高22sp
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp) // 根据Figma设计：内边距12px
-        )
-    }
+    Text(
+        text = content,
+        color = PrimaryText,
+        fontSize = 15.sp,
+        fontWeight = FontWeight.Normal,
+        lineHeight = 24.sp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 8.dp)
+    )
 }
 
-/**
- * 内联图片画廊 - 根据Figma设计实现
- * Figma设计规范：
- * - 宽高比：154:206
- * - 圆角：8px
- * - 间距：12px
- * - 内边距：12px
- */
+// ═══════════════════════════════════════════════════════════════
+//  行内图片画廊  — Figma: 两张并排，圆角 8dp
+// ═══════════════════════════════════════════════════════════════
 @Composable
 private fun PostInlineGallery(imageUrls: List<String>) {
     if (imageUrls.isEmpty()) return
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(12.dp), // 根据Figma设计：内边距12px
-        horizontalArrangement = Arrangement.spacedBy(12.dp) // 根据Figma设计：间距12px
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         imageUrls.take(2).forEach { url ->
             AsyncImage(
@@ -466,7 +482,7 @@ private fun PostInlineGallery(imageUrls: List<String>) {
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(8.dp))
-                    .aspectRatio(154f / 206f) // 根据Figma设计：154:206
+                    .aspectRatio(1f)
             )
         }
         if (imageUrls.size == 1) {
@@ -475,220 +491,163 @@ private fun PostInlineGallery(imageUrls: List<String>) {
     }
 }
 
-/**
- * 评论区域标题 - 根据Figma设计实现
- * Figma设计规范：
- * - 分隔线
- * - 评论数量文字：12sp，Light，灰色 #B5B7B8
- * - 间距：10px
- * - 内边距：12px
- */
+// ═══════════════════════════════════════════════════════════════
+//  评论区标题  — Figma: 分隔线 + 数量文字
+// ═══════════════════════════════════════════════════════════════
 @Composable
 private fun PostCommentsHeader(count: Int) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = Color.White
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .padding(top = 20.dp, bottom = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp), // 根据Figma设计：内边距12px
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp) // 根据Figma设计：间距10px
+        HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = "共${count}条评论",
+            color = SecondaryText,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Normal
+        )
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  评论项  — Figma: 头像 + 作者(橙) + 内容 + 时间
+// ═══════════════════════════════════════════════════════════════
+@Composable
+private fun PostCommentItem(comment: PostComment) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // 头像
+        Surface(
+            modifier = Modifier.size(36.dp),
+            shape = CircleShape,
+            color = comment.avatarColor.copy(alpha = 0.15f)
         ) {
-            HorizontalDivider(color = DividerColor)
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = comment.author.take(1),
+                    color = comment.avatarColor,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
             Text(
-                text = "共${count}条评论",
-                color = SecondaryText, // 根据Figma设计：灰色 #B5B7B8
-                fontSize = 12.sp, // 根据Figma设计：12sp
-                fontWeight = FontWeight.Light, // PingFang SC Light
-                lineHeight = 21.sp,
-                letterSpacing = (-0.32).sp
+                text = comment.author,
+                color = AccentOrange,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = comment.content,
+                color = PrimaryText,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Normal,
+                lineHeight = 20.sp
+            )
+            Text(
+                text = comment.time,
+                color = SecondaryText,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Normal
             )
         }
     }
 }
 
-
-/**
- * 评论项 - 根据Figma设计实现
- * Figma设计规范：
- * - 头像：36x36px
- * - 作者名字：12sp，Light，橙色 #EC7C38
- * - 评论内容：14sp，Regular，黑色 #242525，行高22sp
- * - 时间：12sp，Light，灰色 #858687
- * - 间距：12px（水平），2px（垂直）
- * - 内边距：12px（垂直），0px（水平）
- */
-@Composable
-private fun PostCommentItem(comment: PostComment) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = Color.White
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 12.dp), // 根据Figma设计：内边距
-            horizontalArrangement = Arrangement.spacedBy(12.dp) // 根据Figma设计：间距12px
-        ) {
-            // 头像 - 根据Figma设计：36x36px
-            Surface(
-                modifier = Modifier.size(36.dp), // 根据Figma设计：36px
-                shape = CircleShape,
-                color = comment.avatarColor.copy(alpha = 0.16f)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = comment.author.take(1),
-                        color = comment.avatarColor,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-
-            // 评论内容
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp) // 根据Figma设计：间距2px
-            ) {
-                Text(
-                    text = comment.author,
-                    color = AccentText, // 根据Figma设计：橙色 #EC7C38
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Light, // PingFang SC Light
-                    lineHeight = 21.sp,
-                    letterSpacing = (-0.32).sp
-                )
-                Text(
-                    text = comment.content,
-                    color = PrimaryText, // 根据Figma设计：黑色 #242525
-                    fontSize = 14.sp, // 根据Figma设计：14sp
-                    fontWeight = FontWeight.Normal, // PingFang SC Regular
-                    lineHeight = 22.sp // 根据Figma设计：行高22sp
-                )
-                Text(
-                    text = comment.time,
-                    color = MutedText, // 根据Figma设计：灰色 #858687
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Light,
-                    lineHeight = 21.sp,
-                    letterSpacing = (-0.32).sp
-                )
-            }
-        }
-    }
-}
-
-
-@Composable
-private fun CommentInputPlaceholder() {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp), // More rounded
-        color = SectionBackground,
-        border = BorderStroke(1.dp, Color(0xFFE5E7EB)) // Add border
-    ) {
-        Text(
-            text = "添加评论", // Changed text
-            color = SecondaryText,
-            fontSize = 14.sp,
-            lineHeight = 20.sp,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
-        )
-    }
-}
-
-
-/**
- * 底部操作栏 - 根据Figma设计实现
- * Figma设计规范：
- * - 输入框：32px高度，8px圆角，灰色边框 #B5B7B8，占位文字12sp Light
- * - 操作按钮：24px图标，12sp文字，间距16px
- * - 内边距：左右12px，上下10px，底部36px（安全区域）
- */
+// ═══════════════════════════════════════════════════════════════
+//  底部操作栏  — Figma: 输入框 + ❤ 190 ⭐ 190 💬 7
+// ═══════════════════════════════════════════════════════════════
 @Composable
 private fun PostDetailBottomBar(likeCount: Int, collectCount: Int, commentCount: Int) {
     val navPadding = WindowInsets.navigationBars.asPaddingValues()
-    Surface(color = Color.White, shadowElevation = 8.dp) {
+    Surface(
+        color = PageBackground,
+        shadowElevation = 6.dp
+    ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            HorizontalDivider(color = DividerColor)
+            HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp) // 根据Figma设计：内边距
-                    .padding(bottom = navPadding.calculateBottomPadding() + 24.dp), // 安全区域 + 额外间距
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                    .padding(bottom = navPadding.calculateBottomPadding()),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp) // 根据Figma设计：间距10px
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // 评论输入框 - 根据Figma设计：32px高度，8px圆角
+                // 评论输入框
                 Surface(
                     modifier = Modifier
                         .weight(1f)
-                        .height(32.dp), // 根据Figma设计：32px高度
-                    shape = RoundedCornerShape(8.dp), // 根据Figma设计：8px圆角
-                    color = Color.White,
-                    border = BorderStroke(1.dp, SecondaryText) // 根据Figma设计：灰色边框 #B5B7B8
+                        .height(36.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    color = InputFieldBg,
+                    border = BorderStroke(0.5.dp, InputFieldBorder)
                 ) {
                     Box(
                         contentAlignment = Alignment.CenterStart,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp) // 根据Figma设计：内边距
+                        modifier = Modifier.padding(horizontal = 16.dp)
                     ) {
                         Text(
                             text = "添加评论",
-                            color = SecondaryText, // 根据Figma设计：灰色 #B5B7B8
-                            fontSize = 12.sp, // 根据Figma设计：12sp
-                            fontWeight = FontWeight.Light, // PingFang SC Light
-                            lineHeight = 21.sp,
-                            letterSpacing = (-0.32).sp
+                            color = SecondaryText,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Normal
                         )
                     }
                 }
 
-                // 操作按钮组 - 根据Figma设计：间距16px
+                // 操作按钮
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp), // 根据Figma设计：间距16px
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    BottomStat(Icons.Outlined.FavoriteBorder, likeCount)
-                    BottomStat(Icons.Outlined.Star, collectCount)
-                    BottomStat(Icons.Outlined.ChatBubbleOutline, commentCount)
+                    BottomAction(Icons.Outlined.FavoriteBorder, likeCount)
+                    BottomAction(Icons.Outlined.StarBorder, collectCount)
+                    BottomAction(Icons.Outlined.ChatBubbleOutline, commentCount)
                 }
             }
         }
     }
 }
 
-/**
- * 底部操作按钮 - 根据Figma设计实现
- * Figma设计规范：
- * - 图标：24px
- * - 文字：12sp，Light，黑色
- * - 间距：2px
- */
 @Composable
-private fun BottomStat(icon: ImageVector, count: Int) {
+private fun BottomAction(icon: ImageVector, count: Int) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(2.dp) // 根据Figma设计：间距2px
+        horizontalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         Icon(
             icon,
             contentDescription = null,
-            tint = PrimaryText,
-            modifier = Modifier.size(24.dp) // 根据Figma设计：24px图标
+            tint = PrimaryText.copy(alpha = 0.7f),
+            modifier = Modifier.size(22.dp)
         )
         Text(
             text = count.toString(),
-            color = PrimaryText, // 根据Figma设计：黑色
-            fontSize = 12.sp, // 根据Figma设计：12sp
-            fontWeight = FontWeight.Light, // PingFang SC Light
-            letterSpacing = (-0.32).sp
+            color = PrimaryText.copy(alpha = 0.7f),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Normal
         )
     }
 }
 
+// ═══════════════════════════════════════════════════════════════
+//  数据模型
+// ═══════════════════════════════════════════════════════════════
 private data class PostDetail(
     val id: String,
     val title: String,
@@ -727,12 +686,16 @@ private data class PostComment(
     val time: String,
     val avatarColor: Color
 )
+
 private data class PostDetailUiState(
     val isLoading: Boolean = true,
     val detail: PostDetail? = null,
     val error: String? = null
 )
 
+// ═══════════════════════════════════════════════════════════════
+//  ViewModel
+// ═══════════════════════════════════════════════════════════════
 private class PostDetailViewModel(
     private val repository: ContentRepository,
     private val postId: String,
@@ -803,6 +766,9 @@ private class PostDetailViewModel(
     }
 }
 
+// ═══════════════════════════════════════════════════════════════
+//  数据转换
+// ═══════════════════════════════════════════════════════════════
 private fun UserPost.toPostDetail(): PostDetail {
     val avatarColor = pickAvatarColor(id)
     val normalizedCollect = max(1, max(shareCount, likeCount / 3))
@@ -915,15 +881,15 @@ private fun pickAvatarColor(key: String): Color {
 
 private fun formatPublishedAt(raw: String?): String {
     if (raw.isNullOrBlank()) {
-        return "编辑于最近更新"
+        return "最近更新"
     }
     return try {
         val instant = Instant.parse(raw)
         val zonedDateTime = instant.atZone(ZoneId.systemDefault())
-        val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
-        "编辑于${zonedDateTime.format(formatter)}"
+        val formatter = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm")
+        zonedDateTime.format(formatter)
     } catch (ex: DateTimeParseException) {
-        "编辑于${raw.take(16)}"
+        raw.take(16)
     }
 }
 
@@ -962,7 +928,7 @@ private fun ContentCard.toFallbackDetail(): PostDetail {
     return PostDetail(
         id = id,
         title = title,
-        publishDate = "发布于 今日更新",
+        publishDate = "今日更新",
         viewCount = views,
         likeCount = likeCountEstimate,
         collectCount = collectCountEstimate,
@@ -991,11 +957,14 @@ private fun parseViewCount(value: String): Int {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════
+//  示例数据
+// ═══════════════════════════════════════════════════════════════
 private fun samplePostDetails(): List<PostDetail> = listOf(
     PostDetail(
         id = "post_1",
         title = "AI时代下的职业转型指南",
-        publishDate = "编辑于2025年10月07日 北京",
+        publishDate = "2025/11/07 07:44",
         viewCount = "729",
         likeCount = 190,
         collectCount = 190,
@@ -1004,7 +973,7 @@ private fun samplePostDetails(): List<PostDetail> = listOf(
             name = "产品老司机",
             title = "简单介绍",
             highlight = "",
-            tags = emptyList(),
+            tags = listOf("AI", "职业转型"),
             avatarColor = Color(0xFFFF8C42),
             avatarUrl = "https://www.figma.com/api/mcp/asset/f0140fe2-8b3a-4dba-bbb2-3adf14adc103"
         ),
@@ -1013,17 +982,17 @@ private fun samplePostDetails(): List<PostDetail> = listOf(
                 id = "section_figma_copy",
                 title = null,
                 paragraphs = listOf(
-                    "对留学生而言，回国求职最大的挑战并非能力，而是 “信息差” 和 “时间差”。熟悉并高效利用以下招聘渠道，是成功上岸的第一步。",
+                    "对留学生而言，回国求职最大的挑战并非能力，而是「信息差」和「时间差」。熟悉并高效利用以下招聘渠道，是成功上岸的第一步。",
                     "第一类：企业官方渠道（最权威，最核心）",
                     "这是所有求职渠道中优先级最高的方式，尤其针对你的目标公司。",
                     "1. 公司官网 Careers Page",
-                    "是什么： 几乎所有大中型企业都会在自己的官方网站上设立“人才招聘”或“校园招聘”板块。",
+                    "是什么： 几乎所有大中型企业都会在自己的官方网站上设立「人才招聘」或「校园招聘」板块。",
                     "优点：",
                     "信息最准确权威，职位描述（JD）最详细。",
                     "投递流程最正式，直接进入企业人才库（ATS）。",
                     "通常会完整展示企业文化、培养体系，帮助你深入了解公司。",
                     "使用技巧：",
-                    "建立你的 “目标公司清单”，定期（每周）巡查其官网的招聘动态。",
+                    "建立你的「目标公司清单」，定期（每周）巡查其官网的招聘动态。",
                     "很多公司的内推码也需要在官网投递时填写。",
                     "注意申请截止日期。",
                     "留学生注意： 务必仔细阅读毕业时间要求。大部分企业对海外院校毕业生的毕业时间要求比较宽松（如2023年9月 - 2024年8月），并在官网有明确说明。",
@@ -1074,7 +1043,7 @@ private fun samplePostDetails(): List<PostDetail> = listOf(
     PostDetail(
         id = "post_2",
         title = "数据科学转型记：一年内的成长策略",
-        publishDate = "编辑于2024-09-18",
+        publishDate = "2024/09/18",
         viewCount = "1.2k",
         likeCount = 256,
         collectCount = 42,
@@ -1082,7 +1051,7 @@ private fun samplePostDetails(): List<PostDetail> = listOf(
         author = PostAuthor(
             name = "Milla",
             title = "数据科学家",
-            highlight = "从运营转数科一年内，我把所有学习时间拆成“基础、实践、反馈”三段，配合 STAR-LINK 的项目制练习，加速了能力迁移。",
+            highlight = "从运营转数科一年内，我把所有学习时间拆成「基础、实践、反馈」三段，配合 STAR-LINK 的项目制练习，加速了能力迁移。",
             tags = listOf("职业转型", "数科成长"),
             avatarColor = Color(0xFF38B2AC)
         ),
@@ -1112,7 +1081,7 @@ private fun samplePostDetails(): List<PostDetail> = listOf(
     PostDetail(
         id = "post_3",
         title = "校招算法 Offer 复盘",
-        publishDate = "编辑于2024-08-30",
+        publishDate = "2024/08/30",
         viewCount = "980",
         likeCount = 312,
         collectCount = 32,

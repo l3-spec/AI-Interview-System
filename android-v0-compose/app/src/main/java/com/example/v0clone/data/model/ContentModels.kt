@@ -1,22 +1,50 @@
 package com.xlwl.AiMian.data.model
 
+import com.google.gson.annotations.SerializedName
+
 /**
  * 内容类型
  */
-enum class ContentType {
-    ASSESSMENT,    // 热门测试
-    USER_POST,     // 热门分享
-    EXPERT_POST,   // 大咖分享
-    PROMOTED_JOB   // 热门职岗
+enum class HomeFeedType {
+    @SerializedName("hot_post")
+    HOT_POST,
+
+    @SerializedName("hot_company")
+    HOT_COMPANY,
+
+    @SerializedName("hot_job")
+    HOT_JOB
+}
+
+enum class HomeFeedTargetType {
+    @SerializedName("post")
+    POST,
+
+    @SerializedName("company")
+    COMPANY,
+
+    @SerializedName("job")
+    JOB
 }
 
 /**
  * 首页内容卡片（混排）
  */
 data class HomeFeedItem(
-    val type: ContentType,
     val id: String,
-    val data: Any // 可以是 Assessment、UserPost、ExpertPost 或 PromotedJob
+    val type: HomeFeedType,
+    val targetType: HomeFeedTargetType,
+    val targetId: String,
+    val title: String,
+    val summary: String? = null,
+    val imageUrl: String? = null,
+    val tags: List<String> = emptyList(),
+    val authorName: String,
+    val authorAvatar: String? = null,
+    val badge: String,
+    val metricLabel: String? = null,
+    val metricValue: String? = null,
+    val createdAt: String? = null
 )
 
 /**

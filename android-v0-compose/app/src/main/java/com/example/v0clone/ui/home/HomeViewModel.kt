@@ -5,7 +5,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.xlwl.AiMian.data.api.PagedData
 import com.xlwl.AiMian.data.model.Banner
-import com.xlwl.AiMian.data.model.HomeFeaturedArticle
+import com.xlwl.AiMian.data.model.HomeFeedItem
+import com.xlwl.AiMian.data.model.HomeFeedTargetType
 import com.xlwl.AiMian.data.repository.ContentRepository
 import java.io.Serializable
 import kotlinx.coroutines.async
@@ -31,13 +32,16 @@ data class BannerData(
  */
 data class ContentCard(
     val id: String,
-    val imageUrl: String,
+    val imageUrl: String?,
     val title: String,
     val tags: List<String>,
     val author: String,
     val views: String,
     val avatarUrl: String?,
-    val summary: String?
+    val summary: String?,
+    val badge: String? = null,
+    val targetType: HomeFeedTargetType = HomeFeedTargetType.POST,
+    val targetId: String = id
 ) : Serializable
 
 /**
@@ -62,7 +66,7 @@ class HomeViewModel(private val repository: ContentRepository) : ViewModel() {
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     private var currentPage = 1
-    private val pageSize = 6
+    private val pageSize = 12
     private val mockAvatarUrls = listOf(
         "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=160&h=160&q=80",
         "https://images.unsplash.com/photo-1525130413817-d45c1d127c42?auto=format&fit=crop&w=160&h=160&q=80",
@@ -83,12 +87,12 @@ class HomeViewModel(private val repository: ContentRepository) : ViewModel() {
 
     private suspend fun loadInitialData() {
         val bannersDeferred = viewModelScope.async { repository.getHomeBanners() }
-        val articlesDeferred = viewModelScope.async {
-            repository.getHomeFeaturedArticles(page = currentPage, pageSize = pageSize)
+        val feedDeferred = viewModelScope.async {
+            repository.getHomeFeed(page = currentPage, pageSize = pageSize)
         }
 
         val bannersResult = bannersDeferred.await()
-        val articlesResult = articlesDeferred.await()
+        val feedResult = feedDeferred.await()
 
         val banners = bannersResult.getOrElse { error ->
             _uiState.value = _uiState.value.copy(
@@ -99,7 +103,7 @@ class HomeViewModel(private val repository: ContentRepository) : ViewModel() {
             return
         }
 
-        val articles = articlesResult.getOrElse { error ->
+        val feed = feedResult.getOrElse { error ->
             _uiState.value = _uiState.value.copy(
                 isLoading = false,
                 isLoadingMore = false,
@@ -108,16 +112,16 @@ class HomeViewModel(private val repository: ContentRepository) : ViewModel() {
             return
         }
 
-        updateStateWithData(banners, articles, reset = true)
+        updateStateWithData(banners, feed, reset = true)
     }
 
     private fun updateStateWithData(
         banners: List<Banner>?,
-        articles: PagedData<HomeFeaturedArticle>,
+        feed: PagedData<HomeFeedItem>,
         reset: Boolean
     ) {
         val bannerItems = banners?.map { it.toBannerData() } ?: _uiState.value.banners
-        val cards = articles.list.map { it.toContentCard() }
+        val cards = feed.list.map { it.toContentCard() }
 
         _uiState.value = _uiState.value.copy(
             banners = bannerItems,
@@ -125,10 +129,10 @@ class HomeViewModel(private val repository: ContentRepository) : ViewModel() {
             currentBannerIndex = if (reset) 0 else _uiState.value.currentBannerIndex,
             isLoading = false,
             isLoadingMore = false,
-            hasMore = articles.hasMore,
+            hasMore = feed.hasMore,
             error = null
         )
-        currentPage = articles.page
+        currentPage = feed.page
     }
 
     /**
@@ -169,11 +173,11 @@ class HomeViewModel(private val repository: ContentRepository) : ViewModel() {
             _uiState.value = _uiState.value.copy(isLoadingMore = true, error = null)
             val nextPage = currentPage + 1
 
-            val result = repository.getHomeFeaturedArticles(nextPage, pageSize)
+            val result = repository.getHomeFeed(nextPage, pageSize)
             result.onSuccess { paged ->
                 updateStateWithData(
                     banners = null,
-                    articles = paged,
+                    feed = paged,
                     reset = false
                 )
             }.onFailure { error ->
@@ -193,30 +197,22 @@ class HomeViewModel(private val repository: ContentRepository) : ViewModel() {
         subtitle = description
     )
 
-    private fun HomeFeaturedArticle.toContentCard(): ContentCard {
-        val displayAuthor = when {
-            !author.isNullOrBlank() -> author
-            !category.isNullOrBlank() -> category
-            else -> "AI面试官"
-        }
-        val avatarKey = author?.takeIf { it.isNotBlank() } ?: id
-
+    private fun HomeFeedItem.toContentCard(): ContentCard {
+        val avatarKey = authorName.takeIf { it.isNotBlank() } ?: id
         return ContentCard(
             id = id,
             imageUrl = imageUrl,
             title = title,
             tags = tags,
-            author = displayAuthor,
-            views = formatViewCount(viewCount),
-            avatarUrl = getMockAvatarFor(avatarKey),
+            author = authorName,
+            views = metricValue ?: "",
+            avatarUrl = authorAvatar ?: getMockAvatarFor(avatarKey),
             summary = summary
+                ?.takeIf { it.isNotBlank() },
+            badge = badge,
+            targetType = targetType,
+            targetId = targetId
         )
-    }
-
-    private fun formatViewCount(count: Int): String = when {
-        count >= 1_000_000 -> String.format("%.1fM", count / 1_000_000f)
-        count >= 1_000 -> String.format("%.1fk", count / 1_000f)
-        else -> count.toString()
     }
 
     private fun getMockAvatarFor(key: String): String {
