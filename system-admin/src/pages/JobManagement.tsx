@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { config } from '../config/config';
+import { buildAssetUrl } from '../utils/url';
 
 interface Company {
   id: string;
@@ -375,7 +376,7 @@ const JobManagement: React.FC = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 {job.company.logo && (
                   <img 
-                    src={job.company.logo} 
+                    src={buildAssetUrl(job.company.logo)} 
                     alt={job.company.name}
                     style={{ width: '24px', height: '24px', borderRadius: '4px' }}
                   />

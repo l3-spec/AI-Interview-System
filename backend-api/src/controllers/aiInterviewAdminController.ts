@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
+import { toMediaUrl } from '../utils/ossUtils';
 
 /**
  * 获取AI面试会话列表（管理员）
@@ -70,7 +71,7 @@ export const listInterviewSessions = async (req: Request, res: Response) => {
                     userId: session.userId,
                     userName: session.user.name,
                     userEmail: session.user.email,
-                    userAvatar: session.user.avatar,
+                    userAvatar: toMediaUrl(session.user.avatar) ?? session.user.avatar,
                     jobTarget: session.jobTarget,
                     jobCategory: session.jobCategory,
                     status: session.status,
@@ -144,12 +145,17 @@ export const getInterviewSessionAnalysis = async (req: Request, res: Response) =
                     createdAt: session.createdAt,
                     duration: session.duration,
                     user: session.user
+                      ? {
+                          ...session.user,
+                          avatar: toMediaUrl(session.user.avatar) ?? session.user.avatar,
+                        }
+                      : session.user
                 },
                 questions: session.questions.map((q: any) => ({
                     index: q.questionIndex,
                     text: q.questionText,
                     answer: q.answerText,
-                    videoUrl: q.answerVideoUrl,
+                    videoUrl: toMediaUrl(q.answerVideoUrl) ?? q.answerVideoUrl,
                     duration: q.answerDuration
                 })),
                 report: session.analysisReport ? (() => {

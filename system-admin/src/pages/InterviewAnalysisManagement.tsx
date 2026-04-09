@@ -18,6 +18,7 @@ import {
 } from 'antd';
 import { SearchOutlined, EyeOutlined, ReloadOutlined, PlayCircleOutlined, DownloadOutlined, RedoOutlined } from '@ant-design/icons';
 import { aiInterviewApi } from '../services/api';
+import { buildAssetUrl } from '../utils/url';
 
 const { Title, Text, Paragraph } = Typography;
 const { Option } = Select;
@@ -369,7 +370,12 @@ const InterviewAnalysisManagement: React.FC = () => {
             const res = await aiInterviewApi.getSessionAnalysis(sessionId);
             if (res.success && res.data) {
                 setAnalysisReport(res.data.report);
-                setQuestions(res.data.questions || []);
+                setQuestions(
+                    (res.data.questions || []).map((question: Question) => ({
+                        ...question,
+                        videoUrl: question.videoUrl ? buildAssetUrl(question.videoUrl) : question.videoUrl,
+                    }))
+                );
             } else {
                 setAnalysisReport(null);
                 setQuestions([]);
@@ -450,27 +456,7 @@ const InterviewAnalysisManagement: React.FC = () => {
     };
 
     const handlePlayVideo = (videoUrl: string) => {
-        // 将OSS直接URL转换为代理URL
-        // 格式：http://ai-interview-videos.oss-cn-beijing.aliyuncs.com/interview-videos/xxx.mp4?... 
-        // 转为：http://localhost:5174/api/oss/proxy?objectKey=interview-videos/xxx.mp4
-
-        let processedUrl = videoUrl;
-
-        try {
-            const url = new URL(videoUrl);
-            // 检查是否是OSS URL
-            if (url.hostname.includes('aliyuncs.com')) {
-                // 提取objectKey (路径部分，去掉开头的/)
-                const objectKey = url.pathname.substring(1);
-                // 构建代理URL
-                processedUrl = `http://localhost:5174/api/oss/proxy?objectKey=${encodeURIComponent(objectKey)}`;
-                console.log('[VideoPlayer] 转换URL:', { original: videoUrl, proxy: processedUrl });
-            }
-        } catch (error) {
-            console.error('[VideoPlayer] URL解析失败，使用原始URL:', error);
-        }
-
-        setCurrentVideoUrl(processedUrl);
+        setCurrentVideoUrl(buildAssetUrl(videoUrl));
         setVideoPlayerVisible(true);
     };
 

@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { aiService } from '../services/aiService';
 import { interviewService } from '../services/interviewService';
 import { prisma } from '../lib/prisma';
+import { toMediaUrl } from '../utils/ossUtils';
 
 /**
  * 面试控制器
@@ -680,7 +681,7 @@ const mapRowToInterview = (row: MockInterviewRow): InterviewView => {
   const candidate: CandidateView = {
     id: row.candidate_id,
     name: row.candidate_name,
-    avatar: row.candidate_avatar,
+    avatar: toMediaUrl(row.candidate_avatar) ?? row.candidate_avatar,
     email: row.candidate_email,
     phone: row.candidate_phone || '',
     age: toNumber(row.candidate_age, 0),
@@ -704,7 +705,7 @@ const mapRowToInterview = (row: MockInterviewRow): InterviewView => {
     status: row.status,
     interviewDate,
     duration: toNumber(row.duration, 0),
-    videoUrl: row.video_url || undefined,
+    videoUrl: (toMediaUrl(row.video_url) ?? row.video_url) || undefined,
     score: toScore(row.score),
     result: row.result,
     createdAt: toIsoString(row.created_at),
@@ -759,7 +760,7 @@ const parseExperienceValue = (value: any): number => {
 const mapUserToCandidateView = (user: any): CandidateView => ({
   id: user?.id || '',
   name: user?.name || '',
-  avatar: user?.avatar ?? undefined,
+  avatar: toMediaUrl(user?.avatar) ?? user?.avatar ?? undefined,
   email: user?.email || '',
   phone: user?.phone || '',
   age: toNumber(user?.age, 0),
@@ -809,7 +810,7 @@ const mapPrismaInterviewToView = (interview: any): InterviewView => {
     status,
     interviewDate: toIsoString(interview?.startTime || interview?.createdAt),
     duration: toNumber(interview?.duration, 0),
-    videoUrl: interview?.recording || undefined,
+    videoUrl: (toMediaUrl(interview?.recording) ?? interview?.recording) || undefined,
     score,
     result: deriveResultFromStatus(status, score),
     createdAt: toIsoString(interview?.createdAt),

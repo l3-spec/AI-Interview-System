@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { config } from '../config/config';
+import { buildAssetUrl } from '../utils/url';
 
 // API响应类型定义
 interface ApiResponse<T = any> {
@@ -276,7 +277,7 @@ const mapCompanySummary = (company: any): AdminCompanySummary => ({
   id: company.id,
   email: company.email,
   name: company.name,
-  logo: company.logo,
+  logo: buildAssetUrl(company.logo),
   industry: company.industry,
   scale: company.scale,
   isActive: Boolean(company.isActive),
@@ -966,8 +967,8 @@ const mapUserPostAdmin = (post: any): UserPostAdmin => ({
   id: post.id,
   title: post.title,
   content: post.content,
-  coverImage: post.coverImage ?? null,
-  images: parseJsonArray<string>(post.images),
+  coverImage: post.coverImage ? buildAssetUrl(post.coverImage) : null,
+  images: parseJsonArray<string>(post.images).map((image) => buildAssetUrl(image)),
   tags: parseJsonArray<string>(post.tags),
   status: post.status,
   isHot: Boolean(post.isHot),

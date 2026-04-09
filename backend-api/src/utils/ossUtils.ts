@@ -1,5 +1,60 @@
 import { ossService } from '../services/ossService';
 
+const LOCAL_STATIC_PREFIXES = ['/uploads/', '/videos/', '/avatar/', '/models/'];
+const LOCAL_UPLOAD_FOLDERS = new Set([
+  'logos',
+  'licenses',
+  'resumes',
+  'avatars',
+  'posts',
+  'others',
+  'videos',
+  'audio'
+]);
+
+const ensureLeadingSlash = (value: string) => (value.startsWith('/') ? value : `/${value}`);
+
+const inferUploadFolderFromFilename = (filename: string) => {
+  if (filename.startsWith('logo-')) return 'logos';
+  if (filename.startsWith('businessLicense-')) return 'licenses';
+  if (filename.startsWith('resume-')) return 'resumes';
+  if (filename.startsWith('avatar-')) return 'avatars';
+  if (filename.startsWith('postImages-')) return 'posts';
+  if (filename.startsWith('video-')) return 'videos';
+  return '';
+};
+
+const normalizeLegacyUploadPath = (value: string) => {
+  const normalized = ensureLeadingSlash(value.replace(/\\/g, '/').replace(/^\/+/, ''));
+
+  if (!normalized.startsWith('/uploads/')) {
+    return normalized;
+  }
+
+  const rest = normalized.slice('/uploads/'.length);
+  const [firstSegment = '', ...remaining] = rest.split('/');
+
+  if (!firstSegment) {
+    return normalized;
+  }
+
+  if (LOCAL_UPLOAD_FOLDERS.has(firstSegment)) {
+    return normalized;
+  }
+
+  if (remaining.length === 0) {
+    const inferredFolder = inferUploadFolderFromFilename(firstSegment);
+    if (inferredFolder) {
+      return `/uploads/${inferredFolder}/${firstSegment}`;
+    }
+  }
+
+  return normalized;
+};
+
+const isLocalStaticPath = (value: string) =>
+  LOCAL_STATIC_PREFIXES.some((prefix) => value.startsWith(prefix) || value.startsWith(prefix.slice(1)));
+
 export const isOSSConfigured = () =>
   Boolean(
     process.env.OSS_ACCESS_KEY_ID &&
@@ -53,4 +108,42 @@ export const toPublicUrl = (value?: string | null): string | undefined => {
 
   // 统一通过后端代理输出，避免在前端暴露签名参数
   return `/api/oss/proxy?objectKey=${encodeURIComponent(key)}`;
+};
+
+export const toMediaUrl = (value?: string | null): string | undefined => {
+  if (!value) return undefined;
+
+  const trimmed = value.toString().trim();
+  if (!trimmed) return undefined;
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const parsed = new URL(trimmed);
+      const cdnDomain = (process.env.OSS_CDN_DOMAIN || '').replace(/^https?:\/\//, '');
+      const isManagedOssUrl =
+        parsed.hostname.includes('aliyuncs.com') ||
+        (!!cdnDomain && parsed.hostname === cdnDomain);
+
+      if (isManagedOssUrl) {
+        const objectKey = parsed.pathname.replace(/^\/+/, '');
+        return objectKey
+          ? `/api/oss/proxy?objectKey=${encodeURIComponent(objectKey)}`
+          : trimmed;
+      }
+    } catch (error) {
+      return trimmed;
+    }
+
+    return trimmed;
+  }
+
+  if (trimmed.startsWith('/api/')) {
+    return trimmed;
+  }
+
+  if (isLocalStaticPath(trimmed)) {
+    return normalizeLegacyUploadPath(trimmed);
+  }
+
+  return `/api/oss/proxy?objectKey=${encodeURIComponent(trimmed.replace(/^\/+/, ''))}`;
 };

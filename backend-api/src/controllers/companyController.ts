@@ -286,7 +286,7 @@ export const uploadCompanyLogo = async (req: Request, res: Response) => {
     }
 
     // 构建logo URL
-    const logoUrl = `/uploads/${file.filename}`;
+    const logoUrl = `/uploads/logos/${file.filename}`;
 
     // 更新数据库中的logo字段
     const updatedCompany = await prisma.company.update({
