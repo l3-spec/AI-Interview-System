@@ -39,6 +39,13 @@ const apiClient: AxiosInstance = axios.create({
   // 移除 withCredentials: true，避免CORS问题
 });
 
+const clearStoredAuth = () => {
+  localStorage.removeItem(AUTH_CONSTANTS.USER_KEY);
+  localStorage.removeItem(AUTH_CONSTANTS.TOKEN_KEY);
+  localStorage.removeItem(AUTH_CONSTANTS.REFRESH_TOKEN_KEY);
+  localStorage.removeItem(AUTH_CONSTANTS.TOKEN_EXPIRY_KEY);
+};
+
 const parseJsonArray = <T>(value: any, fallback: T[] = []): T[] => {
   if (!value) {
     return fallback;
@@ -550,14 +557,22 @@ apiClient.interceptors.response.use(
     });
     
     if (error.response?.status === 401) {
-      // 临时完全禁用401重定向，用于调试
-      console.log('API拦截器: 401错误，但不触发重定向', {
-        requestUrl: error.config?.url,
+      const requestUrl = String(error.config?.url || '');
+      const isAuthRequest = requestUrl.includes('/auth/login') || requestUrl.includes('/auth/register');
+
+      console.warn('API拦截器: 捕获401', {
+        requestUrl,
         currentPath: window.location.pathname
       });
-      
-      // 完全禁用重定向逻辑
-      return Promise.reject(error);
+
+      if (!isAuthRequest) {
+        clearStoredAuth();
+
+        const publicPaths = ['/', '/login', '/register', '/privacy-policy', '/privacy-rights'];
+        if (!publicPaths.includes(window.location.pathname)) {
+          window.location.replace('/login');
+        }
+      }
     }
     return Promise.reject(error);
   }

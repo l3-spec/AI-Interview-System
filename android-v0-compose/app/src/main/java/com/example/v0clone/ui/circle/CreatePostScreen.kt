@@ -40,9 +40,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.FormatSize
+import androidx.compose.material.icons.outlined.FormatListBulleted
+import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.EmojiEmotions
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -76,6 +83,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -93,13 +101,20 @@ import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import com.xlwl.AiMian.ui.components.CompactTopBar
+import android.graphics.Color as AndroidColor
+import androidx.core.view.WindowCompat
 
+// ── 设计色彩 ──
 private const val TITLE_MAX_LENGTH = 30
 private const val MAX_IMAGES = 6
 private val PlaceholderColor = Color(0xFFB5B7B8)
 private val AccentOrange = Color(0xFFEC7C38)
+private val AccentPink = Color(0xFFFF6B81)
 private val ImagePlaceholder = Color(0xFFEBEBEB)
+private val TitlePlaceholderColor = Color(0xFFA8D8D8) // 截图中标题占位色（青绿色）
+private val BodyPlaceholderColor = Color(0xFFB5B7B8)
+private val ToolbarDividerColor = Color(0xFFF0F0F0)
+private val ToolbarIconColor = Color(0xFF333333)
 
 data class SelectedImage(
     val uri: Uri,
@@ -138,6 +153,33 @@ fun CreatePostRoute(
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
+
+    // ── 状态栏：白底 + 深色图标 ──
+    val context = LocalContext.current
+    val activity = remember(context) { 
+        generateSequence(context) { (it as? android.content.ContextWrapper)?.baseContext }
+            .filterIsInstance<android.app.Activity>()
+            .firstOrNull()
+    }
+
+    DisposableEffect(activity) {
+        if (activity != null) {
+            val window = activity.window
+            val insetsController = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+            val originalStatusBarColor = window.statusBarColor
+            val originalDarkIcons = insetsController.isAppearanceLightStatusBars
+
+            window.statusBarColor = AndroidColor.WHITE
+            insetsController.isAppearanceLightStatusBars = true // 深色图标
+
+            onDispose {
+                window.statusBarColor = originalStatusBarColor
+                insetsController.isAppearanceLightStatusBars = originalDarkIcons
+            }
+        } else {
+            onDispose {}
+        }
+    }
 
     LaunchedEffect(uiState.error) {
         uiState.error?.let { message ->
@@ -189,7 +231,6 @@ private fun CreatePostScreen(
         listOf("#AI", "#职业转型", "#Offer分享")
     }
     val scrollState = rememberScrollState()
-    val navPadding = WindowInsets.navigationBars.asPaddingValues()
 
     // 计算当前已使用的图片数量
     val currentImageCount = remember(contentBlocks) {
@@ -225,6 +266,30 @@ private fun CreatePostScreen(
         }
         // 更新当前块索引到新创建的文本块
         currentBlockIndex = insertIndex + 1
+    }
+
+    // ── 一键排版逻辑 ──
+    fun formatContent() {
+        // 1. 修整标题
+        title = title.trim()
+        
+        // 2. 遍历并修整文本块
+        for (i in contentBlocks.indices) {
+            val block = contentBlocks[i]
+            if (block is ContentBlock.TextBlock) {
+                // 去掉多余的首尾空行，将内部连续多于2个的回车收缩为1个
+                val formattedText = block.text.trim()
+                    .replace(Regex("\\n{3,}"), "\n\n")
+                contentBlocks[i] = ContentBlock.TextBlock(formattedText)
+            }
+        }
+        
+        // 3. 删除末尾空文本块（保留至少一个）
+        while (contentBlocks.size > 1 && 
+               contentBlocks.last() is ContentBlock.TextBlock && 
+               (contentBlocks.last() as ContentBlock.TextBlock).text.isEmpty()) {
+            contentBlocks.removeAt(contentBlocks.size - 1)
+        }
     }
 
     // 插入双图块
@@ -347,102 +412,47 @@ private fun CreatePostScreen(
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = Color.White,
+        contentWindowInsets = WindowInsets(0), // 禁用默认插入，完全手动控制，去掉空隙
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
-            CompactTopBar(
-                title = "发帖",
+            // ── 顶栏：← 写长文  [一键排版] ──
+            LongArticleTopBar(
                 onBack = onBack,
-                containerColor = Color.White,
-                contentColor = Color.Black,
-                shadowElevation = 0.dp
+                isPublishing = uiState.isPublishing,
+                onLayoutClick = { formatContent() }, // 绑定一键排版
+                onPublish = {
+                    if (title.isBlank()) {
+                        showTransientMessage(snackbarHostState, "请输入帖子标题")
+                        return@LongArticleTopBar
+                    }
+                    val contentText = blocksToText().trim()
+                    if (contentText.isBlank() || contentText == "[图片]") {
+                        showTransientMessage(snackbarHostState, "请输入帖子内容")
+                        return@LongArticleTopBar
+                    }
+                    onPublish(
+                        title.trim(),
+                        contentText,
+                        selectedTags.map(String::trim),
+                        getAllImageFiles()
+                    )
+                }
             )
         },
         bottomBar = {
-            Surface(
-                color = Color.White,
-                shadowElevation = 8.dp
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 10.dp)
-                ) {
-                    Button(
-                        onClick = {
-                            if (title.isBlank()) {
-                                showTransientMessage(snackbarHostState, "请输入帖子标题")
-                                return@Button
-                            }
-                            val contentText = blocksToText().trim()
-                            if (contentText.isBlank() || contentText == "[图片]") {
-                                showTransientMessage(snackbarHostState, "请输入帖子内容")
-                                return@Button
-                            }
-                            onPublish(
-                                title.trim(),
-                                contentText,
-                                selectedTags.map(String::trim),
-                                getAllImageFiles()
-                            )
-                        },
-                        enabled = !uiState.isPublishing,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp),
-                        shape = RoundedCornerShape(24.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = AccentOrange,
-                            disabledContainerColor = AccentOrange.copy(alpha = 0.4f)
-                        )
-                    ) {
-                        if (uiState.isPublishing) {
-                            androidx.compose.material3.CircularProgressIndicator(
-                                color = Color.White,
-                                strokeWidth = 2.dp,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        } else {
-                            Text(
-                                text = "发布",
-                                style = MaterialTheme.typography.bodyLarge.copy(
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.White)
-                .padding(innerPadding)
-                .padding(bottom = navPadding.calculateBottomPadding())
-                .verticalScroll(scrollState)
-        ) {
-            TitleSection(
-                title = title,
-                onTitleChange = { if (it.length <= TITLE_MAX_LENGTH) title = it },
-                counter = "${title.length}/$TITLE_MAX_LENGTH"
-            )
-            // 所见即所得编辑器 - 支持文本和图片混合
-            WysiwygEditor(
-                contentBlocks = contentBlocks,
-                currentBlockIndex = currentBlockIndex,
-                onBlockIndexChange = { currentBlockIndex = it },
-                onTextChange = { index, text ->
-                    if (index < contentBlocks.size) {
-                        val block = contentBlocks[index]
-                        if (block is ContentBlock.TextBlock) {
-                            contentBlocks[index] = ContentBlock.TextBlock(text)
-                        }
+            // ── 底部工具栏：Aa | 列表 | 书签 | 表情 | 图片 | 完成 ──
+            EditorBottomToolbar(
+                onFormatClick = { showTransientMessage(snackbarHostState, "功能开发中...") },
+                onListClick = { 
+                    // 简单的列表插入逻辑
+                    val current = contentBlocks.getOrNull(currentBlockIndex)
+                    if (current is ContentBlock.TextBlock) {
+                        contentBlocks[currentBlockIndex] = ContentBlock.TextBlock(current.text + "\n• ")
                     }
                 },
-                onAddImage = {
+                onBookmarkClick = { showTagDialog = true },
+                onEmojiClick = { showTransientMessage(snackbarHostState, "表情包功能即将上线") },
+                onImageClick = {
                     val remainingCapacity = MAX_IMAGES - currentImageCount
                     if (remainingCapacity <= 0) {
                         showTransientMessage(snackbarHostState, "最多只能添加${MAX_IMAGES}张图片")
@@ -454,22 +464,72 @@ private fun CreatePostScreen(
                         )
                     }
                 },
+                onDoneClick = {
+                    if (title.isBlank()) {
+                        showTransientMessage(snackbarHostState, "请输入帖子标题")
+                        return@EditorBottomToolbar
+                    }
+                    val contentText = blocksToText().trim()
+                    if (contentText.isBlank() || contentText == "[图片]") {
+                        showTransientMessage(snackbarHostState, "请输入帖子内容")
+                        return@EditorBottomToolbar
+                    }
+                    onPublish(
+                        title.trim(),
+                        contentText,
+                        selectedTags.map(String::trim),
+                        getAllImageFiles()
+                    )
+                }
+            )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.White)
+                .padding(innerPadding)
+                .verticalScroll(scrollState)
+        ) {
+            // ── 标题输入 ──
+            LongArticleTitleInput(
+                title = title,
+                onTitleChange = { if (it.length <= TITLE_MAX_LENGTH) title = it }
+            )
+
+            // ── 正文编辑区 ──
+            LongArticleBodyEditor(
+                contentBlocks = contentBlocks,
+                currentBlockIndex = currentBlockIndex,
+                onBlockIndexChange = { currentBlockIndex = it },
+                onTextChange = { index, text ->
+                    if (index < contentBlocks.size) {
+                        val block = contentBlocks[index]
+                        if (block is ContentBlock.TextBlock) {
+                            contentBlocks[index] = ContentBlock.TextBlock(text)
+                        }
+                    }
+                },
                 onRemoveImage = { index ->
                     removeImageBlock(index)
                 }
             )
-            TagSection(
-                selectedTags = selectedTags,
-                suggestions = tagSuggestions,
-                onAddTag = { showTagDialog = true },
-                onToggleTag = { tag ->
-                    if (selectedTags.contains(tag)) {
-                        selectedTags.remove(tag)
-                    } else {
-                        selectedTags.add(tag)
+
+            // ── 标签区域 ──
+            if (selectedTags.isNotEmpty()) {
+                TagSection(
+                    selectedTags = selectedTags,
+                    suggestions = tagSuggestions,
+                    onAddTag = { showTagDialog = true },
+                    onToggleTag = { tag ->
+                        if (selectedTags.contains(tag)) {
+                            selectedTags.remove(tag)
+                        } else {
+                            selectedTags.add(tag)
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     }
 
@@ -639,132 +699,143 @@ private fun CreatePostScreen(
     }
 }
 
-/**
- * 标题输入区域 - 根据Figma设计实现
- * Figma设计规范：
- * - 字体：14sp，Regular，黑色
- * - 行高：22sp
- * - 占位文字：14sp，灰色 #B5B7B8
- * - 分隔线：0.25px，灰色
- * - 内边距：左右16px，上下10px
- */
+// ═══════════════════════════════════════════════════════════════
+//  写长文 顶栏  ← 写长文  [一键排版]
+// ═══════════════════════════════════════════════════════════════
 @Composable
-private fun TitleSection(
-    title: String,
-    onTitleChange: (String) -> Unit,
-    counter: String
+private fun LongArticleTopBar(
+    onBack: () -> Unit,
+    isPublishing: Boolean,
+    onLayoutClick: () -> Unit,
+    onPublish: () -> Unit
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth()
+    Surface(
+        color = Color.White,
+        shadowElevation = 0.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp), // 根据Figma设计：内边距
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            BasicTextField(
-                value = title,
-                onValueChange = onTitleChange,
-                singleLine = true,
-                textStyle = TextStyle(
-                    fontSize = 14.sp, // 根据Figma设计：14sp
-                    color = Color.Black,
-                    lineHeight = 22.sp, // 根据Figma设计：行高22sp
-                    fontWeight = FontWeight.Normal // PingFang SC Regular
-                ),
-                decorationBox = { inner ->
-                    if (title.isEmpty()) {
-                        Text(
-                            text = "好的标题会让更多人看到哦~",
-                            color = PlaceholderColor, // 根据Figma设计：灰色 #B5B7B8
-                            fontSize = 14.sp,
-                            lineHeight = 22.sp
-                        )
-                    }
-                    inner()
-                },
-                modifier = Modifier.weight(1f)
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = counter,
-                style = TextStyle(
-                    color = PlaceholderColor,
-                    fontSize = 14.sp,
-                    lineHeight = 22.sp
+                .padding(
+                    top = WindowInsets.statusBars
+                        .asPaddingValues()
+                        .calculateTopPadding()
                 )
+                .height(44.dp) // 降低高度，视觉上更靠上
+                .padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 返回按钮
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = "返回",
+                    tint = Color(0xFF333333),
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            // 居中标题 "写长文"
+            Text(
+                text = "写长文",
+                color = Color(0xFF1A1A1A),
+                fontSize = 17.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+                textAlign = TextAlign.Center
             )
+
+            // 一键排版按钮
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = AccentPink,
+                modifier = Modifier
+                    .padding(end = 8.dp)
+                    .clickable(onClick = onLayoutClick) // 点击执行排版
+            ) {
+                Text(
+                    text = if (isPublishing) "发布中..." else "一键排版",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                )
+            }
         }
-        HorizontalDivider(
-            color = PlaceholderColor.copy(alpha = 0.6f),
-            thickness = 0.25.dp // 根据Figma设计：0.25px
-        )
     }
 }
 
-/**
- * 所见即所得编辑器 - 支持文本和图片混合编辑
- * 根据Figma设计实现
- * 支持在任何位置插入图片，可以选择单图或双图布局
- */
+// ═══════════════════════════════════════════════════════════════
+//  标题输入  — 截图：绿色占位文字 "输入标题"
+// ═══════════════════════════════════════════════════════════════
 @Composable
-private fun WysiwygEditor(
+private fun LongArticleTitleInput(
+    title: String,
+    onTitleChange: (String) -> Unit
+) {
+    BasicTextField(
+        value = title,
+        onValueChange = onTitleChange,
+        singleLine = true,
+        textStyle = TextStyle(
+            fontSize = 22.sp,
+            color = Color(0xFF1A1A1A),
+            fontWeight = FontWeight.Bold,
+            lineHeight = 30.sp
+        ),
+        decorationBox = { inner ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp) // 减小垂直间距，整体上拉
+            ) {
+                if (title.isEmpty()) {
+                    Text(
+                        text = "输入标题",
+                        color = TitlePlaceholderColor,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        lineHeight = 30.sp
+                    )
+                }
+                inner()
+            }
+        },
+        modifier = Modifier.fillMaxWidth()
+    )
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  正文编辑区  — 截图：左侧红色竖线 + 占位文字
+// ═══════════════════════════════════════════════════════════════
+@Composable
+private fun LongArticleBodyEditor(
     contentBlocks: List<ContentBlock>,
     currentBlockIndex: Int,
     onBlockIndexChange: (Int) -> Unit,
     onTextChange: (Int, String) -> Unit,
-    onAddImage: () -> Unit,
     onRemoveImage: (Int) -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .padding(horizontal = 20.dp)
+            .heightIn(min = 400.dp)
     ) {
         if (contentBlocks.isEmpty()) {
-            // 空状态 - 显示占位符和添加图片按钮
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 220.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Text(
-                        text = "此刻你想和大家分享什么......",
-                        color = PlaceholderColor,
-                        fontSize = 14.sp,
-                        lineHeight = 22.sp
-                    )
-                    AddImageCard(
-                        onClick = onAddImage,
-                        modifier = Modifier.size(110.dp)
-                    )
-                }
-            }
+            // 空状态
+            BodyPlaceholderWithIndicator()
         } else {
-            // 显示内容块 - 所见即所得
             contentBlocks.forEachIndexed { index, block ->
                 when (block) {
                     is ContentBlock.TextBlock -> {
-                        ContentTextBlock(
+                        LongArticleTextBlock(
                             text = block.text,
                             isFocused = index == currentBlockIndex,
-                            placeholder = if (index == 0 && contentBlocks.size == 1 && block.text.isEmpty()) {
-                                "此刻你想和大家分享什么......"
-                            } else null,
+                            showIndicator = index == 0 && contentBlocks.size == 1 && block.text.isEmpty(),
                             onTextChange = { onTextChange(index, it) },
                             onFocusChange = { if (it) onBlockIndexChange(index) },
-                            onAddImageClick = {
-                                // 在当前位置插入图片
-                                onAddImage()
-                            },
-                            modifier = Modifier.padding(vertical = 4.dp)
+                            modifier = Modifier.padding(vertical = 2.dp)
                         )
                     }
                     is ContentBlock.ImageBlock -> {
@@ -782,76 +853,192 @@ private fun WysiwygEditor(
 }
 
 /**
- * 文本内容块 - 根据Figma设计实现
- * Figma设计规范：
- * - 字体：14sp，Regular，黑色
- * - 行高：22sp
- * - 占位文字：14sp，灰色 #B5B7B8
+ * 占位状态 — 左侧红色竖线 + 提示文字
  */
 @Composable
-private fun ContentTextBlock(
+private fun BodyPlaceholderWithIndicator() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        // 红色竖线指示器
+        Box(
+            modifier = Modifier
+                .width(2.dp)
+                .height(20.dp)
+                .background(AccentPink)
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = "粘贴到这里或输入文字，内容将自动保存",
+            color = BodyPlaceholderColor,
+            fontSize = 15.sp,
+            lineHeight = 22.sp
+        )
+    }
+}
+
+/**
+ * 长文文本块 — 带可选的红色竖线指示器
+ */
+@Composable
+private fun LongArticleTextBlock(
     text: String,
     isFocused: Boolean,
-    placeholder: String?,
+    showIndicator: Boolean,
     onTextChange: (String) -> Unit,
     onFocusChange: (Boolean) -> Unit,
-    onAddImageClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val focusRequester = remember { FocusRequester() }
-    
+
     LaunchedEffect(isFocused) {
         if (isFocused) {
             focusRequester.requestFocus()
         }
     }
-    
-    Column(modifier = modifier) {
+
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top
+    ) {
+        if (showIndicator && text.isEmpty()) {
+            // 红色竖线指示器（仅空状态展示）
+            Box(
+                modifier = Modifier
+                    .width(2.dp)
+                    .height(20.dp)
+                    .background(AccentPink)
+            )
+            Spacer(Modifier.width(8.dp))
+        }
+
         BasicTextField(
             value = text,
             onValueChange = onTextChange,
             textStyle = TextStyle(
-                fontSize = 14.sp, // 根据Figma设计：14sp
-                color = Color.Black,
-                lineHeight = 22.sp, // 根据Figma设计：行高22sp
-                fontWeight = FontWeight.Normal // PingFang SC Regular
+                fontSize = 15.sp,
+                color = Color(0xFF1A1A1A),
+                lineHeight = 24.sp,
+                fontWeight = FontWeight.Normal
             ),
             modifier = Modifier
-                .fillMaxWidth()
+                .weight(1f)
                 .heightIn(min = 40.dp)
                 .focusRequester(focusRequester)
                 .onFocusChanged { onFocusChange(it.isFocused) },
             decorationBox = { inner ->
-                if (text.isEmpty() && placeholder != null) {
+                if (text.isEmpty() && showIndicator) {
                     Text(
-                        text = placeholder,
-                        color = PlaceholderColor, // 根据Figma设计：灰色 #B5B7B8
-                        fontSize = 14.sp,
+                        text = "粘贴到这里或输入文字，内容将自动保存",
+                        color = BodyPlaceholderColor,
+                        fontSize = 15.sp,
                         lineHeight = 22.sp
                     )
                 }
                 inner()
             }
         )
-        // 添加图片按钮（在文本块下方，始终显示）
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp),
-            horizontalArrangement = Arrangement.Start
-        ) {
-            AddImageCard(
-                onClick = onAddImageClick,
-                modifier = Modifier.size(110.dp) // 根据Figma设计：110x110px
-            )
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  底部编辑工具栏  — 截图：Aa  列表  书签  表情  图片  完成
+// ═══════════════════════════════════════════════════════════════
+@Composable
+private fun EditorBottomToolbar(
+    onFormatClick: () -> Unit,
+    onListClick: () -> Unit,
+    onBookmarkClick: () -> Unit,
+    onEmojiClick: () -> Unit,
+    onImageClick: () -> Unit,
+    onDoneClick: () -> Unit
+) {
+    Surface(
+        color = Color.White,
+        shadowElevation = 4.dp
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            HorizontalDivider(color = ToolbarDividerColor, thickness = 0.5.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 工具图标组
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    ToolbarIconButton(
+                        icon = Icons.Outlined.FormatSize,
+                        contentDescription = "字体格式",
+                        onClick = onFormatClick
+                    )
+                    ToolbarIconButton(
+                        icon = Icons.Outlined.FormatListBulleted,
+                        contentDescription = "列表",
+                        onClick = onListClick
+                    )
+                    ToolbarIconButton(
+                        icon = Icons.Outlined.BookmarkBorder,
+                        contentDescription = "话题标签",
+                        onClick = onBookmarkClick
+                    )
+                    ToolbarIconButton(
+                        icon = Icons.Outlined.EmojiEmotions,
+                        contentDescription = "表情",
+                        onClick = onEmojiClick
+                    )
+                    ToolbarIconButton(
+                        icon = Icons.Outlined.Image,
+                        contentDescription = "插入图片",
+                        onClick = onImageClick
+                    )
+                }
+
+                // "完成" 按钮
+                Text(
+                    text = "完成",
+                    color = ToolbarIconColor,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier
+                        .clickable(onClick = onDoneClick)
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
         }
     }
 }
 
-/**
- * 图片内容块 - 支持单图和双图布局
- * 根据Figma设计实现
- */
+@Composable
+private fun ToolbarIconButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.size(40.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = ToolbarIconColor,
+            modifier = Modifier.size(22.dp)
+        )
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  图片内容块 — 支持单图和双图布局
+// ═══════════════════════════════════════════════════════════════
 @Composable
 private fun ContentImageBlock(
     images: List<SelectedImage>,
@@ -861,7 +1048,6 @@ private fun ContentImageBlock(
 ) {
     when (layout) {
         ImageLayout.Single -> {
-            // 单图布局 - 每张图片单独显示
             Column(
                 modifier = modifier,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -876,10 +1062,9 @@ private fun ContentImageBlock(
             }
         }
         ImageLayout.Double -> {
-            // 双图并排布局 - 根据Figma设计：两张图片并排显示，间距12px
             Row(
                 modifier = modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp) // 根据Figma设计：间距12px
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 images.take(2).forEach { image ->
                     ImageThumbnail(
@@ -893,7 +1078,9 @@ private fun ContentImageBlock(
     }
 }
 
-
+// ═══════════════════════════════════════════════════════════════
+//  标签区域
+// ═══════════════════════════════════════════════════════════════
 @Composable
 private fun TagSection(
     selectedTags: List<String>,
@@ -905,7 +1092,7 @@ private fun TagSection(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .padding(horizontal = 20.dp, vertical = 12.dp)
     ) {
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -936,14 +1123,6 @@ private fun TagSection(
     }
 }
 
-/**
- * 标签芯片 - 根据Figma设计实现
- * Figma设计规范：
- * - 字体：12sp，Light，黑色（选中时为橙色 #EC7C38）
- * - 圆角：25px
- * - 边框：0.5px，灰色 #B5B7B8（选中时为橙色）
- * - 内边距：左右12px，上下2px
- */
 @Composable
 private fun TagChip(
     label: String,
@@ -952,16 +1131,16 @@ private fun TagChip(
     emphasize: Boolean = false
 ) {
     val textColor = when {
-        isActive -> AccentOrange // 根据Figma设计：选中时橙色 #EC7C38
-        emphasize -> Color.Black // 根据Figma设计：强调时黑色
-        else -> PlaceholderColor // 根据Figma设计：灰色 #B5B7B8
+        isActive -> AccentOrange
+        emphasize -> Color.Black
+        else -> PlaceholderColor
     }
     val borderColor = if (isActive) AccentOrange else PlaceholderColor
     val backgroundColor = if (isActive) AccentOrange.copy(alpha = 0.12f) else Color.White
 
     Surface(
-        shape = RoundedCornerShape(25.dp), // 根据Figma设计：25px圆角
-        border = BorderStroke(width = 0.5.dp, color = borderColor), // 根据Figma设计：0.5px边框
+        shape = RoundedCornerShape(25.dp),
+        border = BorderStroke(width = 0.5.dp, color = borderColor),
         color = backgroundColor,
         modifier = Modifier.clickable(onClick = onClick)
     ) {
@@ -969,11 +1148,11 @@ private fun TagChip(
             text = label,
             style = MaterialTheme.typography.bodySmall.copy(
                 color = textColor,
-                fontSize = 12.sp, // 根据Figma设计：12sp
-                fontWeight = if (emphasize) FontWeight.Medium else FontWeight.Light, // PingFang SC Light
+                fontSize = 12.sp,
+                fontWeight = if (emphasize) FontWeight.Medium else FontWeight.Light,
                 letterSpacing = (-0.32).sp
             ),
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp), // 根据Figma设计：内边距
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
             textAlign = TextAlign.Center
         )
     }
@@ -989,39 +1168,9 @@ private fun TagDivider() {
     )
 }
 
-/**
- * 添加图片卡片 - 根据Figma设计实现
- */
-@Composable
-private fun AddImageCard(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = ImagePlaceholder
-        )
-    ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.Add,
-                contentDescription = "添加图片",
-                tint = PlaceholderColor,
-                modifier = Modifier.size(28.dp)
-            )
-        }
-    }
-}
-
-/**
- * 图片缩略图 - 支持单图和双图布局
- */
+// ═══════════════════════════════════════════════════════════════
+//  图片缩略图
+// ═══════════════════════════════════════════════════════════════
 @Composable
 private fun ImageThumbnail(
     image: SelectedImage,
@@ -1031,7 +1180,7 @@ private fun ImageThumbnail(
     Box(
         modifier = modifier
             .height(110.dp)
-            .clip(RoundedCornerShape(8.dp)) // 根据Figma设计：8px圆角
+            .clip(RoundedCornerShape(8.dp))
     ) {
         AsyncImage(
             model = image.uri,
@@ -1057,6 +1206,9 @@ private fun ImageThumbnail(
     }
 }
 
+// ═══════════════════════════════════════════════════════════════
+//  工具函数
+// ═══════════════════════════════════════════════════════════════
 private fun showTransientMessage(snackbarHostState: SnackbarHostState, message: String) {
     CoroutineScope(Dispatchers.Main).launch {
         snackbarHostState.showSnackbar(message)

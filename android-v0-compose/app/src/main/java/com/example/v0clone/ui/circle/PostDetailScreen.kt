@@ -140,7 +140,7 @@ fun PostDetailRoute(
         containerColor = PageBackground,
         contentWindowInsets = WindowInsets(0),
         topBar = {
-            // ── 顶部导航栏：返回箭头 + 标题 ──
+            // ── 顶部导航栏：返回箭头 + 标题（紧贴状态栏） ──
             Surface(
                 color = PageBackground,
                 shadowElevation = 0.dp
@@ -153,7 +153,7 @@ fun PostDetailRoute(
                                 .asPaddingValues()
                                 .calculateTopPadding()
                         )
-                        .height(48.dp)
+                        .height(44.dp)
                         .padding(horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -324,7 +324,7 @@ private fun PostTags(tags: List<String>) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp)
-            .padding(bottom = 8.dp),
+            .padding(bottom = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -352,7 +352,7 @@ private fun PostAuthorRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
+            .padding(horizontal = 20.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // 头像

@@ -46,32 +46,59 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState<string | null>(null);
 
-  useEffect(() => {
-    console.log('AuthContext: 初始化认证状态');
-    // 从localStorage检查用户登录状态
-    const storedUser = localStorage.getItem(AUTH_CONSTANTS.USER_KEY);
-    const storedToken = localStorage.getItem(AUTH_CONSTANTS.TOKEN_KEY);
-    
-    console.log('AuthContext: 存储的用户信息:', storedUser);
-    console.log('AuthContext: 存储的token:', storedToken);
-    
-    if (storedUser && storedToken) {
-      try {
-        const userData = JSON.parse(storedUser);
-        console.log('AuthContext: 解析用户数据:', userData);
-        setUser(userData);
-        setToken(storedToken);
-      } catch (error) {
-        console.error('解析存储的用户信息失败:', error);
-        // 清除无效的存储数据
-        localStorage.removeItem(AUTH_CONSTANTS.USER_KEY);
-        localStorage.removeItem(AUTH_CONSTANTS.TOKEN_KEY);
-      }
-    }
-    
-    setLoading(false);
-    console.log('AuthContext: 初始化完成');
+  const clearAuthState = React.useCallback(() => {
+    setUser(null);
+    setToken(null);
+    localStorage.removeItem(AUTH_CONSTANTS.USER_KEY);
+    localStorage.removeItem(AUTH_CONSTANTS.TOKEN_KEY);
+    localStorage.removeItem(AUTH_CONSTANTS.REFRESH_TOKEN_KEY);
+    localStorage.removeItem(AUTH_CONSTANTS.TOKEN_EXPIRY_KEY);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const initializeAuth = async () => {
+      console.log('AuthContext: 初始化认证状态');
+      const storedUser = localStorage.getItem(AUTH_CONSTANTS.USER_KEY);
+      const storedToken = localStorage.getItem(AUTH_CONSTANTS.TOKEN_KEY);
+
+      if (!storedUser || !storedToken) {
+        clearAuthState();
+        if (!cancelled) {
+          setLoading(false);
+        }
+        return;
+      }
+
+      try {
+        const userData = JSON.parse(storedUser) as User;
+        const verifyResponse = await authApi.verifyToken() as any;
+
+        if (!verifyResponse?.success || !verifyResponse?.valid) {
+          throw new Error('Token 校验失败');
+        }
+
+        if (!cancelled) {
+          setUser(userData);
+          setToken(storedToken);
+        }
+      } catch (error) {
+        console.error('AuthContext: 初始化鉴权失败:', error);
+        clearAuthState();
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    initializeAuth();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clearAuthState]);
 
   const login = async (email: string, password: string): Promise<boolean> => {
     console.log('AuthContext: 开始登录，邮箱:', email);
@@ -113,15 +140,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
-    setUser(null);
-    setToken(null);
-    localStorage.removeItem(AUTH_CONSTANTS.USER_KEY);
-    localStorage.removeItem(AUTH_CONSTANTS.TOKEN_KEY);
+    clearAuthState();
     window.location.href = '/';
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, isAuthenticated: !!user, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, token, isAuthenticated: !!user && !!token, login, logout, loading }}>
       {children}
     </AuthContext.Provider>
   );
