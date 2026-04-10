@@ -6,12 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Business
-import androidx.compose.material.icons.outlined.RemoveRedEye
-import androidx.compose.material.icons.outlined.WorkOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,6 +29,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import com.xlwl.AiMian.data.repository.ContentRepository
+import com.xlwl.AiMian.data.model.HomeFeedTargetType
 
 /**
  * AI面试系统首页 - 优化版
@@ -43,6 +39,10 @@ import com.xlwl.AiMian.data.repository.ContentRepository
  * 2. 固定顶部搜索栏 ✅
  * 3. 上拉加载更多 ✅
  * 4. 深色底部导航样式 ✅
+ * 5. 紧凑布局 - Banner与搜索栏无间距 ✅
+ * 6. 移除badge标签 ✅
+ * 7. 图片更大，标题一行、标签一行 ✅
+ * 8. 职岗/企业卡片差异化展示 ✅
  */
 private val GradientTop = Color(0xFF00ADC1)
 private val GradientBottom = Color(0xFFE3F4FB)
@@ -52,7 +52,7 @@ private val PlaceholderGray = Color(0xFFB5B7B8)
 private val TextPrimary = Color(0xFF000000)
 private val CardTitleColor = TextPrimary
 private val CardSubtleText = Color(0xFFB5B7B8)
-private val SummaryTextColor = Color(0xFF4B5563)
+private val SalaryColor = Color(0xFFEC7C38)
 private val HomeTopBarExpandedHeight = 76.dp
 private val HomeTopBarCollapsedHeight = 54.dp
 private val HomeTopBarMaxOffset = 120.dp
@@ -129,7 +129,7 @@ fun HomeScreen(
             HomeHeaderApproxHeight
         }
 
-        // 主内容区域
+        // 主内容区域 - 减少间距使页面更紧凑
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
@@ -138,7 +138,7 @@ fun HomeScreen(
                 end = 12.dp,
                 bottom = navPadding.calculateBottomPadding() + 64.dp
             ),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             item(key = "header-spacer") {
                 Spacer(modifier = Modifier.height(headerPlaceholderHeight))
@@ -211,6 +211,7 @@ fun HomeScreen(
 
 /**
  * 顶部搜索栏（与职岗页保持一致的头部缩放与样式）
+ * 减少底部 padding，使 banner 紧贴搜索栏
  */
 @Composable
 private fun HomeHeader(
@@ -226,7 +227,7 @@ private fun HomeHeader(
     val fieldHeight = lerp(32.dp, 30.dp, progress)
     val searchIconSize = lerp(12.dp, 12.dp, progress)
     val rowSpacing = lerp(32.dp, 20.dp, progress)
-    val bottomPadding = lerp(12.dp, 8.dp, progress)
+    val bottomPadding = lerp(4.dp, 2.dp, progress)
 
     Column(
         modifier = modifier
@@ -381,9 +382,9 @@ private fun BannerCarousel(
             }
         }
         
-        // 轮播指示器
+        // 轮播指示器 - 减少与下方内容的间距
         if (banners.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -446,8 +447,13 @@ private fun MasonryGrid(
 ) {
     // 简单高度估算：依据图片高度模式 + 固定内容高度估计
     fun estimateHeight(card: ContentCard): Int {
-        val image = if (card.id.hashCode() % 3 == 0) 227 else 170
-        val content = 80 // 标题/标签/底部信息的近似高度
+        val image = when {
+            card.targetType == HomeFeedTargetType.JOB && card.imageUrl.isNullOrBlank() -> 160
+            card.targetType == HomeFeedTargetType.COMPANY && card.imageUrl.isNullOrBlank() -> 160
+            card.id.hashCode() % 3 == 0 -> 240
+            else -> 190
+        }
+        val content = 56 // 标题 + 标签（精简后更少）
         return image + content
     }
 
@@ -490,7 +496,14 @@ private fun MasonryGrid(
 }
 
 /**
- * 单个内容卡片（高度自适应，保持错落视觉）
+ * 单个内容卡片 - 优化版
+ * 
+ * 改动：
+ * - 移除 badge 标签（"热门帖子"/"热门职岗"等）
+ * - 图片占比增大
+ * - 精简为标题一行 + 标签一行
+ * - 移除 summary、作者头像、浏览数底部行
+ * - 职岗/企业卡片差异化展示
  */
 @Composable
 private fun ContentCardItem(
@@ -512,153 +525,159 @@ private fun ContentCardItem(
         )
     ) {
         Column {
-            val imageHeight = if (card.imageUrl.isNullOrBlank()) 132.dp else if (card.id.hashCode() % 3 == 0) 227.dp else 170.dp
-
-            if (!card.imageUrl.isNullOrBlank()) {
-                Image(
-                    painter = rememberAsyncImagePainter(card.imageUrl),
-                    contentDescription = card.title,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(imageHeight),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                EmptyCardHero(
-                    card = card,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(imageHeight)
-                )
+            // 图片区域 - 增大高度
+            val imageHeight = when {
+                card.targetType == HomeFeedTargetType.JOB && card.imageUrl.isNullOrBlank() -> 160.dp
+                card.targetType == HomeFeedTargetType.COMPANY && card.imageUrl.isNullOrBlank() -> 160.dp
+                card.id.hashCode() % 3 == 0 -> 240.dp
+                else -> 190.dp
             }
 
-            Column(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                card.badge?.takeIf { it.isNotBlank() }?.let { badge ->
-                    Surface(
-                        shape = RoundedCornerShape(999.dp),
-                        color = AccentOrange.copy(alpha = 0.12f)
-                    ) {
-                        Text(
-                            text = badge,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                            fontSize = 11.sp,
-                            color = AccentOrange,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-
-                Text(
-                    text = card.title,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = CardTitleColor,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    lineHeight = 21.sp,
-                    letterSpacing = FigmaLetterSpacing
-                )
-
-                val tagLine = card.tags
-                    .take(2)
-                    .filter { it.isNotBlank() }
-                    .joinToString(" ") { "#$it" }
-                if (tagLine.isNotBlank()) {
-                    Text(
-                        text = tagLine,
-                        fontSize = 12.sp,
-                        color = AccentOrange,
-                        fontWeight = FontWeight.Normal,
-                        lineHeight = 21.sp,
-                        letterSpacing = FigmaLetterSpacing
+            when {
+                // 职岗卡片 - 无图时用背景色+内容展示
+                card.targetType == HomeFeedTargetType.JOB && card.imageUrl.isNullOrBlank() -> {
+                    JobCardHero(
+                        card = card,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(imageHeight)
                     )
                 }
-
-                card.summary?.takeIf { it.isNotBlank() }?.let { summary ->
-                    Text(
-                        text = summary,
-                        fontSize = 12.sp,
-                        color = SummaryTextColor,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        lineHeight = 18.sp
+                // 企业卡片 - 无图时参考职岗的渐变展示
+                card.targetType == HomeFeedTargetType.COMPANY && card.imageUrl.isNullOrBlank() -> {
+                    CompanyCardHero(
+                        card = card,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(imageHeight)
                     )
                 }
+                // 有图的卡片（帖子/有图企业/有图职岗）
+                !card.imageUrl.isNullOrBlank() -> {
+                    Image(
+                        painter = rememberAsyncImagePainter(card.imageUrl),
+                        contentDescription = card.title,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(imageHeight),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+                // 其他无图帖子 - 渐变占位
+                else -> {
+                    GenericCardHero(
+                        card = card,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(imageHeight)
+                    )
+                }
+            }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+            // 底部文字区域 - 精简版：根据卡片类型展示不同内容
+            when (card.targetType) {
+                HomeFeedTargetType.JOB -> {
+                    // 职岗：标签 + 城市
+                    Column(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        if (card.avatarUrl.isNullOrBlank()) {
-                            Box(
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .clip(CircleShape)
-                                    .background(AccentOrange.copy(alpha = 0.18f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = card.author.take(1),
-                                    fontSize = 12.sp,
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        } else {
-                            Image(
-                                painter = rememberAsyncImagePainter(card.avatarUrl),
-                                contentDescription = "作者头像",
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .clip(CircleShape),
-                                contentScale = ContentScale.Crop
+                        val jobTags = card.tags
+                            .filter { it != card.location && it.isNotBlank() }
+                            .take(2)
+                            .joinToString(" ") { "#$it" }
+                        if (jobTags.isNotBlank()) {
+                            Text(
+                                text = jobTags,
+                                fontSize = 12.sp,
+                                color = AccentOrange,
+                                fontWeight = FontWeight.Normal,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                lineHeight = 18.sp,
+                                letterSpacing = FigmaLetterSpacing
                             )
                         }
-
-                        Text(
-                            text = card.author,
-                            fontSize = 12.sp,
-                            color = TextPrimary,
-                            fontWeight = FontWeight.Light,
-                            lineHeight = 21.sp,
-                            letterSpacing = FigmaLetterSpacing,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        val metricIcon = when {
-                            card.badge?.contains("企业") == true -> Icons.Outlined.Business
-                            card.badge?.contains("职岗") == true -> Icons.Outlined.WorkOutline
-                            else -> Icons.Outlined.RemoveRedEye
+                        card.location?.takeIf { it.isNotBlank() }?.let { loc ->
+                            Text(
+                                text = loc,
+                                fontSize = 12.sp,
+                                color = CardSubtleText,
+                                fontWeight = FontWeight.Normal,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                lineHeight = 18.sp,
+                                letterSpacing = FigmaLetterSpacing
+                            )
                         }
-                        Icon(
-                            imageVector = metricIcon,
-                            contentDescription = "信息",
-                            tint = CardSubtleText,
-                            modifier = Modifier.size(14.dp)
-                        )
-
+                    }
+                }
+                HomeFeedTargetType.COMPANY -> {
+                    // 企业：公司名称 + 公司标签
+                    Column(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
                         Text(
-                            text = card.views,
-                            fontSize = 12.sp,
-                            color = CardSubtleText,
-                            fontWeight = FontWeight.Light,
+                            text = card.title,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = CardTitleColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                             lineHeight = 21.sp,
                             letterSpacing = FigmaLetterSpacing
                         )
+                        val companyTags = card.tags
+                            .take(3)
+                            .filter { it.isNotBlank() }
+                            .joinToString(" ") { "#$it" }
+                        if (companyTags.isNotBlank()) {
+                            Text(
+                                text = companyTags,
+                                fontSize = 12.sp,
+                                color = AccentOrange,
+                                fontWeight = FontWeight.Normal,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                lineHeight = 18.sp,
+                                letterSpacing = FigmaLetterSpacing
+                            )
+                        }
+                    }
+                }
+                else -> {
+                    // 帖子：标题一行 + 标签一行
+                    Column(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = card.title,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = CardTitleColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            lineHeight = 21.sp,
+                            letterSpacing = FigmaLetterSpacing
+                        )
+                        val tagLine = card.tags
+                            .take(2)
+                            .filter { it.isNotBlank() }
+                            .joinToString(" ") { "#$it" }
+                        if (tagLine.isNotBlank()) {
+                            Text(
+                                text = tagLine,
+                                fontSize = 12.sp,
+                                color = AccentOrange,
+                                fontWeight = FontWeight.Normal,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                lineHeight = 18.sp,
+                                letterSpacing = FigmaLetterSpacing
+                            )
+                        }
                     }
                 }
             }
@@ -666,53 +685,131 @@ private fun ContentCardItem(
     }
 }
 
+/**
+ * 职岗卡片 Hero 区域 - 渐变背景 + 职位名 + 薪资
+ */
 @Composable
-private fun EmptyCardHero(
+private fun JobCardHero(
     card: ContentCard,
     modifier: Modifier = Modifier
 ) {
     Box(
-        modifier = modifier.background(
-            brush = Brush.linearGradient(
-                colors = when {
-                    card.badge?.contains("企业") == true -> listOf(Color(0xFF0EA5E9), Color(0xFFE0F2FE))
-                    card.badge?.contains("职岗") == true -> listOf(Color(0xFFF97316), Color(0xFFFFEDD5))
-                    else -> listOf(Color(0xFF14B8A6), Color(0xFFCCFBF1))
-                }
+        modifier = modifier
+            .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+            .background(
+                brush = Brush.linearGradient(
+                    colors = listOf(Color(0xFFF97316), Color(0xFFFFEDD5))
+                )
             )
-        )
     ) {
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            card.badge?.takeIf { it.isNotBlank() }?.let {
+            Text(
+                text = card.title,
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 24.sp
+            )
+            card.salary?.takeIf { it.isNotBlank() }?.let { salary ->
                 Text(
-                    text = it,
-                    color = Color.White.copy(alpha = 0.92f),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold
+                    text = salary,
+                    color = Color.White.copy(alpha = 0.95f),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    lineHeight = 22.sp
                 )
             }
+        }
+    }
+}
+
+/**
+ * 企业卡片 Hero 区域 - 无图时使用渐变背景 + 企业名称
+ */
+@Composable
+private fun CompanyCardHero(
+    card: ContentCard,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+            .background(
+                brush = Brush.linearGradient(
+                    colors = listOf(Color(0xFF0EA5E9), Color(0xFFE0F2FE))
+                )
+            )
+    ) {
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             Text(
                 text = card.title,
                 color = Color.White,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 2,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 24.sp
             )
-            card.summary?.takeIf { it.isNotBlank() }?.let {
+            card.author.takeIf { it.isNotBlank() }?.let { author ->
                 Text(
-                    text = it,
+                    text = author,
                     color = Color.White.copy(alpha = 0.86f),
-                    fontSize = 12.sp,
-                    maxLines = 2,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
+        }
+    }
+}
+
+/**
+ * 通用无图卡片 Hero 区域 - 帖子类型的渐变背景
+ */
+@Composable
+private fun GenericCardHero(
+    card: ContentCard,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+            .background(
+                brush = Brush.linearGradient(
+                    colors = listOf(Color(0xFF14B8A6), Color(0xFFCCFBF1))
+                )
+            )
+    ) {
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = card.title,
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 24.sp
+            )
         }
     }
 }

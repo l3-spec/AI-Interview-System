@@ -21,11 +21,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -63,7 +61,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavBackStackEntry
 import coil.compose.AsyncImage
 import com.xlwl.AiMian.data.repository.ContentRepository
-import java.text.DecimalFormat
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 // 根据Figma设计规范定义颜色和尺寸
@@ -292,14 +289,13 @@ private fun CirclePostCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(5.dp)  // Figma gap
+            modifier = Modifier.fillMaxWidth()
         ) {
-            // 图片区域 - 根据Figma，高度有170px和227px两种，创造错落感
+            // 图片区域 - 增大图片占比，创造错落感
             val imageAspectRatio = when (card.id.hashCode() % 3) {
-                0 -> 170f / 227f  // 长图
-                1 -> 170f / 170f  // 正方形
-                else -> 170f / 200f  // 中等高度
+                0 -> 170f / 240f  // 长图（更高）
+                1 -> 170f / 190f  // 略高于正方形
+                else -> 170f / 210f  // 中等高度
             }
 
             Box(
@@ -339,93 +335,37 @@ private fun CirclePostCard(
                 }
             }
             
-            // 标题和标签区域 - padding改为4dp
+            // 精简底部：标题一行 + 标签一行
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)  // Figma gap
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                // 标题和标签
-                Column {
+                Text(
+                    text = card.title,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        color = PrimaryText,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 14.sp,
+                        lineHeight = 21.sp,
+                        letterSpacing = (-0.32).sp
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (card.tags.isNotEmpty()) {
                     Text(
-                        text = card.title,
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            color = PrimaryText,
-                            fontWeight = FontWeight.Medium,  // PingFang SC Medium
-                            fontSize = 14.sp,
-                            lineHeight = 21.sp,
-                            letterSpacing = (-0.32).sp
-                        ),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (card.tags.isNotEmpty()) {
-                        Text(
-                            text = card.tags.take(2).joinToString(" ") { "#$it" },
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                color = AccentOrange,
-                                fontWeight = FontWeight.Normal,  // PingFang SC Regular
-                                fontSize = 12.sp,
-                                lineHeight = 21.sp,
-                                letterSpacing = (-0.32).sp
-                            ),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-            }
-            
-            // 作者和浏览数区域 - padding 4dp
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),  // Figma gap
-                    modifier = Modifier.weight(1f, fill = false)
-                ) {
-                    AuthorAvatar(
-                        name = card.authorName,
-                        avatarUrl = card.authorAvatar
-                    )
-                    Text(
-                        text = card.authorName,
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            color = PrimaryText,
+                        text = card.tags.take(2).joinToString(" ") { "#$it" },
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = AccentOrange,
+                            fontWeight = FontWeight.Normal,
                             fontSize = 12.sp,
-                            fontWeight = FontWeight.Light,  // PingFang SC Light
-                            lineHeight = 21.sp,
+                            lineHeight = 18.sp,
                             letterSpacing = (-0.32).sp
                         ),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)  // Figma gap
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Visibility,
-                        contentDescription = null,
-                        tint = SearchPlaceholder,
-                        modifier = Modifier.size(16.dp)  // Figma 16px
-                    )
-                    Text(
-                        text = formatCompactViewCount(card.viewCount),
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            color = SearchPlaceholder,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Light,
-                            lineHeight = 21.sp,
-                            letterSpacing = (-0.32).sp
-                        )
                     )
                 }
             }
@@ -433,39 +373,6 @@ private fun CirclePostCard(
     }
 }
 
-@Composable
-private fun AuthorAvatar(
-    name: String,
-    avatarUrl: String?,
-    modifier: Modifier = Modifier
-) {
-    if (!avatarUrl.isNullOrBlank()) {
-        AsyncImage(
-            model = avatarUrl,
-            contentDescription = name,
-            modifier = modifier
-                .size(24.dp)  // Figma设计是24px
-                .clip(CircleShape),
-            contentScale = ContentScale.Crop
-        )
-    } else {
-        Surface(
-            modifier = modifier.size(24.dp),  // Figma设计是24px
-            shape = CircleShape,
-            color = Color(0xFFEFF1F4)
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = name.firstOrNull()?.uppercaseChar()?.toString() ?: "星",
-                    style = MaterialTheme.typography.labelLarge.copy(
-                        color = Color(0xFF4B5563),
-                        fontWeight = FontWeight.SemiBold
-                    )
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun CircleLoading(modifier: Modifier = Modifier) {
@@ -705,11 +612,11 @@ private fun CircleMasonryGrid(
 ) {
     fun estimateHeight(card: CircleCard): Int {
         val image = when (card.id.hashCode() % 3) {
-            0 -> 227
-            1 -> 170
-            else -> 200
+            0 -> 240
+            1 -> 190
+            else -> 210
         }
-        val content = 88
+        val content = 52 // 精简后：标题一行 + 标签一行
         return image + content
     }
 
@@ -757,19 +664,5 @@ private fun CircleMasonryGrid(
                 )
             }
         }
-    }
-}
-
-private fun formatCompactViewCount(value: Int): String {
-    return when {
-        value >= 10000 -> {
-            val df = DecimalFormat("0.#")
-            "${df.format(value / 10000.0)}万"
-        }
-        value >= 1000 -> {
-            val df = DecimalFormat("0.#")
-            "${df.format(value / 1000.0)}k"
-        }
-        else -> value.coerceAtLeast(0).toString()
     }
 }

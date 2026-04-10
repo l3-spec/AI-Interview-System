@@ -41,7 +41,9 @@ data class ContentCard(
     val summary: String?,
     val badge: String? = null,
     val targetType: HomeFeedTargetType = HomeFeedTargetType.POST,
-    val targetId: String = id
+    val targetId: String = id,
+    val salary: String? = null,
+    val location: String? = null
 ) : Serializable
 
 /**
@@ -199,6 +201,12 @@ class HomeViewModel(private val repository: ContentRepository) : ViewModel() {
 
     private fun HomeFeedItem.toContentCard(): ContentCard {
         val avatarKey = authorName.takeIf { it.isNotBlank() } ?: id
+        // 从 metricValue 中解析薪资信息（适用于职岗类型）
+        val salaryValue = if (targetType == HomeFeedTargetType.JOB) metricValue else null
+        // 从 tags 中提取城市信息（通常是最后一个 tag）
+        val locationValue = if (targetType == HomeFeedTargetType.JOB || targetType == HomeFeedTargetType.COMPANY) {
+            tags.lastOrNull()?.takeIf { it.isNotBlank() }
+        } else null
         return ContentCard(
             id = id,
             imageUrl = imageUrl,
@@ -211,7 +219,9 @@ class HomeViewModel(private val repository: ContentRepository) : ViewModel() {
                 ?.takeIf { it.isNotBlank() },
             badge = badge,
             targetType = targetType,
-            targetId = targetId
+            targetId = targetId,
+            salary = salaryValue,
+            location = locationValue
         )
     }
 
