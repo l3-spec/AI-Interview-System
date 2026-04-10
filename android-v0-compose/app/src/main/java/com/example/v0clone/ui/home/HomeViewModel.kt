@@ -24,7 +24,9 @@ data class BannerData(
     val imageUrl: String,
     val label: String,
     val title: String,
-    val subtitle: String
+    val subtitle: String,
+    val linkType: String? = null,
+    val linkId: String? = null
 )
 
 /**
@@ -69,18 +71,6 @@ class HomeViewModel(private val repository: ContentRepository) : ViewModel() {
 
     private var currentPage = 1
     private val pageSize = 12
-    private val mockAvatarUrls = listOf(
-        "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=160&h=160&q=80",
-        "https://images.unsplash.com/photo-1525130413817-d45c1d127c42?auto=format&fit=crop&w=160&h=160&q=80",
-        "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=160&h=160&q=80",
-        "https://images.unsplash.com/photo-1520813792240-56fc4a3765a7?auto=format&fit=crop&w=160&h=160&q=80",
-        "https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=160&h=160&q=80",
-        "https://images.unsplash.com/photo-1524253482453-3fed8d2fe12b?auto=format&fit=crop&w=160&h=160&q=80",
-        "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=160&h=160&q=80",
-        "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=160&h=160&q=80"
-    )
-    private val avatarAssignments = mutableMapOf<String, String>()
-    private var avatarCursor = 0
 
     init {
         refresh()
@@ -196,11 +186,12 @@ class HomeViewModel(private val repository: ContentRepository) : ViewModel() {
         imageUrl = imageUrl,
         label = subtitle,
         title = title,
-        subtitle = description
+        subtitle = description,
+        linkType = linkType,
+        linkId = linkId
     )
 
     private fun HomeFeedItem.toContentCard(): ContentCard {
-        val avatarKey = authorName.takeIf { it.isNotBlank() } ?: id
         // 从 metricValue 中解析薪资信息（适用于职岗类型）
         val salaryValue = if (targetType == HomeFeedTargetType.JOB) metricValue else null
         // 从 tags 中提取城市信息（通常是最后一个 tag）
@@ -214,7 +205,7 @@ class HomeViewModel(private val repository: ContentRepository) : ViewModel() {
             tags = tags,
             author = authorName,
             views = metricValue ?: "",
-            avatarUrl = authorAvatar ?: getMockAvatarFor(avatarKey),
+            avatarUrl = authorAvatar,
             summary = summary
                 ?.takeIf { it.isNotBlank() },
             badge = badge,
@@ -223,15 +214,6 @@ class HomeViewModel(private val repository: ContentRepository) : ViewModel() {
             salary = salaryValue,
             location = locationValue
         )
-    }
-
-    private fun getMockAvatarFor(key: String): String {
-        val safeKey = key.ifBlank { "default" }
-        return avatarAssignments.getOrPut(safeKey) {
-            val avatar = mockAvatarUrls[avatarCursor % mockAvatarUrls.size]
-            avatarCursor = (avatarCursor + 1) % mockAvatarUrls.size
-            avatar
-        }
     }
 
     companion object {

@@ -243,6 +243,31 @@ fun AppNavHost(navController: NavHostController) {
                     requireLogin {
                         navController.navigate(Routes.JOBS)
                     }
+                },
+                onBannerClick = { banner ->
+                    requireLogin {
+                        when (banner.linkType) {
+                            "post" -> {
+                                banner.linkId?.let { id ->
+                                    navController.navigate("content/${URLEncoder.encode(id, "UTF-8")}")
+                                }
+                            }
+                            "company" -> {
+                                banner.linkId?.let { id ->
+                                    navController.navigate("${Routes.COMPANY}/${URLEncoder.encode(id, "UTF-8")}")
+                                }
+                            }
+                            "webview", "third_party" -> {
+                                banner.linkId?.let { url ->
+                                    if (url.isNotBlank()) {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        runCatching { context.startActivity(intent) }
+                                            .onFailure { Toast.makeText(context, "无法打开链接", Toast.LENGTH_SHORT).show() }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             )
         }

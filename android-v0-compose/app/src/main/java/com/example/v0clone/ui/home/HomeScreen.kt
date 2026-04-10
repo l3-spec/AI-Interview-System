@@ -30,6 +30,11 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import com.xlwl.AiMian.data.repository.ContentRepository
 import com.xlwl.AiMian.data.model.HomeFeedTargetType
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.foundation.shape.CircleShape
+import coil.compose.AsyncImage
+import java.text.DecimalFormat
 
 /**
  * AI面试系统首页 - 优化版
@@ -59,11 +64,30 @@ private val HomeTopBarMaxOffset = 120.dp
 private val HomeHeaderApproxHeight = HomeTopBarExpandedHeight + 64.dp
 private val FigmaLetterSpacing = (-0.32).sp
 
+private val AvatarFallbackColors = listOf(
+    Color(0xFFFDE68A), // Amber
+    Color(0xFFBFDBFE), // Blue
+    Color(0xFFC6F6D5), // Green
+    Color(0xFFFED7AA), // Orange
+    Color(0xFFE9D5FF), // Purple
+    Color(0xFFFECACA), // Red
+    Color(0xFF99F6E4)  // Teal
+)
+
+private val JobGradientOptions = listOf(
+    listOf(Color(0xFFF97316), Color(0xFFFFEDD5)), // 橙色
+    listOf(Color(0xFF0EA5E9), Color(0xFFE0F2FE)), // 蓝色
+    listOf(Color(0xFF8B5CF6), Color(0xFFEDE9FE)), // 紫色
+    listOf(Color(0xFF14B8A6), Color(0xFFCCFBF1)), // 青色
+    listOf(Color(0xFFF43F5E), Color(0xFFFFF1F2))  // 红色
+)
+
 @Composable
 fun HomeScreen(
     repository: ContentRepository,
     onCardClick: (ContentCard) -> Unit = {},
-    onSearchClick: () -> Unit = {}
+    onSearchClick: () -> Unit = {},
+    onBannerClick: (BannerData) -> Unit = {}
 ) {
     val viewModel: HomeViewModel = viewModel(factory = HomeViewModel.provideFactory(repository))
     val uiState by viewModel.uiState.collectAsState()
@@ -149,9 +173,7 @@ fun HomeScreen(
                 BannerCarousel(
                     banners = uiState.banners,
                     currentIndex = uiState.currentBannerIndex,
-                    onBannerClick = { banner ->
-                        // 处理Banner点击
-                    }
+                    onBannerClick = onBannerClick
                 )
             }
             
@@ -577,7 +599,7 @@ private fun ContentCardItem(
             // 底部文字区域 - 精简版：根据卡片类型展示不同内容
             when (card.targetType) {
                 HomeFeedTargetType.JOB -> {
-                    // 职岗：标签 + 城市
+                    // 职岗：标签一行 + 薪资一行
                     Column(
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -598,12 +620,12 @@ private fun ContentCardItem(
                                 letterSpacing = FigmaLetterSpacing
                             )
                         }
-                        card.location?.takeIf { it.isNotBlank() }?.let { loc ->
+                        card.salary?.takeIf { it.isNotBlank() }?.let { sal ->
                             Text(
-                                text = loc,
+                                text = sal,
                                 fontSize = 12.sp,
-                                color = CardSubtleText,
-                                fontWeight = FontWeight.Normal,
+                                color = SalaryColor,
+                                fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 lineHeight = 18.sp,
@@ -681,6 +703,58 @@ private fun ContentCardItem(
                     }
                 }
             }
+
+            // 恢复发帖人 & 浏览量 row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
+                    AuthorAvatar(
+                        name = card.author,
+                        avatarUrl = card.avatarUrl,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = card.author,
+                        style = TextStyle(
+                            color = CardSubtleText,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Normal,
+                            letterSpacing = FigmaLetterSpacing
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Visibility,
+                        contentDescription = null,
+                        tint = CardSubtleText.copy(alpha = 0.6f),
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Text(
+                        text = formatCompactViewCount(card.views.toIntOrNull() ?: 0),
+                        style = TextStyle(
+                            color = CardSubtleText,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Normal,
+                            letterSpacing = FigmaLetterSpacing
+                        )
+                    )
+                }
+            }
         }
     }
 }
@@ -693,41 +767,45 @@ private fun JobCardHero(
     card: ContentCard,
     modifier: Modifier = Modifier
 ) {
+    val gradientColors = remember(card.id) {
+        val index = (card.id.hashCode() and 0x7FFFFFFF) % JobGradientOptions.size
+        JobGradientOptions[index]
+    }
+
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
             .background(
                 brush = Brush.linearGradient(
-                    colors = listOf(Color(0xFFF97316), Color(0xFFFFEDD5))
+                    colors = gradientColors
                 )
             )
     ) {
         Column(
             modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .align(Alignment.TopStart)
+                .padding(14.dp)
+                .offset(y = (-4).dp), // 文字上移
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Text(
-                text = card.title,
+                text = card.author, // 公司名称
+                color = Color.White.copy(alpha = 0.9f),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 18.sp
+            )
+            Text(
+                text = card.title, // 职岗名称
                 color = Color.White,
-                fontSize = 18.sp,
+                fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 lineHeight = 24.sp
             )
-            card.salary?.takeIf { it.isNotBlank() }?.let { salary ->
-                Text(
-                    text = salary,
-                    color = Color.White.copy(alpha = 0.95f),
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    lineHeight = 22.sp
-                )
-            }
         }
     }
 }
@@ -811,5 +889,58 @@ private fun GenericCardHero(
                 lineHeight = 24.sp
             )
         }
+    }
+}
+@Composable
+private fun AuthorAvatar(
+    name: String,
+    avatarUrl: String?,
+    modifier: Modifier = Modifier
+) {
+    if (!avatarUrl.isNullOrBlank()) {
+        AsyncImage(
+            model = avatarUrl,
+            contentDescription = name,
+            modifier = modifier
+                .clip(CircleShape),
+            contentScale = ContentScale.Crop
+        )
+    } else {
+        val backgroundColor = remember(name) {
+            val index = (name.hashCode() and 0x7FFFFFFF) % AvatarFallbackColors.size
+            AvatarFallbackColors[index]
+        }
+        val firstChar = name.firstOrNull()?.uppercaseChar()?.toString() ?: "星"
+        
+        Surface(
+            modifier = modifier,
+            shape = CircleShape,
+            color = backgroundColor
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = firstChar,
+                    style = TextStyle(
+                        color = Color(0xFF4B5563).copy(alpha = 0.8f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                )
+            }
+        }
+    }
+}
+
+private fun formatCompactViewCount(value: Int): String {
+    return when {
+        value >= 10000 -> {
+            val df = DecimalFormat("0.#")
+            "${df.format(value / 10000.0)}万"
+        }
+        value >= 1000 -> {
+            val df = DecimalFormat("0.#")
+            "${df.format(value / 1000.0)}k"
+        }
+        else -> value.coerceAtLeast(0).toString()
     }
 }

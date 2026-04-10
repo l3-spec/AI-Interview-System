@@ -62,6 +62,10 @@ import androidx.navigation.NavBackStackEntry
 import coil.compose.AsyncImage
 import com.xlwl.AiMian.data.repository.ContentRepository
 import kotlinx.coroutines.flow.distinctUntilChanged
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.foundation.shape.CircleShape
+import java.text.DecimalFormat
+import androidx.compose.ui.text.TextStyle
 
 // 根据Figma设计规范定义颜色和尺寸
 private val PageBackground = Color(0xFFF4F5F6) // 与首页保持一致的柔和灰背景
@@ -76,6 +80,16 @@ private val CircleTopBarExpandedHeight = 68.dp // 紧贴状态栏的更紧凑高
 private val CircleTopBarCollapsedHeight = 52.dp
 private val CircleTopBarMaxOffset = 120.dp
 private val CircleHeaderApproxHeight = CircleTopBarExpandedHeight + 16.dp // 预估高度用于占位
+
+private val AvatarFallbackColors = listOf(
+    Color(0xFFFDE68A), // Amber
+    Color(0xFFBFDBFE), // Blue
+    Color(0xFFC6F6D5), // Green
+    Color(0xFFFED7AA), // Orange
+    Color(0xFFE9D5FF), // Purple
+    Color(0xFFFECACA), // Red
+    Color(0xFF99F6E4)  // Teal
+)
 
 @Composable
 fun CircleRoute(
@@ -369,7 +383,113 @@ private fun CirclePostCard(
                     )
                 }
             }
+
+            // 恢复发帖人 & 浏览量 row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 8.dp, end = 8.dp, bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
+                    CircleAuthorAvatar(
+                        name = card.authorName,
+                        avatarUrl = card.authorAvatar,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = card.authorName,
+                        style = TextStyle(
+                            color = SearchPlaceholder,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Normal,
+                            letterSpacing = (-0.32).sp
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Visibility,
+                        contentDescription = null,
+                        tint = SearchPlaceholder.copy(alpha = 0.6f),
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Text(
+                        text = formatCircleViewCount(card.viewCount),
+                        style = TextStyle(
+                            color = SearchPlaceholder,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Normal,
+                            letterSpacing = (-0.32).sp
+                        )
+                    )
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun CircleAuthorAvatar(
+    name: String,
+    avatarUrl: String?,
+    modifier: Modifier = Modifier
+) {
+    if (!avatarUrl.isNullOrBlank()) {
+        AsyncImage(
+            model = avatarUrl,
+            contentDescription = name,
+            modifier = modifier
+                .clip(CircleShape),
+            contentScale = ContentScale.Crop
+        )
+    } else {
+        val backgroundColor = remember(name) {
+            val index = (name.hashCode() and 0x7FFFFFFF) % AvatarFallbackColors.size
+            AvatarFallbackColors[index]
+        }
+        val firstChar = name.firstOrNull()?.uppercaseChar()?.toString() ?: "星"
+
+        Surface(
+            modifier = modifier,
+            shape = CircleShape,
+            color = backgroundColor
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = firstChar,
+                    style = TextStyle(
+                        color = Color(0xFF4B5563).copy(alpha = 0.8f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                )
+            }
+        }
+    }
+}
+
+private fun formatCircleViewCount(value: Int): String {
+    return when {
+        value >= 10000 -> {
+            val df = DecimalFormat("0.#")
+            "${df.format(value / 10000.0)}万"
+        }
+        value >= 1000 -> {
+            val df = DecimalFormat("0.#")
+            "${df.format(value / 1000.0)}k"
+        }
+        else -> value.coerceAtLeast(0).toString()
     }
 }
 
