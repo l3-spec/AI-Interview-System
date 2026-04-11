@@ -174,6 +174,104 @@ class ContentRepository(private val apiService: ApiService) {
                 Result.failure(e)
             }
         }
+
+    suspend fun getUserPostEngagement(postId: String): Result<PostEngagement> =
+        withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.getUserPostEngagement(postId)
+                if (response.success && response.data != null) {
+                    Result.success(response.data)
+                } else {
+                    Result.failure(Exception(response.message ?: "获取帖子互动数据失败"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    suspend fun getUserPostComments(postId: String): Result<List<PostCommentDto>> =
+        withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.getUserPostComments(postId)
+                if (response.success && response.data != null) {
+                    Result.success(response.data)
+                } else {
+                    Result.failure(Exception(response.message ?: "获取帖子评论失败"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    suspend fun createUserPostComment(postId: String, content: String): Result<CreatePostCommentResult> =
+        withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.createUserPostComment(postId, CreatePostCommentRequest(content))
+                if (response.success && response.data != null) {
+                    Result.success(response.data)
+                } else {
+                    Result.failure(Exception(response.message ?: "发表评论失败"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    suspend fun likeUserPost(postId: String): Result<PostEngagement> =
+        withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.likeUserPost(postId)
+                if (response.success && response.data != null) {
+                    Result.success(response.data)
+                } else {
+                    Result.failure(Exception(response.message ?: "点赞失败"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    suspend fun unlikeUserPost(postId: String): Result<PostEngagement> =
+        withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.unlikeUserPost(postId)
+                if (response.success && response.data != null) {
+                    Result.success(response.data)
+                } else {
+                    Result.failure(Exception(response.message ?: "取消点赞失败"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    suspend fun favoriteUserPost(postId: String): Result<PostEngagement> =
+        withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.favoriteUserPost(postId)
+                if (response.success && response.data != null) {
+                    Result.success(response.data)
+                } else {
+                    Result.failure(Exception(response.message ?: "收藏失败"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    suspend fun unfavoriteUserPost(postId: String): Result<PostEngagement> =
+        withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.unfavoriteUserPost(postId)
+                if (response.success && response.data != null) {
+                    Result.success(response.data)
+                } else {
+                    Result.failure(Exception(response.message ?: "取消收藏失败"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
     
     /**
      * 获取大咖分享列表
@@ -205,6 +303,104 @@ class ContentRepository(private val apiService: ApiService) {
                     Result.success(response.data)
                 } else {
                     Result.failure(Exception(response.message ?: "获取大咖分享详情失败"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    suspend fun getExpertPostEngagement(postId: String): Result<PostEngagement> =
+        withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.getExpertPostEngagement(postId)
+                if (response.success && response.data != null) {
+                    Result.success(response.data)
+                } else {
+                    Result.failure(Exception(response.message ?: "获取帖子互动数据失败"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    suspend fun getExpertPostComments(postId: String): Result<List<PostCommentDto>> =
+        withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.getExpertPostComments(postId)
+                if (response.success && response.data != null) {
+                    Result.success(response.data)
+                } else {
+                    Result.failure(Exception(response.message ?: "获取帖子评论失败"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    suspend fun createExpertPostComment(postId: String, content: String): Result<CreatePostCommentResult> =
+        withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.createExpertPostComment(postId, CreatePostCommentRequest(content))
+                if (response.success && response.data != null) {
+                    Result.success(response.data)
+                } else {
+                    Result.failure(Exception(response.message ?: "发表评论失败"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    suspend fun likeExpertPost(postId: String): Result<PostEngagement> =
+        withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.likeExpertPost(postId)
+                if (response.success && response.data != null) {
+                    Result.success(response.data)
+                } else {
+                    Result.failure(Exception(response.message ?: "点赞失败"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    suspend fun unlikeExpertPost(postId: String): Result<PostEngagement> =
+        withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.unlikeExpertPost(postId)
+                if (response.success && response.data != null) {
+                    Result.success(response.data)
+                } else {
+                    Result.failure(Exception(response.message ?: "取消点赞失败"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    suspend fun favoriteExpertPost(postId: String): Result<PostEngagement> =
+        withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.favoriteExpertPost(postId)
+                if (response.success && response.data != null) {
+                    Result.success(response.data)
+                } else {
+                    Result.failure(Exception(response.message ?: "收藏失败"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    suspend fun unfavoriteExpertPost(postId: String): Result<PostEngagement> =
+        withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.unfavoriteExpertPost(postId)
+                if (response.success && response.data != null) {
+                    Result.success(response.data)
+                } else {
+                    Result.failure(Exception(response.message ?: "取消收藏失败"))
                 }
             } catch (e: Exception) {
                 Result.failure(e)

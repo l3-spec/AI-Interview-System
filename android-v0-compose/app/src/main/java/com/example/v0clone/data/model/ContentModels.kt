@@ -143,3 +143,35 @@ data class HomeFeaturedArticle(
     val category: String?,
     val createdAt: String?
 )
+
+data class PostEngagement(
+    val postId: String,
+    val postType: String,
+    val likeCount: Int,
+    val commentCount: Int,
+    val favoriteCount: Int,
+    val isLiked: Boolean,
+    val isFavorited: Boolean
+)
+
+data class PostCommentAuthor(
+    val id: String?,
+    val name: String?,
+    val avatar: String?
+)
+
+data class PostCommentDto(
+    val id: String,
+    val content: String,
+    val createdAt: String,
+    val author: PostCommentAuthor
+)
+
+data class CreatePostCommentRequest(
+    val content: String
+)
+
+data class CreatePostCommentResult(
+    val comment: PostCommentDto?,
+    val engagement: PostEngagement?
+)

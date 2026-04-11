@@ -198,13 +198,20 @@ class HomeViewModel(private val repository: ContentRepository) : ViewModel() {
         val locationValue = if (targetType == HomeFeedTargetType.JOB || targetType == HomeFeedTargetType.COMPANY) {
             tags.lastOrNull()?.takeIf { it.isNotBlank() }
         } else null
+
+        val viewsValue = when {
+            targetType == HomeFeedTargetType.POST -> parseMetricViewCount(metricValue).toString()
+            targetType == HomeFeedTargetType.JOB -> "" // 职岗卡片底部不显示浏览量（因为已有薪资）
+            else -> metricValue ?: ""
+        }
+
         return ContentCard(
             id = id,
             imageUrl = imageUrl,
             title = title,
             tags = tags,
             author = authorName,
-            views = metricValue ?: "",
+            views = viewsValue,
             avatarUrl = authorAvatar,
             summary = summary
                 ?.takeIf { it.isNotBlank() },
@@ -214,6 +221,25 @@ class HomeViewModel(private val repository: ContentRepository) : ViewModel() {
             salary = salaryValue,
             location = locationValue
         )
+    }
+
+    private fun parseMetricViewCount(metricValue: String?): Int {
+        val raw = metricValue
+            ?.replace("浏览", "", ignoreCase = true)
+            ?.trim()
+            .orEmpty()
+
+        if (raw.isEmpty()) return 0
+
+        return when {
+            raw.endsWith("M", ignoreCase = true) -> {
+                (raw.dropLast(1).toDoubleOrNull()?.times(1_000_000))?.toInt() ?: 0
+            }
+            raw.endsWith("K", ignoreCase = true) -> {
+                (raw.dropLast(1).toDoubleOrNull()?.times(1_000))?.toInt() ?: 0
+            }
+            else -> raw.toIntOrNull() ?: 0
+        }
     }
 
     companion object {

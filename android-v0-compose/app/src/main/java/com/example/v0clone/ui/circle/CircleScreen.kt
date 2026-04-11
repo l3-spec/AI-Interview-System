@@ -41,6 +41,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.key
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,6 +61,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavBackStackEntry
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.xlwl.AiMian.data.repository.ContentRepository
 import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.material.icons.outlined.Visibility
@@ -88,7 +90,14 @@ private val AvatarFallbackColors = listOf(
     Color(0xFFFED7AA), // Orange
     Color(0xFFE9D5FF), // Purple
     Color(0xFFFECACA), // Red
-    Color(0xFF99F6E4)  // Teal
+    Color(0xFF99F6E4), // Teal
+    Color(0xFFDDD6FE), // Violet
+    Color(0xFFFBCFE8), // Pink
+    Color(0xFFCFFAFE), // Cyan
+    Color(0xFFF5F3FF), // Indigo
+    Color(0xFFFEF3C7), // Yellow
+    Color(0xFFE0F2FE), // Light Blue
+    Color(0xFFECFDF5)  // Emerald
 )
 
 @Composable
@@ -397,11 +406,13 @@ private fun CirclePostCard(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.weight(1f, fill = false)
                 ) {
-                    CircleAuthorAvatar(
-                        name = card.authorName,
-                        avatarUrl = card.authorAvatar,
-                        modifier = Modifier.size(18.dp)
-                    )
+                    key(card.id) {
+                        CircleAuthorAvatar(
+                            name = card.authorName,
+                            avatarUrl = card.authorAvatar,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                     Text(
                         text = card.authorName,
                         style = TextStyle(
@@ -446,35 +457,48 @@ private fun CircleAuthorAvatar(
     modifier: Modifier = Modifier
 ) {
     if (!avatarUrl.isNullOrBlank()) {
-        AsyncImage(
+        SubcomposeAsyncImage(
             model = avatarUrl,
             contentDescription = name,
             modifier = modifier
                 .clip(CircleShape),
-            contentScale = ContentScale.Crop
+            contentScale = ContentScale.Crop,
+            error = {
+                CircleAvatarFallback(name = name, modifier = modifier)
+            }
         )
     } else {
-        val backgroundColor = remember(name) {
-            val index = (name.hashCode() and 0x7FFFFFFF) % AvatarFallbackColors.size
-            AvatarFallbackColors[index]
-        }
-        val firstChar = name.firstOrNull()?.uppercaseChar()?.toString() ?: "星"
+        CircleAvatarFallback(name = name, modifier = modifier)
+    }
+}
 
-        Surface(
-            modifier = modifier,
-            shape = CircleShape,
-            color = backgroundColor
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = firstChar,
-                    style = TextStyle(
-                        color = Color(0xFF4B5563).copy(alpha = 0.8f),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+@Composable
+private fun CircleAvatarFallback(
+    name: String,
+    modifier: Modifier = Modifier
+) {
+    val trimmedName = name.trim()
+    val backgroundColor = remember(trimmedName) {
+        val hash = if (trimmedName.isEmpty()) 0 else trimmedName.hashCode()
+        val index = (hash and 0x7FFFFFFF) % AvatarFallbackColors.size
+        AvatarFallbackColors[index]
+    }
+    val firstChar = trimmedName.firstOrNull()?.toString() ?: "星"
+
+    Surface(
+        modifier = modifier,
+        shape = CircleShape,
+        color = backgroundColor
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = firstChar,
+                style = TextStyle(
+                    color = Color(0xFF4B5563).copy(alpha = 0.85f),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
                 )
-            }
+            )
         }
     }
 }

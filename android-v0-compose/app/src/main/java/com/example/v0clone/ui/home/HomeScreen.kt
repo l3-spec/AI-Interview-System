@@ -34,6 +34,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.foundation.shape.CircleShape
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import java.text.DecimalFormat
 
 /**
@@ -71,7 +72,14 @@ private val AvatarFallbackColors = listOf(
     Color(0xFFFED7AA), // Orange
     Color(0xFFE9D5FF), // Purple
     Color(0xFFFECACA), // Red
-    Color(0xFF99F6E4)  // Teal
+    Color(0xFF99F6E4), // Teal
+    Color(0xFFDDD6FE), // Violet
+    Color(0xFFFBCFE8), // Pink
+    Color(0xFFCFFAFE), // Cyan
+    Color(0xFFF5F3FF), // Indigo
+    Color(0xFFFEF3C7), // Yellow
+    Color(0xFFE0F2FE), // Light Blue
+    Color(0xFFECFDF5)  // Emerald
 )
 
 private val JobGradientOptions = listOf(
@@ -717,11 +725,13 @@ private fun ContentCardItem(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.weight(1f, fill = false)
                 ) {
-                    AuthorAvatar(
-                        name = card.author,
-                        avatarUrl = card.avatarUrl,
-                        modifier = Modifier.size(18.dp)
-                    )
+                    key(card.id) {
+                        AuthorAvatar(
+                            name = card.author,
+                            avatarUrl = card.avatarUrl,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                     Text(
                         text = card.author,
                         style = TextStyle(
@@ -734,25 +744,27 @@ private fun ContentCardItem(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Visibility,
-                        contentDescription = null,
-                        tint = CardSubtleText.copy(alpha = 0.6f),
-                        modifier = Modifier.size(12.dp)
-                    )
-                    Text(
-                        text = formatCompactViewCount(card.views.toIntOrNull() ?: 0),
-                        style = TextStyle(
-                            color = CardSubtleText,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Normal,
-                            letterSpacing = FigmaLetterSpacing
+                if (card.targetType == HomeFeedTargetType.POST && card.views.isNotBlank()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Visibility,
+                            contentDescription = null,
+                            tint = CardSubtleText.copy(alpha = 0.6f),
+                            modifier = Modifier.size(12.dp)
                         )
-                    )
+                        Text(
+                            text = formatCompactViewCount(card.views.toIntOrNull() ?: 0),
+                            style = TextStyle(
+                                color = CardSubtleText,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Normal,
+                                letterSpacing = FigmaLetterSpacing
+                            )
+                        )
+                    }
                 }
             }
         }
@@ -898,35 +910,48 @@ private fun AuthorAvatar(
     modifier: Modifier = Modifier
 ) {
     if (!avatarUrl.isNullOrBlank()) {
-        AsyncImage(
+        SubcomposeAsyncImage(
             model = avatarUrl,
             contentDescription = name,
             modifier = modifier
                 .clip(CircleShape),
-            contentScale = ContentScale.Crop
+            contentScale = ContentScale.Crop,
+            error = {
+                AvatarInitialFallback(name = name, modifier = modifier)
+            }
         )
     } else {
-        val backgroundColor = remember(name) {
-            val index = (name.hashCode() and 0x7FFFFFFF) % AvatarFallbackColors.size
-            AvatarFallbackColors[index]
-        }
-        val firstChar = name.firstOrNull()?.uppercaseChar()?.toString() ?: "星"
-        
-        Surface(
-            modifier = modifier,
-            shape = CircleShape,
-            color = backgroundColor
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = firstChar,
-                    style = TextStyle(
-                        color = Color(0xFF4B5563).copy(alpha = 0.8f),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+        AvatarInitialFallback(name = name, modifier = modifier)
+    }
+}
+
+@Composable
+private fun AvatarInitialFallback(
+    name: String,
+    modifier: Modifier = Modifier
+) {
+    val trimmedName = name.trim()
+    val backgroundColor = remember(trimmedName) {
+        val hash = if (trimmedName.isEmpty()) 0 else trimmedName.hashCode()
+        val index = (hash and 0x7FFFFFFF) % AvatarFallbackColors.size
+        AvatarFallbackColors[index]
+    }
+    val firstChar = trimmedName.firstOrNull()?.toString() ?: "星"
+
+    Surface(
+        modifier = modifier,
+        shape = CircleShape,
+        color = backgroundColor
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = firstChar,
+                style = TextStyle(
+                    color = Color(0xFF4B5563).copy(alpha = 0.85f),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
                 )
-            }
+            )
         }
     }
 }

@@ -257,6 +257,13 @@ fun AppNavHost(navController: NavHostController) {
                                     navController.navigate("${Routes.COMPANY}/${URLEncoder.encode(id, "UTF-8")}")
                                 }
                             }
+                            "assessment" -> {
+                                banner.linkId?.let { id ->
+                                    navController.navigate("${Routes.PROFILE_ASSESSMENT_TAKE}/${URLEncoder.encode(id, "UTF-8")}") {
+                                        launchSingleTop = true
+                                    }
+                                }
+                            }
                             "webview", "third_party" -> {
                                 banner.linkId?.let { url ->
                                     if (url.isNotBlank()) {

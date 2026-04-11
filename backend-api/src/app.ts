@@ -3,9 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
 import { PrismaClient } from '@prisma/client';
-import authRoutes from './routes/auth';
-import avatarRoutes from './routes/avatar.routes';
-import openSourceAvatarRoutes from './routes/openSourceAvatar.routes';
+import routes from './routes';
 import voiceRoutes from './routes/voice.routes';
 
 const app = express();
@@ -98,10 +96,8 @@ app.use('/avatar', express.static(path.join(publicPath, 'avatar')));
 app.use('/models', express.static(path.join(publicPath, 'models')));
 
 // 路由
-app.use('/api/auth', authRoutes);
-app.use('/api/avatar', openSourceAvatarRoutes);
-app.use('/api', avatarRoutes);
 app.use(['/api/voice', '/voice'], voiceRoutes);
+app.use('/api', routes);
 
 // 添加调试路由
 app.get('/debug', (req, res) => {

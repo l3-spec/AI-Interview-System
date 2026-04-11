@@ -94,6 +94,42 @@ interface ApiService {
     suspend fun getUserPostDetail(
         @Path("id") postId: String
     ): ApiResponse<UserPost>
+
+    @GET("content/posts/{id}/engagement")
+    suspend fun getUserPostEngagement(
+        @Path("id") postId: String
+    ): ApiResponse<PostEngagement>
+
+    @GET("content/posts/{id}/comments")
+    suspend fun getUserPostComments(
+        @Path("id") postId: String
+    ): ApiResponse<List<PostCommentDto>>
+
+    @POST("content/posts/{id}/comments")
+    suspend fun createUserPostComment(
+        @Path("id") postId: String,
+        @Body request: CreatePostCommentRequest
+    ): ApiResponse<CreatePostCommentResult>
+
+    @POST("content/posts/{id}/like")
+    suspend fun likeUserPost(
+        @Path("id") postId: String
+    ): ApiResponse<PostEngagement>
+
+    @DELETE("content/posts/{id}/like")
+    suspend fun unlikeUserPost(
+        @Path("id") postId: String
+    ): ApiResponse<PostEngagement>
+
+    @POST("content/posts/{id}/favorite")
+    suspend fun favoriteUserPost(
+        @Path("id") postId: String
+    ): ApiResponse<PostEngagement>
+
+    @DELETE("content/posts/{id}/favorite")
+    suspend fun unfavoriteUserPost(
+        @Path("id") postId: String
+    ): ApiResponse<PostEngagement>
     
     /**
      * 获取大咖分享列表
@@ -111,6 +147,42 @@ interface ApiService {
     suspend fun getExpertPostDetail(
         @Path("id") postId: String
     ): ApiResponse<ExpertPost>
+
+    @GET("content/expert-posts/{id}/engagement")
+    suspend fun getExpertPostEngagement(
+        @Path("id") postId: String
+    ): ApiResponse<PostEngagement>
+
+    @GET("content/expert-posts/{id}/comments")
+    suspend fun getExpertPostComments(
+        @Path("id") postId: String
+    ): ApiResponse<List<PostCommentDto>>
+
+    @POST("content/expert-posts/{id}/comments")
+    suspend fun createExpertPostComment(
+        @Path("id") postId: String,
+        @Body request: CreatePostCommentRequest
+    ): ApiResponse<CreatePostCommentResult>
+
+    @POST("content/expert-posts/{id}/like")
+    suspend fun likeExpertPost(
+        @Path("id") postId: String
+    ): ApiResponse<PostEngagement>
+
+    @DELETE("content/expert-posts/{id}/like")
+    suspend fun unlikeExpertPost(
+        @Path("id") postId: String
+    ): ApiResponse<PostEngagement>
+
+    @POST("content/expert-posts/{id}/favorite")
+    suspend fun favoriteExpertPost(
+        @Path("id") postId: String
+    ): ApiResponse<PostEngagement>
+
+    @DELETE("content/expert-posts/{id}/favorite")
+    suspend fun unfavoriteExpertPost(
+        @Path("id") postId: String
+    ): ApiResponse<PostEngagement>
     
     /**
      * 获取推广职位列表

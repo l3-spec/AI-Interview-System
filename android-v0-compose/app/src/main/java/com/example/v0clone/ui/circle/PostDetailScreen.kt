@@ -1,8 +1,10 @@
 package com.xlwl.AiMian.ui.circle
 
 import android.app.Activity
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,22 +15,31 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.StarBorder
@@ -41,14 +52,20 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,6 +75,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -70,6 +88,8 @@ import androidx.lifecycle.viewModelScope
 import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 import com.xlwl.AiMian.data.model.ExpertPost
+import com.xlwl.AiMian.data.model.PostCommentDto
+import com.xlwl.AiMian.data.model.PostEngagement
 import com.xlwl.AiMian.data.model.UserPost
 import com.xlwl.AiMian.data.repository.ContentRepository
 import com.xlwl.AiMian.ui.home.ContentCard
@@ -92,6 +112,11 @@ private val AccentOrange = Color(0xFFEC7C38)      // 作者名、标签
 private val DividerColor = Color(0xFFF0F0F0)      // 分割线
 private val InputFieldBg = Color(0xFFF5F5F5)      // 评论输入框底色
 private val InputFieldBorder = Color(0xFFE5E5E5)  // 评论输入框边框
+private val CommentSheetBackground = Color(0xFF17171B)
+private val CommentSheetSurface = Color(0xFF202028)
+private val CommentSheetText = Color(0xFFF5F5F7)
+private val CommentSheetMeta = Color(0xFF8D8D96)
+private val CommentSheetDivider = Color(0xFF2A2A31)
 
 // ═══════════════════════════════════════════════════════════════
 //  入口
@@ -109,6 +134,8 @@ fun PostDetailRoute(
     )
     val uiState by viewModel.uiState.collectAsState()
     val detail = uiState.detail
+    var showCommentsSheet by remember { mutableStateOf(false) }
+    val commentsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
 
     // ── 状态栏：白底 + 深色图标 ──
     val context = LocalContext.current
@@ -135,6 +162,13 @@ fun PostDetailRoute(
         }
     }
 
+    LaunchedEffect(uiState.message) {
+        uiState.message?.let { message ->
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            viewModel.consumeMessage()
+        }
+    }
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = PageBackground,
@@ -145,19 +179,24 @@ fun PostDetailRoute(
                 color = PageBackground,
                 shadowElevation = 0.dp
             ) {
+                val statusTopPadding = WindowInsets.statusBars
+                    .asPaddingValues()
+                    .calculateTopPadding()
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(
-                            top = WindowInsets.statusBars
-                                .asPaddingValues()
-                                .calculateTopPadding()
-                        )
-                        .height(44.dp)
-                        .padding(horizontal = 4.dp),
+                        .padding(top = statusTopPadding)
+                        .padding(horizontal = 14.dp)
+                        .height(40.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onBack) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .clickableWithoutRipple(onBack),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
                             contentDescription = "返回",
@@ -165,17 +204,17 @@ fun PostDetailRoute(
                             modifier = Modifier.size(22.dp)
                         )
                     }
-                    // 标题紧跟返回箭头
+                    Spacer(Modifier.width(8.dp))
                     Text(
                         text = detail?.title ?: "",
                         color = PrimaryText,
-                        fontSize = 18.sp,
+                        fontSize = 17.sp,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
                             .weight(1f)
-                            .padding(end = 48.dp) // 右侧留白平衡
+                            .padding(end = 40.dp)
                     )
                 }
             }
@@ -185,7 +224,14 @@ fun PostDetailRoute(
                 PostDetailBottomBar(
                     likeCount = it.likeCount,
                     collectCount = it.collectCount,
-                    commentCount = it.commentCount
+                    commentCount = it.commentCount,
+                    isLiked = it.isLiked,
+                    isFavorited = it.isFavorited,
+                    isTogglingLike = uiState.isTogglingLike,
+                    isTogglingFavorite = uiState.isTogglingFavorite,
+                    onOpenComments = { showCommentsSheet = true },
+                    onToggleLike = viewModel::toggleLike,
+                    onToggleFavorite = viewModel::toggleFavorite
                 )
             }
         }
@@ -204,7 +250,7 @@ fun PostDetailRoute(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding),
-                    contentPadding = PaddingValues(bottom = 32.dp)
+                    contentPadding = PaddingValues(bottom = 20.dp)
                 ) {
                     // ── 标签 ──
                     if (detail.author.tags.isNotEmpty()) {
@@ -235,10 +281,11 @@ fun PostDetailRoute(
                         item { PostInlineGallery(gallery) }
                     }
 
-                    // ── 评论区 ──
-                    item { PostCommentsHeader(count = detail.commentCount) }
-                    items(detail.comments, key = { it.id }) { comment ->
-                        PostCommentItem(comment)
+                    item {
+                        PostCommentsEntry(
+                            count = detail.commentCount,
+                            onClick = { showCommentsSheet = true }
+                        )
                     }
                 }
             }
@@ -251,6 +298,26 @@ fun PostDetailRoute(
                         .padding(innerPadding)
                 )
             }
+        }
+    }
+
+    if (showCommentsSheet && detail != null) {
+        ModalBottomSheet(
+            onDismissRequest = { showCommentsSheet = false },
+            sheetState = commentsSheetState,
+            containerColor = Color.Transparent,
+            dragHandle = null
+        ) {
+            CommentsBottomSheetContent(
+                postAuthorName = detail.author.name,
+                comments = detail.comments,
+                commentCount = detail.commentCount,
+                commentDraft = uiState.pendingComment,
+                isSubmittingComment = uiState.isSubmittingComment,
+                onCommentChange = viewModel::updatePendingComment,
+                onSubmitComment = viewModel::submitComment,
+                onClose = { showCommentsSheet = false }
+            )
         }
     }
 }
@@ -352,7 +419,7 @@ private fun PostAuthorRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 8.dp),
+            .padding(horizontal = 20.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // 头像
@@ -383,16 +450,28 @@ private fun PostAuthorRow(
         Spacer(Modifier.width(10.dp))
 
         // 作者名
-        Text(
-            text = author.name,
-            color = PrimaryText,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-
-        Spacer(Modifier.weight(1f))
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = author.name,
+                color = PrimaryText,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = listOf(author.title, publishDate)
+                    .filter { it.isNotBlank() }
+                    .joinToString(" · "),
+                color = SecondaryText,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
 
         // 浏览量
         Icon(
@@ -492,87 +571,143 @@ private fun PostInlineGallery(imageUrls: List<String>) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  评论区标题  — Figma: 分隔线 + 数量文字
+//  评论入口  — 紧凑摘要，点击上拉全部评论
 // ═══════════════════════════════════════════════════════════════
 @Composable
-private fun PostCommentsHeader(count: Int) {
+private fun PostCommentsEntry(
+    count: Int,
+    onClick: () -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp)
-            .padding(top = 20.dp, bottom = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(top = 14.dp)
     ) {
         HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
-        Spacer(Modifier.height(12.dp))
-        Text(
-            text = "共${count}条评论",
-            color = SecondaryText,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Normal
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickableWithoutRipple(onClick)
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "全部评论 $count",
+                color = PrimaryText,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = if (count > 0) "上拉查看" else "写下第一条评论",
+                color = SecondaryText,
+                fontSize = 12.sp
+            )
+        }
+        HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
     }
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  评论项  — Figma: 头像 + 作者(橙) + 内容 + 时间
+//  评论项  — 深色抽屉样式
 // ═══════════════════════════════════════════════════════════════
 @Composable
-private fun PostCommentItem(comment: PostComment) {
+private fun SheetCommentItem(
+    comment: PostComment,
+    postAuthorName: String
+) {
+    val isAuthor = comment.author == postAuthorName
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // 头像
-        Surface(
-            modifier = Modifier.size(36.dp),
-            shape = CircleShape,
-            color = comment.avatarColor.copy(alpha = 0.15f)
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = comment.author.take(1),
-                    color = comment.avatarColor,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+        if (!comment.avatarUrl.isNullOrBlank()) {
+            SubcomposeAsyncImage(
+                model = comment.avatarUrl,
+                contentDescription = comment.author,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape),
+                error = {
+                    AvatarFallback(
+                        name = comment.author,
+                        color = comment.avatarColor,
+                        size = 42
+                    )
+                }
+            )
+        } else {
+            AvatarFallback(
+                name = comment.author,
+                color = comment.avatarColor,
+                size = 42
+            )
         }
 
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Text(
-                text = comment.author,
-                color = AccentOrange,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = comment.author,
+                    color = Color(0xFFE8E8ED),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                if (isAuthor) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color(0x33EC7C38)
+                    ) {
+                        Text(
+                            text = "作者",
+                            color = AccentOrange,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+            }
             Text(
                 text = comment.content,
-                color = PrimaryText,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Normal,
-                lineHeight = 20.sp
+                color = CommentSheetText,
+                fontSize = 16.sp,
+                lineHeight = 24.sp
             )
             Text(
-                text = comment.time,
-                color = SecondaryText,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Normal
+                text = "${comment.time}  回复",
+                color = CommentSheetMeta,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium
             )
         }
     }
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  底部操作栏  — Figma: 输入框 + ❤ 190 ⭐ 190 💬 7
+//  底部操作栏  — 评论入口 + 点赞/收藏/评论
 // ═══════════════════════════════════════════════════════════════
 @Composable
-private fun PostDetailBottomBar(likeCount: Int, collectCount: Int, commentCount: Int) {
+private fun PostDetailBottomBar(
+    likeCount: Int,
+    collectCount: Int,
+    commentCount: Int,
+    isLiked: Boolean,
+    isFavorited: Boolean,
+    isTogglingLike: Boolean,
+    isTogglingFavorite: Boolean,
+    onOpenComments: () -> Unit,
+    onToggleLike: () -> Unit,
+    onToggleFavorite: () -> Unit
+) {
     val navPadding = WindowInsets.navigationBars.asPaddingValues()
     Surface(
         color = PageBackground,
@@ -583,12 +718,11 @@ private fun PostDetailBottomBar(likeCount: Int, collectCount: Int, commentCount:
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
                     .padding(bottom = navPadding.calculateBottomPadding()),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // 评论输入框
                 Surface(
                     modifier = Modifier
                         .weight(1f)
@@ -597,27 +731,46 @@ private fun PostDetailBottomBar(likeCount: Int, collectCount: Int, commentCount:
                     color = InputFieldBg,
                     border = BorderStroke(0.5.dp, InputFieldBorder)
                 ) {
-                    Box(
-                        contentAlignment = Alignment.CenterStart,
-                        modifier = Modifier.padding(horizontal = 16.dp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clickableWithoutRipple(onOpenComments)
+                            .padding(horizontal = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             text = "添加评论",
                             color = SecondaryText,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Normal
+                            fontSize = 13.sp
                         )
                     }
                 }
 
-                // 操作按钮
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    BottomAction(Icons.Outlined.FavoriteBorder, likeCount)
-                    BottomAction(Icons.Outlined.StarBorder, collectCount)
-                    BottomAction(Icons.Outlined.ChatBubbleOutline, commentCount)
+                    BottomAction(
+                        icon = if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                        count = likeCount,
+                        tint = if (isLiked) AccentOrange else PrimaryText.copy(alpha = 0.7f),
+                        enabled = !isTogglingLike,
+                        onClick = onToggleLike
+                    )
+                    BottomAction(
+                        icon = if (isFavorited) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                        count = collectCount,
+                        tint = if (isFavorited) AccentOrange else PrimaryText.copy(alpha = 0.7f),
+                        enabled = !isTogglingFavorite,
+                        onClick = onToggleFavorite
+                    )
+                    BottomAction(
+                        icon = Icons.Outlined.ChatBubbleOutline,
+                        count = commentCount,
+                        tint = PrimaryText.copy(alpha = 0.7f),
+                        enabled = true,
+                        onClick = onOpenComments
+                    )
                 }
             }
         }
@@ -625,23 +778,195 @@ private fun PostDetailBottomBar(likeCount: Int, collectCount: Int, commentCount:
 }
 
 @Composable
-private fun BottomAction(icon: ImageVector, count: Int) {
+private fun BottomAction(
+    icon: ImageVector,
+    count: Int,
+    tint: Color,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
     Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .then(
+                if (enabled) {
+                    Modifier.clickableWithoutRipple(onClick)
+                } else {
+                    Modifier
+                }
+            )
+            .padding(vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         Icon(
             icon,
             contentDescription = null,
-            tint = PrimaryText.copy(alpha = 0.7f),
+            tint = tint,
             modifier = Modifier.size(22.dp)
         )
         Text(
             text = count.toString(),
-            color = PrimaryText.copy(alpha = 0.7f),
+            color = tint,
             fontSize = 12.sp,
             fontWeight = FontWeight.Normal
         )
+    }
+}
+
+private fun Modifier.clickableWithoutRipple(onClick: () -> Unit): Modifier {
+    return clickable(
+        interactionSource = MutableInteractionSource(),
+        indication = null,
+        onClick = onClick
+    )
+}
+
+@Composable
+private fun CommentsBottomSheetContent(
+    postAuthorName: String,
+    comments: List<PostComment>,
+    commentCount: Int,
+    commentDraft: String,
+    isSubmittingComment: Boolean,
+    onCommentChange: (String) -> Unit,
+    onSubmitComment: () -> Unit,
+    onClose: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .fillMaxHeight(0.84f),
+        color = CommentSheetBackground,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding()
+                .navigationBarsPadding()
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp, bottom = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 42.dp, height = 5.dp)
+                        .clip(RoundedCornerShape(100.dp))
+                        .background(Color.White.copy(alpha = 0.28f))
+                )
+                IconButton(
+                    onClick = onClose,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 8.dp)
+                        .size(34.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Close,
+                        contentDescription = "关闭评论",
+                        tint = CommentSheetMeta,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+
+            Text(
+                text = "全部评论 $commentCount",
+                color = CommentSheetText,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
+            )
+
+            if (comments.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "还没有评论，写下第一条想法",
+                        color = CommentSheetMeta,
+                        fontSize = 14.sp
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(bottom = 8.dp)
+                ) {
+                    items(comments, key = { it.id }) { comment ->
+                        SheetCommentItem(
+                            comment = comment,
+                            postAuthorName = postAuthorName
+                        )
+                    }
+                }
+            }
+
+            HorizontalDivider(color = CommentSheetDivider, thickness = 0.5.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Surface(
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(22.dp),
+                    color = CommentSheetSurface
+                ) {
+                    BasicTextField(
+                        value = commentDraft,
+                        onValueChange = onCommentChange,
+                        singleLine = true,
+                        enabled = !isSubmittingComment,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(onSend = { onSubmitComment() }),
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                            color = CommentSheetText,
+                            fontSize = 15.sp
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        decorationBox = { innerTextField ->
+                            if (commentDraft.isBlank()) {
+                                Text(
+                                    text = "留下你的想法吧",
+                                    color = CommentSheetMeta,
+                                    fontSize = 15.sp
+                                )
+                            }
+                            innerTextField()
+                        }
+                    )
+                }
+
+                Text(
+                    text = if (isSubmittingComment) "发送中" else "发布",
+                    color = if (commentDraft.isBlank() || isSubmittingComment) {
+                        CommentSheetMeta
+                    } else {
+                        AccentOrange
+                    },
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = if (commentDraft.isBlank() || isSubmittingComment) {
+                        Modifier
+                    } else {
+                        Modifier.clickableWithoutRipple(onSubmitComment)
+                    }
+                )
+            }
+        }
     }
 }
 
@@ -650,12 +975,15 @@ private fun BottomAction(icon: ImageVector, count: Int) {
 // ═══════════════════════════════════════════════════════════════
 private data class PostDetail(
     val id: String,
+    val source: PostSource,
     val title: String,
     val publishDate: String,
     val viewCount: String,
     val likeCount: Int,
     val collectCount: Int,
     val commentCount: Int,
+    val isLiked: Boolean,
+    val isFavorited: Boolean,
     val author: PostAuthor,
     val sections: List<PostSection>,
     val comments: List<PostComment>,
@@ -684,14 +1012,25 @@ private data class PostComment(
     val identity: String,
     val content: String,
     val time: String,
-    val avatarColor: Color
+    val avatarColor: Color,
+    val avatarUrl: String? = null
 )
 
 private data class PostDetailUiState(
     val isLoading: Boolean = true,
     val detail: PostDetail? = null,
-    val error: String? = null
+    val error: String? = null,
+    val message: String? = null,
+    val pendingComment: String = "",
+    val isSubmittingComment: Boolean = false,
+    val isTogglingLike: Boolean = false,
+    val isTogglingFavorite: Boolean = false
 )
+
+private enum class PostSource {
+    USER,
+    EXPERT
+}
 
 // ═══════════════════════════════════════════════════════════════
 //  ViewModel
@@ -713,23 +1052,125 @@ private class PostDetailViewModel(
         load()
     }
 
+    fun updatePendingComment(value: String) {
+        _uiState.value = _uiState.value.copy(
+            pendingComment = value.take(500)
+        )
+    }
+
+    fun consumeMessage() {
+        _uiState.value = _uiState.value.copy(message = null)
+    }
+
+    fun submitComment() {
+        val detail = _uiState.value.detail ?: return
+        val content = _uiState.value.pendingComment.trim()
+        if (content.isEmpty() || _uiState.value.isSubmittingComment) return
+
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isSubmittingComment = true)
+            val result = when (detail.source) {
+                PostSource.USER -> repository.createUserPostComment(detail.id, content)
+                PostSource.EXPERT -> repository.createExpertPostComment(detail.id, content)
+            }
+
+            result.onSuccess { payload ->
+                val updatedDetail = applyCommentResult(
+                    detail = _uiState.value.detail ?: detail,
+                    comment = payload.comment,
+                    engagement = payload.engagement
+                )
+                _uiState.value = _uiState.value.copy(
+                    detail = updatedDetail,
+                    pendingComment = "",
+                    isSubmittingComment = false
+                )
+            }.onFailure { error ->
+                _uiState.value = _uiState.value.copy(
+                    isSubmittingComment = false,
+                    message = error.message ?: "发表评论失败"
+                )
+            }
+        }
+    }
+
+    fun toggleLike() {
+        val detail = _uiState.value.detail ?: return
+        if (_uiState.value.isTogglingLike) return
+
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isTogglingLike = true)
+            val result = when (detail.source) {
+                PostSource.USER -> if (detail.isLiked) repository.unlikeUserPost(detail.id) else repository.likeUserPost(detail.id)
+                PostSource.EXPERT -> if (detail.isLiked) repository.unlikeExpertPost(detail.id) else repository.likeExpertPost(detail.id)
+            }
+
+            result.onSuccess { engagement ->
+                val current = _uiState.value.detail ?: detail
+                _uiState.value = _uiState.value.copy(
+                    detail = current.applyEngagement(engagement),
+                    isTogglingLike = false
+                )
+            }.onFailure { error ->
+                _uiState.value = _uiState.value.copy(
+                    isTogglingLike = false,
+                    message = error.message ?: "点赞失败"
+                )
+            }
+        }
+    }
+
+    fun toggleFavorite() {
+        val detail = _uiState.value.detail ?: return
+        if (_uiState.value.isTogglingFavorite) return
+
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isTogglingFavorite = true)
+            val result = when (detail.source) {
+                PostSource.USER -> if (detail.isFavorited) repository.unfavoriteUserPost(detail.id) else repository.favoriteUserPost(detail.id)
+                PostSource.EXPERT -> if (detail.isFavorited) repository.unfavoriteExpertPost(detail.id) else repository.favoriteExpertPost(detail.id)
+            }
+
+            result.onSuccess { engagement ->
+                val current = _uiState.value.detail ?: detail
+                _uiState.value = _uiState.value.copy(
+                    detail = current.applyEngagement(engagement),
+                    isTogglingFavorite = false
+                )
+            }.onFailure { error ->
+                _uiState.value = _uiState.value.copy(
+                    isTogglingFavorite = false,
+                    message = error.message ?: "收藏失败"
+                )
+            }
+        }
+    }
+
     private fun load() {
         viewModelScope.launch {
-            _uiState.value = PostDetailUiState(isLoading = true)
+            _uiState.value = _uiState.value.copy(
+                isLoading = true,
+                error = null,
+                message = null
+            )
             val result = fetchPostDetail()
             result.onSuccess { detail ->
-                _uiState.value = PostDetailUiState(isLoading = false, detail = detail)
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    detail = detail,
+                    error = null
+                )
             }.onFailure { error ->
                 val fallback = samplePostDetails().firstOrNull { it.id == postId }
                     ?: fallbackCard?.toFallbackDetail()
                 if (fallback != null) {
-                    _uiState.value = PostDetailUiState(
+                    _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         detail = fallback,
                         error = error.message
                     )
                 } else {
-                    _uiState.value = PostDetailUiState(
+                    _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         detail = null,
                         error = error.message ?: "内容加载失败"
@@ -742,10 +1183,38 @@ private class PostDetailViewModel(
     private suspend fun fetchPostDetail(): Result<PostDetail> {
         val userResult = repository.getUserPostDetail(postId).map { it.toPostDetail() }
         if (userResult.isSuccess) {
-            return userResult
+            return userResult.mapCatching { hydrateInteractions(it) }
         }
         val expertResult = repository.getExpertPostDetail(postId).map { it.toPostDetail() }
-        return expertResult
+        return expertResult.mapCatching { hydrateInteractions(it) }
+    }
+
+    private suspend fun hydrateInteractions(detail: PostDetail): PostDetail {
+        val engagementResult = when (detail.source) {
+            PostSource.USER -> repository.getUserPostEngagement(detail.id)
+            PostSource.EXPERT -> repository.getExpertPostEngagement(detail.id)
+        }
+        val commentsResult = when (detail.source) {
+            PostSource.USER -> repository.getUserPostComments(detail.id)
+            PostSource.EXPERT -> repository.getExpertPostComments(detail.id)
+        }
+
+        val withEngagement = engagementResult.getOrNull()?.let { detail.applyEngagement(it) } ?: detail
+        val comments = commentsResult.getOrNull()?.map { it.toUiComment() } ?: withEngagement.comments
+        return withEngagement.copy(comments = comments)
+    }
+
+    private fun applyCommentResult(
+        detail: PostDetail,
+        comment: PostCommentDto?,
+        engagement: PostEngagement?
+    ): PostDetail {
+        val withEngagement = engagement?.let { detail.applyEngagement(it) } ?: detail
+        return if (comment != null) {
+            withEngagement.copy(comments = withEngagement.comments + comment.toUiComment())
+        } else {
+            withEngagement
+        }
     }
 
     companion object {
@@ -771,17 +1240,19 @@ private class PostDetailViewModel(
 // ═══════════════════════════════════════════════════════════════
 private fun UserPost.toPostDetail(): PostDetail {
     val avatarColor = pickAvatarColor(id)
-    val normalizedCollect = max(1, max(shareCount, likeCount / 3))
     val authorName = author?.name?.takeIf { it.isNotBlank() } ?: "STAR-LINK 职圈"
     val authorTitle = author?.headline?.takeIf { !it.isNullOrBlank() } ?: "社区热帖"
     return PostDetail(
         id = id,
+        source = PostSource.USER,
         title = title,
         publishDate = formatPublishedAt(createdAt),
         viewCount = formatViewCount(viewCount),
         likeCount = likeCount,
-        collectCount = normalizedCollect,
+        collectCount = max(0, shareCount),
         commentCount = commentCount,
+        isLiked = false,
+        isFavorited = false,
         author = PostAuthor(
             name = authorName,
             title = authorTitle,
@@ -804,12 +1275,15 @@ private fun ExpertPost.toPostDetail(): PostDetail {
         .joinToString(" · ")
     return PostDetail(
         id = id,
+        source = PostSource.EXPERT,
         title = title,
         publishDate = formatPublishedAt(publishedAt),
         viewCount = formatViewCount(viewCount),
         likeCount = likeCount,
-        collectCount = max(1, likeCount / 2),
+        collectCount = 0,
         commentCount = commentCount,
+        isLiked = false,
+        isFavorited = false,
         author = PostAuthor(
             name = expertName,
             title = authorTitle.ifBlank { "行业专家" },
@@ -821,6 +1295,29 @@ private fun ExpertPost.toPostDetail(): PostDetail {
         sections = buildContentSections(content),
         comments = emptyList(),
         heroImageUrl = coverImage
+    )
+}
+
+private fun PostDetail.applyEngagement(engagement: PostEngagement): PostDetail {
+    return copy(
+        likeCount = engagement.likeCount,
+        collectCount = engagement.favoriteCount,
+        commentCount = engagement.commentCount,
+        isLiked = engagement.isLiked,
+        isFavorited = engagement.isFavorited
+    )
+}
+
+private fun PostCommentDto.toUiComment(): PostComment {
+    val authorName = author.name?.takeIf { it.isNotBlank() } ?: "STAR-LINK 用户"
+    return PostComment(
+        id = id,
+        author = authorName,
+        identity = "用户评论",
+        content = content,
+        time = formatPublishedAt(createdAt),
+        avatarColor = pickAvatarColor(author.id ?: authorName),
+        avatarUrl = author.avatar
     )
 }
 
@@ -927,12 +1424,15 @@ private fun ContentCard.toFallbackDetail(): PostDetail {
 
     return PostDetail(
         id = id,
+        source = PostSource.USER,
         title = title,
         publishDate = "今日更新",
         viewCount = views,
         likeCount = likeCountEstimate,
         collectCount = collectCountEstimate,
         commentCount = commentCountEstimate,
+        isLiked = false,
+        isFavorited = false,
         author = PostAuthor(
             name = author,
             title = "社区精选",
@@ -963,12 +1463,15 @@ private fun parseViewCount(value: String): Int {
 private fun samplePostDetails(): List<PostDetail> = listOf(
     PostDetail(
         id = "post_1",
+        source = PostSource.USER,
         title = "AI时代下的职业转型指南",
         publishDate = "2025/11/07 07:44",
         viewCount = "729",
         likeCount = 190,
         collectCount = 190,
         commentCount = 7,
+        isLiked = false,
+        isFavorited = false,
         author = PostAuthor(
             name = "产品老司机",
             title = "简单介绍",
@@ -1042,12 +1545,15 @@ private fun samplePostDetails(): List<PostDetail> = listOf(
     ),
     PostDetail(
         id = "post_2",
+        source = PostSource.USER,
         title = "数据科学转型记：一年内的成长策略",
         publishDate = "2024/09/18",
         viewCount = "1.2k",
         likeCount = 256,
         collectCount = 42,
         commentCount = 89,
+        isLiked = false,
+        isFavorited = false,
         author = PostAuthor(
             name = "Milla",
             title = "数据科学家",
@@ -1080,12 +1586,15 @@ private fun samplePostDetails(): List<PostDetail> = listOf(
     ),
     PostDetail(
         id = "post_3",
+        source = PostSource.USER,
         title = "校招算法 Offer 复盘",
         publishDate = "2024/08/30",
         viewCount = "980",
         likeCount = 312,
         collectCount = 32,
         commentCount = 76,
+        isLiked = false,
+        isFavorited = false,
         author = PostAuthor(
             name = "阿星",
             title = "校招算法生",
