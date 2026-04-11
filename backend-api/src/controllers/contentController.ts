@@ -102,30 +102,15 @@ const buildUserHeadline = (user: {
 const getOSSUrl = (value?: string | null) => {
   if (!value) return null;
   if (/^https?:\/\//i.test(value)) return value;
-  // treat value as object key for OSS
+  // objectKey → 完整 OSS URL
   if (
     process.env.OSS_BUCKET &&
     process.env.OSS_REGION &&
-    (value.startsWith('post-covers/') || value.startsWith('posts/'))
+    (value.startsWith('post-covers/') || value.startsWith('post-images/') || value.startsWith('posts/'))
   ) {
     return ossService.generateFileUrl(value);
   }
   return normalizeUploadPath(value);
-};
-
-// 将图片 key 列表压缩到数据库字段可接受的长度（兼容较小 varchar）
-const compactImageKeys = (keys: string[], maxLen: number = 190): string | null => {
-  if (keys.length === 0) return null;
-  const result: string[] = [];
-  let currentLen = 2; // for []
-  for (const key of keys) {
-    // 预估追加后长度（含逗号和引号）
-    const extra = (result.length === 0 ? 0 : 1) + key.length + 2;
-    if (currentLen + extra > maxLen) break;
-    result.push(key);
-    currentLen += extra;
-  }
-  return result.length ? JSON.stringify(result) : null;
 };
 
 const mapUserPostResponse = (post: any) => {
@@ -643,39 +628,41 @@ export const createUserPost = async (req: Request, res: Response) => {
 
     const tags = parseTagsInput(req.body.tags);
     const imageFiles = Array.isArray(req.files) ? (req.files as Express.Multer.File[]) : [];
-    const ossEnabled =
-      !!process.env.OSS_ACCESS_KEY_ID &&
-      !!process.env.OSS_ACCESS_KEY_SECRET &&
-      !!process.env.OSS_BUCKET;
 
     let imageUrls: string[] = [];
 
     if (imageFiles.length > 0) {
-      if (ossEnabled) {
-        try {
-          imageUrls = await Promise.all(
-            imageFiles.map(async (file) => {
-              const safeName = file.originalname
-                .replace(/\s+/g, '_')
-                .replace(/[^a-zA-Z0-9._-]/g, '');
-              const ext = path.extname(safeName) || path.extname(file.originalname) || '';
-              const baseName = safeName.replace(ext, '') || file.filename.replace(ext, '');
-              const timestamp = Date.now();
-              const objectKey = `post-covers/${timestamp}_${baseName || 'image'}${ext}`;
-              const { objectKey: storedKey } = await ossService.uploadLocalFile(file.path, objectKey);
-              return storedKey; // DB 存 objectKey
-            })
-          );
-        } catch (error) {
-          console.error('上传帖子图片到OSS失败:', error);
-          return res.status(500).json({
-            success: false,
-            message: '图片上传失败，请稍后重试',
-            error: error instanceof Error ? error.message : 'OSS上传失败',
-          });
-        }
-      } else {
-        imageUrls = imageFiles.map((file) => normalizeUploadPath(file.path));
+      // 图片统一上传到 OSS，数据库只存 objectKey
+      const ossReady =
+        !!process.env.OSS_ACCESS_KEY_ID &&
+        !!process.env.OSS_ACCESS_KEY_SECRET &&
+        !!process.env.OSS_BUCKET;
+
+      if (!ossReady) {
+        return res.status(500).json({
+          success: false,
+          message: 'OSS 未配置，无法上传图片，请联系管理员',
+        });
+      }
+
+      try {
+        imageUrls = await Promise.all(
+          imageFiles.map(async (file) => {
+            const ext = path.extname(file.originalname) || '.jpg';
+            const timestamp = Date.now();
+            const random = Math.random().toString(36).substring(2, 8);
+            const objectKey = `post-images/${timestamp}_${random}${ext}`;
+            const { objectKey: storedKey } = await ossService.uploadLocalFile(file.path, objectKey);
+            return storedKey;
+          })
+        );
+      } catch (error) {
+        console.error('上传帖子图片到OSS失败:', error);
+        return res.status(500).json({
+          success: false,
+          message: '图片上传失败，请稍后重试',
+          error: error instanceof Error ? error.message : 'OSS上传失败',
+        });
       }
     }
 

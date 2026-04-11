@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -71,6 +72,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -85,6 +87,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -115,6 +119,28 @@ private val TitlePlaceholderColor = Color(0xFFA8D8D8) // 截图中标题占位�
 private val BodyPlaceholderColor = Color(0xFFB5B7B8)
 private val ToolbarDividerColor = Color(0xFFF0F0F0)
 private val ToolbarIconColor = Color(0xFF333333)
+private val ToolbarActiveBackground = Color(0xFFF6F6F6)
+private val EmojiPanelBackground = Color(0xFF101014)
+
+private enum class EditorPanel {
+    None,
+    Format,
+    Emoji
+}
+
+private enum class TextPreset(val label: String) {
+    Title("标题"),
+    Subtitle("二级标题"),
+    Body("正文"),
+    Quote("“引用”")
+}
+
+private val RecentEmojiList = listOf("😂", "🥹", "😡", "😭")
+private val EmojiList = listOf(
+    "😊", "😌", "🥲", "😅", "🤩", "🫶",
+    "🤔", "😘", "😶", "😮", "😎", "😤",
+    "😍", "🔥", "👏", "💪", "✨", "🎉"
+)
 
 data class SelectedImage(
     val uri: Uri,
@@ -218,6 +244,8 @@ private fun CreatePostScreen(
 ) {
     val context = LocalContext.current
     val resolver = rememberUpdatedState(newValue = context.contentResolver)
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     var title by rememberSaveable { mutableStateOf("") }
     // 使用富文本内容块列表替代纯文本
     val contentBlocks = remember { mutableStateListOf<ContentBlock>(ContentBlock.TextBlock("")) }
@@ -231,13 +259,88 @@ private fun CreatePostScreen(
         listOf("#AI", "#职业转型", "#Offer分享")
     }
     val scrollState = rememberScrollState()
+    var activePanel by rememberSaveable { mutableStateOf(EditorPanel.None) }
 
     // 计算当前已使用的图片数量
-    val currentImageCount = remember(contentBlocks) {
-        contentBlocks.sumOf { block ->
-            when (block) {
-                is ContentBlock.TextBlock -> 0
-                is ContentBlock.ImageBlock -> block.images.size
+    val currentImageCount by remember {
+        derivedStateOf {
+            contentBlocks.sumOf { block ->
+                when (block) {
+                    is ContentBlock.TextBlock -> 0
+                    is ContentBlock.ImageBlock -> block.images.size
+                }
+            }
+        }
+    }
+
+    fun closeKeyboardPanels() {
+        activePanel = EditorPanel.None
+    }
+
+    fun ensureCurrentTextBlock(): Int {
+        val currentBlock = contentBlocks.getOrNull(currentBlockIndex)
+        if (currentBlock is ContentBlock.TextBlock) {
+            return currentBlockIndex
+        }
+
+        val insertIndex = (currentBlockIndex + 1).coerceAtMost(contentBlocks.size)
+        if (insertIndex < contentBlocks.size && contentBlocks[insertIndex] is ContentBlock.TextBlock) {
+            currentBlockIndex = insertIndex
+            return insertIndex
+        }
+
+        contentBlocks.add(insertIndex, ContentBlock.TextBlock(""))
+        currentBlockIndex = insertIndex
+        return insertIndex
+    }
+
+    fun updateCurrentTextBlock(transform: (String) -> String) {
+        val targetIndex = ensureCurrentTextBlock()
+        val currentBlock = contentBlocks[targetIndex] as ContentBlock.TextBlock
+        contentBlocks[targetIndex] = ContentBlock.TextBlock(transform(currentBlock.text))
+    }
+
+    fun togglePanel(panel: EditorPanel) {
+        val nextPanel = if (activePanel == panel) EditorPanel.None else panel
+        activePanel = nextPanel
+        if (nextPanel == EditorPanel.None) return
+        keyboardController?.hide()
+        focusManager.clearFocus(force = false)
+    }
+
+    fun applyTextPreset(preset: TextPreset) {
+        updateCurrentTextBlock { current ->
+            val stripped = current
+                .lineSequence()
+                .joinToString("\n") { line ->
+                    line.trimStart()
+                        .removePrefix("# ")
+                        .removePrefix("## ")
+                        .removePrefix("> ")
+                        .removePrefix("• ")
+                        .removePrefix("- ")
+                }
+                .trimStart()
+
+            when (preset) {
+                TextPreset.Title -> if (stripped.isBlank()) "# " else "# $stripped"
+                TextPreset.Subtitle -> if (stripped.isBlank()) "## " else "## $stripped"
+                TextPreset.Body -> stripped
+                TextPreset.Quote -> if (stripped.isBlank()) "> " else "> $stripped"
+            }
+        }
+    }
+
+    fun insertEmoji(emoji: String) {
+        updateCurrentTextBlock { current -> current + emoji }
+    }
+
+    fun insertBulletListItem() {
+        updateCurrentTextBlock { current ->
+            when {
+                current.isBlank() -> "• "
+                current.endsWith("\n") -> current + "• "
+                else -> "$current\n• "
             }
         }
     }
@@ -381,9 +484,11 @@ private fun CreatePostScreen(
             if (processedImages.size == 2) {
                 pendingImages = processedImages
                 showImageLayoutDialog = true
+                activePanel = EditorPanel.None
             } else {
                 // 单张图片，直接插入
                 insertImageBlock(processedImages.first(), ImageLayout.Single)
+                activePanel = EditorPanel.None
             }
         }
     }
@@ -396,6 +501,24 @@ private fun CreatePostScreen(
                 is ContentBlock.ImageBlock -> "[图片]"
             }
         }
+    }
+
+    fun submitPost() {
+        if (title.isBlank()) {
+            showTransientMessage(snackbarHostState, "请输入帖子标题")
+            return
+        }
+        val contentText = blocksToText().trim()
+        if (contentText.isBlank() || contentText == "[图片]") {
+            showTransientMessage(snackbarHostState, "请输入帖子内容")
+            return
+        }
+        onPublish(
+            title.trim(),
+            contentText,
+            selectedTags.map(String::trim),
+            getAllImageFiles()
+        )
     }
 
     DisposableEffect(Unit) {
@@ -419,40 +542,87 @@ private fun CreatePostScreen(
             LongArticleTopBar(
                 onBack = onBack,
                 isPublishing = uiState.isPublishing,
-                onLayoutClick = { formatContent() }, // 绑定一键排版
-                onPublish = {
-                    if (title.isBlank()) {
-                        showTransientMessage(snackbarHostState, "请输入帖子标题")
-                        return@LongArticleTopBar
+                onLayoutClick = { formatContent() } // 绑定一键排版
+            )
+        }
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.White)
+                .padding(innerPadding)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)
+                    .padding(bottom = if (activePanel == EditorPanel.None) 104.dp else 316.dp)
+            ) {
+                // ── 标题输入 ──
+                LongArticleTitleInput(
+                    title = title,
+                    onTitleChange = { if (it.length <= TITLE_MAX_LENGTH) title = it },
+                    onFocusChanged = { isFocused ->
+                        if (isFocused) closeKeyboardPanels()
                     }
-                    val contentText = blocksToText().trim()
-                    if (contentText.isBlank() || contentText == "[图片]") {
-                        showTransientMessage(snackbarHostState, "请输入帖子内容")
-                        return@LongArticleTopBar
+                )
+
+                // ── 正文编辑区 ──
+                LongArticleBodyEditor(
+                    contentBlocks = contentBlocks,
+                    currentBlockIndex = currentBlockIndex,
+                    onBlockIndexChange = {
+                        currentBlockIndex = it
+                        closeKeyboardPanels()
+                    },
+                    onTextChange = { index, text ->
+                        if (index < contentBlocks.size) {
+                            val block = contentBlocks[index]
+                            if (block is ContentBlock.TextBlock) {
+                                contentBlocks[index] = ContentBlock.TextBlock(text)
+                            }
+                        }
+                    },
+                    onRemoveImage = { index ->
+                        removeImageBlock(index)
                     }
-                    onPublish(
-                        title.trim(),
-                        contentText,
-                        selectedTags.map(String::trim),
-                        getAllImageFiles()
+                )
+
+                // ── 标签区域 ──
+                if (selectedTags.isNotEmpty()) {
+                    TagSection(
+                        selectedTags = selectedTags,
+                        suggestions = tagSuggestions,
+                        onAddTag = {
+                            activePanel = EditorPanel.None
+                            showTagDialog = true
+                        },
+                        onToggleTag = { tag ->
+                            if (selectedTags.contains(tag)) {
+                                selectedTags.remove(tag)
+                            } else {
+                                selectedTags.add(tag)
+                            }
+                        }
                     )
                 }
-            )
-        },
-        bottomBar = {
-            // ── 底部工具栏：Aa | 列表 | 书签 | 表情 | 图片 | 完成 ──
-            EditorBottomToolbar(
-                onFormatClick = { showTransientMessage(snackbarHostState, "功能开发中...") },
-                onListClick = { 
-                    // 简单的列表插入逻辑
-                    val current = contentBlocks.getOrNull(currentBlockIndex)
-                    if (current is ContentBlock.TextBlock) {
-                        contentBlocks[currentBlockIndex] = ContentBlock.TextBlock(current.text + "\n• ")
-                    }
+            }
+
+            EditorBottomDock(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .imePadding(),
+                activePanel = activePanel,
+                onFormatClick = { togglePanel(EditorPanel.Format) },
+                onListClick = { insertBulletListItem() },
+                onBookmarkClick = {
+                    activePanel = EditorPanel.None
+                    showTagDialog = true
                 },
-                onBookmarkClick = { showTagDialog = true },
-                onEmojiClick = { showTransientMessage(snackbarHostState, "表情包功能即将上线") },
+                onEmojiClick = { togglePanel(EditorPanel.Emoji) },
                 onImageClick = {
+                    activePanel = EditorPanel.None
+                    keyboardController?.hide()
                     val remainingCapacity = MAX_IMAGES - currentImageCount
                     if (remainingCapacity <= 0) {
                         showTransientMessage(snackbarHostState, "最多只能添加${MAX_IMAGES}张图片")
@@ -465,71 +635,14 @@ private fun CreatePostScreen(
                     }
                 },
                 onDoneClick = {
-                    if (title.isBlank()) {
-                        showTransientMessage(snackbarHostState, "请输入帖子标题")
-                        return@EditorBottomToolbar
-                    }
-                    val contentText = blocksToText().trim()
-                    if (contentText.isBlank() || contentText == "[图片]") {
-                        showTransientMessage(snackbarHostState, "请输入帖子内容")
-                        return@EditorBottomToolbar
-                    }
-                    onPublish(
-                        title.trim(),
-                        contentText,
-                        selectedTags.map(String::trim),
-                        getAllImageFiles()
-                    )
-                }
-            )
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.White)
-                .padding(innerPadding)
-                .verticalScroll(scrollState)
-        ) {
-            // ── 标题输入 ──
-            LongArticleTitleInput(
-                title = title,
-                onTitleChange = { if (it.length <= TITLE_MAX_LENGTH) title = it }
-            )
-
-            // ── 正文编辑区 ──
-            LongArticleBodyEditor(
-                contentBlocks = contentBlocks,
-                currentBlockIndex = currentBlockIndex,
-                onBlockIndexChange = { currentBlockIndex = it },
-                onTextChange = { index, text ->
-                    if (index < contentBlocks.size) {
-                        val block = contentBlocks[index]
-                        if (block is ContentBlock.TextBlock) {
-                            contentBlocks[index] = ContentBlock.TextBlock(text)
-                        }
-                    }
+                    activePanel = EditorPanel.None
+                    focusManager.clearFocus(force = true)
+                    keyboardController?.hide()
+                    submitPost()
                 },
-                onRemoveImage = { index ->
-                    removeImageBlock(index)
-                }
+                onPresetSelected = { preset -> applyTextPreset(preset) },
+                onEmojiSelected = { emoji -> insertEmoji(emoji) }
             )
-
-            // ── 标签区域 ──
-            if (selectedTags.isNotEmpty()) {
-                TagSection(
-                    selectedTags = selectedTags,
-                    suggestions = tagSuggestions,
-                    onAddTag = { showTagDialog = true },
-                    onToggleTag = { tag ->
-                        if (selectedTags.contains(tag)) {
-                            selectedTags.remove(tag)
-                        } else {
-                            selectedTags.add(tag)
-                        }
-                    }
-                )
-            }
         }
     }
 
@@ -706,8 +819,7 @@ private fun CreatePostScreen(
 private fun LongArticleTopBar(
     onBack: () -> Unit,
     isPublishing: Boolean,
-    onLayoutClick: () -> Unit,
-    onPublish: () -> Unit
+    onLayoutClick: () -> Unit
 ) {
     Surface(
         color = Color.White,
@@ -771,7 +883,8 @@ private fun LongArticleTopBar(
 @Composable
 private fun LongArticleTitleInput(
     title: String,
-    onTitleChange: (String) -> Unit
+    onTitleChange: (String) -> Unit,
+    onFocusChanged: (Boolean) -> Unit
 ) {
     BasicTextField(
         value = title,
@@ -787,7 +900,7 @@ private fun LongArticleTitleInput(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp) // 减小垂直间距，整体上拉
+                    .padding(horizontal = 20.dp, vertical = 4.dp)
             ) {
                 if (title.isEmpty()) {
                     Text(
@@ -801,7 +914,9 @@ private fun LongArticleTitleInput(
                 inner()
             }
         },
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .onFocusChanged { onFocusChanged(it.isFocused) }
     )
 }
 
@@ -820,7 +935,7 @@ private fun LongArticleBodyEditor(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp)
-            .heightIn(min = 400.dp)
+            .heightIn(min = 280.dp)
     ) {
         if (contentBlocks.isEmpty()) {
             // 空状态
@@ -835,7 +950,7 @@ private fun LongArticleBodyEditor(
                             showIndicator = index == 0 && contentBlocks.size == 1 && block.text.isEmpty(),
                             onTextChange = { onTextChange(index, it) },
                             onFocusChange = { if (it) onBlockIndexChange(index) },
-                            modifier = Modifier.padding(vertical = 2.dp)
+                            modifier = Modifier.padding(vertical = 1.dp)
                         )
                     }
                     is ContentBlock.ImageBlock -> {
@@ -843,7 +958,7 @@ private fun LongArticleBodyEditor(
                             images = block.images,
                             layout = block.layout,
                             onRemove = { onRemoveImage(index) },
-                            modifier = Modifier.padding(vertical = 8.dp)
+                            modifier = Modifier.padding(vertical = 6.dp)
                         )
                     }
                 }
@@ -948,28 +1063,39 @@ private fun LongArticleTextBlock(
 //  底部编辑工具栏  — 截图：Aa  列表  书签  表情  图片  完成
 // ═══════════════════════════════════════════════════════════════
 @Composable
-private fun EditorBottomToolbar(
+private fun EditorBottomDock(
+    modifier: Modifier = Modifier,
+    activePanel: EditorPanel,
     onFormatClick: () -> Unit,
     onListClick: () -> Unit,
     onBookmarkClick: () -> Unit,
     onEmojiClick: () -> Unit,
     onImageClick: () -> Unit,
-    onDoneClick: () -> Unit
+    onDoneClick: () -> Unit,
+    onPresetSelected: (TextPreset) -> Unit,
+    onEmojiSelected: (String) -> Unit
 ) {
     Surface(
+        modifier = modifier.fillMaxWidth(),
         color = Color.White,
-        shadowElevation = 4.dp
+        shadowElevation = 10.dp
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
+            when (activePanel) {
+                EditorPanel.Format -> FormatPresetPanel(onPresetSelected = onPresetSelected)
+                EditorPanel.Emoji -> EmojiPickerPanel(onEmojiSelected = onEmojiSelected)
+                EditorPanel.None -> Unit
+            }
+
             HorizontalDivider(color = ToolbarDividerColor, thickness = 0.5.dp)
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 工具图标组
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -978,6 +1104,7 @@ private fun EditorBottomToolbar(
                     ToolbarIconButton(
                         icon = Icons.Outlined.FormatSize,
                         contentDescription = "字体格式",
+                        isActive = activePanel == EditorPanel.Format,
                         onClick = onFormatClick
                     )
                     ToolbarIconButton(
@@ -993,6 +1120,7 @@ private fun EditorBottomToolbar(
                     ToolbarIconButton(
                         icon = Icons.Outlined.EmojiEmotions,
                         contentDescription = "表情",
+                        isActive = activePanel == EditorPanel.Emoji,
                         onClick = onEmojiClick
                     )
                     ToolbarIconButton(
@@ -1021,18 +1149,140 @@ private fun EditorBottomToolbar(
 private fun ToolbarIconButton(
     icon: ImageVector,
     contentDescription: String,
+    isActive: Boolean = false,
     onClick: () -> Unit
 ) {
-    IconButton(
-        onClick = onClick,
-        modifier = Modifier.size(40.dp)
+    Surface(
+        modifier = Modifier.size(40.dp),
+        shape = RoundedCornerShape(10.dp),
+        color = if (isActive) ToolbarActiveBackground else Color.Transparent,
+        onClick = onClick
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            tint = ToolbarIconColor,
-            modifier = Modifier.size(22.dp)
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = ToolbarIconColor,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun FormatPresetPanel(
+    onPresetSelected: (TextPreset) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        TextPreset.entries.forEach { preset ->
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = Color(0xFFF5F5F5),
+                onClick = { onPresetSelected(preset) }
+            ) {
+                Text(
+                    text = preset.label,
+                    color = Color(0xFF1A1A1A),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmojiPickerPanel(
+    onEmojiSelected: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(EmojiPanelBackground)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Text(
+            text = "最近使用",
+            color = Color.White.copy(alpha = 0.86f),
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Medium
         )
+
+        EmojiGridRow(
+            emojis = RecentEmojiList,
+            onEmojiSelected = onEmojiSelected
+        )
+
+        Text(
+            text = "常用表情",
+            color = Color.White.copy(alpha = 0.86f),
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Medium
+        )
+
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            EmojiList.forEach { emoji ->
+                EmojiCell(
+                    emoji = emoji,
+                    onClick = { onEmojiSelected(emoji) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmojiGridRow(
+    emojis: List<String>,
+    onEmojiSelected: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        emojis.forEach { emoji ->
+            EmojiCell(
+                emoji = emoji,
+                modifier = Modifier.weight(1f),
+                onClick = { onEmojiSelected(emoji) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun EmojiCell(
+    emoji: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(14.dp),
+        color = Color.White.copy(alpha = 0.06f),
+        onClick = onClick
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = emoji,
+                fontSize = 28.sp
+            )
+        }
     }
 }
 
