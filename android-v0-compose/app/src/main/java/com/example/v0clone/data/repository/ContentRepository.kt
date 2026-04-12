@@ -203,14 +203,96 @@ class ContentRepository(private val apiService: ApiService) {
             }
         }
 
-    suspend fun createUserPostComment(postId: String, content: String): Result<CreatePostCommentResult> =
+    suspend fun createUserPostComment(
+        postId: String,
+        content: String,
+        parentId: String? = null,
+        replyToUserId: String? = null
+    ): Result<CreatePostCommentResult> =
         withContext(Dispatchers.IO) {
             try {
-                val response = apiService.createUserPostComment(postId, CreatePostCommentRequest(content))
+                val response = apiService.createUserPostComment(
+                    postId,
+                    CreatePostCommentRequest(content, parentId, replyToUserId)
+                )
                 if (response.success && response.data != null) {
                     Result.success(response.data)
                 } else {
                     Result.failure(Exception(response.message ?: "发表评论失败"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    suspend fun likeComment(commentId: String): Result<PostCommentDto> =
+        withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.likeComment(commentId)
+                if (response.success && response.data != null) {
+                    Result.success(response.data)
+                } else {
+                    Result.failure(Exception(response.message ?: "点赞评论失败"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    suspend fun unlikeComment(commentId: String): Result<PostCommentDto> =
+        withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.unlikeComment(commentId)
+                if (response.success && response.data != null) {
+                    Result.success(response.data)
+                } else {
+                    Result.failure(Exception(response.message ?: "取消点赞评论失败"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    suspend fun addCommentReaction(commentId: String, emoji: String): Result<CommentReactionResult> =
+        withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.addCommentReaction(commentId, CommentReactionRequest(emoji))
+                if (response.success && response.data != null) {
+                    Result.success(response.data)
+                } else {
+                    Result.failure(Exception(response.message ?: "添加表情失败"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    suspend fun removeCommentReaction(commentId: String, emoji: String): Result<CommentReactionResult> =
+        withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.removeCommentReaction(commentId, CommentReactionRequest(emoji))
+                if (response.success && response.data != null) {
+                    Result.success(response.data)
+                } else {
+                    Result.failure(Exception(response.message ?: "移除表情失败"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    suspend fun getCommentReplies(
+        commentId: String,
+        page: Int = 1,
+        pageSize: Int = 20
+    ): Result<PagedData<PostCommentDto>> =
+        withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.getCommentReplies(commentId, page, pageSize)
+                if (response.success && response.data != null) {
+                    Result.success(response.data)
+                } else {
+                    Result.failure(Exception(response.message ?: "获取评论回复失败"))
                 }
             } catch (e: Exception) {
                 Result.failure(e)
@@ -337,10 +419,18 @@ class ContentRepository(private val apiService: ApiService) {
             }
         }
 
-    suspend fun createExpertPostComment(postId: String, content: String): Result<CreatePostCommentResult> =
+    suspend fun createExpertPostComment(
+        postId: String,
+        content: String,
+        parentId: String? = null,
+        replyToUserId: String? = null
+    ): Result<CreatePostCommentResult> =
         withContext(Dispatchers.IO) {
             try {
-                val response = apiService.createExpertPostComment(postId, CreatePostCommentRequest(content))
+                val response = apiService.createExpertPostComment(
+                    postId,
+                    CreatePostCommentRequest(content, parentId, replyToUserId)
+                )
                 if (response.success && response.data != null) {
                     Result.success(response.data)
                 } else {

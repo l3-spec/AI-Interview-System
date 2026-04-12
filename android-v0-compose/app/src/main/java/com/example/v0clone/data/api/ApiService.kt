@@ -111,6 +111,35 @@ interface ApiService {
         @Body request: CreatePostCommentRequest
     ): ApiResponse<CreatePostCommentResult>
 
+    @POST("content/comments/{id}/like")
+    suspend fun likeComment(
+        @Path("id") commentId: String
+    ): ApiResponse<PostCommentDto>
+
+    @DELETE("content/comments/{id}/like")
+    suspend fun unlikeComment(
+        @Path("id") commentId: String
+    ): ApiResponse<PostCommentDto>
+
+    @POST("content/comments/{id}/reactions")
+    suspend fun addCommentReaction(
+        @Path("id") commentId: String,
+        @Body request: CommentReactionRequest
+    ): ApiResponse<CommentReactionResult>
+
+    @DELETE("content/comments/{id}/reactions")
+    suspend fun removeCommentReaction(
+        @Path("id") commentId: String,
+        @Body request: CommentReactionRequest
+    ): ApiResponse<CommentReactionResult>
+
+    @GET("content/comments/{id}/replies")
+    suspend fun getCommentReplies(
+        @Path("id") commentId: String,
+        @Query("page") page: Int = 1,
+        @Query("pageSize") pageSize: Int = 20
+    ): ApiResponse<PagedData<PostCommentDto>>
+
     @POST("content/posts/{id}/like")
     suspend fun likeUserPost(
         @Path("id") postId: String

@@ -309,8 +309,13 @@ fun PostDetailRoute(
                 commentCount = detail.commentCount,
                 commentDraft = uiState.pendingComment,
                 isSubmittingComment = uiState.isSubmittingComment,
+                replyTarget = uiState.replyTarget,
                 onCommentChange = viewModel::updatePendingComment,
                 onSubmitComment = viewModel::submitComment,
+                onReplyTargetChange = viewModel::setReplyTarget,
+                onToggleLike = { viewModel.toggleCommentLike(it) },
+                onToggleReaction = { viewModel.toggleCommentReaction(it) },
+                onLoadReplies = { viewModel.loadCommentReplies(it) },
                 onClose = { showCommentsSheet = false }
             )
         }
@@ -609,7 +614,11 @@ private fun PostCommentsEntry(
 @Composable
 private fun SheetCommentItem(
     comment: PostComment,
-    postAuthorName: String
+    postAuthorName: String,
+    onReplyClick: (PostComment) -> Unit,
+    onLikeClick: (String) -> Unit,
+    onReactionClick: (String) -> Unit,
+    onLoadReplies: (String) -> Unit
 ) {
     val isAuthor = comment.author == postAuthorName
     Row(
@@ -700,7 +709,8 @@ private fun SheetCommentItem(
                         text = "回复",
                         color = CommentSheetText,
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.clickableWithoutRipple { onReplyClick(comment) }
                     )
                 }
                 
@@ -708,35 +718,42 @@ private fun SheetCommentItem(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically, 
+                        modifier = Modifier.clickableWithoutRipple { onLikeClick(comment.id) }
+                    ) {
                         Icon(
-                            imageVector = Icons.Outlined.FavoriteBorder,
+                            imageVector = if (comment.isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                             contentDescription = "Like",
-                            tint = CommentSheetMeta,
+                            tint = if (comment.isLiked) Color(0xFFE91E63) else CommentSheetMeta,
                             modifier = Modifier.size(16.dp)
                         )
                         if (comment.likeCount > 0) {
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = comment.likeCount.toString(),
-                                color = CommentSheetMeta,
+                                color = if (comment.isLiked) Color(0xFFE91E63) else CommentSheetMeta,
                                 fontSize = 12.sp
                             )
                         }
                     }
+                    val isSmileReacted = (comment.reactions["smile"] ?: 0) > 0
                     Icon(
                         imageVector = Icons.Outlined.SentimentSatisfied,
                         contentDescription = "React",
-                        tint = CommentSheetMeta,
-                        modifier = Modifier.size(16.dp)
+                        tint = if (isSmileReacted) AccentOrange else CommentSheetMeta,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clickableWithoutRipple { onReactionClick(comment.id) }
                     )
                 }
             }
             
-            if (comment.replyCount > 0) {
+            if (comment.replyCount > 0 && !comment.repliesExpanded) {
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickableWithoutRipple { onLoadReplies(comment.id) }
                 ) {
                     Box(
                         modifier = Modifier
@@ -746,11 +763,90 @@ private fun SheetCommentItem(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "展开 ${comment.replyCount} 条回复",
+                        text = if (comment.repliesLoading) "加载中..." else "展开 ${comment.replyCount} 条回复",
                         color = CommentSheetMeta,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium
                     )
+                }
+            }
+
+            if (comment.repliesExpanded && comment.replies.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(CommentSheetSurface)
+                        .padding(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    comment.replies.forEach { reply ->
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            if (!reply.avatarUrl.isNullOrBlank()) {
+                                AsyncImage(
+                                    model = reply.avatarUrl,
+                                    contentDescription = reply.author,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.size(24.dp).clip(CircleShape)
+                                )
+                            } else {
+                                AvatarFallback(name = reply.author, color = reply.avatarColor, size = 24)
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = reply.author,
+                                        color = CommentSheetMeta,
+                                        fontSize = 12.sp
+                                    )
+                                    if (reply.replyToUserName?.isNotBlank() == true) {
+                                        Text(text = " 回复 ", color = CommentSheetMeta, fontSize = 12.sp)
+                                        Text(text = "@${reply.replyToUserName}", color = CommentSheetText, fontSize = 12.sp)
+                                    }
+                                }
+                                Text(
+                                    text = reply.content,
+                                    color = CommentSheetText,
+                                    fontSize = 13.sp,
+                                    lineHeight = 18.sp,
+                                    modifier = Modifier.padding(top = 2.dp)
+                                )
+                                Row(
+                                    modifier = Modifier.padding(top = 4.dp).fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("${reply.time} ${reply.location}", color = CommentSheetMeta, fontSize = 11.sp)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("回复", color = CommentSheetText, fontSize = 11.sp, modifier = Modifier.clickableWithoutRipple { onReplyClick(reply) })
+                                    }
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickableWithoutRipple { onLikeClick(reply.id) }) {
+                                        Icon(
+                                            imageVector = if (reply.isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                                            contentDescription = "Like",
+                                            tint = if (reply.isLiked) Color(0xFFE91E63) else CommentSheetMeta,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        if (reply.likeCount > 0) {
+                                            Spacer(modifier = Modifier.width(2.dp))
+                                            Text(text = reply.likeCount.toString(), color = CommentSheetMeta, fontSize = 11.sp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (comment.replyCount > comment.replies.size) {
+                        Text(
+                            text = "展开更多回复",
+                            color = CommentSheetMeta,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(start = 32.dp).clickableWithoutRipple { onLoadReplies(comment.id) }
+                        )
+                    }
                 }
             }
         }
@@ -894,8 +990,13 @@ private fun CommentsBottomSheetContent(
     commentCount: Int,
     commentDraft: String,
     isSubmittingComment: Boolean,
+    replyTarget: PostComment?,
     onCommentChange: (String) -> Unit,
     onSubmitComment: () -> Unit,
+    onReplyTargetChange: (PostComment?) -> Unit,
+    onToggleLike: (String) -> Unit,
+    onToggleReaction: (String) -> Unit,
+    onLoadReplies: (String) -> Unit,
     onClose: () -> Unit
 ) {
     Surface(
@@ -970,7 +1071,11 @@ private fun CommentsBottomSheetContent(
                     items(comments, key = { it.id }) { comment ->
                         SheetCommentItem(
                             comment = comment,
-                            postAuthorName = postAuthorName
+                            postAuthorName = postAuthorName,
+                            onReplyClick = onReplyTargetChange,
+                            onLikeClick = onToggleLike,
+                            onReactionClick = onToggleReaction,
+                            onLoadReplies = onLoadReplies
                         )
                     }
                 }
@@ -1008,9 +1113,10 @@ private fun CommentsBottomSheetContent(
                                 .weight(1f)
                                 .padding(horizontal = 16.dp, vertical = 10.dp),
                             decorationBox = { innerTextField ->
+                                val placeholder = if (replyTarget != null) "回复 @${replyTarget.author}" else "留下你的想法吧"
                                 if (commentDraft.isBlank()) {
                                     Text(
-                                        text = "留下你的想法吧",
+                                        text = placeholder,
                                         color = CommentSheetMeta,
                                         fontSize = 14.sp
                                     )
@@ -1019,7 +1125,17 @@ private fun CommentsBottomSheetContent(
                             }
                         )
                         
-                        if (commentDraft.isBlank()) {
+                        if (replyTarget != null && commentDraft.isBlank()) {
+                            Icon(
+                                imageVector = Icons.Outlined.Close,
+                                contentDescription = "取消回复",
+                                tint = CommentSheetMeta,
+                                modifier = Modifier
+                                    .padding(horizontal = 8.dp)
+                                    .size(20.dp)
+                                    .clickableWithoutRipple { onReplyTargetChange(null) }
+                            )
+                        } else if (commentDraft.isBlank()) {
                             Icon(
                                 imageVector = Icons.Outlined.Mic,
                                 contentDescription = "Mic",
@@ -1093,14 +1209,22 @@ private data class PostSection(
 private data class PostComment(
     val id: String,
     val author: String,
+    val authorId: String? = null,
     val identity: String,
     val content: String,
     val time: String,
     val avatarColor: Color,
     val avatarUrl: String? = null,
-    val location: String = "广东",
+    val location: String = "未知",
     val likeCount: Int = 0,
-    val replyCount: Int = 0
+    val replyCount: Int = 0,
+    val isLiked: Boolean = false,
+    val reactions: Map<String, Int> = emptyMap(),
+    val parentId: String? = null,
+    val replyToUserName: String? = null,
+    val replies: List<PostComment> = emptyList(),
+    val repliesExpanded: Boolean = false,
+    val repliesLoading: Boolean = false
 )
 
 private data class PostDetailUiState(
@@ -1110,6 +1234,7 @@ private data class PostDetailUiState(
     val message: String? = null,
     val pendingComment: String = "",
     val isSubmittingComment: Boolean = false,
+    val replyTarget: PostComment? = null,
     val isTogglingLike: Boolean = false,
     val isTogglingFavorite: Boolean = false
 )
@@ -1149,16 +1274,24 @@ private class PostDetailViewModel(
         _uiState.value = _uiState.value.copy(message = null)
     }
 
+    fun setReplyTarget(target: PostComment?) {
+        _uiState.value = _uiState.value.copy(replyTarget = target)
+    }
+
     fun submitComment() {
         val detail = _uiState.value.detail ?: return
         val content = _uiState.value.pendingComment.trim()
         if (content.isEmpty() || _uiState.value.isSubmittingComment) return
 
+        val replyTarget = _uiState.value.replyTarget
+        val parentId = replyTarget?.id ?: replyTarget?.parentId
+        val replyToUserId = replyTarget?.authorId
+
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isSubmittingComment = true)
             val result = when (detail.source) {
-                PostSource.USER -> repository.createUserPostComment(detail.id, content)
-                PostSource.EXPERT -> repository.createExpertPostComment(detail.id, content)
+                PostSource.USER -> repository.createUserPostComment(detail.id, content, parentId, replyToUserId)
+                PostSource.EXPERT -> repository.createExpertPostComment(detail.id, content, parentId, replyToUserId)
             }
 
             result.onSuccess { payload ->
@@ -1170,6 +1303,7 @@ private class PostDetailViewModel(
                 _uiState.value = _uiState.value.copy(
                     detail = updatedDetail,
                     pendingComment = "",
+                    replyTarget = null,
                     isSubmittingComment = false
                 )
             }.onFailure { error ->
@@ -1179,6 +1313,119 @@ private class PostDetailViewModel(
                 )
             }
         }
+    }
+
+    fun toggleCommentLike(commentId: String) {
+        viewModelScope.launch {
+            val comment = findComment(commentId) ?: return@launch
+            val currentlyLiked = comment.isLiked
+
+            updateCommentInDetail(commentId) { 
+                it.copy(
+                    isLiked = !currentlyLiked,
+                    likeCount = if (currentlyLiked) max(0, it.likeCount - 1) else it.likeCount + 1
+                ) 
+            }
+
+            val result = if (currentlyLiked) {
+                repository.unlikeComment(commentId)
+            } else {
+                repository.likeComment(commentId)
+            }
+            
+            result.onFailure {
+                updateCommentInDetail(commentId) { 
+                    it.copy(
+                        isLiked = currentlyLiked,
+                        likeCount = if (currentlyLiked) it.likeCount + 1 else max(0, it.likeCount - 1)
+                    ) 
+                }
+                _uiState.value = _uiState.value.copy(message = "操作失败")
+            }
+        }
+    }
+
+    fun toggleCommentReaction(commentId: String) {
+        val emoji = "smile"
+        viewModelScope.launch {
+            val comment = findComment(commentId) ?: return@launch
+            val currentlyReacted = (comment.reactions[emoji] ?: 0) > 0
+            
+            updateCommentInDetail(commentId) { 
+                val currentCount = it.reactions[emoji] ?: 0
+                val newReactions = it.reactions.toMutableMap()
+                if (currentlyReacted) {
+                    newReactions[emoji] = max(0, currentCount - 1)
+                } else {
+                    newReactions[emoji] = currentCount + 1
+                }
+                it.copy(reactions = newReactions) 
+            }
+
+            val result = if (currentlyReacted) {
+                repository.removeCommentReaction(commentId, emoji)
+            } else {
+                repository.addCommentReaction(commentId, emoji)
+            }
+            
+            result.onFailure {
+                _uiState.value = _uiState.value.copy(message = "操作失败")
+            }
+        }
+    }
+
+    fun loadCommentReplies(commentId: String) {
+        viewModelScope.launch {
+            val comment = findComment(commentId) ?: return@launch
+            if (comment.repliesExpanded && comment.replies.isNotEmpty()) {
+                updateCommentInDetail(commentId) { it.copy(repliesExpanded = false) }
+                return@launch
+            }
+
+            updateCommentInDetail(commentId) { it.copy(repliesLoading = true, repliesExpanded = true) }
+            val result = repository.getCommentReplies(commentId)
+            result.onSuccess { pagedData ->
+                updateCommentInDetail(commentId) { 
+                    it.copy(
+                        replies = pagedData.list.map { dto -> dto.toUiComment() },
+                        repliesExpanded = true,
+                        repliesLoading = false
+                    ) 
+                }
+            }.onFailure {
+                updateCommentInDetail(commentId) { it.copy(repliesLoading = false, repliesExpanded = false) }
+                _uiState.value = _uiState.value.copy(message = "加载回复失败")
+            }
+        }
+    }
+
+    private fun findComment(id: String): PostComment? {
+        val detail = _uiState.value.detail ?: return null
+        for (c in detail.comments) {
+            if (c.id == id) return c
+            val sub = c.replies.find { it.id == id }
+            if (sub != null) return sub
+        }
+        return null
+    }
+
+    private fun updateCommentInDetail(commentId: String, update: (PostComment) -> PostComment) {
+        val detail = _uiState.value.detail ?: return
+        val newComments = detail.comments.map { parent ->
+            if (parent.id == commentId) {
+                update(parent)
+            } else {
+                val updatedReplies = parent.replies.map { sub ->
+                    if (sub.id == commentId) update(sub) else sub
+                }
+                if (updatedReplies != parent.replies) {
+                    parent.copy(replies = updatedReplies)
+                } else {
+                    parent
+                }
+            }
+        }
+        _uiState.value = _uiState.value.copy(detail = detail.copy(comments = newComments))
     }
 
     fun toggleLike() {
@@ -1268,11 +1515,11 @@ private class PostDetailViewModel(
     }
 
     private suspend fun fetchPostDetail(): Result<PostDetail> {
-        val userResult = repository.getUserPostDetail(postId).map { it.toPostDetail() }
+        val userResult = repository.getUserPostDetail(postId).mapCatching { it.toPostDetail() }
         if (userResult.isSuccess) {
             return userResult.mapCatching { hydrateInteractions(it) }
         }
-        val expertResult = repository.getExpertPostDetail(postId).map { it.toPostDetail() }
+        val expertResult = repository.getExpertPostDetail(postId).mapCatching { it.toPostDetail() }
         return expertResult.mapCatching { hydrateInteractions(it) }
     }
 
@@ -1287,10 +1534,15 @@ private class PostDetailViewModel(
         }
 
         val withEngagement = engagementResult.getOrNull()?.let { detail.applyEngagement(it) } ?: detail
-        val comments = commentsResult.getOrNull()
-            ?.sortedByDescending { it.createdAt }
-            ?.map { it.toUiComment() }
-            ?: withEngagement.comments
+        val comments = try {
+            commentsResult.getOrNull()
+                ?.sortedByDescending { it.createdAt ?: "" }
+                ?.mapNotNull { dto ->
+                    try { dto.toUiComment() } catch (e: Exception) { null }
+                }
+        } catch (e: Exception) {
+            null
+        } ?: withEngagement.comments
         return withEngagement.copy(comments = comments)
     }
 
@@ -1300,10 +1552,25 @@ private class PostDetailViewModel(
         engagement: PostEngagement?
     ): PostDetail {
         val withEngagement = engagement?.let { detail.applyEngagement(it) } ?: detail
-        return if (comment != null) {
-            withEngagement.copy(comments = listOf(comment.toUiComment()) + withEngagement.comments)
+        if (comment == null) return withEngagement
+        val uiComment = comment.toUiComment()
+
+        val parentId = uiComment.parentId
+        if (parentId == null) {
+            return withEngagement.copy(comments = listOf(uiComment) + withEngagement.comments)
         } else {
-            withEngagement
+            val newComments = withEngagement.comments.map { parent ->
+                if (parent.id == parentId) {
+                    parent.copy(
+                        replyCount = parent.replyCount + 1,
+                        replies = listOf(uiComment) + parent.replies,
+                        repliesExpanded = true
+                    )
+                } else {
+                    parent
+                }
+            }
+            return withEngagement.copy(comments = newComments)
         }
     }
 
@@ -1329,62 +1596,69 @@ private class PostDetailViewModel(
 //  数据转换
 // ═══════════════════════════════════════════════════════════════
 private fun UserPost.toPostDetail(): PostDetail {
-    val avatarColor = pickAvatarColor(id)
-    val authorName = author?.name?.takeIf { it.isNotBlank() } ?: "STAR-LINK 职圈"
-    val authorTitle = author?.headline?.takeIf { !it.isNullOrBlank() } ?: "社区热帖"
+    val avatarColor = pickAvatarColor(id ?: "")
+    val authorName = try { author?.name?.takeIf { it.isNotBlank() } } catch (e: Exception) { null } ?: "STAR-LINK 职圈"
+    val authorTitle = try { author?.headline?.takeIf { !it.isNullOrBlank() } } catch (e: Exception) { null } ?: "社区热帖"
+    val safeContent = try { content } catch (e: Exception) { null } ?: ""
+    val safeTags = try { tags } catch (e: Exception) { null } ?: emptyList()
+    val safeImages = try { images } catch (e: Exception) { null } ?: emptyList()
+    
     return PostDetail(
-        id = id,
+        id = id ?: "",
         source = PostSource.USER,
-        title = title,
+        title = title ?: "",
         publishDate = formatPublishedAt(createdAt),
-        viewCount = formatViewCount(viewCount),
-        likeCount = likeCount,
-        collectCount = max(0, shareCount),
-        commentCount = commentCount,
+        viewCount = formatViewCount(viewCount ?: 0),
+        likeCount = likeCount ?: 0,
+        collectCount = max(0, shareCount ?: 0),
+        commentCount = commentCount ?: 0,
         isLiked = false,
         isFavorited = false,
         author = PostAuthor(
             name = authorName,
             title = authorTitle,
-            highlight = extractHighlight(content, tags),
-            tags = tags,
+            highlight = extractHighlight(safeContent, safeTags),
+            tags = safeTags,
             avatarColor = avatarColor,
-            avatarUrl = author?.avatar
+            avatarUrl = try { author?.avatar } catch (e: Exception) { null }
         ),
-        sections = buildContentSections(content),
+        sections = buildContentSections(safeContent),
         comments = emptyList(),
-        heroImageUrl = coverImage,
-        galleryImages = images
+        heroImageUrl = try { coverImage } catch (e: Exception) { null },
+        galleryImages = safeImages
     )
 }
 
 private fun ExpertPost.toPostDetail(): PostDetail {
-    val avatarColor = pickAvatarColor(id)
+    val avatarColor = pickAvatarColor(id ?: "")
+    val safeContent = try { content } catch (e: Exception) { null } ?: ""
+    val safeTags = try { tags } catch (e: Exception) { null } ?: emptyList()
     val authorTitle = listOf(expertCompany, expertTitle)
-        .filter { it.isNotBlank() }
+        .filter { !it.isNullOrBlank() }
         .joinToString(" · ")
+        
     return PostDetail(
-        id = id,
+        id = id ?: "",
         source = PostSource.EXPERT,
-        title = title,
+        title = title ?: "",
         publishDate = formatPublishedAt(publishedAt),
-        viewCount = formatViewCount(viewCount),
-        likeCount = likeCount,
+        viewCount = formatViewCount(viewCount ?: 0),
+        likeCount = likeCount ?: 0,
         collectCount = 0,
-        commentCount = commentCount,
+        commentCount = commentCount ?: 0,
         isLiked = false,
         isFavorited = false,
         author = PostAuthor(
-            name = expertName,
+            name = expertName ?: "专家",
             title = authorTitle.ifBlank { "行业专家" },
-            highlight = extractHighlight(content, tags),
-            tags = tags,
+            highlight = extractHighlight(safeContent, safeTags),
+            tags = safeTags,
             avatarColor = avatarColor,
             avatarUrl = expertAvatar
         ),
-        sections = buildContentSections(content),
+        sections = buildContentSections(safeContent),
         comments = emptyList(),
-        heroImageUrl = coverImage
+        heroImageUrl = try { coverImage } catch (e: Exception) { null }
     )
 }
 
@@ -1399,20 +1673,31 @@ private fun PostDetail.applyEngagement(engagement: PostEngagement): PostDetail {
 }
 
 private fun PostCommentDto.toUiComment(): PostComment {
-    val authorName = author.name?.takeIf { it.isNotBlank() } ?: "STAR-LINK 用户"
-    val mockLikeCount = (authorName.hashCode() % 50).let { if (it < 0) -it else it }
-    val mockReplyCount = (content.hashCode() % 5).let { if (it < 0) -it else it }
+    val authName = try { author?.name } catch (e: Exception) { null }
+    val authId = try { author?.id } catch (e: Exception) { null }
+    val authAvatar = try { author?.avatar } catch (e: Exception) { null }
+    
+    val safeName = authName?.takeIf { it.isNotBlank() } ?: "STAR-LINK 用户"
+    val safeReplies = try { replies?.mapNotNull { try { it.toUiComment() } catch (e: Exception) { null } } } catch (e: Exception) { null } ?: emptyList()
+    val safeReactions = try { reactions } catch (e: Exception) { null } ?: emptyMap()
+    
     return PostComment(
-        id = id,
-        author = authorName,
+        id = id ?: "",
+        author = safeName,
+        authorId = authId,
         identity = "用户评论",
-        content = content,
+        content = content ?: "",
         time = formatPublishedAtShort(createdAt),
-        avatarColor = pickAvatarColor(author.id ?: authorName),
-        avatarUrl = author.avatar,
-        location = "广东",
-        likeCount = mockLikeCount,
-        replyCount = mockReplyCount
+        avatarColor = pickAvatarColor(authId ?: safeName),
+        avatarUrl = authAvatar,
+        location = "未知",
+        likeCount = likeCount ?: 0,
+        replyCount = replyCount ?: 0,
+        isLiked = isLiked ?: false,
+        reactions = safeReactions,
+        parentId = parentId,
+        replyToUserName = replyToUserName,
+        replies = safeReplies
     )
 }
 

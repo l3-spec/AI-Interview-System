@@ -164,14 +164,33 @@ data class PostCommentDto(
     val id: String,
     val content: String,
     val createdAt: String,
-    val author: PostCommentAuthor
+    val author: PostCommentAuthor,
+    val parentId: String? = null,
+    val replyToUserId: String? = null,
+    val replyToUserName: String? = null,
+    val likeCount: Int = 0,
+    val replyCount: Int = 0,
+    val isLiked: Boolean = false,
+    val reactions: Map<String, Int> = emptyMap(),
+    val replies: List<PostCommentDto> = emptyList()
 )
 
 data class CreatePostCommentRequest(
-    val content: String
+    val content: String,
+    val parentId: String? = null,
+    val replyToUserId: String? = null
 )
 
 data class CreatePostCommentResult(
     val comment: PostCommentDto?,
     val engagement: PostEngagement?
+)
+
+data class CommentReactionRequest(
+    val emoji: String
+)
+
+data class CommentReactionResult(
+    val comment: PostCommentDto?,
+    val added: Boolean? = null
 )
