@@ -116,11 +116,11 @@ private val AccentOrange = Color(0xFFEC7C38)      // 作者名、标签
 private val DividerColor = Color(0xFFF0F0F0)      // 分割线
 private val InputFieldBg = Color(0xFFF5F5F5)      // 评论输入框底色
 private val InputFieldBorder = Color(0xFFE5E5E5)  // 评论输入框边框
-private val CommentSheetBackground = Color(0xFF17171B)
-private val CommentSheetSurface = Color(0xFF202028)
-private val CommentSheetText = Color(0xFFF5F5F7)
-private val CommentSheetMeta = Color(0xFF8D8D96)
-private val CommentSheetDivider = Color(0xFF2A2A31)
+private val CommentSheetBackground = Color.White
+private val CommentSheetSurface = Color(0xFFF5F5F5)
+private val CommentSheetText = Color(0xFF1A1A1A)
+private val CommentSheetMeta = Color(0xFF999999)
+private val CommentSheetDivider = Color(0xFFF0F0F0)
 
 // ═══════════════════════════════════════════════════════════════
 //  入口
@@ -918,30 +918,6 @@ private fun CommentsBottomSheetContent(
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "大家都在搜：中国模拟英国军事演习事件 🔍",
-                        color = CommentSheetMeta,
-                        fontSize = 13.sp
-                    )
-                    IconButton(
-                        onClick = onClose,
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Close,
-                            contentDescription = "关闭评论",
-                            tint = CommentSheetText,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-                
-                Spacer(modifier = Modifier.height(10.dp))
-                
-                Row(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
@@ -957,6 +933,18 @@ private fun CommentsBottomSheetContent(
                         tint = CommentSheetText,
                         modifier = Modifier.size(16.dp)
                     )
+                    Spacer(modifier = Modifier.weight(1f))
+                    IconButton(
+                        onClick = onClose,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Close,
+                            contentDescription = "关闭评论",
+                            tint = CommentSheetText,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
 
