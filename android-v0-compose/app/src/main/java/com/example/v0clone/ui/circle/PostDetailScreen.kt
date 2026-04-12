@@ -43,6 +43,10 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material.icons.automirrored.outlined.Sort
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Mic
+import androidx.compose.material.icons.outlined.SentimentSatisfied
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -611,8 +615,8 @@ private fun SheetCommentItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         if (!comment.avatarUrl.isNullOrBlank()) {
             SubcomposeAsyncImage(
@@ -620,13 +624,13 @@ private fun SheetCommentItem(
                 contentDescription = comment.author,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .size(42.dp)
+                    .size(36.dp)
                     .clip(CircleShape),
                 error = {
                     AvatarFallback(
                         name = comment.author,
                         color = comment.avatarColor,
-                        size = 42
+                        size = 36
                     )
                 }
             )
@@ -634,51 +638,121 @@ private fun SheetCommentItem(
             AvatarFallback(
                 name = comment.author,
                 color = comment.avatarColor,
-                size = 42
+                size = 36
             )
         }
 
         Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            modifier = Modifier.weight(1f)
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
                     text = comment.author,
-                    color = Color(0xFFE8E8ED),
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold
+                    color = CommentSheetMeta,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium
                 )
                 if (isAuthor) {
                     Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = Color(0x33EC7C38)
+                        shape = RoundedCornerShape(4.dp),
+                        color = Color(0x33DC3838)
                     ) {
                         Text(
                             text = "作者",
-                            color = AccentOrange,
+                            color = Color(0xFFDC3838),
                             fontSize = 10.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                         )
                     }
                 }
             }
+            
+            Spacer(modifier = Modifier.height(4.dp))
+            
             Text(
                 text = comment.content,
                 color = CommentSheetText,
-                fontSize = 16.sp,
-                lineHeight = 24.sp
+                fontSize = 15.sp,
+                lineHeight = 22.sp
             )
-            Text(
-                text = "${comment.time}  回复",
-                color = CommentSheetMeta,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
-            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "${comment.time} ${comment.location}",
+                        color = CommentSheetMeta,
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        text = "回复",
+                        color = CommentSheetText,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Outlined.FavoriteBorder,
+                            contentDescription = "Like",
+                            tint = CommentSheetMeta,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        if (comment.likeCount > 0) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = comment.likeCount.toString(),
+                                color = CommentSheetMeta,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                    Icon(
+                        imageVector = Icons.Outlined.SentimentSatisfied,
+                        contentDescription = "React",
+                        tint = CommentSheetMeta,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+            
+            if (comment.replyCount > 0) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(16.dp)
+                            .height(1.dp)
+                            .background(CommentSheetDivider)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "展开 ${comment.replyCount} 条回复",
+                        color = CommentSheetMeta,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
         }
     }
 }
@@ -827,9 +901,9 @@ private fun CommentsBottomSheetContent(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .fillMaxHeight(0.84f),
+            .fillMaxHeight(0.85f),
         color = CommentSheetBackground,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
     ) {
         Column(
             modifier = Modifier
@@ -837,41 +911,54 @@ private fun CommentsBottomSheetContent(
                 .imePadding()
                 .navigationBarsPadding()
         ) {
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 12.dp, bottom = 8.dp),
-                contentAlignment = Alignment.Center
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(width = 42.dp, height = 5.dp)
-                        .clip(RoundedCornerShape(100.dp))
-                        .background(Color.White.copy(alpha = 0.28f))
-                )
-                IconButton(
-                    onClick = onClose,
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 8.dp)
-                        .size(34.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
+                    Text(
+                        text = "大家都在搜：中国模拟英国军事演习事件 🔍",
+                        color = CommentSheetMeta,
+                        fontSize = 13.sp
+                    )
+                    IconButton(
+                        onClick = onClose,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Close,
+                            contentDescription = "关闭评论",
+                            tint = CommentSheetText,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(10.dp))
+                
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "共 $commentCount 条评论",
+                        color = CommentSheetText,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
                     Icon(
-                        imageVector = Icons.Outlined.Close,
-                        contentDescription = "关闭评论",
-                        tint = CommentSheetMeta,
-                        modifier = Modifier.size(22.dp)
+                        imageVector = Icons.AutoMirrored.Outlined.Sort,
+                        contentDescription = "Sort",
+                        tint = CommentSheetText,
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }
-
-            Text(
-                text = "全部评论 $commentCount",
-                color = CommentSheetText,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
-            )
 
             if (comments.isEmpty()) {
                 Box(
@@ -905,57 +992,75 @@ private fun CommentsBottomSheetContent(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Surface(
                     modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(22.dp),
+                    shape = RoundedCornerShape(20.dp),
                     color = CommentSheetSurface
                 ) {
-                    BasicTextField(
-                        value = commentDraft,
-                        onValueChange = onCommentChange,
-                        singleLine = true,
-                        enabled = !isSubmittingComment,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                        keyboardActions = KeyboardActions(onSend = { onSubmitComment() }),
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(
-                            color = CommentSheetText,
-                            fontSize = 15.sp
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        decorationBox = { innerTextField ->
-                            if (commentDraft.isBlank()) {
-                                Text(
-                                    text = "留下你的想法吧",
-                                    color = CommentSheetMeta,
-                                    fontSize = 15.sp
-                                )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        BasicTextField(
+                            value = commentDraft,
+                            onValueChange = onCommentChange,
+                            singleLine = true,
+                            enabled = !isSubmittingComment,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                            keyboardActions = KeyboardActions(onSend = { onSubmitComment() }),
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                color = CommentSheetText,
+                                fontSize = 15.sp
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            decorationBox = { innerTextField ->
+                                if (commentDraft.isBlank()) {
+                                    Text(
+                                        text = "留下你的想法吧",
+                                        color = CommentSheetMeta,
+                                        fontSize = 14.sp
+                                    )
+                                }
+                                innerTextField()
                             }
-                            innerTextField()
+                        )
+                        
+                        if (commentDraft.isBlank()) {
+                            Icon(
+                                imageVector = Icons.Outlined.Mic,
+                                contentDescription = "Mic",
+                                tint = CommentSheetMeta,
+                                modifier = Modifier
+                                    .padding(horizontal = 4.dp)
+                                    .size(24.dp)
+                            )
+                            Icon(
+                                imageVector = Icons.Outlined.Image,
+                                contentDescription = "Image",
+                                tint = CommentSheetMeta,
+                                modifier = Modifier
+                                    .padding(end = 12.dp, start = 4.dp)
+                                    .size(24.dp)
+                            )
                         }
-                    )
+                    }
                 }
 
-                Text(
-                    text = if (isSubmittingComment) "发送中" else "发布",
-                    color = if (commentDraft.isBlank() || isSubmittingComment) {
-                        CommentSheetMeta
-                    } else {
-                        AccentOrange
-                    },
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = if (commentDraft.isBlank() || isSubmittingComment) {
-                        Modifier
-                    } else {
-                        Modifier.clickableWithoutRipple(onSubmitComment)
-                    }
-                )
+                if (commentDraft.isNotBlank() || isSubmittingComment) {
+                    Text(
+                        text = if (isSubmittingComment) "发送中" else "发送",
+                        color = AccentOrange,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = if (isSubmittingComment) Modifier else Modifier.clickableWithoutRipple(onSubmitComment)
+                    )
+                }
             }
         }
     }
@@ -1004,7 +1109,10 @@ private data class PostComment(
     val content: String,
     val time: String,
     val avatarColor: Color,
-    val avatarUrl: String? = null
+    val avatarUrl: String? = null,
+    val location: String = "广东",
+    val likeCount: Int = 0,
+    val replyCount: Int = 0
 )
 
 private data class PostDetailUiState(
@@ -1304,15 +1412,34 @@ private fun PostDetail.applyEngagement(engagement: PostEngagement): PostDetail {
 
 private fun PostCommentDto.toUiComment(): PostComment {
     val authorName = author.name?.takeIf { it.isNotBlank() } ?: "STAR-LINK 用户"
+    val mockLikeCount = (authorName.hashCode() % 50).let { if (it < 0) -it else it }
+    val mockReplyCount = (content.hashCode() % 5).let { if (it < 0) -it else it }
     return PostComment(
         id = id,
         author = authorName,
         identity = "用户评论",
         content = content,
-        time = formatPublishedAt(createdAt),
+        time = formatPublishedAtShort(createdAt),
         avatarColor = pickAvatarColor(author.id ?: authorName),
-        avatarUrl = author.avatar
+        avatarUrl = author.avatar,
+        location = "广东",
+        likeCount = mockLikeCount,
+        replyCount = mockReplyCount
     )
+}
+
+private fun formatPublishedAtShort(raw: String?): String {
+    if (raw.isNullOrBlank()) {
+        return "刚刚"
+    }
+    return try {
+        val instant = Instant.parse(raw)
+        val zonedDateTime = instant.atZone(ZoneId.systemDefault())
+        val formatter = DateTimeFormatter.ofPattern("MM-dd")
+        zonedDateTime.format(formatter)
+    } catch (ex: DateTimeParseException) {
+        raw.take(10)
+    }
 }
 
 private fun buildContentSections(content: String): List<PostSection> {
@@ -1508,27 +1635,36 @@ private fun samplePostDetails(): List<PostDetail> = listOf(
         comments = listOf(
             PostComment(
                 id = "comment_1",
-                author = "产品老司机",
+                author = "痞欠一官方授权账号",
                 identity = "",
-                content = "这里展示评论的文字内容这里展示评论的文字内容这里展示评论的文字内容",
-                time = "2025-05-16 13:00",
-                avatarColor = Color(0xFFFF8C42)
+                content = "有机刺梨汁富含维C等维生素，增强免疫力",
+                time = "04-02",
+                avatarColor = Color(0xFFFF8C42),
+                location = "广东",
+                likeCount = 7,
+                replyCount = 1
             ),
             PostComment(
                 id = "comment_2",
-                author = "产品老司机",
+                author = "echo",
                 identity = "",
-                content = "这里展示评论的文字内容这里展示评论的文字内容这里展示评论的文字内容",
-                time = "2025-05-16 13:00",
-                avatarColor = Color(0xFFFF8C42)
+                content = "实在是心疼我方排故人员，这得顶着多大的压力，多么的冤啊",
+                time = "04-04",
+                avatarColor = Color(0xFF6366F1),
+                location = "天津",
+                likeCount = 240,
+                replyCount = 2
             ),
             PostComment(
                 id = "comment_3",
-                author = "产品老司机",
+                author = "白袍姐姐",
                 identity = "",
-                content = "这里展示评论的文字内容这里展示评论的文字内容这里展示评论的文字内容",
-                time = "2025-05-16 13:00",
-                avatarColor = Color(0xFFFF8C42)
+                content = "这次演习真的很精彩，可以看出我们的实力在不断进步！",
+                time = "04-05",
+                avatarColor = Color(0xFF38B2AC),
+                location = "北京",
+                likeCount = 15,
+                replyCount = 0
             )
         ),
         heroImageUrl = "https://www.figma.com/api/mcp/asset/d07aecb5-ffe9-4b96-a74d-e8cbae1f6b4b",
@@ -1572,8 +1708,11 @@ private fun samplePostDetails(): List<PostDetail> = listOf(
                 author = "Milla",
                 identity = "数据科学家",
                 content = "欢迎同学们来社群讨论学习计划，我会每周更新打卡模板。",
-                time = "2024-09-20 21:00",
-                avatarColor = Color(0xFF38B2AC)
+                time = "09-20",
+                avatarColor = Color(0xFF38B2AC),
+                location = "上海",
+                likeCount = 120,
+                replyCount = 5
             )
         ),
         heroImageUrl = "https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=1200&q=80"
@@ -1613,8 +1752,11 @@ private fun samplePostDetails(): List<PostDetail> = listOf(
                 author = "阿星",
                 identity = "校招算法生",
                 content = "有需要简历模板的同学可以在评论区留言，我整理了通关清单。",
-                time = "2024-09-02 18:30",
-                avatarColor = Color(0xFF6366F1)
+                time = "09-02",
+                avatarColor = Color(0xFF6366F1),
+                location = "深圳",
+                likeCount = 312,
+                replyCount = 12
             )
         ),
         heroImageUrl = "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=1200&q=80"
