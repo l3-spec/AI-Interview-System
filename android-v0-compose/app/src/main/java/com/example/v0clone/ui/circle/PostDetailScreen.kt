@@ -176,6 +176,7 @@ fun PostDetailRoute(
         topBar = {
             // ── 顶部导航栏：返回箭头 + 标题（紧贴状态栏） ──
             Surface(
+                modifier = Modifier.fillMaxWidth(),
                 color = PageBackground,
                 shadowElevation = 0.dp
             ) {
@@ -185,9 +186,8 @@ fun PostDetailRoute(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = statusTopPadding)
                         .padding(horizontal = 14.dp)
-                        .height(40.dp),
+                        .padding(vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
@@ -210,8 +210,6 @@ fun PostDetailRoute(
                         color = PrimaryText,
                         fontSize = 17.sp,
                         fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
                             .weight(1f)
                             .padding(end = 40.dp)
@@ -279,13 +277,6 @@ fun PostDetailRoute(
                     // ── 行内图片画廊 ──
                     if (gallery.isNotEmpty()) {
                         item { PostInlineGallery(gallery) }
-                    }
-
-                    item {
-                        PostCommentsEntry(
-                            count = detail.commentCount,
-                            onClick = { showCommentsSheet = true }
-                        )
                     }
                 }
             }
@@ -1200,7 +1191,10 @@ private class PostDetailViewModel(
         }
 
         val withEngagement = engagementResult.getOrNull()?.let { detail.applyEngagement(it) } ?: detail
-        val comments = commentsResult.getOrNull()?.map { it.toUiComment() } ?: withEngagement.comments
+        val comments = commentsResult.getOrNull()
+            ?.sortedByDescending { it.createdAt }
+            ?.map { it.toUiComment() }
+            ?: withEngagement.comments
         return withEngagement.copy(comments = comments)
     }
 
@@ -1211,7 +1205,7 @@ private class PostDetailViewModel(
     ): PostDetail {
         val withEngagement = engagement?.let { detail.applyEngagement(it) } ?: detail
         return if (comment != null) {
-            withEngagement.copy(comments = withEngagement.comments + comment.toUiComment())
+            withEngagement.copy(comments = listOf(comment.toUiComment()) + withEngagement.comments)
         } else {
             withEngagement
         }
