@@ -14,7 +14,10 @@ object RetrofitClient {
         level = HttpLoggingInterceptor.Level.BODY
     }
 
-    fun createOkHttpClient(tokenProvider: () -> String?): OkHttpClient {
+    fun createOkHttpClient(
+        tokenProvider: () -> String?,
+        onUnauthorized: (() -> Unit)? = null
+    ): OkHttpClient {
         val authInterceptor = Interceptor { chain ->
             val original = chain.request()
             val token = tokenProvider()
@@ -23,7 +26,12 @@ object RetrofitClient {
                     .addHeader("Authorization", "Bearer $token")
                     .build()
             } else original
-            chain.proceed(req)
+            val resp = chain.proceed(req)
+            // 身份丢失时通知上层清理本地凭据，触发重新登录
+            if (resp.code == 401) {
+                onUnauthorized?.invoke()
+            }
+            resp
         }
 
         val timeoutSeconds = 60L

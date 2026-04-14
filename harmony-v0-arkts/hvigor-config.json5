@@ -1,0 +1,10 @@
+{
+  "hvigorVersion": "3.4.0",
+  "dependencies": {
+    "@ohos/hvigor-arkui-compiler": "3.4.0"
+  },
+  "execution": {
+    "parallel": true,
+    "resolveCache": true
+  }
+}

@@ -5,6 +5,10 @@ import android.app.Activity
 import android.content.Context
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.PowerManager
 import android.util.Log
 import android.view.WindowManager
@@ -129,6 +133,12 @@ fun DigitalInterviewScreen(
     val duixModelUrl = remember { AppConfig.duixModelUrl }
     val activity = context as? Activity
     var showEducationOverlay by rememberSaveable { mutableStateOf(true) }
+    val connectivityManager = remember {
+        context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    }
+    var isNetworkAvailable by remember { mutableStateOf(context.isNetworkAvailable()) }
+    var showOfflineDialog by remember { mutableStateOf(!isNetworkAvailable) }
+
     val powerManager = remember { context.getSystemService(Context.POWER_SERVICE) as? PowerManager }
     var showPowerSaveDialog by remember { mutableStateOf(false) }
 
@@ -208,6 +218,33 @@ fun DigitalInterviewScreen(
         }
     }
 
+    DisposableEffect(connectivityManager) {
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                isNetworkAvailable = context.isNetworkAvailable()
+            }
+
+            override fun onLost(network: Network) {
+                isNetworkAvailable = context.isNetworkAvailable()
+            }
+
+            override fun onUnavailable() {
+                isNetworkAvailable = false
+            }
+
+            override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+                isNetworkAvailable =
+                    networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                    networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            }
+        }
+
+        connectivityManager.registerNetworkCallback(NetworkRequest.Builder().build(), callback)
+        onDispose {
+            runCatching { connectivityManager.unregisterNetworkCallback(callback) }
+        }
+    }
+
     DisposableEffect(videoRecorder) {
         onDispose {
             videoRecorder?.release()
@@ -230,6 +267,21 @@ fun DigitalInterviewScreen(
     val digitalHumanStatus = duixStatus
     var hasReportedCompletion by rememberSaveable(uiState.sessionId) { mutableStateOf(false) }
     var autoRecorderEnabled by rememberSaveable { mutableStateOf(true) }
+
+    LaunchedEffect(isNetworkAvailable) {
+        if (!isNetworkAvailable) {
+            showOfflineDialog = true
+            autoRecorderEnabled = false
+            voiceManager.handleNetworkInterrupted()
+            Toast.makeText(
+                context,
+                "网络已中断，面试已暂停。恢复网络后可继续。",
+                Toast.LENGTH_LONG
+            ).show()
+        } else {
+            autoRecorderEnabled = true
+        }
+    }
 
     // 监听题目索引变化并同步到ViewModel
     LaunchedEffect(currentQuestionIndex) {
@@ -305,8 +357,8 @@ fun DigitalInterviewScreen(
     var connectionRetryCount by remember { mutableStateOf(0) }
     val maxRetries = 3
 
-    LaunchedEffect(uiState.sessionId, hasMicrophonePermission, connectionState, connectionRetryCount) {
-        if (uiState.sessionId.isNotBlank() && hasMicrophonePermission && connectionState == ConnectionState.DISCONNECTED) {
+    LaunchedEffect(uiState.sessionId, hasMicrophonePermission, connectionState, connectionRetryCount, isNetworkAvailable) {
+        if (uiState.sessionId.isNotBlank() && hasMicrophonePermission && isNetworkAvailable && connectionState == ConnectionState.DISCONNECTED) {
             // 避免立即重连导致死循环，增加延时
             kotlinx.coroutines.delay(2000)
             
@@ -387,6 +439,7 @@ fun DigitalInterviewScreen(
     }
 
     val dynamicStatusMessage = when {
+        !isNetworkAvailable -> "网络已中断，请恢复网络后继续面试"
         digitalHumanStatus != null -> digitalHumanStatus
         connectionState == ConnectionState.CONNECTING -> "正在连接语音服务…"
         connectionState == ConnectionState.DISCONNECTED && uiState.sessionId.isNotBlank() -> "语音服务未连接"
@@ -406,6 +459,11 @@ fun DigitalInterviewScreen(
             }
             !hasMicrophonePermission -> {
                 showPermissionDialog = true
+            }
+
+            !isNetworkAvailable -> {
+                showOfflineDialog = true
+                Toast.makeText(context, "当前网络不可用，无法继续面试", Toast.LENGTH_SHORT).show()
             }
 
             connectionState != ConnectionState.CONNECTED -> {
@@ -477,10 +535,11 @@ fun DigitalInterviewScreen(
     }
 
     // 无需手动按钮，保持自动录音：当连接就绪且双方静默时自动开启录音
-    LaunchedEffect(connectionState, digitalHumanReady, isRecording, isProcessing, isDigitalHumanSpeaking, interviewCompleted) {
+    LaunchedEffect(connectionState, digitalHumanReady, isRecording, isProcessing, isDigitalHumanSpeaking, interviewCompleted, isNetworkAvailable) {
         Log.d("DigitalInterviewScreen", """
             Auto-recording check:
               autoRecorderEnabled: $autoRecorderEnabled
+              isNetworkAvailable: $isNetworkAvailable
               digitalHumanReady: $digitalHumanReady
               connectionState: $connectionState
               interviewCompleted: $interviewCompleted
@@ -490,6 +549,7 @@ fun DigitalInterviewScreen(
         """.trimIndent())
         
         if (autoRecorderEnabled &&
+            isNetworkAvailable &&
             digitalHumanReady &&
             connectionState == ConnectionState.CONNECTED &&
             !interviewCompleted &&
@@ -502,6 +562,7 @@ fun DigitalInterviewScreen(
         } else {
             val blockers = mutableListOf<String>()
             if (!autoRecorderEnabled) blockers.add("autoRecorderDisabled")
+            if (!isNetworkAvailable) blockers.add("networkUnavailable")
             if (!digitalHumanReady) blockers.add("digitalHumanNotReady")
             if (connectionState != ConnectionState.CONNECTED) blockers.add("notConnected")
             if (interviewCompleted) blockers.add("interviewCompleted")
@@ -516,8 +577,8 @@ fun DigitalInterviewScreen(
     }
 
     // Fallback: 如果数字人说完话5秒后还没开始录音，尝试手动触发
-    LaunchedEffect(isDigitalHumanSpeaking, digitalHumanReady, connectionState) {
-        if (!isDigitalHumanSpeaking && digitalHumanReady && connectionState == ConnectionState.CONNECTED && !isRecording) {
+    LaunchedEffect(isDigitalHumanSpeaking, digitalHumanReady, connectionState, isNetworkAvailable) {
+        if (!isDigitalHumanSpeaking && isNetworkAvailable && digitalHumanReady && connectionState == ConnectionState.CONNECTED && !isRecording) {
             kotlinx.coroutines.delay(5000)
             if (!isRecording && !isProcessing && !interviewCompleted) {
                 Log.w("DigitalInterviewScreen", "Fallback: Manually triggering recording after digital human finished speaking")
@@ -554,7 +615,15 @@ fun DigitalInterviewScreen(
             onDigitalHumanStatus = { status -> duixStatus = status }
         )
 
-        // 第二层：UI 控制层（中间层，zIndex 中等，不拦截触摸事件）
+        // 数字人说话时的光环脉冲效果
+        SpeakingAuraOverlay(
+            isSpeaking = isDigitalHumanSpeaking,
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(0.5f)
+        )
+
+        // 第二层：UI 控制层
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -565,11 +634,25 @@ fun DigitalInterviewScreen(
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
-                TopSection(
-                    currentQuestion = uiState.currentQuestion,
-                    totalQuestions = uiState.totalQuestions
-                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularInterviewProgress(
+                        current = uiState.currentQuestion,
+                        total = uiState.totalQuestions,
+                        modifier = Modifier.size(44.dp)
+                    )
 
+                    InterviewStateIndicator(
+                        isRecording = isRecording,
+                        isSpeaking = isDigitalHumanSpeaking,
+                        isThinking = isProcessing,
+                        isConnected = connectionState == ConnectionState.CONNECTED
+                    )
+                }
             }
 
             BottomSection(
@@ -631,19 +714,11 @@ fun DigitalInterviewScreen(
 
         // 第四层：教育引导层（最顶层，zIndex 3f）
         if (showEducationOverlay) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.8f))
-                    .clickable(
-                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                        indication = null
-                    ) { showEducationOverlay = false }
-                    .zIndex(3f),
-                contentAlignment = Alignment.Center
-            ) {
-                // 教育引导内容已按需求移除，保持空态遮罩
-            }
+            EducationOverlay(
+                onComplete = {
+                    showEducationOverlay = false
+                }
+            )
         }
     }
 
@@ -706,6 +781,52 @@ fun DigitalInterviewScreen(
             }
         )
     }
+
+    if (showOfflineDialog) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text(text = "网络已中断") },
+            text = {
+                Text(
+                    text = "当前 AI 面试不支持离线继续。系统已暂停录音、上传和语音链路，请恢复网络后继续。"
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (context.isNetworkAvailable()) {
+                            isNetworkAvailable = true
+                            showOfflineDialog = false
+                            onRetry()
+                            Toast.makeText(context, "网络已恢复，正在重新连接", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "网络仍未恢复", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                ) {
+                    Text("恢复后继续")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        (context as? Activity)?.finish()
+                    }
+                ) {
+                    Text("退出面试")
+                }
+            }
+        )
+    }
+}
+
+private fun Context.isNetworkAvailable(): Boolean {
+    val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        ?: return false
+    val network = connectivityManager.activeNetwork ?: return false
+    val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+    return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+        capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
 }
 
 @Composable
@@ -914,11 +1035,11 @@ private fun BottomSection(
 
         ConversationPanel(
             partialTranscript = partialTranscript,
-            // 优先显示实时推送的数字人文本，如果没有则显示UI状态中的题目文本
             latestDigitalHumanText = latestDigitalHumanText ?: uiState.questionText,
             conversation = conversation,
             isRecording = isRecording,
             isDigitalHumanSpeaking = isDigitalHumanSpeaking,
+            isProcessing = isProcessing,
             connectionState = connectionState
         )
 
@@ -992,21 +1113,18 @@ private fun ConversationPanel(
     conversation: List<ConversationMessage>,
     isRecording: Boolean,
     isDigitalHumanSpeaking: Boolean,
+    isProcessing: Boolean,
     connectionState: ConnectionState
 ) {
-    // Determine what to show in the subtitle area
     val display = when {
-        // 1. User is speaking (High Priority)
         isRecording -> {
             val text = if (partialTranscript.isNotBlank()) partialTranscript else "..."
             RoleDisplay("我", text, Color(0xFFEC7C38), 550)
         }
-        // 2. Digital Human is speaking
         isDigitalHumanSpeaking -> {
             val text = if (!latestDigitalHumanText.isNullOrBlank()) latestDigitalHumanText else "..."
             RoleDisplay("面试官", text, Color(0xFF43C1C9), 1100)
         }
-        // 3. Fallback to last message
         else -> {
             val lastMsg = conversation.lastOrNull()
             if (lastMsg != null) {
@@ -1018,7 +1136,6 @@ private fun ConversationPanel(
                     blinkMs = if (isUser) 550 else 1100
                 )
             } else {
-                // 4. Initial state
                 RoleDisplay("", "非常荣幸认识您，让我们像朋友视频那样聊聊工作，您可以介绍一下。", Color.Gray, 900)
             }
         }
@@ -1031,18 +1148,34 @@ private fun ConversationPanel(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color.Black.copy(alpha = 0.4f)) // Slightly darker for better readability
-            .padding(horizontal = 16.dp, vertical = 18.dp),
+            .clip(RoundedCornerShape(20.dp))
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF1A1A2E).copy(alpha = 0.85f),
+                        Color(0xFF0D0D1A).copy(alpha = 0.92f)
+                    )
+                )
+            )
+            .border(
+                width = 0.5.dp,
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.12f),
+                        Color.White.copy(alpha = 0.04f)
+                    )
+                ),
+                shape = RoundedCornerShape(20.dp)
+            )
+            .padding(horizontal = 16.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.Center
     ) {
         if (roleLabel.isNotBlank()) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(bottom = 6.dp)
+                modifier = Modifier.padding(bottom = 8.dp)
             ) {
-                // Only show indicator if actively speaking/recording
                 if (isRecording || isDigitalHumanSpeaking) {
                     AnimatedRecordingIndicator(
                         modifier = Modifier.size(10.dp),
@@ -1053,7 +1186,7 @@ private fun ConversationPanel(
                 }
                 Text(
                     text = roleLabel,
-                    color = activeColor, // Use the active color for the label too
+                    color = activeColor,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -1064,9 +1197,35 @@ private fun ConversationPanel(
             text = contentText,
             color = Color.White,
             fontSize = 16.sp,
-            lineHeight = 22.sp,
+            lineHeight = 24.sp,
             fontWeight = FontWeight.Medium
         )
+
+        if (isRecording) {
+            Spacer(modifier = Modifier.height(12.dp))
+            VoiceWaveformVisualizer(
+                isActive = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
+        if (isProcessing && !isRecording && !isDigitalHumanSpeaking) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "面试官正在思考",
+                    color = Color(0xFF43C1C9).copy(alpha = 0.8f),
+                    fontSize = 13.sp
+                )
+                ThinkingDotsAnimation(
+                    isVisible = true,
+                    color = Color(0xFF43C1C9)
+                )
+            }
+        }
     }
 }
 

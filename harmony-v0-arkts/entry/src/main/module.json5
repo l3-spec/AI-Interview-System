@@ -2,14 +2,15 @@
   "module": {
     "type": "entry",
     "name": "entry",
-    "srcEntry": "EntryAbility",
+    "srcEntry": "./ets/entryability/EntryAbility.ets",
     "description": "$string:entry_desc",
     "mainElement": "EntryAbility",
-    "pages": "$profile:main_pages",
+    "deliveryWithInstall": true,
     "deviceTypes": [
       "phone",
       "tablet"
     ],
+    "pages": "$profile:main_pages",
     "abilities": [
       {
         "name": "EntryAbility",

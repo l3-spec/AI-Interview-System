@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
+import { toMediaUrl } from '../utils/ossUtils';
 
 /**
  * 获取AI面试会话列表（管理员）
@@ -70,7 +71,7 @@ export const listInterviewSessions = async (req: Request, res: Response) => {
                     userId: session.userId,
                     userName: session.user.name,
                     userEmail: session.user.email,
-                    userAvatar: session.user.avatar,
+                    userAvatar: toMediaUrl(session.user.avatar) ?? session.user.avatar,
                     jobTarget: session.jobTarget,
                     jobCategory: session.jobCategory,
                     status: session.status,
@@ -144,15 +145,37 @@ export const getInterviewSessionAnalysis = async (req: Request, res: Response) =
                     createdAt: session.createdAt,
                     duration: session.duration,
                     user: session.user
+                      ? {
+                          ...session.user,
+                          avatar: toMediaUrl(session.user.avatar) ?? session.user.avatar,
+                        }
+                      : session.user
                 },
                 questions: session.questions.map((q: any) => ({
                     index: q.questionIndex,
                     text: q.questionText,
                     answer: q.answerText,
-                    videoUrl: q.answerVideoUrl,
+                    videoUrl: toMediaUrl(q.answerVideoUrl) ?? q.answerVideoUrl,
                     duration: q.answerDuration
                 })),
-                report: session.analysisReport ? {
+                report: session.analysisReport ? (() => {
+                    const insights = session.analysisReport.videoInsights
+                        ? JSON.parse(session.analysisReport.videoInsights)
+                        : null;
+                    const videoItems = Array.isArray(insights?.video) ? insights.video : [];
+                    const fallbackPosture = videoItems.length
+                        ? Math.round(videoItems.reduce((sum: number, item: any) => sum + (item.postureStability || 0), 0) / videoItems.length)
+                        : null;
+                    const fallbackGaze = videoItems.length
+                        ? Math.round(videoItems.reduce((sum: number, item: any) => sum + (item.gazeFocus || 0), 0) / videoItems.length)
+                        : null;
+                    const fallbackEmotionStability = videoItems.length
+                        ? Math.round(videoItems.reduce((sum: number, item: any) => sum + (item.emotionStability || 0), 0) / videoItems.length)
+                        : null;
+                    const postureStability = session.analysisReport.postureStability ?? fallbackPosture;
+                    const gazeFocus = session.analysisReport.gazeFocus ?? fallbackGaze;
+
+                    return {
                     overallScore: session.analysisReport.overallScore,
                     competencies: JSON.parse(session.analysisReport.competenciesJson || '[]'),
                     strengths: JSON.parse(session.analysisReport.strengths || '[]'),
@@ -163,10 +186,25 @@ export const getInterviewSessionAnalysis = async (req: Request, res: Response) =
                         ratio: session.analysisReport.jobMatchRatio
                     },
                     tips: session.analysisReport.tips,
+                    metrics: {
+                        videoConfidenceScore: session.analysisReport.videoConfidenceScore,
+                        emotionDistribution: session.analysisReport.emotionDistribution
+                            ? JSON.parse(session.analysisReport.emotionDistribution)
+                            : null,
+                        emotionStability: fallbackEmotionStability,
+                        speechQuality: session.analysisReport.speechQuality,
+                        bodyLanguageScore: session.analysisReport.bodyLanguageScore,
+                        postureStability,
+                        gazeFocus
+                    },
+                    integrity: insights?.integrity || null,
+                    voiceprint: insights?.voiceprint || null,
+                    insights,
                     status: session.analysisReport.analysisStatus,
                     error: session.analysisReport.analysisError,
                     generatedAt: session.analysisReport.generatedAt
-                } : null
+                    };
+                })() : null
             }
         });
     } catch (error) {
@@ -267,19 +305,94 @@ export const listAnalysisTasks = async (req: Request, res: Response) => {
  * 重试失败的分析任务（管理员）
  */
 export const retryAnalysisTask = async (req: Request, res: Response) => {
-    try {
+    const runOnce = async () => {
         const { sessionId } = req.params;
+
+        const session = await prisma.aIInterviewSession.findUnique({
+            where: { id: sessionId },
+            select: { id: true, status: true }
+        });
+
+        if (!session) {
+            return { status: 404, body: { success: false, message: '面试会话不存在' } };
+        }
+
+        if (session.status !== 'COMPLETED') {
+            return {
+                status: 400,
+                body: { success: false, message: `面试会话未完成，当前状态：${session.status}` }
+            };
+        }
+
+        const existingReport = await prisma.aIInterviewAnalysisReport.findUnique({
+            where: { sessionId }
+        });
+
+        if (existingReport && existingReport.analysisStatus !== 'FAILED') {
+            return { status: 200, body: { success: true, message: '分析报告已存在' } };
+        }
+
+        const pendingTask = await prisma.aIInterviewAnalysisTask.findFirst({
+            where: {
+                sessionId,
+                status: { in: ['PENDING', 'PROCESSING'] }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        if (pendingTask) {
+            return { status: 200, body: { success: true, message: '分析任务已在队列中' } };
+        }
 
         // 动态导入analysisQueue避免循环依赖
         const { analysisQueue } = await import('../jobs/analysisQueue');
 
-        await analysisQueue.retryFailedTask(sessionId);
-
-        res.json({
-            success: true,
-            message: '任务已重新加入队列'
+        const failedTask = await prisma.aIInterviewAnalysisTask.findFirst({
+            where: {
+                sessionId,
+                status: 'FAILED'
+            },
+            orderBy: { createdAt: 'desc' }
         });
+
+        if (failedTask) {
+            try {
+                await analysisQueue.retryFailedTask(sessionId);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : '未知错误';
+                if (message.includes('未找到失败的分析任务')) {
+                    await analysisQueue.enqueueAnalysis(sessionId, 0);
+                    return { status: 200, body: { success: true, message: '分析任务已加入队列' } };
+                }
+                throw error;
+            }
+            return { status: 200, body: { success: true, message: '失败任务已重新加入队列' } };
+        }
+
+        await analysisQueue.enqueueAnalysis(sessionId, 0);
+
+        return { status: 200, body: { success: true, message: '分析任务已加入队列' } };
+    };
+
+    try {
+        const { status, body } = await runOnce();
+        return res.status(status).json(body);
     } catch (error) {
+        const prismaError = error as { code?: string };
+        if (prismaError?.code === 'P1017') {
+            try {
+                await prisma.$disconnect();
+                await prisma.$connect();
+                const { status, body } = await runOnce();
+                return res.status(status).json(body);
+            } catch (retryError) {
+                console.error('重试分析任务错误:', retryError);
+                return res.status(500).json({
+                    success: false,
+                    message: retryError instanceof Error ? retryError.message : '重试失败'
+                });
+            }
+        }
         console.error('重试分析任务错误:', error);
         res.status(500).json({
             success: false,

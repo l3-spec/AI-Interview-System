@@ -16,14 +16,27 @@ plugins {
 //val defaultApiHost = "10.10.1.73"
 //val defaultApiHost = "192.168.120.124"
 //val defaultApiHost = "192.168.199.150"
-val defaultApiHost = "192.168.1.7"
+//val defaultApiHost = "192.168.1.7"
 //val defaultApiHost = "10.10.1.75"
 //val defaultApiHost = "192.168.124.112"
 //val defaultApiHost = "192.168.1.12"
-//val defaultApiHost = "192.168.0.106"
+//val defaultApiHost = "192.168.0.104"
+//val defaultApiHost = "192.168.0.100"
 //val defaultApiHost = "192.168.10.76"
+//val defaultApiHost = "10.10.1.73"
+//val defaultApiHost ="https://app.api.xlwl-ai.com/"
+//val defaultApiHost = "192.168.0.103"
+//val defaultApiHost = "10.0.1.61"
+//val defaultApiHost = "10.0.1.77"
+//val defaultApiHost = "192.168.10.62"
+val defaultApiHost = "10.0.1.33"
+//val defaultApiHost = "192.168.124.56"
 val defaultApiPort = 3001
 val defaultApiPath = "api"
+
+// 火山引擎 TTS 配置
+val defaultVolcanoAppId = ""
+val defaultVolcanoApiKey = ""
 
 val defaultDuixBaseConfigUrl = "https://github.com/GuijiAI/duix.ai/releases/download/v1.0.0/gj_dh_res.zip"
 // 预置在 assets/duix/model/Oliver.zip；URL 仅用于标识模型名，实际会优先从本地 assets 解压
@@ -91,6 +104,16 @@ android {
             "DUIX_MODEL_URL",
             "\"${duixModelUrl.escapeForBuildConfig()}\""
         )
+        buildConfigField(
+            "String",
+            "VOLCANO_APP_ID",
+            "\"${(project.findProperty("volcano_app_id") as? String)?.escapeForBuildConfig() ?: defaultVolcanoAppId.escapeForBuildConfig()}\""
+        )
+        buildConfigField(
+            "String",
+            "VOLCANO_API_KEY",
+            "\"${(project.findProperty("volcano_api_key") as? String)?.escapeForBuildConfig() ?: defaultVolcanoApiKey.escapeForBuildConfig()}\""
+        )
 
         resValue("string", "api_host", resolvedApiHost)
     }
@@ -144,7 +167,11 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.0")
     implementation("io.coil-kt:coil-compose:2.6.0")
     implementation("io.coil-kt:coil-gif:2.6.0")
+    implementation("io.coil-kt:coil-svg:2.6.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
+
+    // WebView-based Live2D renderer (Plan D)
+    implementation("androidx.webkit:webkit:1.8.0")
 
     // Retrofit for networking
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
@@ -167,7 +194,7 @@ dependencies {
     implementation("androidx.camera:camera-view:$cameraXVersion")
     implementation("androidx.camera:camera-video:$cameraXVersion")
     implementation("com.infobip:google-webrtc:1.0.45036")
-    implementation(project(":duix-sdk"))
+    // implementation(project(":duix-sdk"))
     implementation("com.aliyun.dpa:oss-android-sdk:2.9.13")
 
     debugImplementation("androidx.compose.ui:ui-tooling")

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import type { Express } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import path from 'path';
 import { ossService } from '../services/ossService';
 
@@ -101,30 +102,15 @@ const buildUserHeadline = (user: {
 const getOSSUrl = (value?: string | null) => {
   if (!value) return null;
   if (/^https?:\/\//i.test(value)) return value;
-  // treat value as object key for OSS
+  // objectKey → 完整 OSS URL
   if (
     process.env.OSS_BUCKET &&
     process.env.OSS_REGION &&
-    (value.startsWith('post-covers/') || value.startsWith('posts/'))
+    (value.startsWith('post-covers/') || value.startsWith('post-images/') || value.startsWith('posts/'))
   ) {
     return ossService.generateFileUrl(value);
   }
   return normalizeUploadPath(value);
-};
-
-// 将图片 key 列表压缩到数据库字段可接受的长度（兼容较小 varchar）
-const compactImageKeys = (keys: string[], maxLen: number = 190): string | null => {
-  if (keys.length === 0) return null;
-  const result: string[] = [];
-  let currentLen = 2; // for []
-  for (const key of keys) {
-    // 预估追加后长度（含逗号和引号）
-    const extra = (result.length === 0 ? 0 : 1) + key.length + 2;
-    if (currentLen + extra > maxLen) break;
-    result.push(key);
-    currentLen += extra;
-  }
-  return result.length ? JSON.stringify(result) : null;
 };
 
 const mapUserPostResponse = (post: any) => {
@@ -189,6 +175,192 @@ const parseTagsInput = (value: any): string[] => {
   }
 
   return [];
+};
+
+type PostKind = 'USER' | 'EXPERT';
+
+type PostCommentRecord = {
+  id: string;
+  content: string;
+  createdAt: Date;
+  authorId: string | null;
+  authorName: string | null;
+  authorAvatar: string | null;
+};
+
+let ensurePostInteractionTablesPromise: Promise<void> | null = null;
+
+const ensurePostInteractionTables = async () => {
+  if (!ensurePostInteractionTablesPromise) {
+    ensurePostInteractionTablesPromise = (async () => {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS community_post_comments (
+          id VARCHAR(36) PRIMARY KEY,
+          post_type VARCHAR(16) NOT NULL,
+          post_id VARCHAR(191) NOT NULL,
+          user_id VARCHAR(191) NOT NULL,
+          content TEXT NOT NULL,
+          created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+          updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+          INDEX community_post_comments_post_idx (post_type, post_id, created_at),
+          INDEX community_post_comments_user_idx (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS community_post_likes (
+          id VARCHAR(36) PRIMARY KEY,
+          post_type VARCHAR(16) NOT NULL,
+          post_id VARCHAR(191) NOT NULL,
+          user_id VARCHAR(191) NOT NULL,
+          created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+          UNIQUE KEY community_post_likes_unique (post_type, post_id, user_id),
+          INDEX community_post_likes_user_idx (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS community_post_favorites (
+          id VARCHAR(36) PRIMARY KEY,
+          post_type VARCHAR(16) NOT NULL,
+          post_id VARCHAR(191) NOT NULL,
+          user_id VARCHAR(191) NOT NULL,
+          created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+          UNIQUE KEY community_post_favorites_unique (post_type, post_id, user_id),
+          INDEX community_post_favorites_user_idx (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+    })().catch((error) => {
+      ensurePostInteractionTablesPromise = null;
+      throw error;
+    });
+  }
+
+  return ensurePostInteractionTablesPromise;
+};
+
+const ensurePostExists = async (kind: PostKind, id: string) => {
+  if (kind === 'USER') {
+    const post = await prisma.userPost.findUnique({
+      where: { id },
+      select: { id: true, status: true },
+    });
+
+    if (!post || post.status !== 'PUBLISHED') {
+      return null;
+    }
+
+    return post;
+  }
+
+  const post = await prisma.expertPost.findUnique({
+    where: { id },
+    select: { id: true, publishedAt: true },
+  });
+
+  if (!post || !post.publishedAt || post.publishedAt > new Date()) {
+    return null;
+  }
+
+  return post;
+};
+
+const buildCommentResponse = (comment: PostCommentRecord) => ({
+  id: comment.id,
+  content: comment.content,
+  createdAt: comment.createdAt,
+  author: {
+    id: comment.authorId,
+    name: comment.authorName?.trim() || 'STAR-LINK 用户',
+    avatar: normalizeMediaPath(comment.authorAvatar),
+  },
+});
+
+const getPostEngagementPayload = async (kind: PostKind, postId: string, userId?: string) => {
+  await ensurePostInteractionTables();
+
+  const post =
+    kind === 'USER'
+      ? await prisma.userPost.findUnique({
+          where: { id: postId },
+          select: {
+            id: true,
+            likeCount: true,
+            commentCount: true,
+          },
+        })
+      : await prisma.expertPost.findUnique({
+          where: { id: postId },
+          select: {
+            id: true,
+            likeCount: true,
+            commentCount: true,
+          },
+        });
+
+  if (!post) {
+    return null;
+  }
+
+  const [favoriteCountRows, likedRows, favoritedRows] = await Promise.all([
+    prisma.$queryRawUnsafe<Array<{ count: bigint | number }>>(
+      `SELECT COUNT(*) AS count FROM community_post_favorites WHERE post_type = ? AND post_id = ?`,
+      kind,
+      postId
+    ),
+    userId
+      ? prisma.$queryRawUnsafe<Array<{ matched: number }>>(
+          `SELECT 1 AS matched FROM community_post_likes WHERE post_type = ? AND post_id = ? AND user_id = ? LIMIT 1`,
+          kind,
+          postId,
+          userId
+        )
+      : Promise.resolve([]),
+    userId
+      ? prisma.$queryRawUnsafe<Array<{ matched: number }>>(
+          `SELECT 1 AS matched FROM community_post_favorites WHERE post_type = ? AND post_id = ? AND user_id = ? LIMIT 1`,
+          kind,
+          postId,
+          userId
+        )
+      : Promise.resolve([]),
+  ]);
+
+  const favoriteCountValue = favoriteCountRows[0]?.count ?? 0;
+
+  return {
+    postId,
+    postType: kind,
+    likeCount: post.likeCount ?? 0,
+    commentCount: post.commentCount ?? 0,
+    favoriteCount: Number(favoriteCountValue),
+    isLiked: likedRows.length > 0,
+    isFavorited: favoritedRows.length > 0,
+  };
+};
+
+const getPostCommentsPayload = async (kind: PostKind, postId: string) => {
+  await ensurePostInteractionTables();
+
+  const comments = await prisma.$queryRawUnsafe<PostCommentRecord[]>(
+    `
+      SELECT
+        c.id,
+        c.content,
+        c.created_at AS createdAt,
+        u.id AS authorId,
+        u.name AS authorName,
+        u.avatar AS authorAvatar
+      FROM community_post_comments c
+      LEFT JOIN users u ON u.id = c.user_id
+      WHERE c.post_type = ? AND c.post_id = ?
+      ORDER BY c.created_at ASC
+    `,
+    kind,
+    postId
+  );
+
+  return comments.map(buildCommentResponse);
 };
 
 /**
@@ -382,6 +554,8 @@ export const getUserPostDetail = async (req: Request, res: Response) => {
     }
 
     // 增加浏览量（仅对已发布帖子）
+    let latestViewCount = post.viewCount;
+
     if (post.status === 'PUBLISHED') {
       await prisma.userPost.update({
         where: { id },
@@ -391,9 +565,13 @@ export const getUserPostDetail = async (req: Request, res: Response) => {
           },
         },
       });
+      latestViewCount += 1;
     }
 
-    const formattedPost = mapUserPostResponse(post);
+    const formattedPost = mapUserPostResponse({
+      ...post,
+      viewCount: latestViewCount,
+    });
 
     res.json({
       success: true,
@@ -450,39 +628,41 @@ export const createUserPost = async (req: Request, res: Response) => {
 
     const tags = parseTagsInput(req.body.tags);
     const imageFiles = Array.isArray(req.files) ? (req.files as Express.Multer.File[]) : [];
-    const ossEnabled =
-      !!process.env.OSS_ACCESS_KEY_ID &&
-      !!process.env.OSS_ACCESS_KEY_SECRET &&
-      !!process.env.OSS_BUCKET;
 
     let imageUrls: string[] = [];
 
     if (imageFiles.length > 0) {
-      if (ossEnabled) {
-        try {
-          imageUrls = await Promise.all(
-            imageFiles.map(async (file) => {
-              const safeName = file.originalname
-                .replace(/\s+/g, '_')
-                .replace(/[^a-zA-Z0-9._-]/g, '');
-              const ext = path.extname(safeName) || path.extname(file.originalname) || '';
-              const baseName = safeName.replace(ext, '') || file.filename.replace(ext, '');
-              const timestamp = Date.now();
-              const objectKey = `post-covers/${timestamp}_${baseName || 'image'}${ext}`;
-              const { objectKey: storedKey } = await ossService.uploadLocalFile(file.path, objectKey);
-              return storedKey; // DB 存 objectKey
-            })
-          );
-        } catch (error) {
-          console.error('上传帖子图片到OSS失败:', error);
-          return res.status(500).json({
-            success: false,
-            message: '图片上传失败，请稍后重试',
-            error: error instanceof Error ? error.message : 'OSS上传失败',
-          });
-        }
-      } else {
-        imageUrls = imageFiles.map((file) => normalizeUploadPath(file.path));
+      // 图片统一上传到 OSS，数据库只存 objectKey
+      const ossReady =
+        !!process.env.OSS_ACCESS_KEY_ID &&
+        !!process.env.OSS_ACCESS_KEY_SECRET &&
+        !!process.env.OSS_BUCKET;
+
+      if (!ossReady) {
+        return res.status(500).json({
+          success: false,
+          message: 'OSS 未配置，无法上传图片，请联系管理员',
+        });
+      }
+
+      try {
+        imageUrls = await Promise.all(
+          imageFiles.map(async (file) => {
+            const ext = path.extname(file.originalname) || '.jpg';
+            const timestamp = Date.now();
+            const random = Math.random().toString(36).substring(2, 8);
+            const objectKey = `post-images/${timestamp}_${random}${ext}`;
+            const { objectKey: storedKey } = await ossService.uploadLocalFile(file.path, objectKey);
+            return storedKey;
+          })
+        );
+      } catch (error) {
+        console.error('上传帖子图片到OSS失败:', error);
+        return res.status(500).json({
+          success: false,
+          message: '图片上传失败，请稍后重试',
+          error: error instanceof Error ? error.message : 'OSS上传失败',
+        });
       }
     }
 
@@ -522,6 +702,48 @@ export const createUserPost = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('发布帖子失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '服务器错误',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * 删除当前用户的帖子
+ * DELETE /api/content/posts/:id
+ */
+export const deleteMyPost = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: '用户未认证',
+      });
+    }
+
+    const { id } = req.params;
+    const post = await prisma.userPost.findUnique({
+      where: { id },
+      select: { id: true, userId: true },
+    });
+
+    if (!post || post.userId !== req.user.id) {
+      return res.status(404).json({ success: false, message: '帖子不存在或已删除' });
+    }
+
+    await prisma.userPost.update({
+      where: { id },
+      data: {
+        status: 'DELETED',
+        isHot: false,
+      },
+    });
+
+    res.json({ success: true, message: '帖子已删除' });
+  } catch (error: any) {
+    console.error('删除帖子失败:', error);
     res.status(500).json({
       success: false,
       message: '服务器错误',
@@ -625,6 +847,7 @@ export const getExpertPostDetail = async (req: Request, res: Response) => {
     // 解析 JSON 字符串
     const formattedPost = {
       ...post,
+      viewCount: post.viewCount + 1,
       tags: post.tags ? JSON.parse(post.tags) : [],
     };
 
@@ -641,6 +864,448 @@ export const getExpertPostDetail = async (req: Request, res: Response) => {
     });
   }
 };
+
+const getPostEngagement = (kind: PostKind) => async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const post = await ensurePostExists(kind, id);
+
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: '帖子不存在',
+      });
+    }
+
+    const data = await getPostEngagementPayload(kind, id, req.user?.id);
+
+    res.json({
+      success: true,
+      data,
+    });
+  } catch (error: any) {
+    console.error('获取帖子互动信息失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '服务器错误',
+      error: error.message,
+    });
+  }
+};
+
+const getPostComments = (kind: PostKind) => async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const post = await ensurePostExists(kind, id);
+
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: '帖子不存在',
+      });
+    }
+
+    const data = await getPostCommentsPayload(kind, id);
+
+    res.json({
+      success: true,
+      data,
+    });
+  } catch (error: any) {
+    console.error('获取帖子评论失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '服务器错误',
+      error: error.message,
+    });
+  }
+};
+
+const createPostComment = (kind: PostKind) => async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: '用户未认证',
+      });
+    }
+
+    const { id } = req.params;
+    const content = typeof req.body.content === 'string' ? req.body.content.trim() : '';
+
+    if (!content) {
+      return res.status(400).json({
+        success: false,
+        message: '评论内容不能为空',
+      });
+    }
+
+    if (content.length > 500) {
+      return res.status(400).json({
+        success: false,
+        message: '评论内容不能超过500字',
+      });
+    }
+
+    const post = await ensurePostExists(kind, id);
+
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: '帖子不存在',
+      });
+    }
+
+    await ensurePostInteractionTables();
+
+    const commentId = randomUUID();
+    await prisma.$executeRawUnsafe(
+      `
+        INSERT INTO community_post_comments (id, post_type, post_id, user_id, content)
+        VALUES (?, ?, ?, ?, ?)
+      `,
+      commentId,
+      kind,
+      id,
+      req.user.id,
+      content
+    );
+
+    if (kind === 'USER') {
+      await prisma.userPost.update({
+        where: { id },
+        data: {
+          commentCount: {
+            increment: 1,
+          },
+        },
+      });
+    } else {
+      await prisma.expertPost.update({
+        where: { id },
+        data: {
+          commentCount: {
+            increment: 1,
+          },
+        },
+      });
+    }
+
+    const comments = await prisma.$queryRawUnsafe<PostCommentRecord[]>(
+      `
+        SELECT
+          c.id,
+          c.content,
+          c.created_at AS createdAt,
+          u.id AS authorId,
+          u.name AS authorName,
+          u.avatar AS authorAvatar
+        FROM community_post_comments c
+        LEFT JOIN users u ON u.id = c.user_id
+        WHERE c.id = ?
+        LIMIT 1
+      `,
+      commentId
+    );
+
+    const engagement = await getPostEngagementPayload(kind, id, req.user.id);
+
+    res.status(201).json({
+      success: true,
+      message: '评论成功',
+      data: {
+        comment: comments[0] ? buildCommentResponse(comments[0]) : null,
+        engagement,
+      },
+    });
+  } catch (error: any) {
+    console.error('发布评论失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '服务器错误',
+      error: error.message,
+    });
+  }
+};
+
+const likePost = (kind: PostKind) => async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: '用户未认证',
+      });
+    }
+
+    const { id } = req.params;
+    const post = await ensurePostExists(kind, id);
+
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: '帖子不存在',
+      });
+    }
+
+    await ensurePostInteractionTables();
+
+    const existing = await prisma.$queryRawUnsafe<Array<{ matched: number }>>(
+      `
+        SELECT 1 AS matched
+        FROM community_post_likes
+        WHERE post_type = ? AND post_id = ? AND user_id = ?
+        LIMIT 1
+      `,
+      kind,
+      id,
+      req.user.id
+    );
+
+    if (existing.length === 0) {
+      await prisma.$executeRawUnsafe(
+        `
+          INSERT INTO community_post_likes (id, post_type, post_id, user_id)
+          VALUES (?, ?, ?, ?)
+        `,
+        randomUUID(),
+        kind,
+        id,
+        req.user.id
+      );
+
+      if (kind === 'USER') {
+        await prisma.userPost.update({
+          where: { id },
+          data: {
+            likeCount: {
+              increment: 1,
+            },
+          },
+        });
+      } else {
+        await prisma.expertPost.update({
+          where: { id },
+          data: {
+            likeCount: {
+              increment: 1,
+            },
+          },
+        });
+      }
+    }
+
+    const data = await getPostEngagementPayload(kind, id, req.user.id);
+
+    res.json({
+      success: true,
+      message: '点赞成功',
+      data,
+    });
+  } catch (error: any) {
+    console.error('点赞帖子失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '服务器错误',
+      error: error.message,
+    });
+  }
+};
+
+const unlikePost = (kind: PostKind) => async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: '用户未认证',
+      });
+    }
+
+    const { id } = req.params;
+    const post = await ensurePostExists(kind, id);
+
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: '帖子不存在',
+      });
+    }
+
+    await ensurePostInteractionTables();
+
+    const deleted = await prisma.$executeRawUnsafe(
+      `
+        DELETE FROM community_post_likes
+        WHERE post_type = ? AND post_id = ? AND user_id = ?
+      `,
+      kind,
+      id,
+      req.user.id
+    );
+
+    if (Number(deleted) > 0) {
+      if (kind === 'USER') {
+        await prisma.userPost.update({
+          where: { id },
+          data: {
+            likeCount: {
+              decrement: 1,
+            },
+          },
+        });
+      } else {
+        await prisma.expertPost.update({
+          where: { id },
+          data: {
+            likeCount: {
+              decrement: 1,
+            },
+          },
+        });
+      }
+    }
+
+    const data = await getPostEngagementPayload(kind, id, req.user.id);
+
+    res.json({
+      success: true,
+      message: '已取消点赞',
+      data,
+    });
+  } catch (error: any) {
+    console.error('取消点赞失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '服务器错误',
+      error: error.message,
+    });
+  }
+};
+
+const favoritePost = (kind: PostKind) => async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: '用户未认证',
+      });
+    }
+
+    const { id } = req.params;
+    const post = await ensurePostExists(kind, id);
+
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: '帖子不存在',
+      });
+    }
+
+    await ensurePostInteractionTables();
+
+    const existing = await prisma.$queryRawUnsafe<Array<{ matched: number }>>(
+      `
+        SELECT 1 AS matched
+        FROM community_post_favorites
+        WHERE post_type = ? AND post_id = ? AND user_id = ?
+        LIMIT 1
+      `,
+      kind,
+      id,
+      req.user.id
+    );
+
+    if (existing.length === 0) {
+      await prisma.$executeRawUnsafe(
+        `
+          INSERT INTO community_post_favorites (id, post_type, post_id, user_id)
+          VALUES (?, ?, ?, ?)
+        `,
+        randomUUID(),
+        kind,
+        id,
+        req.user.id
+      );
+    }
+
+    const data = await getPostEngagementPayload(kind, id, req.user.id);
+
+    res.json({
+      success: true,
+      message: '收藏成功',
+      data,
+    });
+  } catch (error: any) {
+    console.error('收藏帖子失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '服务器错误',
+      error: error.message,
+    });
+  }
+};
+
+const unfavoritePost = (kind: PostKind) => async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: '用户未认证',
+      });
+    }
+
+    const { id } = req.params;
+    const post = await ensurePostExists(kind, id);
+
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: '帖子不存在',
+      });
+    }
+
+    await ensurePostInteractionTables();
+
+    await prisma.$executeRawUnsafe(
+      `
+        DELETE FROM community_post_favorites
+        WHERE post_type = ? AND post_id = ? AND user_id = ?
+      `,
+      kind,
+      id,
+      req.user.id
+    );
+
+    const data = await getPostEngagementPayload(kind, id, req.user.id);
+
+    res.json({
+      success: true,
+      message: '已取消收藏',
+      data,
+    });
+  } catch (error: any) {
+    console.error('取消收藏失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '服务器错误',
+      error: error.message,
+    });
+  }
+};
+
+export const getUserPostEngagement = getPostEngagement('USER');
+export const getExpertPostEngagement = getPostEngagement('EXPERT');
+export const getUserPostComments = getPostComments('USER');
+export const getExpertPostComments = getPostComments('EXPERT');
+export const createUserPostComment = createPostComment('USER');
+export const createExpertPostComment = createPostComment('EXPERT');
+export const likeUserPost = likePost('USER');
+export const likeExpertPost = likePost('EXPERT');
+export const unlikeUserPost = unlikePost('USER');
+export const unlikeExpertPost = unlikePost('EXPERT');
+export const favoriteUserPost = favoritePost('USER');
+export const favoriteExpertPost = favoritePost('EXPERT');
+export const unfavoriteUserPost = unfavoritePost('USER');
+export const unfavoriteExpertPost = unfavoritePost('EXPERT');
 
 /**
  * 获取推广职位列表

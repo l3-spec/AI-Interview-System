@@ -44,6 +44,7 @@ fun RegisterScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var passwordVisible by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
 
     Box(
         modifier = Modifier
@@ -60,7 +61,12 @@ fun RegisterScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(24.dp),
+                .padding(
+                    start = 24.dp,
+                    end = 24.dp,
+                    top = 24.dp,
+                    bottom = navPadding.calculateBottomPadding() + 24.dp
+                ),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -239,4 +245,3 @@ fun RegisterScreen(
         }
     }
 }
-

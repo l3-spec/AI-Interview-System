@@ -94,6 +94,71 @@ interface ApiService {
     suspend fun getUserPostDetail(
         @Path("id") postId: String
     ): ApiResponse<UserPost>
+
+    @GET("content/posts/{id}/engagement")
+    suspend fun getUserPostEngagement(
+        @Path("id") postId: String
+    ): ApiResponse<PostEngagement>
+
+    @GET("content/posts/{id}/comments")
+    suspend fun getUserPostComments(
+        @Path("id") postId: String
+    ): ApiResponse<List<PostCommentDto>>
+
+    @POST("content/posts/{id}/comments")
+    suspend fun createUserPostComment(
+        @Path("id") postId: String,
+        @Body request: CreatePostCommentRequest
+    ): ApiResponse<CreatePostCommentResult>
+
+    @POST("content/comments/{id}/like")
+    suspend fun likeComment(
+        @Path("id") commentId: String
+    ): ApiResponse<PostCommentDto>
+
+    @DELETE("content/comments/{id}/like")
+    suspend fun unlikeComment(
+        @Path("id") commentId: String
+    ): ApiResponse<PostCommentDto>
+
+    @POST("content/comments/{id}/reactions")
+    suspend fun addCommentReaction(
+        @Path("id") commentId: String,
+        @Body request: CommentReactionRequest
+    ): ApiResponse<CommentReactionResult>
+
+    @DELETE("content/comments/{id}/reactions")
+    suspend fun removeCommentReaction(
+        @Path("id") commentId: String,
+        @Body request: CommentReactionRequest
+    ): ApiResponse<CommentReactionResult>
+
+    @GET("content/comments/{id}/replies")
+    suspend fun getCommentReplies(
+        @Path("id") commentId: String,
+        @Query("page") page: Int = 1,
+        @Query("pageSize") pageSize: Int = 20
+    ): ApiResponse<PagedData<PostCommentDto>>
+
+    @POST("content/posts/{id}/like")
+    suspend fun likeUserPost(
+        @Path("id") postId: String
+    ): ApiResponse<PostEngagement>
+
+    @DELETE("content/posts/{id}/like")
+    suspend fun unlikeUserPost(
+        @Path("id") postId: String
+    ): ApiResponse<PostEngagement>
+
+    @POST("content/posts/{id}/favorite")
+    suspend fun favoriteUserPost(
+        @Path("id") postId: String
+    ): ApiResponse<PostEngagement>
+
+    @DELETE("content/posts/{id}/favorite")
+    suspend fun unfavoriteUserPost(
+        @Path("id") postId: String
+    ): ApiResponse<PostEngagement>
     
     /**
      * 获取大咖分享列表
@@ -111,6 +176,42 @@ interface ApiService {
     suspend fun getExpertPostDetail(
         @Path("id") postId: String
     ): ApiResponse<ExpertPost>
+
+    @GET("content/expert-posts/{id}/engagement")
+    suspend fun getExpertPostEngagement(
+        @Path("id") postId: String
+    ): ApiResponse<PostEngagement>
+
+    @GET("content/expert-posts/{id}/comments")
+    suspend fun getExpertPostComments(
+        @Path("id") postId: String
+    ): ApiResponse<List<PostCommentDto>>
+
+    @POST("content/expert-posts/{id}/comments")
+    suspend fun createExpertPostComment(
+        @Path("id") postId: String,
+        @Body request: CreatePostCommentRequest
+    ): ApiResponse<CreatePostCommentResult>
+
+    @POST("content/expert-posts/{id}/like")
+    suspend fun likeExpertPost(
+        @Path("id") postId: String
+    ): ApiResponse<PostEngagement>
+
+    @DELETE("content/expert-posts/{id}/like")
+    suspend fun unlikeExpertPost(
+        @Path("id") postId: String
+    ): ApiResponse<PostEngagement>
+
+    @POST("content/expert-posts/{id}/favorite")
+    suspend fun favoriteExpertPost(
+        @Path("id") postId: String
+    ): ApiResponse<PostEngagement>
+
+    @DELETE("content/expert-posts/{id}/favorite")
+    suspend fun unfavoriteExpertPost(
+        @Path("id") postId: String
+    ): ApiResponse<PostEngagement>
     
     /**
      * 获取推广职位列表
@@ -140,6 +241,22 @@ interface ApiService {
         @Part("tags") tags: RequestBody?,
         @Part postImages: List<MultipartBody.Part>
     ): ApiResponse<UserPost>
+
+    /**
+     * 删除当前用户帖子
+     */
+    @DELETE("content/posts/{id}")
+    suspend fun deleteMyPost(
+        @Path("id") postId: String
+    ): ApiResponse<Unit>
+
+    /**
+     * 删除当前用户帖子（查询参数形式，兼容部分网关）
+     */
+    @DELETE("content/posts/")
+    suspend fun deleteMyPostByQuery(
+        @Query("id") postId: String
+    ): ApiResponse<Unit>
 
     // ==================== 消息中心相关 ====================
 
@@ -278,4 +395,23 @@ interface ApiService {
     suspend fun updateJobPreferences(
         @Body request: UpdateJobPreferencesRequest
     ): ApiResponse<JobPreferenceDto>
+
+    // ==================== 实名认证 ====================
+
+    /**
+     * 获取企业实名认证状态
+     */
+    @GET("verification/status")
+    suspend fun getVerificationStatus(): ApiResponse<VerificationInfo?>
+
+    /**
+     * 提交或更新企业实名认证
+     */
+    @Multipart
+    @POST("verification/submit")
+    suspend fun submitVerification(
+        @Part businessLicense: MultipartBody.Part?,
+        @Part("legalPerson") legalPerson: RequestBody,
+        @Part("registrationNumber") registrationNumber: RequestBody
+    ): ApiResponse<VerificationInfo>
 }

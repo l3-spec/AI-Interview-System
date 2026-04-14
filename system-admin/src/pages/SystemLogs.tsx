@@ -20,14 +20,24 @@ interface SystemLog {
   };
 }
 
-interface LogResponse {
-  logs: SystemLog[];
-  pagination: {
+interface LogApiData {
+  list?: SystemLog[];
+  logs?: SystemLog[];
+  pagination?: {
     page: number;
     pageSize: number;
     total: number;
-    totalPages: number;
+    totalPages?: number;
   };
+  total?: number;
+  page?: number;
+  pageSize?: number;
+}
+
+interface LogApiResponse {
+  success?: boolean;
+  message?: string;
+  data?: LogApiData;
 }
 
 const SystemLogs: React.FC = () => {
@@ -78,27 +88,48 @@ const SystemLogs: React.FC = () => {
         headers
       });
 
-      const data = await response.json();
-      
-      if (data.success) {
-        setLogs(data.data.logs);
-        setPagination(data.data.pagination);
-        setError(null);
-      } else {
-        // 如果功能未实现，显示模拟数据
-        if (data.message?.includes('暂未实现')) {
-          setLogs(getMockLogs());
-          setPagination({
-            page: 1,
-            pageSize: 50,
-            total: 15,
-            totalPages: 1
-          });
-          setError(null);
-        } else {
-          setError(data.message || '获取系统日志失败');
-        }
+      if (response.status === 401 || response.status === 403) {
+        setLogs([]);
+        setError('登录状态已失效，请重新登录');
+        return;
       }
+
+      const data: LogApiResponse = await response.json();
+      
+      if (data?.success) {
+        const apiData = data.data || {};
+        const normalizedLogs = apiData.list || apiData.logs || [];
+        const page = apiData.pagination?.page ?? apiData.page ?? currentPage;
+        const pageSize = apiData.pagination?.pageSize ?? apiData.pageSize ?? 50;
+        const total = apiData.pagination?.total ?? apiData.total ?? normalizedLogs.length;
+        const totalPages = apiData.pagination?.totalPages ?? Math.max(1, Math.ceil(total / pageSize));
+
+        setLogs(normalizedLogs);
+        setPagination({
+          page,
+          pageSize,
+          total,
+          totalPages
+        });
+        setError(null);
+        return;
+      }
+
+      // 如果功能未实现，显示模拟数据
+      if (data?.message?.includes('暂未实现')) {
+        setLogs(getMockLogs());
+        setPagination({
+          page: 1,
+          pageSize: 50,
+          total: 15,
+          totalPages: 1
+        });
+        setError(null);
+        return;
+      }
+
+      setLogs([]);
+      setError(data?.message || '获取系统日志失败');
     } catch (error: any) {
       if (error?.message === 'TOKEN_MISSING') {
         setLogs([]);
@@ -253,6 +284,7 @@ const SystemLogs: React.FC = () => {
       case 'ADMIN_MANAGEMENT': return '管理员管理';
       case 'DASHBOARD': return '仪表板';
       case 'SUBSCRIPTION_MANAGEMENT': return '订阅管理';
+      case 'INTERVIEW_ANALYSIS': return '面试分析';
       default: return module;
     }
   };
@@ -308,6 +340,7 @@ const SystemLogs: React.FC = () => {
               <option value="ADMIN_MANAGEMENT">管理员管理</option>
               <option value="DASHBOARD">仪表板</option>
               <option value="SUBSCRIPTION_MANAGEMENT">订阅管理</option>
+              <option value="INTERVIEW_ANALYSIS">面试分析</option>
             </select>
           </div>
 
@@ -475,68 +508,79 @@ const SystemLogs: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {logs.map(log => {
-              const resultStyle = getResultColor(log.result);
-              return (
-                <tr key={log.id}>
-                  <td style={{ padding: '16px', borderBottom: '1px solid #f0f0f0', fontSize: '14px' }}>
-                    {formatDate(log.createdAt)}
-                  </td>
-                  <td style={{ padding: '16px', borderBottom: '1px solid #f0f0f0' }}>
-                    <span style={{ 
-                      padding: '4px 8px', 
-                      background: '#f0f0f0', 
-                      color: '#666',
-                      borderRadius: '4px',
-                      fontSize: '12px'
-                    }}>
-                      {getModuleName(log.module)}
-                    </span>
-                  </td>
-                  <td style={{ padding: '16px', borderBottom: '1px solid #f0f0f0', fontSize: '14px' }}>
-                    {log.action}
-                  </td>
-                  <td style={{ padding: '16px', borderBottom: '1px solid #f0f0f0', fontSize: '14px', maxWidth: '300px' }}>
-                    <div title={log.description} style={{ 
-                      overflow: 'hidden', 
-                      textOverflow: 'ellipsis', 
-                      whiteSpace: 'nowrap' 
-                    }}>
-                      {log.description}
-                    </div>
-                    {log.errorMsg && (
-                      <div style={{ fontSize: '12px', color: '#ff4d4f', marginTop: '4px' }}>
-                        错误: {log.errorMsg}
+            {logs.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={7}
+                  style={{ padding: '24px', textAlign: 'center', color: '#999', fontSize: '14px' }}
+                >
+                  暂无日志记录
+                </td>
+              </tr>
+            ) : (
+              logs.map(log => {
+                const resultStyle = getResultColor(log.result);
+                return (
+                  <tr key={log.id}>
+                    <td style={{ padding: '16px', borderBottom: '1px solid #f0f0f0', fontSize: '14px' }}>
+                      {formatDate(log.createdAt)}
+                    </td>
+                    <td style={{ padding: '16px', borderBottom: '1px solid #f0f0f0' }}>
+                      <span style={{ 
+                        padding: '4px 8px', 
+                        background: '#f0f0f0', 
+                        color: '#666',
+                        borderRadius: '4px',
+                        fontSize: '12px'
+                      }}>
+                        {getModuleName(log.module)}
+                      </span>
+                    </td>
+                    <td style={{ padding: '16px', borderBottom: '1px solid #f0f0f0', fontSize: '14px' }}>
+                      {log.action}
+                    </td>
+                    <td style={{ padding: '16px', borderBottom: '1px solid #f0f0f0', fontSize: '14px', maxWidth: '300px' }}>
+                      <div title={log.description} style={{ 
+                        overflow: 'hidden', 
+                        textOverflow: 'ellipsis', 
+                        whiteSpace: 'nowrap' 
+                      }}>
+                        {log.description}
                       </div>
-                    )}
-                  </td>
-                  <td style={{ padding: '16px', borderBottom: '1px solid #f0f0f0', fontSize: '14px' }}>
-                    {log.admin ? (
-                      <div>
-                        <div style={{ fontWeight: 'bold' }}>{log.admin.name}</div>
-                        <div style={{ fontSize: '12px', color: '#666' }}>{log.admin.email}</div>
-                      </div>
-                    ) : (
-                      <span style={{ color: '#999' }}>系统自动</span>
-                    )}
-                  </td>
-                  <td style={{ padding: '16px', borderBottom: '1px solid #f0f0f0' }}>
-                    <span style={{ 
-                      padding: '4px 8px', 
-                      background: resultStyle.bg, 
-                      color: resultStyle.color,
-                      borderRadius: '4px',
-                      fontSize: '12px'
-                    }}>
-                      {getResultText(log.result)}
-                    </span>
-                  </td>
-                  <td style={{ padding: '16px', borderBottom: '1px solid #f0f0f0', fontSize: '14px' }}>
-                    {log.ipAddress || '-'}
-                  </td>
-                </tr>
-              );
-            })}
+                      {log.errorMsg && (
+                        <div style={{ fontSize: '12px', color: '#ff4d4f', marginTop: '4px' }}>
+                          错误: {log.errorMsg}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: '16px', borderBottom: '1px solid #f0f0f0', fontSize: '14px' }}>
+                      {log.admin ? (
+                        <div>
+                          <div style={{ fontWeight: 'bold' }}>{log.admin.name}</div>
+                          <div style={{ fontSize: '12px', color: '#666' }}>{log.admin.email}</div>
+                        </div>
+                      ) : (
+                        <span style={{ color: '#999' }}>系统自动</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '16px', borderBottom: '1px solid #f0f0f0' }}>
+                      <span style={{ 
+                        padding: '4px 8px', 
+                        background: resultStyle.bg, 
+                        color: resultStyle.color,
+                        borderRadius: '4px',
+                        fontSize: '12px'
+                      }}>
+                        {getResultText(log.result)}
+                      </span>
+                    </td>
+                    <td style={{ padding: '16px', borderBottom: '1px solid #f0f0f0', fontSize: '14px' }}>
+                      {log.ipAddress || '-'}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>

@@ -27,7 +27,7 @@ import { SearchOutlined, ReloadOutlined, EyeOutlined, StopOutlined, CheckOutline
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import { uploadApi } from '../services/api';
-import { config } from '../config/config';
+import { buildAssetUrl } from '../utils/url';
 
 const { Title, Paragraph, Text } = Typography;
 const { Option } = Select;
@@ -229,7 +229,7 @@ const PostManagement: React.FC = () => {
         render: (_, record) =>
           record.coverImage ? (
             <Image
-              src={record.coverImage.startsWith('http') ? record.coverImage : `${config.API_BASE_URL}${record.coverImage}`}
+              src={buildAssetUrl(record.coverImage)}
               width={70}
               height={100}
               style={{ objectFit: 'cover', borderRadius: 8 }}
@@ -414,11 +414,7 @@ const PostManagement: React.FC = () => {
                 {detailPost.coverImage && (
                   <div style={{ marginBottom: 12 }}>
                     <Image
-                      src={
-                        detailPost.coverImage.startsWith('http')
-                          ? detailPost.coverImage
-                          : `${config.API_BASE_URL}${detailPost.coverImage}`
-                      }
+                      src={buildAssetUrl(detailPost.coverImage)}
                       width={260}
                       height={360}
                       style={{ objectFit: 'cover', borderRadius: 10 }}
@@ -444,7 +440,7 @@ const PostManagement: React.FC = () => {
                       {detailPost.images.map((img) => (
                         <Image
                           key={img}
-                          src={img.startsWith('http') ? img : `${config.API_BASE_URL}${img}`}
+                          src={buildAssetUrl(img)}
                           width={160}
                           height={220}
                           style={{ objectFit: 'cover', borderRadius: 8 }}
@@ -491,7 +487,7 @@ const PostManagement: React.FC = () => {
               </Upload>
               {coverUrl && (
                 <Image
-                  src={coverUrl.startsWith('http') ? coverUrl : `${config.API_BASE_URL}${coverUrl}`}
+                  src={buildAssetUrl(coverUrl)}
                   width={180}
                   height={240}
                   style={{ objectFit: 'cover', borderRadius: 8 }}
@@ -516,7 +512,7 @@ const PostManagement: React.FC = () => {
                 {imageList.map((img) => (
                   <div key={img} style={{ position: 'relative' }}>
                     <Image
-                      src={img.startsWith('http') ? img : `${config.API_BASE_URL}${img}`}
+                      src={buildAssetUrl(img)}
                       width={120}
                       height={180}
                       style={{ objectFit: 'cover', borderRadius: 6 }}

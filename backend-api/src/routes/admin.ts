@@ -85,6 +85,11 @@ import {
   updateAppVersion,
   activateAppVersion,
 } from '../controllers/appVersionController';
+import {
+  listMessagesAdmin,
+  getMessageDetailAdmin,
+  replyMessageAdmin,
+} from '../controllers/messageAdminController';
 
 const router = express.Router();
 
@@ -166,6 +171,15 @@ router.get('/logs', [
   query('endDate').optional().isISO8601().withMessage('结束日期格式错误'),
   validate
 ], getSystemLogs);
+
+// 消息中心（邀约/沟通/通知）
+router.get('/messages', [
+  query('page').optional().isInt({ min: 1 }).withMessage('页码必须大于0'),
+  query('pageSize').optional().isInt({ min: 1, max: 100 }).withMessage('每页数量必须在1-100之间'),
+  validate
+], listMessagesAdmin);
+router.get('/messages/:id', getMessageDetailAdmin);
+router.post('/messages/:id/reply', replyMessageAdmin);
 
 // 应用版本管理
 router.get('/app-versions', [

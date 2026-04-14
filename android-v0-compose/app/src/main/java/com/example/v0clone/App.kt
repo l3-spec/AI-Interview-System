@@ -1,16 +1,16 @@
 package com.xlwl.AiMian
 
-import android.os.Build
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import android.os.Build
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -45,16 +45,16 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.zIndex
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.xlwl.AiMian.R
 import com.xlwl.AiMian.data.auth.AuthManager
 import com.xlwl.AiMian.navigation.AppNavHost
 import com.xlwl.AiMian.navigation.Routes
+import com.xlwl.AiMian.ui.design.StarLinkAccentOrange
+import com.xlwl.AiMian.ui.design.StarLinkPlaceholderGray
+import com.xlwl.AiMian.ui.design.StarLinkWhite
 
-// 橙色主色调
-val OrangeAccent = Color(0xFFFF8C42)
+private val BottomBarShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
 
 data class BottomNavigationItemData(
     val label: String,
@@ -74,6 +74,8 @@ fun V0App() {
         currentRoute == Routes.LOGIN ||
         currentRoute == Routes.CREATE_POST ||
         currentRoute == Routes.REGISTER ||
+        currentRoute.startsWith("content") ||
+        currentRoute.startsWith("${Routes.CIRCLE}/") ||
         currentRoute == Routes.AI ||
         currentRoute == Routes.DIGITAL_INTERVIEW ||
         currentRoute == Routes.INTERVIEW_COMPLETE ||
@@ -88,26 +90,31 @@ fun V0App() {
         val density = LocalDensity.current
         val bottomInsetPx = WindowInsets.navigationBars.getBottom(density)
         val bottomInset = with(density) { bottomInsetPx.toDp() }
-        val bottomPadding = (bottomInset - 15.dp).coerceAtLeast(0.dp)
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(top = innerPadding.calculateTopPadding())
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = if (hideBottomBar) 0.dp else bottomPadding)
+                    // Allow screens to draw bottom edge-to-edge for gesture bar blending
             ) {
                 AppNavHost(navController = navController)
             }
 
-            androidx.compose.animation.AnimatedVisibility(
-                visible = !hideBottomBar,
-                enter = androidx.compose.animation.fadeIn(),
-                exit = androidx.compose.animation.fadeOut()
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
             ) {
-                Box(modifier = Modifier.fillMaxSize()) {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = !hideBottomBar,
+                    enter = androidx.compose.animation.fadeIn(),
+                    exit = androidx.compose.animation.fadeOut(),
+                    modifier = Modifier.align(Alignment.BottomCenter)
+                ) {
                     FrostedGlassBottomBar(
                         selectedIndex = selectedTabIndex,
                         onSelected = { index ->
@@ -118,30 +125,11 @@ fun V0App() {
                                 3 -> navController.navigate(Routes.PROFILE) { launchSingleTop = true }
                             }
                         },
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = bottomPadding)
+                        onAiClick = {
+                            navController.navigate(Routes.AI) { launchSingleTop = true }
+                        },
+                        bottomInset = bottomInset
                     )
-
-                    FloatingActionButton(
-                        onClick = { navController.navigate(Routes.AI) { launchSingleTop = true } },
-                        containerColor = Color.Transparent,
-                        shape = CircleShape,
-                        elevation = FloatingActionButtonDefaults.elevation(
-                            defaultElevation = 0.dp,
-                            pressedElevation = 0.dp,
-                            focusedElevation = 0.dp,
-                            hoveredElevation = 0.dp
-                        ),
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .offset(y = -(bottomInset + 32.dp))
-                            .size(72.dp)
-                            .shadow(if (aiSelected) 12.dp else 8.dp, CircleShape, clip = false)
-                            .zIndex(10f)
-                    ) {
-                        AIInterviewFab(selected = aiSelected)
-                    }
                 }
             }
         }
@@ -149,53 +137,11 @@ fun V0App() {
 }
 
 @Composable
-private fun AIInterviewFab(selected: Boolean) {
-    val backgroundBrush = if (selected) {
-        Brush.linearGradient(
-            colors = listOf(
-                Color(0xFFFF9A3C),
-                Color(0xFFFF7A1C)
-            )
-        )
-    } else {
-        Brush.linearGradient(
-            colors = listOf(
-                Color(0xFFFFFFFF),
-                Color(0xFFFFF2E6)
-            )
-        )
-    }
-    val textColor = if (selected) Color.White else Color(0xFFEC7C38)
-    val boxModifier = Modifier
-        .size(72.dp)
-        .clip(CircleShape)
-        .background(
-            brush = backgroundBrush,
-            shape = CircleShape
-        )
-        .let { base ->
-            if (selected) base else base.border(1.dp, Color(0x33EC7C38), CircleShape)
-        }
-
-    Box(
-        modifier = boxModifier,
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = "AI面",
-            style = MaterialTheme.typography.labelLarge.copy(
-                color = textColor,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
-                fontSize = 15.sp
-            )
-        )
-    }
-}
-
-@Composable
 private fun FrostedGlassBottomBar(
     selectedIndex: Int,
     onSelected: (Int) -> Unit,
+    onAiClick: () -> Unit,
+    bottomInset: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier
 ) {
     val navItems = listOf(
@@ -205,77 +151,102 @@ private fun FrostedGlassBottomBar(
         BottomNavigationItemData("我的", R.drawable.ic_tab_profile_filled, R.drawable.ic_tab_profile_outline)
     )
 
-    // 参照截图2：深色半透明底栏，有圆角，无缺口（简洁设计），左右下有间距
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp)
     ) {
-        // 底栏背景（简洁圆角矩形，无缺口）
         Box(
             modifier = Modifier
+                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .height(86.dp)
-                .clip(RoundedCornerShape(24.dp))
+                .height(72.dp + bottomInset)
+                .clip(BottomBarShape)
                 .background(
                     brush = Brush.verticalGradient(
                         colors = listOf(
-                            Color(0xFF3C3C3C).copy(alpha = 0.7f),
-                            Color(0xFF2F2F2F).copy(alpha = 0.7f)
+                            Color(0xFFF8F8F8).copy(alpha = 0.92f),
+                            Color(0xFFFFFFFF).copy(alpha = 0.96f)
                         )
                     )
                 )
                 .border(
                     width = 1.dp,
-                    color = Color.White.copy(alpha = 0.08f),
-                    shape = RoundedCornerShape(24.dp)
+                    color = Color.White.copy(alpha = 0.7f),
+                    shape = BottomBarShape
                 )
                 .then(
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                         Modifier.graphicsLayer {
-                            renderEffect = BlurEffect(15f, 15f)  // 轻微模糊
-                            this.clip = true
+                            renderEffect = BlurEffect(18f, 18f)
+                            clip = true
                         }
                     } else Modifier
                 )
+                .shadow(10.dp, BottomBarShape, clip = false)
         )
-        
-        // 导航按钮
+
         Row(
             modifier = Modifier
+                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .height(86.dp)
-                .padding(horizontal = 16.dp, vertical = 6.dp),
+                .height(72.dp + bottomInset)
+                .padding(bottom = bottomInset)
+                .padding(horizontal = 24.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.Bottom
         ) {
-            // 左侧两个按钮
-            BottomItem(
-                item = navItems[0],
-                selected = selectedIndex == 0,
-                onClick = { onSelected(0) }
-            )
-            BottomItem(
-                item = navItems[1],
-                selected = selectedIndex == 1,
-                onClick = { onSelected(1) }
-            )
-
-            // 中间留空（AI面按钮位置）
-            Spacer(Modifier.width(68.dp))
-
-            // 右侧两个按钮
-            BottomItem(
-                item = navItems[2],
-                selected = selectedIndex == 2,
-                onClick = { onSelected(2) }
-            )
-            BottomItem(
-                item = navItems[3],
-                selected = selectedIndex == 3,
-                onClick = { onSelected(3) }
-            )
+            BottomItem(item = navItems[0], selected = selectedIndex == 0, onClick = { onSelected(0) })
+            BottomItem(item = navItems[1], selected = selectedIndex == 1, onClick = { onSelected(1) })
+            Spacer(modifier = Modifier.width(72.dp))
+            BottomItem(item = navItems[2], selected = selectedIndex == 2, onClick = { onSelected(2) })
+            BottomItem(item = navItems[3], selected = selectedIndex == 3, onClick = { onSelected(3) })
         }
+
+        FloatingActionButton(
+            onClick = onAiClick,
+            containerColor = Color.Transparent,
+            shape = CircleShape,
+            elevation = FloatingActionButtonDefaults.elevation(
+                defaultElevation = 0.dp,
+                pressedElevation = 0.dp,
+                focusedElevation = 0.dp,
+                hoveredElevation = 0.dp
+            ),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = (-20).dp)
+                .size(72.dp)
+                .shadow(12.dp, CircleShape, clip = false)
+        ) {
+            AIInterviewFab()
+        }
+    }
+}
+
+@Composable
+private fun AIInterviewFab() {
+    val brush = Brush.linearGradient(
+        colors = listOf(
+            Color(0xFFFF9A3C),
+            Color(0xFFFF7A1C)
+        )
+    )
+
+    Box(
+        modifier = Modifier
+            .size(72.dp)
+            .clip(CircleShape)
+            .background(brush = brush, shape = CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "AI面",
+            style = MaterialTheme.typography.labelLarge.copy(
+                color = StarLinkWhite,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp
+            )
+        )
     }
 }
 
@@ -286,31 +257,30 @@ private fun BottomItem(
     onClick: () -> Unit
 ) {
     val iconRes = if (selected) item.selectedIconRes else item.unselectedIconRes
-    val labelColor = if (selected) Color(0xFFEC7C38) else Color(0xFFB5B7B8)
-    
+    val labelColor = if (selected) StarLinkAccentOrange else StarLinkPlaceholderGray
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
         modifier = Modifier
+            .width(44.dp)
             .clickable(onClick = onClick)
-            .padding(vertical = 6.dp, horizontal = 8.dp)
     ) {
         Image(
             painter = painterResource(id = iconRes),
             contentDescription = item.label,
             modifier = Modifier.size(24.dp)
         )
-        Spacer(Modifier.height(4.dp))
         Text(
             text = item.label,
-            color = labelColor,
-            fontSize = 10.sp,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+            style = MaterialTheme.typography.labelSmall.copy(
+                color = labelColor,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold
+            )
         )
     }
 }
-
-// 已去掉缺口，使用简单的RoundedCornerShape
 
 private fun isAiRoute(route: String): Boolean {
     if (route.isBlank()) return false

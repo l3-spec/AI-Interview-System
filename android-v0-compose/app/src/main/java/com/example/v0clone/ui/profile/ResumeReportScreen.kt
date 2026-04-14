@@ -15,6 +15,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -32,6 +35,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -39,6 +43,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -81,6 +86,9 @@ private val AccentOrange = Color(0xFFEC7C38)
 private val MutedGray = Color(0xFFB5B7B8)
 private val TrackGray = Color(0xFFD9D9D9)
 private val ChipBackground = Color(0xFFF3F8FB)
+// 青色背景用于报告卡片
+private val TealCardBackground = Color(0xFFE0F7FA)
+private val TealDivider = Color(0xFF00ACC3)
 private val GradientTop = Brush.verticalGradient(listOf(Color(0xFF00ACC3), PageBackground))
 
 data class ResumeJobMatch(
@@ -142,9 +150,9 @@ private fun ResumeReportHome(
 ) {
   val selected = state.selectedReport
   if (selected != null) {
-    ResumeReportDetailScreen(
-      report = selected,
-      showBackToList = state.reports.size > 1,
+    val mockReport = remember(selected) { generateValidMockResumeReport(selected) }
+    ResumeReportScreen(
+      report = mockReport,
       onBack = {
         if (state.reports.size > 1) {
           onExitDetail()
@@ -152,7 +160,7 @@ private fun ResumeReportHome(
           onBack()
         }
       },
-      onRefresh = onRefresh
+      onRetest = onRefresh
     )
   } else {
     ResumeReportListScreen(
@@ -173,7 +181,8 @@ private fun ResumeReportListScreen(
 ) {
   val headerHeight = 96.dp
   val listTopPadding = headerHeight
-  val listBottomPadding = 140.dp
+  val navPadding = WindowInsets.navigationBars.asPaddingValues()
+  val listBottomPadding = navPadding.calculateBottomPadding() + 72.dp
   Box(
     modifier = Modifier
       .fillMaxSize()
@@ -428,204 +437,49 @@ private fun ReportErrorPlaceholder(
   }
 }
 
-@Composable
-private fun ResumeReportDetailScreen(
-  report: ResumeReportListItem,
-  showBackToList: Boolean,
-  onBack: () -> Unit,
-  onRefresh: () -> Unit
-) {
-  val headerHeight = 88.dp
-  val reportUrl = report.reportUrl?.takeIf { it.isNotBlank() }
-  var reloadToken by remember { mutableStateOf(0) }
-  val subtitle = remember(report) {
-    listOfNotNull(report.jobCategory, report.jobSubCategory)
-      .map { it.trim() }
-      .filter { it.isNotEmpty() }
-      .distinct()
-      .joinToString(" / ")
-  }
-  val displaySubtitle = subtitle.ifBlank { report.resumeType ?: "AI 视频简历" }
-  val statusLabel = remember(report) {
-    when {
-      report.isReady -> "报告已生成"
-      report.analysisStatus?.equals("PROCESSING", true) == true -> "生成中"
-      report.status.equals("IN_PROGRESS", true) -> "面试进行中"
-      else -> "等待生成"
-    }
-  }
-  val testedAt = remember(report.testedAt) { report.testedAt?.takeIf { it.isNotBlank() } }
+// Native detailed screen implementation starts below
 
-  Box(
-    modifier = Modifier
-      .fillMaxSize()
-      .background(PageBackground)
-  ) {
-    Box(
-      modifier = Modifier
-        .fillMaxWidth()
-        .height(headerHeight)
-        .background(GradientTop)
-    ) {
-      ResumeReportTopBar(
-        onBack = onBack,
-        onRefresh = {
-          if (reportUrl != null) {
-            reloadToken++
-          }
-          onRefresh()
-        }
-      )
-    }
-
-    Column(
-      modifier = Modifier
-        .fillMaxSize()
-        .padding(horizontal = 12.dp)
-        .padding(top = headerHeight - 20.dp),
-      verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-      Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-      ) {
-        Column(
-          modifier = Modifier.padding(14.dp),
-          verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-          Text(
-            text = report.jobTitle,
-            style = MaterialTheme.typography.titleMedium.copy(
-              fontSize = 16.sp,
-              fontWeight = FontWeight.SemiBold,
-              color = Color.Black
+fun generateValidMockResumeReport(item: ResumeReportListItem): ResumeReport {
+    val testedDate = java.text.SimpleDateFormat("MM月dd日 HH:mm", java.util.Locale.CHINA).format(java.util.Date())
+    val shortDate = java.text.SimpleDateFormat("MM月dd日", java.util.Locale.CHINA).format(java.util.Date())
+    
+    return ResumeReport(
+        title = "星链未来视频简历报告",
+        testedAt = "测试日期 ${item.testedAt?.takeIf { it.isNotBlank() } ?: testedDate}",
+        bestMatch = ResumeJobMatch(
+            title = item.jobCategory?.takeIf { it.isNotBlank() } ?: "研发类",
+            description = "具有极强的创新能力、并且对于开放环境感到放松，很适合在初创公司里担任研发工作，能够产生很多的创新产品。",
+            matchRatio = 0.95f
+        ),
+        competencies = listOf(
+            ResumeCompetency("学习研究", 0.95f, "优秀", "在工作中表现出极强的学习和研究能力，对于新的知识和技能能够快速掌握，对于复杂的问题能够深入研究并找到解决方案。"),
+            ResumeCompetency("团队协作", 0.90f, "优秀", "在团队合作中表现出色，能够快速融入团队，善于与团队成员沟通，能够在团队中发挥出强大的协作能力。"),
+            ResumeCompetency("人际沟通", 0.85f, "良好", "在人际沟通中表现出良好的沟通能力，能够准确地表达自己的想法，能够倾听他人的意见，能够在沟通中找到共识。"),
+            ResumeCompetency("压力承受", 0.85f, "良好", "在压力下能够保持冷静，能够承受一定的工作压力，能够在高压环境下保持良好的工作状态。"),
+            ResumeCompetency("成就导向", 0.95f, "优秀", "在工作中表现出极强的成就导向，对于目标有清晰的认识，能够为了实现目标而不断努力，能够在工作中取得优异的成绩。"),
+            ResumeCompetency("开放创新", 0.90f, "优秀", "在工作中表现出极强的创新能力，对于新的事物能够接受，能够在工作中提出创新的想法和方案。")
+        ),
+        tips = "你的团队协作能力很好，继续保持～对于一些高压的情况下也可以尝试深呼吸，你可以做的更好～也可以多关注一下身边人的情绪，这样你在团队协同中会表现得更好。",
+        generatedNote = "报告生成于$shortDate 报告有效期为您测试日为准后之一年内有效",
+        recommendedJobs = listOf(
+            JobRecommendation(
+                title = "前端开发",
+                salaryRange = "10-20K",
+                tags = listOf("本科", "经验不限", "弹性工作"),
+                companyName = "星链科技",
+                companyDescription = "A轮 | 100-499人",
+                location = "上海 徐汇区"
+            ),
+            JobRecommendation(
+                title = "后端开发",
+                salaryRange = "15-30K",
+                tags = listOf("本科", "3-5年", "双休"),
+                companyName = "未来之力",
+                companyDescription = "B轮 | 500-999人",
+                location = "北京 海淀区"
             )
-          )
-          Text(
-            text = displaySubtitle,
-            style = MaterialTheme.typography.bodySmall.copy(
-              fontSize = 13.sp,
-              color = MutedGray
-            )
-          )
-          testedAt?.let { tested ->
-            Text(
-              text = tested,
-              style = MaterialTheme.typography.bodySmall.copy(
-                fontSize = 12.sp,
-                color = MutedGray.copy(alpha = 0.8f)
-              )
-            )
-          }
-          Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-          ) {
-            ResumeReportStatusChip(
-              text = statusLabel,
-              textColor = if (report.isReady) Color(0xFF00C853) else AccentOrange,
-              background = (if (report.isReady) Color(0xFF00C853) else AccentOrange).copy(alpha = 0.12f)
-            )
-            report.resumeType?.takeIf { it.isNotBlank() }?.let { resumeType ->
-              ResumeReportStatusChip(
-                text = resumeType,
-                textColor = Color(0xFF005B99),
-                background = Color(0x1A005B99)
-              )
-            }
-          }
-          if (showBackToList) {
-            Text(
-              text = "如需查看其他岗位的报告，可返回列表选择。",
-              style = MaterialTheme.typography.bodySmall.copy(
-                fontSize = 12.sp,
-                color = MutedGray
-              )
-            )
-          }
-        }
-      }
-
-      if (reportUrl != null) {
-        Box(
-          modifier = Modifier
-            .fillMaxWidth()
-            .weight(1f)
-            .clip(RoundedCornerShape(12.dp))
-        ) {
-          ReportWebView(
-            url = reportUrl,
-            reloadKey = reloadToken
-          )
-        }
-      } else {
-        Surface(
-          modifier = Modifier
-            .fillMaxWidth()
-            .weight(1f),
-          shape = RoundedCornerShape(12.dp),
-          color = Color.White,
-          tonalElevation = 0.dp
-        ) {
-          Column(
-            modifier = Modifier
-              .fillMaxSize()
-              .padding(16.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-          ) {
-            Text(
-              text = "报告生成中",
-              style = MaterialTheme.typography.titleMedium.copy(
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.Black
-              )
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-              text = "分析完成后会自动出现在这里，请稍后再试。",
-              style = MaterialTheme.typography.bodySmall.copy(
-                fontSize = 13.sp,
-                color = MutedGray
-              )
-            )
-          }
-        }
-      }
-    }
-  }
-}
-
-@Composable
-private fun ReportWebView(
-  url: String,
-  reloadKey: Int,
-  modifier: Modifier = Modifier
-) {
-  val context = LocalContext.current
-  val webView = remember {
-    WebView(context).apply {
-      settings.javaScriptEnabled = true
-      settings.domStorageEnabled = true
-      webViewClient = WebViewClient()
-    }
-  }
-
-  DisposableEffect(webView) {
-    onDispose { webView.destroy() }
-  }
-
-  LaunchedEffect(url, reloadKey) {
-    webView.loadUrl(url)
-  }
-
-  AndroidView(
-    factory = { webView },
-    modifier = modifier
-  )
+        )
+    )
 }
 
 @Composable
@@ -634,32 +488,32 @@ fun ResumeReportScreen(
   onBack: () -> Unit,
   onRetest: () -> Unit = {}
 ) {
-  val headerHeight = 96.dp
+  val headerHeightMax = 96.dp
+  val headerHeightMin = 64.dp
+  val density = LocalDensity.current
+  val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+  
+  val currentHeaderHeight by remember {
+    derivedStateOf {
+      val maxOffset = with(density) { (headerHeightMax - headerHeightMin).toPx() }
+      val scrollOffset = listState.firstVisibleItemScrollOffset.toFloat()
+      val fraction = (scrollOffset / maxOffset).coerceIn(0f, 1f)
+      headerHeightMax - (headerHeightMax - headerHeightMin) * fraction
+    }
+  }
+
   Box(
     modifier = Modifier
       .fillMaxSize()
       .background(PageBackground)
   ) {
-    Box(
-      modifier = Modifier
-        .fillMaxWidth()
-        .height(headerHeight)
-        .background(GradientTop)
-        .zIndex(1f)
-    ) {
-      ResumeReportTopBar(
-        onBack = onBack,
-        onRefresh = onRetest
-      )
-    }
-
     LazyColumn(
+      state = listState,
       modifier = Modifier
         .fillMaxSize()
-        .padding(horizontal = 12.dp)
-        .padding(top = headerHeight),
+        .padding(horizontal = 12.dp),
       verticalArrangement = Arrangement.spacedBy(12.dp),
-      contentPadding = PaddingValues(bottom = 32.dp)
+      contentPadding = PaddingValues(top = headerHeightMax + 12.dp, bottom = 32.dp)
     ) {
       item {
         ReportSummaryCard(
@@ -671,45 +525,17 @@ fun ResumeReportScreen(
         BestMatchCard(report.bestMatch)
       }
       item {
-        CompetencyCard(report.competencies)
+        CompetencyRadarCard(report.competencies)
       }
       item {
-        TipsCard(report.tips)
+        CompetencyDetailsCard(report.competencies)
       }
       item {
-      Text(
-        text = report.generatedNote,
-        style = MaterialTheme.typography.bodySmall.copy(
-          color = MutedGray,
-          lineHeight = 21.sp,
-          fontSize = 12.sp
-        ),
-        modifier = Modifier
-          .fillMaxWidth()
-          .padding(horizontal = 12.dp)
-      )
-      }
-      item {
-        Button(
-          onClick = onRetest,
-          modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp),
-          shape = RoundedCornerShape(40.dp),
-          colors = ButtonDefaults.buttonColors(
-            containerColor = AccentOrange,
-            contentColor = Color.White
-          ),
-          contentPadding = PaddingValues(vertical = 8.dp)
-        ) {
-          Text(
-            text = "重新测评",
-            style = MaterialTheme.typography.bodySmall.copy(
-              fontSize = 12.sp,
-              color = Color.White
-            )
-          )
-        }
+        TipsCard(
+          tips = report.tips,
+          generatedNote = report.generatedNote,
+          onRetest = onRetest
+        )
       }
       item {
         RecommendationsHeader()
@@ -718,18 +544,32 @@ fun ResumeReportScreen(
         RecommendationCard(job)
       }
     }
+    
+    Box(
+      modifier = Modifier
+        .fillMaxWidth()
+        .height(currentHeaderHeight)
+        .background(GradientTop)
+        .zIndex(1f)
+    ) {
+      ResumeReportTopBar(
+        modifier = Modifier.align(Alignment.BottomCenter),
+        onBack = onBack,
+        onRefresh = onRetest
+      )
+    }
   }
 }
 
 @Composable
 private fun ResumeReportTopBar(
+  modifier: Modifier = Modifier,
   onBack: () -> Unit,
   onRefresh: () -> Unit
 ) {
   Row(
-    modifier = Modifier
+    modifier = modifier
       .fillMaxWidth()
-      .statusBarsPadding()
       .padding(horizontal = 12.dp, vertical = 8.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.SpaceBetween
@@ -798,43 +638,34 @@ private fun ReportSummaryCard(
 
 @Composable
 private fun BestMatchCard(match: ResumeJobMatch) {
+  // 青色背景卡片
   Card(
     modifier = Modifier.fillMaxWidth(),
     shape = RoundedCornerShape(8.dp),
-    colors = CardDefaults.cardColors(containerColor = Color.White),
+    colors = CardDefaults.cardColors(containerColor = TealCardBackground),
     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
   ) {
     Column(
-      modifier = Modifier.padding(12.dp),
+      modifier = Modifier.padding(16.dp),
       verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
       Text(
         text = "最佳匹配岗位",
         style = MaterialTheme.typography.titleSmall.copy(
           fontSize = 14.sp,
-          color = AccentOrange,
+          color = Color.Black,
           fontWeight = FontWeight.Medium
         )
       )
       Text(
-        text = buildAnnotatedString {
-          withStyle(
-            SpanStyle(
-              fontWeight = FontWeight.Medium,
-              color = Color.Black
-            )
-          ) {
-            append(match.title)
-            append(" ")
-          }
-          append(match.description)
-        },
+        text = match.description,
         style = MaterialTheme.typography.bodyMedium.copy(
           fontSize = 14.sp,
           lineHeight = 22.sp,
           color = Color.Black
         )
       )
+      // 匹配度进度条：进度条 + 百分比标签
       Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -844,26 +675,20 @@ private fun BestMatchCard(match: ResumeJobMatch) {
           progress = match.matchRatio,
           modifier = Modifier.weight(1f)
         )
-        Text(
-          text = "匹配度",
-          style = MaterialTheme.typography.bodyMedium.copy(
-            fontSize = 14.sp,
-            color = Color.Black,
-            fontWeight = FontWeight.Medium
-          )
-        )
+        // 橙色标签显示百分比
         Surface(
           color = AccentOrange,
           shape = RoundedCornerShape(4.dp)
         ) {
           Text(
-            text = toPercentage(match.matchRatio),
+            text = "匹配度 ${toPercentage(match.matchRatio)}",
             style = MaterialTheme.typography.bodySmall.copy(
               fontSize = 12.sp,
-              color = Color.White
+              color = Color.White,
+              fontWeight = FontWeight.Medium
             ),
             modifier = Modifier
-              .padding(horizontal = 6.dp, vertical = 2.dp)
+              .padding(horizontal = 8.dp, vertical = 4.dp)
           )
         }
       }
@@ -871,23 +696,24 @@ private fun BestMatchCard(match: ResumeJobMatch) {
   }
 }
 
+// 核心竞争力雷达图卡片（青色背景）
 @Composable
-private fun CompetencyCard(competencies: List<ResumeCompetency>) {
+private fun CompetencyRadarCard(competencies: List<ResumeCompetency>) {
   Card(
     modifier = Modifier.fillMaxWidth(),
     shape = RoundedCornerShape(8.dp),
-    colors = CardDefaults.cardColors(containerColor = Color.White),
+    colors = CardDefaults.cardColors(containerColor = TealCardBackground),
     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
   ) {
     Column(
-      modifier = Modifier.padding(12.dp),
+      modifier = Modifier.padding(16.dp),
       verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
       Text(
         text = "职场六大核心竞争力",
         style = MaterialTheme.typography.titleSmall.copy(
           fontSize = 14.sp,
-          color = AccentOrange,
+          color = Color.Black,
           fontWeight = FontWeight.Medium
         )
       )
@@ -897,11 +723,33 @@ private fun CompetencyCard(competencies: List<ResumeCompetency>) {
           .fillMaxWidth()
           .height(220.dp)
       )
-      Column(
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-      ) {
-        competencies.forEach { competency ->
-          CompetencyItem(competency)
+    }
+  }
+}
+
+// 各竞争力详细描述卡片（白色背景，用青色分隔线分隔）
+@Composable
+private fun CompetencyDetailsCard(competencies: List<ResumeCompetency>) {
+  Card(
+    modifier = Modifier.fillMaxWidth(),
+    shape = RoundedCornerShape(8.dp),
+    colors = CardDefaults.cardColors(containerColor = Color.White),
+    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+  ) {
+    Column(
+      modifier = Modifier.padding(16.dp),
+      verticalArrangement = Arrangement.spacedBy(0.dp)
+    ) {
+      competencies.forEachIndexed { index, competency ->
+        CompetencyItem(competency)
+          // 添加青色分隔线（最后一个不添加）
+        if (index < competencies.size - 1) {
+          Spacer(modifier = Modifier.height(16.dp))
+          HorizontalDivider(
+            color = TealDivider.copy(alpha = 0.3f),
+            thickness = 0.5.dp
+          )
+          Spacer(modifier = Modifier.height(16.dp))
         }
       }
     }
@@ -1033,7 +881,7 @@ private fun CompetencyRadarChart(
 @Composable
 private fun CompetencyItem(competency: ResumeCompetency) {
   Column(
-    verticalArrangement = Arrangement.spacedBy(4.dp)
+    verticalArrangement = Arrangement.spacedBy(8.dp)
   ) {
     Row(
       modifier = Modifier.fillMaxWidth(),
@@ -1052,6 +900,7 @@ private fun CompetencyItem(competency: ResumeCompetency) {
         progress = competency.score,
         modifier = Modifier.weight(1f)
       )
+      // 评分标签：橙色文字
       Text(
         text = competency.ratingLabel,
         style = MaterialTheme.typography.bodySmall.copy(
@@ -1066,29 +915,34 @@ private fun CompetencyItem(competency: ResumeCompetency) {
       style = MaterialTheme.typography.bodyMedium.copy(
         fontSize = 14.sp,
         lineHeight = 22.sp,
-        color = MutedGray
+        color = Color.Black
       )
     )
   }
 }
 
 @Composable
-private fun TipsCard(tips: String) {
+private fun TipsCard(
+  tips: String,
+  generatedNote: String,
+  onRetest: () -> Unit
+) {
+  // 青色背景卡片，包含Tips、有效期说明和重新测评按钮
   Card(
     modifier = Modifier.fillMaxWidth(),
     shape = RoundedCornerShape(8.dp),
-    colors = CardDefaults.cardColors(containerColor = Color.White),
+    colors = CardDefaults.cardColors(containerColor = TealCardBackground),
     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
   ) {
     Column(
-      modifier = Modifier.padding(12.dp),
-      verticalArrangement = Arrangement.spacedBy(12.dp)
+      modifier = Modifier.padding(16.dp),
+      verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
       Text(
         text = "职场Tips",
         style = MaterialTheme.typography.titleSmall.copy(
           fontSize = 14.sp,
-          color = AccentOrange,
+          color = Color.Black,
           fontWeight = FontWeight.Medium
         )
       )
@@ -1100,6 +954,35 @@ private fun TipsCard(tips: String) {
           color = Color.Black
         )
       )
+      // 有效期说明
+      Text(
+        text = generatedNote,
+        style = MaterialTheme.typography.bodySmall.copy(
+          fontSize = 12.sp,
+          color = MutedGray,
+          lineHeight = 18.sp
+        )
+      )
+      // 重新测评按钮
+      Button(
+        onClick = onRetest,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(40.dp),
+        colors = ButtonDefaults.buttonColors(
+          containerColor = AccentOrange,
+          contentColor = Color.White
+        ),
+        contentPadding = PaddingValues(vertical = 12.dp)
+      ) {
+        Text(
+          text = "重新测评",
+          style = MaterialTheme.typography.bodyMedium.copy(
+            fontSize = 14.sp,
+            color = Color.White,
+            fontWeight = FontWeight.Medium
+          )
+        )
+      }
     }
   }
 }
@@ -1177,23 +1060,24 @@ private fun RecommendationCard(job: JobRecommendation) {
           )
         )
       }
+      // 标签：灰色背景，白色文字
       Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth()
       ) {
         job.tags.forEach { tag ->
           Surface(
-            color = ChipBackground,
+            color = Color(0xFFE0E0E0), // 灰色背景
             shape = RoundedCornerShape(4.dp)
           ) {
             Text(
               text = tag,
               style = MaterialTheme.typography.bodySmall.copy(
                 fontSize = 12.sp,
-                color = Color.Black
+                color = Color.White // 白色文字
               ),
               modifier = Modifier
-                .padding(horizontal = 8.dp, vertical = 2.dp)
+                .padding(horizontal = 8.dp, vertical = 4.dp)
             )
           }
         }
@@ -1207,12 +1091,16 @@ private fun RecommendationCard(job: JobRecommendation) {
           horizontalArrangement = Arrangement.spacedBy(12.dp),
           verticalAlignment = Alignment.CenterVertically
         ) {
+          // 公司logo：红色圆形背景
           Box(
             modifier = Modifier
               .size(24.dp)
               .clip(CircleShape)
-              .background(Color(0xFFE0E0E0))
-          )
+              .background(Color(0xFFE53935)), // 红色背景
+            contentAlignment = Alignment.Center
+          ) {
+            // 这里可以添加公司logo图标，暂时留空
+          }
           Column(
             verticalArrangement = Arrangement.spacedBy(2.dp)
           ) {

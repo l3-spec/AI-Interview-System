@@ -12,16 +12,18 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -39,6 +41,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.key
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,23 +61,44 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavBackStackEntry
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.xlwl.AiMian.data.repository.ContentRepository
-import java.text.DecimalFormat
 import kotlinx.coroutines.flow.distinctUntilChanged
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.foundation.shape.CircleShape
+import java.text.DecimalFormat
+import androidx.compose.ui.text.TextStyle
 
-// 根据Figma设计规范定义颜色，与职岗页保持统一的头部样式
-private val PageBackground = Color(0xFFF4F5F6)
-private val HeroGradientStart = Color(0xFF00ACC3)
-private val HeroGradientEnd = Color(0xFFE9F7F9)
-private val SearchPlaceholder = Color(0xFFA6ABB1)
-private val PrimaryText = Color(0xFF2D3036)
-private val AccentOrange = Color(0xFFF28B3F)
+// 根据Figma设计规范定义颜色和尺寸
+private val PageBackground = Color(0xFFF4F5F6) // 与首页保持一致的柔和灰背景
+private val HeroGradientStart = Color(0xFF00ACC3) // 顶部蓝色
+private val HeroGradientEnd = Color(0xFFE9F7F9) // 首页同款浅蓝过渡
+private val SearchPlaceholder = Color(0xFFB5B7B8) // 根据Figma设计：灰色占位 #B5B7B8
+private val PrimaryText = Color(0xFF000000) // 根据Figma设计：黑色 #000000
+private val AccentOrange = Color(0xFFEC7C38) // 根据Figma设计：橙色 #EC7C38
 private val WhiteColor = Color(0xFFFFFFFF)
-private val CardCorner = 8.dp
-private val CircleTopBarExpandedHeight = 76.dp
-private val CircleTopBarCollapsedHeight = 54.dp
+private val CardCorner = 8.dp // 根据Figma设计：卡片圆角8px
+private val CircleTopBarExpandedHeight = 68.dp // 紧贴状态栏的更紧凑高度
+private val CircleTopBarCollapsedHeight = 52.dp
 private val CircleTopBarMaxOffset = 120.dp
-private val CircleHeaderApproxHeight = CircleTopBarExpandedHeight + 64.dp
+private val CircleHeaderApproxHeight = CircleTopBarExpandedHeight + 16.dp // 预估高度用于占位
+
+private val AvatarFallbackColors = listOf(
+    Color(0xFFFDE68A), // Amber
+    Color(0xFFBFDBFE), // Blue
+    Color(0xFFC6F6D5), // Green
+    Color(0xFFFED7AA), // Orange
+    Color(0xFFE9D5FF), // Purple
+    Color(0xFFFECACA), // Red
+    Color(0xFF99F6E4), // Teal
+    Color(0xFFDDD6FE), // Violet
+    Color(0xFFFBCFE8), // Pink
+    Color(0xFFCFFAFE), // Cyan
+    Color(0xFFF5F3FF), // Indigo
+    Color(0xFFFEF3C7), // Yellow
+    Color(0xFFE0F2FE), // Light Blue
+    Color(0xFFECFDF5)  // Emerald
+)
 
 @Composable
 fun CircleRoute(
@@ -131,6 +155,7 @@ private fun CircleScreen(
         }
     }
     val currentUiState by rememberUpdatedState(uiState)
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
 
     LaunchedEffect(listState) {
         snapshotFlow {
@@ -160,6 +185,7 @@ private fun CircleScreen(
             .fillMaxSize()
             .background(PageBackground)
     ) {
+        // 使用首页同款：顶部 #00ACC3 渐变到底部浅蓝 #E9F7F9，保持连贯的上推效果
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -178,7 +204,7 @@ private fun CircleScreen(
             contentPadding = PaddingValues(
                 start = 12.dp,
                 end = 12.dp,
-                bottom = 140.dp
+                bottom = navPadding.calculateBottomPadding() + 72.dp
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -259,10 +285,14 @@ private fun CircleScreen(
             modifier = Modifier.align(Alignment.TopCenter)
         )
 
+        // 发帖按钮 - 根据Figma设计：距离右边16px，距离底部174px（考虑底部导航栏）
         CreatePostDock(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 16.dp, bottom = 144.dp),
+                .padding(
+                    end = 16.dp,
+                    bottom = navPadding.calculateBottomPadding() + 96.dp
+                ),
             onClick = onCreatePost
         )
     }
@@ -282,14 +312,13 @@ private fun CirclePostCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(5.dp)  // Figma gap
+            modifier = Modifier.fillMaxWidth()
         ) {
-            // 图片区域 - 根据Figma，高度有170px和227px两种，创造错落感
+            // 图片区域 - 增大图片占比，创造错落感
             val imageAspectRatio = when (card.id.hashCode() % 3) {
-                0 -> 170f / 227f  // 长图
-                1 -> 170f / 170f  // 正方形
-                else -> 170f / 200f  // 中等高度
+                0 -> 170f / 240f  // 长图（更高）
+                1 -> 170f / 190f  // 略高于正方形
+                else -> 170f / 210f  // 中等高度
             }
 
             Box(
@@ -329,68 +358,67 @@ private fun CirclePostCard(
                 }
             }
             
-            // 标题和标签区域 - padding改为4dp
+            // 精简底部：标题一行 + 标签一行
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(4.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)  // Figma gap
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                // 标题和标签
-                Column {
+                Text(
+                    text = card.title,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        color = PrimaryText,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 14.sp,
+                        lineHeight = 21.sp,
+                        letterSpacing = (-0.32).sp
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (card.tags.isNotEmpty()) {
                     Text(
-                        text = card.title,
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            color = PrimaryText,
-                            fontWeight = FontWeight.Medium,  // PingFang SC Medium
-                            fontSize = 14.sp,
-                            lineHeight = 21.sp,
+                        text = card.tags.take(2).joinToString(" ") { "#$it" },
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = AccentOrange,
+                            fontWeight = FontWeight.Normal,
+                            fontSize = 12.sp,
+                            lineHeight = 18.sp,
                             letterSpacing = (-0.32).sp
                         ),
-                        maxLines = 2,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    if (card.tags.isNotEmpty()) {
-                        Text(
-                            text = card.tags.take(2).joinToString(" ") { "#$it" },
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                color = AccentOrange,
-                                fontWeight = FontWeight.Normal,  // PingFang SC Regular
-                                fontSize = 12.sp,
-                                lineHeight = 21.sp,
-                                letterSpacing = (-0.32).sp
-                            ),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
                 }
             }
-            
-            // 作者和浏览数区域 - padding 4dp
+
+            // 恢复发帖人 & 浏览量 row
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(4.dp),
+                    .padding(start = 8.dp, end = 8.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),  // Figma gap
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.weight(1f, fill = false)
                 ) {
-                    AuthorAvatar(
-                        name = card.authorName,
-                        avatarUrl = card.authorAvatar
-                    )
+                    key(card.id) {
+                        CircleAuthorAvatar(
+                            name = card.authorName,
+                            avatarUrl = card.authorAvatar,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                     Text(
                         text = card.authorName,
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            color = PrimaryText,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Light,  // PingFang SC Light
-                            lineHeight = 21.sp,
+                        style = TextStyle(
+                            color = SearchPlaceholder,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Normal,
                             letterSpacing = (-0.32).sp
                         ),
                         maxLines = 1,
@@ -399,21 +427,20 @@ private fun CirclePostCard(
                 }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)  // Figma gap
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.Visibility,
                         contentDescription = null,
-                        tint = SearchPlaceholder,
-                        modifier = Modifier.size(16.dp)  // Figma 16px
+                        tint = SearchPlaceholder.copy(alpha = 0.6f),
+                        modifier = Modifier.size(12.dp)
                     )
                     Text(
-                        text = formatCompactViewCount(card.viewCount),
-                        style = MaterialTheme.typography.bodySmall.copy(
+                        text = formatCircleViewCount(card.viewCount),
+                        style = TextStyle(
                             color = SearchPlaceholder,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Light,
-                            lineHeight = 21.sp,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Normal,
                             letterSpacing = (-0.32).sp
                         )
                     )
@@ -424,38 +451,72 @@ private fun CirclePostCard(
 }
 
 @Composable
-private fun AuthorAvatar(
+private fun CircleAuthorAvatar(
     name: String,
     avatarUrl: String?,
     modifier: Modifier = Modifier
 ) {
     if (!avatarUrl.isNullOrBlank()) {
-        AsyncImage(
+        SubcomposeAsyncImage(
             model = avatarUrl,
             contentDescription = name,
             modifier = modifier
-                .size(24.dp)  // Figma设计是24px
                 .clip(CircleShape),
-            contentScale = ContentScale.Crop
+            contentScale = ContentScale.Crop,
+            error = {
+                CircleAvatarFallback(name = name, modifier = modifier)
+            }
         )
     } else {
-        Surface(
-            modifier = modifier.size(24.dp),  // Figma设计是24px
-            shape = CircleShape,
-            color = Color(0xFFEFF1F4)
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = name.firstOrNull()?.uppercaseChar()?.toString() ?: "星",
-                    style = MaterialTheme.typography.labelLarge.copy(
-                        color = Color(0xFF4B5563),
-                        fontWeight = FontWeight.SemiBold
-                    )
+        CircleAvatarFallback(name = name, modifier = modifier)
+    }
+}
+
+@Composable
+private fun CircleAvatarFallback(
+    name: String,
+    modifier: Modifier = Modifier
+) {
+    val trimmedName = name.trim()
+    val backgroundColor = remember(trimmedName) {
+        val hash = if (trimmedName.isEmpty()) 0 else trimmedName.hashCode()
+        val index = (hash and 0x7FFFFFFF) % AvatarFallbackColors.size
+        AvatarFallbackColors[index]
+    }
+    val firstChar = trimmedName.firstOrNull()?.toString() ?: "星"
+
+    Surface(
+        modifier = modifier,
+        shape = CircleShape,
+        color = backgroundColor
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = firstChar,
+                style = TextStyle(
+                    color = Color(0xFF4B5563).copy(alpha = 0.85f),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
                 )
-            }
+            )
         }
     }
 }
+
+private fun formatCircleViewCount(value: Int): String {
+    return when {
+        value >= 10000 -> {
+            val df = DecimalFormat("0.#")
+            "${df.format(value / 10000.0)}万"
+        }
+        value >= 1000 -> {
+            val df = DecimalFormat("0.#")
+            "${df.format(value / 1000.0)}k"
+        }
+        else -> value.coerceAtLeast(0).toString()
+    }
+}
+
 
 @Composable
 private fun CircleLoading(modifier: Modifier = Modifier) {
@@ -549,6 +610,14 @@ private fun CircleEmptyState(
     }
 }
 
+/**
+ * 发帖浮动按钮 - 根据Figma设计实现
+ * Figma设计规范：
+ * - 尺寸：48x48px
+ * - 位置：右下角，距离右边16px，距离底部174px（考虑底部导航栏）
+ * - 颜色：橙色 #EC7C38
+ * - 阴影：0px 2px 2px 0px rgba(0,0,0,0.25)
+ */
 @Composable
 private fun CreatePostDock(
     modifier: Modifier = Modifier,
@@ -556,11 +625,11 @@ private fun CreatePostDock(
 ) {
     Surface(
         modifier = modifier
-            .size(48.dp)  // 根据Figma设计调整为48dp
-            .clip(CircleShape)
+            .size(60.dp) // 提升触达面积
+            .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onClick),
-        color = AccentOrange,
-        shadowElevation = 2.dp  // Figma设计的阴影
+        color = AccentOrange, // 根据Figma设计：橙色 #EC7C38
+        shadowElevation = 6.dp // 更柔和的浮起感
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
@@ -573,6 +642,15 @@ private fun CreatePostDock(
     }
 }
 
+/**
+ * 职圈顶部搜索栏 - 根据Figma设计实现
+ * Figma设计规范：
+ * - 顶部区域：从#00ACC3到#EBEBEB的渐变，从31.65%位置开始过渡
+ * - 标题"职圈"：24sp，Semibold，黑色
+ * - "大咖分享"：14sp，Medium，黑色，50%透明度
+ * - 搜索框：白色背景，32px高度，8px圆角，12px占位文字
+ * - 内边距：左右12px，上下12px
+ */
 @Composable
 private fun CircleHeader(
     progress: Float,
@@ -581,13 +659,16 @@ private fun CircleHeader(
     modifier: Modifier = Modifier
 ) {
     val barHeight = lerp(CircleTopBarExpandedHeight, CircleTopBarCollapsedHeight, progress)
-    val horizontalPadding = lerp(16.dp, 14.dp, progress)
+    val horizontalPadding = lerp(18.dp, 14.dp, progress)
     val verticalPadding = lerp(12.dp, 10.dp, progress)
-    val titleSize = lerp(26.sp, 22.sp, progress)
-    val fieldHeight = lerp(42.dp, 38.dp, progress)
+    val titleSize = lerp(24.sp, 20.sp, progress)
+    val subtitleSize = lerp(14.sp, 12.sp, progress)
+    val fieldHeight = lerp(44.dp, 40.dp, progress)
     val searchIconSize = lerp(18.dp, 16.dp, progress)
-    val rowSpacing = lerp(14.dp, 10.dp, progress)
-    val bottomPadding = lerp(14.dp, 10.dp, progress)
+    val rowSpacing = lerp(18.dp, 12.dp, progress)
+    val containerTopPadding = lerp(0.dp, 0.dp, progress)
+    val containerBottomPadding = lerp(14.dp, 12.dp, progress)
+    val searchCorner = lerp(16.dp, 14.dp, progress)
 
     Column(
         modifier = modifier
@@ -600,27 +681,43 @@ private fun CircleHeader(
                     endY = 520f
                 )
             )
-            .padding(bottom = bottomPadding)
+            .padding(
+                top = containerTopPadding,
+                bottom = containerBottomPadding,
+                start = horizontalPadding,
+                end = horizontalPadding
+            )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(barHeight)
-                .padding(horizontal = horizontalPadding, vertical = verticalPadding),
+                .height(barHeight),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(rowSpacing)
         ) {
+            // 标题"职圈" - 根据Figma设计：24sp，Semibold，黑色
             Text(
                 text = "职圈",
                 fontSize = titleSize,
-                fontWeight = FontWeight.SemiBold,
-                color = PrimaryText
+                fontWeight = FontWeight.SemiBold, // PingFang SC Semibold
+                color = PrimaryText,
+                letterSpacing = (-0.32).sp // 根据Figma设计：letterSpacing -0.32px
             )
+            
+            // "大咖分享"文字 - 根据Figma设计：14sp，Medium，50%透明度
+            Text(
+                text = "大咖分享",
+                fontSize = subtitleSize,
+                fontWeight = FontWeight.Medium, // PingFang SC Medium
+                color = PrimaryText.copy(alpha = 0.55f), // 55%透明度
+                letterSpacing = (-0.32).sp
+            )
+            
+            // 搜索框 - 根据Figma设计：白色背景，32px高度，8px圆角
             Surface(
                 color = Color.White,
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(searchCorner),
                 shadowElevation = 6.dp,
-                tonalElevation = 0.dp,
                 modifier = Modifier
                     .height(fieldHeight)
                     .weight(1f)
@@ -629,8 +726,9 @@ private fun CircleHeader(
                 Row(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp) // 根据Figma设计：间距10px
                 ) {
                     Icon(
                         painter = painterResource(id = com.xlwl.AiMian.R.drawable.ic_jobs_search),
@@ -638,15 +736,13 @@ private fun CircleHeader(
                         tint = SearchPlaceholder,
                         modifier = Modifier.size(searchIconSize)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Box(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "搜索",
-                            color = SearchPlaceholder,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Normal
-                        )
-                    }
+                    Text(
+                        text = "搜索",
+                        color = SearchPlaceholder,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Light, // PingFang SC Light
+                        letterSpacing = (-0.32).sp
+                    )
                 }
             }
         }
@@ -660,11 +756,11 @@ private fun CircleMasonryGrid(
 ) {
     fun estimateHeight(card: CircleCard): Int {
         val image = when (card.id.hashCode() % 3) {
-            0 -> 227
-            1 -> 170
-            else -> 200
+            0 -> 240
+            1 -> 190
+            else -> 210
         }
-        val content = 88
+        val content = 52 // 精简后：标题一行 + 标签一行
         return image + content
     }
 
@@ -712,19 +808,5 @@ private fun CircleMasonryGrid(
                 )
             }
         }
-    }
-}
-
-private fun formatCompactViewCount(value: Int): String {
-    return when {
-        value >= 10000 -> {
-            val df = DecimalFormat("0.#")
-            "${df.format(value / 10000.0)}万"
-        }
-        value >= 1000 -> {
-            val df = DecimalFormat("0.#")
-            "${df.format(value / 1000.0)}k"
-        }
-        else -> value.coerceAtLeast(0).toString()
     }
 }

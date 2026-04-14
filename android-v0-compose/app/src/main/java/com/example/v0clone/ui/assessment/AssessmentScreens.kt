@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -33,7 +36,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -44,6 +47,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
@@ -85,29 +89,84 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private val AccentColor = Color(0xFFEC7C38)
-private val SurfaceBackground = Color(0xFFF5F6FB)
+private val SurfaceBackground = Color(0xFFF4F5F6)
 private val MutedText = Color(0xFF8A8D95)
-private val HeaderGradient = Brush.verticalGradient(listOf(Color(0xFF00ACC3), Color(0xFF00ACC3), Color(0xFF4FC5D8)))
+private val GradientTop = Color(0xFF00ACC3)
+private val GradientMid = Color(0xFF24C7D9)
+private val GradientBottom = Color(0xFFE9F7F9)
+private val HeaderGradient = Brush.verticalGradient(
+    colors = listOf(GradientTop, GradientMid, GradientBottom),
+    startY = 0f,
+    endY = 900f
+)
+private val ScreenGradient = Brush.verticalGradient(
+    colors = listOf(GradientTop, GradientBottom, SurfaceBackground),
+    startY = 0f,
+    endY = 1600f
+)
 private val OptionBorder = Color(0xFFE3E6ED)
 
 @Composable
-private fun AssessmentTakeTopBar(title: String, onBack: () -> Unit) {
-    Surface(color = Color.White, shadowElevation = 0.dp) {
-        Row(
+private fun AssessmentTakeTopBar(
+    title: String,
+    currentIndex: Int,
+    totalQuestions: Int,
+    onBack: () -> Unit
+) {
+    Surface(color = Color.Transparent, shadowElevation = 0.dp) {
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .background(HeaderGradient)
         ) {
-            IconButton(onClick = onBack) {
-                Icon(imageVector = Icons.Filled.Close, contentDescription = "关闭")
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "关闭",
+                        tint = Color.White
+                    )
+                }
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = Color.White,
+                    modifier = Modifier.weight(1f)
+                )
+                // 显示进度：如 "2/48"
+                Text(
+                    text = "$currentIndex/$totalQuestions",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White
+                    ),
+                    modifier = Modifier.padding(end = 8.dp)
+                )
             }
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            // 进度条
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .padding(horizontal = 8.dp)
+                    .clip(RoundedCornerShape(1.dp))
+                    .background(Color.White.copy(alpha = 0.28f))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth((currentIndex.toFloat() / totalQuestions.coerceAtLeast(1)))
+                        .clip(RoundedCornerShape(1.dp))
+                        .background(Color.White)
+                )
+            }
         }
     }
 }
@@ -182,80 +241,75 @@ private fun AssessmentHomeScreen(
     val featuredAssessments = remember(categories) {
         categories.flatMap { it.assessments.orEmpty() }
     }
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
+    val listBottomPadding = navPadding.calculateBottomPadding() + 48.dp
 
     Scaffold(
-        containerColor = SurfaceBackground
+        containerColor = Color.Transparent,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { padding ->
-        when {
-            isLoading && categories.isEmpty() -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = AccentColor)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(ScreenGradient)
+                .padding(padding)
+                .padding(bottom = navPadding.calculateBottomPadding() + 32.dp)
+        ) {
+            when {
+                isLoading && categories.isEmpty() -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = AccentColor)
+                    }
                 }
-            }
-            error != null && categories.isEmpty() -> {
-                AssessmentEmptyState(
-                    title = "测评分类获取失败",
-                    description = error,
-                    actionText = "重新加载",
-                    onAction = onRetry,
-                    modifier = Modifier.padding(padding)
-                )
-            }
-            categories.isEmpty() -> {
-                AssessmentEmptyState(
-                    title = "暂未开放测评",
-                    description = "我们正在准备更多精彩的测评内容，敬请期待。",
-                    actionText = "返回",
-                    onAction = onBack,
-                    modifier = Modifier.padding(padding)
-                )
-            }
-            else -> {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    item {
-                        AssessmentHomeHeader(onBack = onBack)
-                    }
-                    if (featuredAssessments.isNotEmpty()) {
+                error != null && categories.isEmpty() -> {
+                    AssessmentEmptyState(
+                        title = "测评分类获取失败",
+                        description = error,
+                        actionText = "重新加载",
+                        onAction = onRetry
+                    )
+                }
+                categories.isEmpty() -> {
+                    AssessmentEmptyState(
+                        title = "暂未开放测评",
+                        description = "我们正在准备更多精彩的测评内容，敬请期待。",
+                        actionText = "返回",
+                        onAction = onBack
+                    )
+                }
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
                         item {
-                            Text(
-                                text = "精选测评",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                                modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)
-                            )
+                            AssessmentHomeHeader(onBack = onBack)
                         }
-                        items(featuredAssessments, key = { it.id }) { assessment ->
-                            FeaturedAssessmentCard(
-                                assessment = assessment,
-                                onClick = { onAssessmentSelected(assessment) }
-                            )
+                        // 显示所有测评卡片
+                        if (featuredAssessments.isNotEmpty()) {
+                            items(featuredAssessments, key = { it.id }) { assessment ->
+                                FeaturedAssessmentCard(
+                                    assessment = assessment,
+                                    onClick = { onAssessmentSelected(assessment) }
+                                )
+                            }
+                        } else {
+                            // 如果没有精选测评，显示分类中的测评
+                            items(categories, key = { it.id }) { category ->
+                                category.assessments?.forEach { assessment ->
+                                    FeaturedAssessmentCard(
+                                        assessment = assessment,
+                                        onClick = { onAssessmentSelected(assessment) }
+                                    )
+                                }
+                            }
                         }
+                        item { Spacer(modifier = Modifier.height(listBottomPadding)) }
                     }
-                    item {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "测评分类",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                            modifier = Modifier.padding(bottom = 6.dp)
-                        )
-                    }
-                    items(categories, key = { it.id }) { category ->
-                        AssessmentCategoryCard(
-                            category = category,
-                            onClick = { onCategorySelected(category) }
-                        )
-                    }
-                    item { Spacer(modifier = Modifier.height(16.dp)) }
                 }
             }
         }
@@ -313,25 +367,38 @@ private fun AssessmentHomeHeader(onBack: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 18.dp),
+                .padding(horizontal = 18.dp, vertical = 18.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                        contentDescription = "返回",
-                        tint = Color.White
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                            contentDescription = "返回",
+                            tint = Color.White
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "职业测评",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
                     )
                 }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "职业测评",
-                    style = MaterialTheme.typography.titleLarge.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White
-                    )
-                )
+                // 右侧装饰图标（文件夹图标占位符）
+                Box(
+                    modifier = Modifier.size(48.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // 这里可以添加文件夹图标，暂时留空或使用占位符
+                }
             }
             Text(
                 text = "科学认知自我，找到更适合的职业路径。",
@@ -353,71 +420,85 @@ private fun FeaturedAssessmentCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(Color.White)
             .clickableWithRipple(onClick),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        shape = RoundedCornerShape(14.dp)
+        shape = RoundedCornerShape(16.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (!assessment.coverImage.isNullOrBlank()) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(assessment.coverImage)
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = assessment.title,
-                        modifier = Modifier
-                            .size(width = 72.dp, height = 56.dp)
-                            .clip(RoundedCornerShape(12.dp)),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFFFFF1E5)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Check,
-                            contentDescription = null,
-                            tint = AccentColor
-                        )
-                    }
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = assessment.title,
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = assessment.description ?: "简要的测评介绍或说明。",
-                        style = MaterialTheme.typography.bodySmall.copy(color = MutedText),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Icon(
-                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                    contentDescription = null,
-                    modifier = Modifier.rotate(180f),
-                    tint = MutedText
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 左侧图标
+            if (!assessment.coverImage.isNullOrBlank()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(assessment.coverImage)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = assessment.title,
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                    contentScale = ContentScale.Crop
                 )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Chip(text = "${assessment.durationMinutes}分钟")
-                assessment.questionCount?.takeIf { it > 0 }?.let {
-                    Chip(text = "$it 题")
+            } else {
+                // 默认图标：圆形背景
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFFFF1E5)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // 这里可以显示MBTI等图标，暂时使用占位符
+                    Text(
+                        text = assessment.title.take(2),
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = AccentColor
+                        )
+                    )
                 }
-                Chip(text = difficultyLabel(assessment.difficulty))
             }
+            
+            // 中间内容
+            Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = assessment.title,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
+                    lineHeight = 22.sp
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = assessment.description ?: "找到最适合你的职业方向，从认识自己开始",
+                style = MaterialTheme.typography.bodySmall.copy(
+                    color = MutedText,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp
+                ),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            }
+            
+            // 右侧箭头
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                contentDescription = null,
+                modifier = Modifier.rotate(180f),
+                tint = MutedText
+            )
         }
     }
 }
@@ -564,8 +645,10 @@ private fun AssessmentCategoryScreen(
     onAssessmentSelected: (Assessment) -> Unit
 ) {
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             CenterAlignedTopAppBar(
+                windowInsets = WindowInsets(0, 0, 0, 0),
                 title = {
                     Text(
                         text = title,
@@ -721,7 +804,8 @@ private fun Chip(text: String) {
             text = text,
             style = MaterialTheme.typography.labelSmall.copy(
                 color = Color(0xFF515667),
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.Medium,
+                        lineHeight = 22.sp
             ),
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
         )
@@ -789,9 +873,13 @@ private fun AssessmentDetailScreen(
     onRetry: () -> Unit,
     onStart: () -> Unit
 ) {
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
     Scaffold(
+        modifier = Modifier.background(ScreenGradient),
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             CenterAlignedTopAppBar(
+                windowInsets = WindowInsets(0, 0, 0, 0),
                 title = {
                     Text(
                         text = detail?.title ?: "测评详情",
@@ -810,10 +898,16 @@ private fun AssessmentDetailScreen(
                             contentDescription = "返回"
                         )
                     }
-                }
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White
+                )
             )
         },
-        containerColor = SurfaceBackground,
+        containerColor = Color.Transparent,
         bottomBar = {
             if (detail != null) {
                 Button(
@@ -836,50 +930,53 @@ private fun AssessmentDetailScreen(
             }
         }
     ) { padding ->
-        when {
-            isLoading && detail == null -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = AccentColor)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(ScreenGradient)
+                .padding(padding)
+                .padding(bottom = navPadding.calculateBottomPadding() + 24.dp)
+        ) {
+            when {
+                isLoading && detail == null -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = AccentColor)
+                    }
                 }
-            }
-            error != null && detail == null -> {
-                AssessmentEmptyState(
-                    title = "加载失败",
-                    description = error,
-                    actionText = "重试",
-                    onAction = onRetry,
-                    modifier = Modifier.padding(padding)
-                )
-            }
-            detail != null -> {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 20.dp),
-                    verticalArrangement = Arrangement.spacedBy(18.dp)
-                ) {
-                    item {
-                        DetailHeader(detail)
-                    }
-                    item {
-                        DetailStats(detail)
-                    }
-                    if (detail.guidelines.isNotEmpty()) {
+                error != null && detail == null -> {
+                    AssessmentEmptyState(
+                        title = "加载失败",
+                        description = error,
+                        actionText = "重试",
+                        onAction = onRetry
+                    )
+                }
+                detail != null -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 20.dp),
+                        verticalArrangement = Arrangement.spacedBy(18.dp)
+                    ) {
                         item {
-                            DetailGuidelines(detail.guidelines)
+                            DetailHeader(detail)
                         }
-                    }
-                    item {
-                        DetailDescription(detail)
-                    }
-                    item {
-                        DetailQuestionPreview(detail)
+                        item {
+                            DetailStats(detail)
+                        }
+                        if (detail.guidelines.isNotEmpty()) {
+                            item {
+                                DetailGuidelines(detail.guidelines)
+                            }
+                        }
+                        item {
+                            DetailDescription(detail)
+                        }
+                        item {
+                            DetailQuestionPreview(detail)
+                        }
                     }
                 }
             }
@@ -1064,7 +1161,7 @@ private fun DetailQuestionPreview(detail: AssessmentDetail) {
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Divider(color = Color(0xFFE7E9F0))
+                    HorizontalDivider(color = Color(0xFFE7E9F0))
                 }
             }
             Text(
@@ -1162,6 +1259,7 @@ private fun AssessmentTakeScreen(
     var currentIndex by remember(detail) { mutableStateOf(0) }
     val answers = remember(detail) { mutableStateMapOf<String, AnswerState>() }
     var showConfirmDialog by rememberSaveable { mutableStateOf(false) }
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
 
     LaunchedEffect(detail) {
         detail?.questions?.forEach { question ->
@@ -1170,74 +1268,104 @@ private fun AssessmentTakeScreen(
     }
 
     Scaffold(
+        modifier = Modifier.background(ScreenGradient),
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             AssessmentTakeTopBar(
                 title = detail?.title ?: assessmentTitle ?: "测评答题",
+                currentIndex = currentIndex + 1,
+                totalQuestions = detail?.questions?.size ?: 1,
                 onBack = onBack
             )
         },
-        containerColor = Color.White
+        containerColor = Color.Transparent
     ) { padding ->
-        when {
-            isLoading && detail == null -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = AccentColor)
-                }
-            }
-            error != null && detail == null -> {
-                AssessmentEmptyState(
-                    title = "加载失败",
-                    description = error,
-                    actionText = "重试",
-                    onAction = onRetry,
-                    modifier = Modifier.padding(padding)
-                )
-            }
-            detail != null && detail.questions.isNotEmpty() -> {
-                val question = detail.questions[currentIndex]
-                val answerState = answers.getOrPut(question.id) { AnswerState() }
-
-                val handleNext: () -> Unit = {
-                    val state = answers.getOrPut(detail.questions[currentIndex].id) { AnswerState() }
-                    if (!state.isAnswered(detail.questions[currentIndex].questionType)) {
-                        Toast.makeText(context, "请先完成当前题目", Toast.LENGTH_SHORT).show()
-                    } else if (currentIndex < detail.questions.size - 1) {
-                        currentIndex++
-                    } else {
-                        showConfirmDialog = true
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(ScreenGradient)
+                .padding(padding)
+                .padding(bottom = navPadding.calculateBottomPadding() + 24.dp)
+        ) {
+            when {
+                isLoading && detail == null -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = AccentColor)
                     }
                 }
+                error != null && detail == null -> {
+                    AssessmentEmptyState(
+                        title = "加载失败",
+                        description = error,
+                        actionText = "重试",
+                        onAction = onRetry
+                    )
+                }
+                detail != null && detail.questions.isNotEmpty() -> {
+                    val question = detail.questions[currentIndex]
+                    val answerState = answers.getOrPut(question.id) { AnswerState() }
+                    val isFirstQuestion = currentIndex == 0
 
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    item {
-                        QuestionProgress(current = currentIndex + 1, total = detail.questions.size)
+                    val handleNext: () -> Unit = {
+                        val state = answers.getOrPut(detail.questions[currentIndex].id) { AnswerState() }
+                        if (!state.isAnswered(detail.questions[currentIndex].questionType)) {
+                            Toast.makeText(context, "请先完成当前题目", Toast.LENGTH_SHORT).show()
+                        } else if (currentIndex < detail.questions.size - 1) {
+                            currentIndex++
+                        } else {
+                            showConfirmDialog = true
+                        }
                     }
-                    item {
-                        QuestionCard(
-                            question = question,
-                            answerState = answerState,
-                            questionNumber = currentIndex + 1,
-                            onAnswered = handleNext
-                        )
-                    }
-                    item {
-                        AnswerControls(
-                            canGoPrevious = currentIndex > 0,
-                            isLast = currentIndex == detail.questions.size - 1,
-                            onPrevious = { if (currentIndex > 0) currentIndex-- },
-                            onNext = handleNext
-                        )
+
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(
+                            horizontal = 16.dp,
+                            vertical = 16.dp + navPadding.calculateBottomPadding()
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        // 第一题显示介绍和指南部分
+                        if (isFirstQuestion) {
+                            item {
+                                AssessmentIntroBanner(detail)
+                            }
+                        }
+                        item {
+                            QuestionCard(
+                                question = question,
+                                answerState = answerState,
+                                questionNumber = currentIndex + 1,
+                                onAnswered = handleNext
+                            )
+                        }
+                        item {
+                            AnswerControls(
+                                canGoPrevious = currentIndex > 0,
+                                isLast = currentIndex == detail.questions.size - 1,
+                                onPrevious = { if (currentIndex > 0) currentIndex-- },
+                                onNext = handleNext
+                            )
+                        }
+                        // 底部信息（仅第一题显示）
+                        if (isFirstQuestion) {
+                            item {
+                                Text(
+                                    text = "完成MBTI测试后，您将获得\n你的MBTI人格类型，你的人格优劣势分析",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = MutedText,
+                                        lineHeight = 18.sp,
+                                        textAlign = TextAlign.Center
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 8.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1334,43 +1462,7 @@ private fun AssessmentIntroBanner(detail: AssessmentDetail) {
     }
 }
 
-@Composable
-private fun QuestionProgress(current: Int, total: Int) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "第$current 题",
-                style = MaterialTheme.typography.labelMedium.copy(color = MutedText)
-            )
-            Text(
-                text = "$current/$total",
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
-            )
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp)
-                .clip(RoundedCornerShape(50))
-                .background(Color(0xFFE6E6E6))
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(current.toFloat() / total.coerceAtLeast(1))
-                    .clip(RoundedCornerShape(50))
-                    .background(AccentColor)
-            )
-        }
-    }
-}
+// 已移除 QuestionProgress，进度条现在在顶部栏中显示
 
 @Composable
 private fun QuestionCard(
@@ -1395,11 +1487,12 @@ private fun QuestionCard(
                 text = "$questionNumber. ${question.questionText}",
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.SemiBold,
-                    lineHeight = 22.sp
+                    lineHeight = 22.sp,
+                    fontSize = 17.sp
                 )
             )
-            when (question.questionType.uppercase()) {
-                "SINGLE_CHOICE" -> {
+        when (question.questionType.uppercase()) {
+            "SINGLE_CHOICE" -> {
                 QuestionOptions(
                     options = question.options,
                     selected = answerState.selectedOptions,
@@ -1418,24 +1511,24 @@ private fun QuestionCard(
                     answerState.toggle(option.label)
                 }
             }
-                "TEXT" -> {
-                    OutlinedTextField(
-                        value = answerState.textAnswer,
-                        onValueChange = { answerState.textAnswer = it },
-                        placeholder = { Text("请简述你的想法或案例...") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(140.dp)
-                    )
-                }
-                else -> {
-                    Text(
-                        text = "暂不支持的题型：${question.questionType}",
-                        style = MaterialTheme.typography.bodySmall.copy(color = Color.Red)
-                    )
-                }
+            "TEXT" -> {
+                OutlinedTextField(
+                    value = answerState.textAnswer,
+                    onValueChange = { answerState.textAnswer = it },
+                    placeholder = { Text("请简述你的想法或案例...") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(140.dp)
+                )
+            }
+            else -> {
+                Text(
+                    text = "暂不支持的题型：${question.questionType}",
+                    style = MaterialTheme.typography.bodySmall.copy(color = Color.Red)
+                )
             }
         }
+    }
     }
 }
 
@@ -1495,25 +1588,48 @@ private fun AnswerControls(
     onPrevious: () -> Unit,
     onNext: () -> Unit
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        OutlinedButton(
-            onClick = onPrevious,
-            enabled = canGoPrevious,
-            shape = RoundedCornerShape(22.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = MutedText)
-        ) {
-            Text("上一题")
-        }
+    if (isLast) {
+        // 最后一题：居中显示"完成"按钮
         Button(
             onClick = onNext,
             colors = ButtonDefaults.buttonColors(containerColor = AccentColor, contentColor = Color.White),
-            shape = RoundedCornerShape(22.dp)
+            shape = RoundedCornerShape(24.dp),
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Text(if (isLast) "提交" else "下一题", fontWeight = FontWeight.SemiBold)
+            Text(
+                text = "完成",
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(vertical = 4.dp)
+            )
+        }
+    } else {
+        // 中间题：左右布局，上一题/下一题
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedButton(
+                onClick = onPrevious,
+                enabled = canGoPrevious,
+                shape = RoundedCornerShape(22.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = Color(0xFF8A8D95),
+                    disabledContentColor = Color(0xFFE3E6ED)
+                ),
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("上一题")
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Button(
+                onClick = onNext,
+                colors = ButtonDefaults.buttonColors(containerColor = AccentColor, contentColor = Color.White),
+                shape = RoundedCornerShape(22.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("下一题", fontWeight = FontWeight.SemiBold)
+            }
         }
     }
 }
@@ -1555,9 +1671,12 @@ fun AssessmentResultRoute(
     onBack: () -> Unit,
     onViewRecords: (() -> Unit)?
 ) {
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             CenterAlignedTopAppBar(
+                windowInsets = WindowInsets(0, 0, 0, 0),
                 title = {
                     Text(
                         text = "测评结果",
@@ -1585,13 +1704,16 @@ fun AssessmentResultRoute(
                 description = "请完成测评后查看结果。",
                 actionText = "返回",
                 onAction = onBack,
-                modifier = Modifier.padding(padding)
+                modifier = Modifier
+                    .padding(padding)
+                    .padding(bottom = navPadding.calculateBottomPadding())
             )
         } else {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding),
+                    .padding(padding)
+                    .padding(bottom = navPadding.calculateBottomPadding()),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {

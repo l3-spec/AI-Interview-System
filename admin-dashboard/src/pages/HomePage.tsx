@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import './LoginPage.css';
 import companyLogo from '../assets/company-logo.png';
@@ -426,9 +426,9 @@ const HomePage: React.FC = () => {
       <footer className="home-footer">
         <div className="home-footer__container">
           <div className="home-footer__links">
-            <a href="/privacy-policy" className="home-footer__link">隐私政策</a>
+            <Link to="/privacy-policy" className="home-footer__link">隐私政策</Link>
             <span className="home-footer__separator">|</span>
-            <a href="/privacy-rights" className="home-footer__link">隐私权利</a>
+            <Link to="/privacy-rights" className="home-footer__link">隐私权利</Link>
           </div>
           <p className="home-footer__copy">© {currentYear} 星链未来 · 保留所有权利</p>
         </div>

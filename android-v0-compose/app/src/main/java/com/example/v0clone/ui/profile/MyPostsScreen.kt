@@ -12,8 +12,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,6 +25,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -32,6 +39,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -43,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -68,6 +77,8 @@ fun MyPostsRoute(
     var isLoading by remember { mutableStateOf(true) }
     var isRefreshing by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var deletingId by remember { mutableStateOf<String?>(null) }
+    var isDeleting by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val refreshSignal by backStackEntry.savedStateHandle
         .getStateFlow("should_refresh_my_posts", false)
@@ -94,6 +105,23 @@ fun MyPostsRoute(
         }
     }
 
+    val handleDelete: (String) -> Unit = remember(repository) {
+        { postId: String ->
+            scope.launch {
+                isDeleting = true
+                val result = repository.deleteMyPost(postId)
+                result.onSuccess {
+                    posts = posts.filterNot { it.id == postId }
+                    error = null
+                }.onFailure {
+                    error = it.message ?: "删除失败，请稍后再试"
+                }
+                isDeleting = false
+                deletingId = null
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         loadPosts(false)
     }
@@ -109,11 +137,16 @@ fun MyPostsRoute(
         posts = posts,
         isLoading = isLoading,
         isRefreshing = isRefreshing,
+        isDeleting = isDeleting,
+        deletingId = deletingId,
         error = error,
         onBack = onBack,
         onRetry = { loadPosts(true) },
         onCreatePost = onCreatePost,
-        onPostClick = onPostClick
+        onPostClick = onPostClick,
+        onDeleteRequest = { postId -> deletingId = postId },
+        onConfirmDelete = handleDelete,
+        onDismissDelete = { deletingId = null }
     )
 }
 
@@ -122,120 +155,166 @@ private fun MyPostsScreen(
     posts: List<UserPost>,
     isLoading: Boolean,
     isRefreshing: Boolean,
+    isDeleting: Boolean,
+    deletingId: String?,
     error: String?,
     onBack: () -> Unit,
     onRetry: () -> Unit,
     onCreatePost: () -> Unit,
-    onPostClick: (String) -> Unit
+    onPostClick: (String) -> Unit,
+    onDeleteRequest: (String) -> Unit,
+    onConfirmDelete: (String) -> Unit,
+    onDismissDelete: () -> Unit
 ) {
-    Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        text = "我的发布",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.SemiBold
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
+    val screenGradient = Brush.verticalGradient(
+        colors = listOf(
+            Color(0xFF00ACC3),
+            Color(0xFFE9F7F9),
+            Color.White
+        ),
+        startY = 0f,
+        endY = 1600f
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(screenGradient)
+    ) {
+        Scaffold(
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            topBar = {
+                CenterAlignedTopAppBar(
+                    windowInsets = WindowInsets(0, 0, 0, 0),
+                    title = {
+                        Text(
+                            text = "我的发布",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
                         )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                                contentDescription = "返回"
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = onCreatePost) {
+                            Icon(
+                                imageVector = Icons.Outlined.Add,
+                                contentDescription = "发布"
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                        containerColor = Color.Transparent,
+                        scrolledContainerColor = Color.Transparent,
+                        titleContentColor = Color.White,
+                        navigationIconContentColor = Color.White,
+                        actionIconContentColor = Color.White
                     )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                            contentDescription = "返回"
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(onClick = onCreatePost) {
-                        Icon(
-                            imageVector = Icons.Outlined.Add,
-                            contentDescription = "发布"
-                        )
+                )
+            },
+            containerColor = Color.Transparent
+        ) { padding ->
+            when {
+                isLoading && posts.isEmpty() -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = Color(0xFFEC7C38))
                     }
                 }
-            )
-        },
-        containerColor = Color(0xFFF5F6F9)
-    ) { padding ->
-        when {
-            isLoading && posts.isEmpty() -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = Color(0xFFEC7C38))
+                error != null && posts.isEmpty() -> {
+                    MyPostsEmptyState(
+                        title = "加载失败",
+                        description = error,
+                        actionLabel = "重试",
+                        onAction = onRetry,
+                        modifier = Modifier.padding(padding)
+                    )
                 }
-            }
-            error != null && posts.isEmpty() -> {
-                MyPostsEmptyState(
-                    title = "加载失败",
-                    description = error,
-                    actionLabel = "重试",
-                    onAction = onRetry,
-                    modifier = Modifier.padding(padding)
-                )
-            }
-            posts.isEmpty() -> {
-                MyPostsEmptyState(
-                    title = "还没有发布内容",
-                    description = "分享你的职场动态、经验或问题，和社区一起交流成长。",
-                    actionLabel = "立即发布",
-                    onAction = onCreatePost,
-                    modifier = Modifier.padding(padding)
-                )
-            }
-            else -> {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    if (isRefreshing) {
-                        item {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    strokeWidth = 2.dp,
-                                    color = Color(0xFFEC7C38)
-                                )
+                posts.isEmpty() -> {
+                    MyPostsEmptyState(
+                        title = "还没有发布内容",
+                        description = "分享你的职场动态、经验或问题，和社区一起交流成长。",
+                        actionLabel = "立即发布",
+                        onAction = onCreatePost,
+                        modifier = Modifier.padding(padding)
+                    )
+                }
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding),
+                        contentPadding = PaddingValues(
+                            start = 16.dp,
+                            end = 16.dp,
+                            top = 12.dp,
+                            bottom = navPadding.calculateBottomPadding() + 32.dp
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        if (isRefreshing) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp,
+                                        color = Color(0xFFEC7C38)
+                                    )
+                                }
                             }
                         }
-                    }
-                    items(posts, key = { it.id }) { post ->
-                        MyPostCard(
-                            post = post,
-                            onClick = { onPostClick(post.id) }
-                        )
+                        items(posts, key = { it.id }) { post ->
+                            MyPostCard(
+                                post = post,
+                                onClick = { onPostClick(post.id) },
+                                onDelete = { onDeleteRequest(post.id) }
+                            )
+                        }
                     }
                 }
             }
         }
+    }
+
+    if (deletingId != null) {
+        ConfirmDeleteDialog(
+            onConfirm = { onConfirmDelete(deletingId) },
+            onDismiss = onDismissDelete,
+            isProcessing = isDeleting
+        )
     }
 }
 
 @Composable
 private fun MyPostCard(
     post: UserPost,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDelete: () -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.94f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         shape = RoundedCornerShape(16.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -308,16 +387,62 @@ private fun MyPostCard(
                         fontSize = 12.sp
                     )
                 )
-                Text(
-                    text = post.createdAt.take(16),
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        color = Color(0xFF9CA0A8),
-                        fontSize = 12.sp
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = post.createdAt.take(16),
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = Color(0xFF9CA0A8),
+                            fontSize = 12.sp
+                        )
                     )
-                )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "删除",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = Color(0xFFEC7C38),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        modifier = Modifier.clickable(onClick = onDelete)
+                    )
+                }
             }
         }
     }
+}
+
+@Composable
+private fun ConfirmDeleteDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    isProcessing: Boolean
+) {
+    AlertDialog(
+        onDismissRequest = { if (!isProcessing) onDismiss() },
+        title = { Text(text = "删除帖子") },
+        text = { Text(text = "删除后将无法恢复，确认删除？") },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                enabled = !isProcessing,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEC7C38))
+            ) {
+                Text(if (isProcessing) "删除中..." else "确认删除")
+            }
+        },
+        dismissButton = {
+            Button(
+                onClick = onDismiss,
+                enabled = !isProcessing,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFF0F2F6),
+                    contentColor = Color(0xFF4C4F57)
+                )
+            ) {
+                Text("取消")
+            }
+        }
+    )
 }
 
 @Composable

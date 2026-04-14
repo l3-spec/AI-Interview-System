@@ -166,6 +166,27 @@ class OSSService {
   }
 
   /**
+   * 生成带处理参数的签名URL（用于视频截帧等）
+   */
+  async generateSignedProcessUrl(
+    objectKey: string,
+    process: string,
+    expiresInSeconds: number = 3600
+  ): Promise<string> {
+    try {
+      const client = this.getOSSClient();
+      const url = client.signatureUrl(objectKey, {
+        expires: expiresInSeconds,
+        process
+      });
+      return url;
+    } catch (error) {
+      console.error('生成带处理参数的签名URL失败:', error);
+      throw error;
+    }
+  }
+
+  /**
    * 删除文件
    */
   async deleteFile(objectKey: string): Promise<boolean> {

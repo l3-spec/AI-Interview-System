@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
+import { toMediaUrl } from '../utils/ossUtils';
 
 const parseStringArray = (value?: string | null) => {
   if (!value) return [];
@@ -49,6 +50,12 @@ const parseImagesInput = (value: any): string[] => {
   }
   return [];
 };
+
+const mapPostMedia = (post: any) => ({
+  ...post,
+  coverImage: toMediaUrl(post.coverImage) ?? post.coverImage ?? null,
+  images: parseStringArray(post.images).map((image) => toMediaUrl(image) ?? image),
+});
 
 export const listUserPostsAdmin = async (req: Request, res: Response) => {
   try {
@@ -103,9 +110,8 @@ export const listUserPostsAdmin = async (req: Request, res: Response) => {
     ]);
 
     const list = posts.map((post: any) => ({
-      ...post,
+      ...mapPostMedia(post),
       tags: parseStringArray(post.tags),
-      images: parseStringArray(post.images),
     }));
 
     res.json({
@@ -147,9 +153,8 @@ export const getUserPostAdmin = async (req: Request, res: Response) => {
     res.json({
       success: true,
       data: {
-        ...post,
+        ...mapPostMedia(post),
         tags: parseStringArray(post.tags),
-        images: parseStringArray(post.images),
       },
     });
   } catch (error) {
@@ -295,7 +300,7 @@ export const updateUserPostAdmin = async (req: Request, res: Response) => {
       data: updateData,
     });
 
-    res.json({ success: true, data: updated, message: '帖子已更新' });
+    res.json({ success: true, data: mapPostMedia(updated), message: '帖子已更新' });
   } catch (error) {
     console.error('updateUserPostAdmin error:', error);
     res.status(500).json({ success: false, message: '服务器错误' });

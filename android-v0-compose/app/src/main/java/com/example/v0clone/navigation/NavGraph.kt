@@ -45,7 +45,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import com.google.gson.Gson
-import com.xlwl.AiMian.ai.guide.InterviewGuideRoute
+
 import com.xlwl.AiMian.data.api.AiInterviewApi
 import com.xlwl.AiMian.data.api.ApiService
 import com.xlwl.AiMian.data.api.OssApi
@@ -71,9 +71,11 @@ import com.xlwl.AiMian.data.model.CreateAiInterviewSessionRequest
 import com.xlwl.AiMian.data.model.User
 import com.xlwl.AiMian.data.model.AssessmentDetail
 import com.xlwl.AiMian.data.model.AssessmentResult
+import com.xlwl.AiMian.data.model.HomeFeedTargetType
 import com.xlwl.AiMian.navigation.Routes.LOGIN
 import com.xlwl.AiMian.data.repository.OssRepository
 import com.xlwl.AiMian.data.repository.AppUpdateRepository
+import com.xlwl.AiMian.data.repository.VerificationRepository
 import com.xlwl.AiMian.ui.auth.LoginScreen
 import com.xlwl.AiMian.ui.auth.LoginFlowScreen
 import com.xlwl.AiMian.ui.auth.RegisterScreen
@@ -101,7 +103,14 @@ import com.xlwl.AiMian.ui.messages.MessageDetailRoute
 import com.xlwl.AiMian.ui.profile.MyPostsRoute
 import com.xlwl.AiMian.ui.profile.ProfileScreen
 import com.xlwl.AiMian.ui.profile.ProfileSettingsRoute
+import com.xlwl.AiMian.ui.profile.ContactUsRoute
 import com.xlwl.AiMian.ui.profile.ResumeReportRoute
+import com.xlwl.AiMian.ui.profile.VerificationRoute
+import com.xlwl.AiMian.ui.profile.JobFavoritesRoute
+import com.xlwl.AiMian.ui.profile.PostFavoritesRoute
+import com.xlwl.AiMian.ui.profile.DeliveryListRoute
+import com.xlwl.AiMian.ui.profile.PersonalInfoRoute
+import com.xlwl.AiMian.ui.profile.PrivacyPermissionsRoute
 import kotlinx.coroutines.launch
 import java.net.URLDecoder
 import java.net.URLEncoder
@@ -119,7 +128,28 @@ fun AppNavHost(navController: NavHostController) {
     val lastAiJobId by authManager.lastAiJobIdFlow.collectAsState(initial = null)
     val lastAiJobCategoryId by authManager.lastAiJobCategoryIdFlow.collectAsState(initial = null)
     val coroutineScope = rememberCoroutineScope()
-    val client = remember(token) { RetrofitClient.createOkHttpClient { token } }
+    val isHandlingUnauthorized = remember { mutableStateOf(false) }
+    val handleUnauthorized = remember(authManager, navController) {
+        {
+            if (!isHandlingUnauthorized.value) {
+                isHandlingUnauthorized.value = true
+                coroutineScope.launch {
+                    authManager.clear()
+                    navController.navigate(Routes.LOGIN) {
+                        popUpTo(Routes.HOME) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                    isHandlingUnauthorized.value = false
+                }
+            }
+        }
+    }
+    val client = remember(token) {
+        RetrofitClient.createOkHttpClient(
+            tokenProvider = { token },
+            onUnauthorized = handleUnauthorized
+        )
+    }
     val authApi = remember(client) { RetrofitClient.createService(AuthApi::class.java, client) }
     val apiService = remember(client) { RetrofitClient.createService(ApiService::class.java, client) }
     val jobDictionaryApi = remember(client) { RetrofitClient.createService(JobDictionaryApi::class.java, client) }
@@ -130,6 +160,7 @@ fun AppNavHost(navController: NavHostController) {
     val authRepo = remember(authApi) { AuthRepository(authApi) }
     val contentRepo = remember(apiService) { ContentRepository(apiService) }
     val messageRepo = remember(apiService) { MessageRepository(apiService) }
+    val verificationRepo = remember(apiService) { VerificationRepository(apiService) }
     val jobRepo = remember(apiService) { JobRepository(apiService) }
     val jobPreferenceRepo = remember(apiService) { JobPreferenceRepository(apiService) }
     val jobDictionaryRepo = remember(jobDictionaryApi) { JobDictionaryRepository(jobDictionaryApi) }
@@ -186,13 +217,63 @@ fun AppNavHost(navController: NavHostController) {
                 repository = contentRepo,
                 onCardClick = { card ->
                     requireLogin {
-                        navController.currentBackStackEntry?.savedStateHandle?.set("selected_card", card)
-                        navController.navigate("content/${URLEncoder.encode(card.id, "UTF-8")}")
+                        when (card.targetType) {
+                            HomeFeedTargetType.POST -> {
+                                navController.currentBackStackEntry?.savedStateHandle?.set("selected_card", card)
+                                navController.navigate("content/${URLEncoder.encode(card.targetId, "UTF-8")}")
+                            }
+                            HomeFeedTargetType.COMPANY -> {
+                                navController.navigate(
+                                    "${Routes.COMPANY}/${URLEncoder.encode(card.targetId, "UTF-8")}",
+                                ) {
+                                    launchSingleTop = true
+                                }
+                            }
+                            HomeFeedTargetType.JOB -> {
+                                navController.navigate(
+                                    "${Routes.JOB_DETAIL}/${URLEncoder.encode(card.targetId, "UTF-8")}",
+                                ) {
+                                    launchSingleTop = true
+                                }
+                            }
+                        }
                     }
                 },
                 onSearchClick = {
                     requireLogin {
                         navController.navigate(Routes.JOBS)
+                    }
+                },
+                onBannerClick = { banner ->
+                    requireLogin {
+                        when (banner.linkType) {
+                            "post" -> {
+                                banner.linkId?.let { id ->
+                                    navController.navigate("content/${URLEncoder.encode(id, "UTF-8")}")
+                                }
+                            }
+                            "company" -> {
+                                banner.linkId?.let { id ->
+                                    navController.navigate("${Routes.COMPANY}/${URLEncoder.encode(id, "UTF-8")}")
+                                }
+                            }
+                            "assessment" -> {
+                                banner.linkId?.let { id ->
+                                    navController.navigate("${Routes.PROFILE_ASSESSMENT_TAKE}/${URLEncoder.encode(id, "UTF-8")}") {
+                                        launchSingleTop = true
+                                    }
+                                }
+                            }
+                            "webview", "third_party" -> {
+                                banner.linkId?.let { url ->
+                                    if (url.isNotBlank()) {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        runCatching { context.startActivity(intent) }
+                                            .onFailure { Toast.makeText(context, "无法打开链接", Toast.LENGTH_SHORT).show() }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             )
@@ -341,28 +422,15 @@ fun AppNavHost(navController: NavHostController) {
                     onStartInterview = { position, category, jobId ->
                         val safePosition = position.ifBlank { "AI 面试岗位" }
                         val safeCategory = category.ifBlank { "通用岗位" }
-                        if (hasSeenGuide) {
-                            navController.currentBackStackEntry?.savedStateHandle?.set("selected_position", safePosition)
-                            navController.currentBackStackEntry?.savedStateHandle?.set("selected_category", safeCategory)
-                            if (jobId.isNullOrBlank()) {
-                                navController.currentBackStackEntry?.savedStateHandle?.remove<String>("selected_job_id")
-                            } else {
-                                navController.currentBackStackEntry?.savedStateHandle?.set("selected_job_id", jobId)
-                            }
-                            navController.navigate(Routes.DIGITAL_INTERVIEW) {
-                                launchSingleTop = true
-                            }
+                        navController.currentBackStackEntry?.savedStateHandle?.set("selected_position", safePosition)
+                        navController.currentBackStackEntry?.savedStateHandle?.set("selected_category", safeCategory)
+                        if (jobId.isNullOrBlank()) {
+                            navController.currentBackStackEntry?.savedStateHandle?.remove<String>("selected_job_id")
                         } else {
-                            if (jobId.isNullOrBlank()) {
-                                navController.currentBackStackEntry?.savedStateHandle?.remove<String>("selected_job_id")
-                            } else {
-                                navController.currentBackStackEntry?.savedStateHandle?.set("selected_job_id", jobId)
-                            }
-                            navController.navigate(
-                                "${Routes.GUIDE}/${URLEncoder.encode(safePosition, "UTF-8")}/${URLEncoder.encode(safeCategory, "UTF-8")}"
-                            ) {
-                                launchSingleTop = true
-                            }
+                            navController.currentBackStackEntry?.savedStateHandle?.set("selected_job_id", jobId)
+                        }
+                        navController.navigate(Routes.DIGITAL_INTERVIEW) {
+                            launchSingleTop = true
                         }
                     }
                 )
@@ -400,37 +468,7 @@ fun AppNavHost(navController: NavHostController) {
             }
         }
 
-        composable("${Routes.GUIDE}/{position}/{category}") { backStackEntry ->
-            val encodedPosition = backStackEntry.path("position")
-            val encodedCategory = backStackEntry.path("category")
-            val position = encodedPosition?.let { URLDecoder.decode(it, "UTF-8") } ?: ""
-            val category = encodedCategory?.let { URLDecoder.decode(it, "UTF-8") } ?: ""
-            val aiEntry = navController.previousBackStackEntry
-            val selectedJobId = aiEntry?.savedStateHandle?.get<String>("selected_job_id")
-            if (token.isNullOrEmpty()) {
-                LaunchedEffect(Unit) {
-                    navController.navigate(LOGIN) {
-                        launchSingleTop = true
-                    }
-                }
-            } else {
-                InterviewGuideRoute(
-                    position = position,
-                    category = category,
-                    jobId = selectedJobId,
-                    repository = aiInterviewRepository,
-                    onBack = { navController.popBackStack() },
-                    onContinue = { flowState ->
-                        coroutineScope.launch { authManager.setInterviewGuideSeen(true) }
-                        aiEntry?.savedStateHandle?.set("ai_interview_flow", flowState)
-                        val encoded = URLEncoder.encode(flowState.jobTarget, "UTF-8")
-                        navController.navigate("${Routes.PREP}/$encoded") {
-                            launchSingleTop = true
-                        }
-                    }
-                )
-            }
-        }
+
 
         // 职圈页面
         composable(Routes.CIRCLE) { backStackEntry ->
@@ -493,6 +531,19 @@ fun AppNavHost(navController: NavHostController) {
             ProfileScreen(navController = navController) 
         }
 
+        composable(Routes.PROFILE_VERIFICATION) {
+            if (token.isNullOrEmpty()) {
+                LaunchedEffect(Unit) {
+                    navController.navigate(LOGIN) { launchSingleTop = true }
+                }
+            } else {
+                VerificationRoute(
+                    repository = verificationRepo,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+        }
+
         composable(Routes.PROFILE_SETTINGS) {
             if (token.isNullOrEmpty()) {
                 LaunchedEffect(Unit) {
@@ -507,7 +558,78 @@ fun AppNavHost(navController: NavHostController) {
                             popUpTo(Routes.PROFILE) { inclusive = true }
                             launchSingleTop = true
                         }
+                    },
+                    onNavigatePersonalInfo = { navController.navigate(Routes.PROFILE_PERSONAL_INFO) { launchSingleTop = true } },
+                    onNavigatePrivacy = { navController.navigate(Routes.PROFILE_PRIVACY) { launchSingleTop = true } }
+                )
+            }
+        }
+
+        composable(Routes.PROFILE_PERSONAL_INFO) {
+            if (token.isNullOrEmpty()) {
+                LaunchedEffect(Unit) {
+                    navController.navigate(LOGIN) { launchSingleTop = true }
+                }
+            } else {
+                PersonalInfoRoute(onBack = { navController.popBackStack() })
+            }
+        }
+
+        composable(Routes.PROFILE_PRIVACY) {
+            if (token.isNullOrEmpty()) {
+                LaunchedEffect(Unit) {
+                    navController.navigate(LOGIN) { launchSingleTop = true }
+                }
+            } else {
+                PrivacyPermissionsRoute(onBack = { navController.popBackStack() })
+            }
+        }
+
+        composable(Routes.PROFILE_CONTACT) {
+            if (token.isNullOrEmpty()) {
+                LaunchedEffect(Unit) {
+                    navController.navigate(LOGIN) { launchSingleTop = true }
+                }
+            } else {
+                ContactUsRoute(
+                    onBack = { navController.popBackStack() },
+                    onOpenMessages = {
+                        navController.navigate(Routes.PROFILE_MESSAGE_COMPOSE) { launchSingleTop = true }
                     }
+                )
+            }
+        }
+
+        composable(Routes.PROFILE_JOB_FAVORITES) {
+            if (token.isNullOrEmpty()) {
+                LaunchedEffect(Unit) {
+                    navController.navigate(LOGIN) { launchSingleTop = true }
+                }
+            } else {
+                JobFavoritesRoute(onBack = { navController.popBackStack() })
+            }
+        }
+
+        composable(Routes.PROFILE_POST_FAVORITES) {
+            if (token.isNullOrEmpty()) {
+                LaunchedEffect(Unit) {
+                    navController.navigate(LOGIN) { launchSingleTop = true }
+                }
+            } else {
+                PostFavoritesRoute(onBack = { navController.popBackStack() })
+            }
+        }
+
+        composable("${Routes.PROFILE_DELIVERIES}/{status}") { backStackEntry ->
+            val statusKey = backStackEntry.path("status")
+            if (token.isNullOrEmpty()) {
+                LaunchedEffect(Unit) {
+                    navController.navigate(LOGIN) { launchSingleTop = true }
+                }
+            } else {
+                DeliveryListRoute(
+                    statusKey = statusKey,
+                    onBack = { navController.popBackStack() }
                 )
             }
         }
@@ -548,15 +670,26 @@ fun AppNavHost(navController: NavHostController) {
             }
         }
 
-        composable(Routes.PROFILE_MESSAGES) { backStackEntry ->
+        composable(
+            route = "${Routes.PROFILE_MESSAGES}?filter={filter}",
+            arguments = listOf(
+                navArgument("filter") {
+                    type = NavType.StringType
+                    defaultValue = "ALL"
+                    nullable = true
+                }
+            )
+        ) { backStackEntry ->
             if (token.isNullOrEmpty()) {
                 LaunchedEffect(Unit) {
                     navController.navigate(LOGIN) { launchSingleTop = true }
                 }
             } else {
+                val filterKey = backStackEntry.arguments?.getString("filter")
                 MessageCenterRoute(
                     repository = messageRepo,
                     backStackEntry = backStackEntry,
+                    initialType = com.xlwl.AiMian.ui.messages.MessageType.fromKey(filterKey),
                     onBack = { navController.popBackStack() },
                     onMessageSelected = { messageId ->
                         navController.navigate("${Routes.PROFILE_MESSAGE_DETAIL}/${URLEncoder.encode(messageId, "UTF-8")}")

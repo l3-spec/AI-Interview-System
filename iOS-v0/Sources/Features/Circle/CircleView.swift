@@ -26,10 +26,39 @@ final class CircleViewModel: ObservableObject {
 struct CircleView: View {
   @EnvironmentObject private var appState: AppState
   @StateObject private var viewModel = CircleViewModel()
+  @State private var showCreate = false
+  @State private var showMyPosts = false
+  @State private var showLogin = false
 
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 16) {
+        HStack {
+          Text("职圈")
+            .font(AppFont.title(22))
+            .foregroundStyle(AppColor.textPrimary)
+          Spacer()
+          Button {
+            guard appState.isLoggedIn else {
+              showLogin = true
+              return
+            }
+            showMyPosts = true
+          } label: {
+            PillTag("我的", foreground: AppColor.textPrimary, background: AppColor.outline)
+          }
+          Button {
+            guard appState.isLoggedIn else {
+              showLogin = true
+              return
+            }
+            showCreate = true
+          } label: {
+            PillTag("发帖", foreground: AppColor.accent, background: AppColor.accent.opacity(0.16))
+          }
+        }
+        .padding(.horizontal, 16)
+
         Text("职圈热点")
           .font(AppFont.title(20))
           .foregroundStyle(AppColor.textPrimary)
@@ -76,6 +105,21 @@ struct CircleView: View {
     .background(AppColor.backgroundGradient.ignoresSafeArea())
     .navigationDestination(for: String.self) { id in
       PostDetailView(postId: id)
+    }
+    .sheet(isPresented: $showCreate) {
+      CreatePostView()
+        .environmentObject(appState)
+    }
+    .sheet(isPresented: $showMyPosts) {
+      MyPostsView()
+        .environmentObject(appState)
+    }
+    .sheet(isPresented: $showLogin) {
+      LoginView { data in
+        appState.updateAuth(token: data.token, user: data.user)
+        showLogin = false
+      }
+      .environmentObject(appState)
     }
     .task {
       await viewModel.load(using: appState)

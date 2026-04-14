@@ -18,6 +18,9 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -59,6 +62,14 @@ import com.xlwl.AiMian.ui.auth.LoginFlowScreen
 import com.google.gson.Gson
 import kotlinx.coroutines.launch
 
+private val ProfilePageGradient = Brush.verticalGradient(
+    colors = listOf(
+        Color(0xFF00ACC3), // 顶部蓝，与首页一致
+        Color(0xFFE9F7F9),
+        Color(0xFFE9F7F9)
+    )
+)
+
 @Composable
 fun ProfileScreen(navController: NavController) {
     val context = LocalContext.current
@@ -70,7 +81,11 @@ fun ProfileScreen(navController: NavController) {
     val user = remember(userJson) {
         userJson?.let { runCatching { gson.fromJson(it, User::class.java) }.getOrNull() }
     }
-    val loginClient = remember { RetrofitClient.createOkHttpClient { null } }
+    val loginClient = remember {
+        RetrofitClient.createOkHttpClient(
+            tokenProvider = { null }
+        )
+    }
     val loginAuthApi = remember(loginClient) { RetrofitClient.createService(AuthApi::class.java, loginClient) }
     val loginRepo = remember(loginAuthApi) { AuthRepository(loginAuthApi) }
 
@@ -117,6 +132,15 @@ private fun LoggedInProfileContent(
             }
         }
     }
+    val handleStat = remember(onNavigate, showComingSoon) {
+        { stat: ProfileStat ->
+            if (stat.route != null) {
+                onNavigate(stat.route)
+            } else {
+                showComingSoon(stat.label)
+            }
+        }
+    }
 
     val deliveryShortcuts = remember {
         listOf(
@@ -138,16 +162,16 @@ private fun LoggedInProfileContent(
             ProfileShortcut(
                 title = "职位收藏",
                 iconRes = R.drawable.ic_profile_job_favorite,
-                route = null
+                route = Routes.PROFILE_JOB_FAVORITES
             )
         )
     }
     val deliveryStats = remember {
         listOf(
-            ProfileStat(label = "已投递", value = "0"),
-            ProfileStat(label = "被查看", value = "0"),
-            ProfileStat(label = "通过初筛", value = "0"),
-            ProfileStat(label = "不合适", value = "0")
+            ProfileStat(label = "已投递", value = "0", route = "${Routes.PROFILE_DELIVERIES}/submitted"),
+            ProfileStat(label = "被查看", value = "0", route = "${Routes.PROFILE_DELIVERIES}/viewed"),
+            ProfileStat(label = "通过初筛", value = "0", route = "${Routes.PROFILE_DELIVERIES}/passed"),
+            ProfileStat(label = "不合适", value = "0", route = "${Routes.PROFILE_DELIVERIES}/rejected")
         )
     }
     val communityShortcuts = remember {
@@ -160,7 +184,7 @@ private fun LoggedInProfileContent(
             ProfileShortcut(
                 title = "帖子收藏",
                 iconRes = R.drawable.ic_profile_post_bookmark,
-                route = null
+                route = Routes.PROFILE_POST_FAVORITES
             ),
             ProfileShortcut(
                 title = "消息中心",
@@ -177,9 +201,19 @@ private fun LoggedInProfileContent(
                 route = Routes.PROFILE_SETTINGS
             ),
             ProfileShortcut(
+                title = "个人资料",
+                iconRes = R.drawable.ic_profile_settings,
+                route = Routes.PROFILE_PERSONAL_INFO
+            ),
+            ProfileShortcut(
+                title = "隐私权限",
+                iconRes = R.drawable.ic_profile_settings,
+                route = Routes.PROFILE_PRIVACY
+            ),
+            ProfileShortcut(
                 title = "联系我们",
                 iconRes = R.drawable.ic_profile_contact,
-                route = null
+                route = Routes.PROFILE_CONTACT
             )
         )
     }
@@ -187,21 +221,23 @@ private fun LoggedInProfileContent(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFEBEBEB))
+            .background(ProfilePageGradient)
     ) {
+        val navPadding = WindowInsets.navigationBars.asPaddingValues()
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 120.dp),
+            contentPadding = PaddingValues(bottom = navPadding.calculateBottomPadding() + 64.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             item {
                 HeaderWithDeliverySection(
                     user = user,
-                    onVerifyClick = { handleAction(null, "实名认证") },
-                    onProfileDetailClick = { handleAction(null, "个人资料") },
+                    onVerifyClick = { handleAction(Routes.PROFILE_VERIFICATION, "实名认证") },
+                    onProfileDetailClick = { handleAction(Routes.PROFILE_PERSONAL_INFO, "个人资料") },
                     deliveryShortcuts = deliveryShortcuts,
                     deliveryStats = deliveryStats,
-                    onShortcutClick = { shortcut -> handleAction(shortcut.route, shortcut.title) }
+                    onShortcutClick = { shortcut -> handleAction(shortcut.route, shortcut.title) },
+                    onStatClick = handleStat
                 )
             }
             item {
@@ -232,26 +268,24 @@ private fun HeaderWithDeliverySection(
     deliveryShortcuts: List<ProfileShortcut>,
     deliveryStats: List<ProfileStat>,
     onShortcutClick: (ProfileShortcut) -> Unit,
+    onStatClick: (ProfileStat) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val headerHeight = 156.dp
-    val cardOffset = 108.dp
-    val containerHeight = cardOffset + 184.dp
+    val headerHeight = 200.dp
+    val cardOffset = 120.dp
+    val containerHeight = cardOffset + 200.dp
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(containerHeight)
     ) {
+        // 渐变背景：从浅蓝/青色渐变到白色
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(headerHeight)
-                .background(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(Color(0xFF00ACC3), Color(0xFFEBEBEB))
-                    )
-                )
+                .background(Color.Transparent)
         ) {
             Row(
                 modifier = Modifier
@@ -313,6 +347,7 @@ private fun HeaderWithDeliverySection(
             shortcuts = deliveryShortcuts,
             stats = deliveryStats,
             onShortcutClick = onShortcutClick,
+            onStatClick = onStatClick,
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .padding(horizontal = 12.dp)
@@ -326,13 +361,14 @@ private fun MyDeliveryCard(
     shortcuts: List<ProfileShortcut>,
     stats: List<ProfileStat>,
     onShortcutClick: (ProfileShortcut) -> Unit,
+    onStatClick: (ProfileStat) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
             modifier = Modifier
@@ -348,15 +384,18 @@ private fun MyDeliveryCard(
                     color = Color(0xFF242525)
                 )
             )
+            // "我的投递"图标行：使用橙色填充图标
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(42.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 shortcuts.forEach { shortcut ->
                     ProfileShortcutItem(
                         shortcut = shortcut,
-                        onClick = { onShortcutClick(shortcut) }
+                        onClick = { onShortcutClick(shortcut) },
+                        isFilled = true, // 填充样式
+                        iconColor = Color(0xFFEC7C38) // 橙色
                     )
                 }
             }
@@ -364,12 +403,16 @@ private fun MyDeliveryCard(
                 color = Color(0xFFE6E7EB),
                 thickness = 0.5.dp
             )
+            // 统计数据行
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(42.dp)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 stats.forEach { stat ->
-                    ProfileStatItem(stat = stat)
+                    ProfileStatItem(
+                        stat = stat,
+                        onClick = stat.route?.let { { onStatClick(stat) } }
+                    )
                 }
             }
         }
@@ -386,7 +429,7 @@ private fun MyCommunityCard(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
             modifier = Modifier
@@ -428,7 +471,7 @@ private fun GeneralFunctionsCard(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
             modifier = Modifier
@@ -444,15 +487,18 @@ private fun GeneralFunctionsCard(
                     color = Color(0xFF242525)
                 )
             )
+            // "通用功能"图标行：使用轮廓样式图标
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(42.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 shortcuts.forEach { shortcut ->
                     ProfileShortcutItem(
                         shortcut = shortcut,
-                        onClick = { onShortcutClick(shortcut) }
+                        onClick = { onShortcutClick(shortcut) },
+                        isFilled = false, // 轮廓样式
+                        iconColor = Color(0xFF242525) // 深灰色
                     )
                 }
             }
@@ -464,7 +510,9 @@ private fun GeneralFunctionsCard(
 private fun ProfileShortcutItem(
     shortcut: ProfileShortcut,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isFilled: Boolean = false, // 是否为填充样式
+    iconColor: Color = Color(0xFF242525) // 图标颜色
 ) {
     Column(
         modifier = modifier
@@ -473,10 +521,18 @@ private fun ProfileShortcutItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        // 根据 isFilled 参数决定是否应用颜色滤镜
+        // 填充样式（我的投递）：保持原色（橙色）
+        // 轮廓样式（我的社区、通用功能）：应用灰色滤镜
         Image(
             painter = painterResource(id = shortcut.iconRes),
             contentDescription = shortcut.title,
-            modifier = Modifier.size(24.dp)
+            modifier = Modifier.size(24.dp),
+            colorFilter = if (!isFilled) {
+                ColorFilter.tint(iconColor)
+            } else {
+                null // 填充样式保持原色
+            }
         )
         Text(
             text = shortcut.title,
@@ -493,26 +549,33 @@ private fun ProfileShortcutItem(
 @Composable
 private fun ProfileStatItem(
     stat: ProfileStat,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null
 ) {
     Column(
-        modifier = modifier.width(48.dp),
+        modifier = modifier
+            .width(48.dp)
+            .let { base ->
+                if (onClick != null) base.clickable(onClick = onClick) else base
+            },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
+        // 统计数值：大号粗体
         Text(
             text = stat.value,
             style = MaterialTheme.typography.titleLarge.copy(
                 fontSize = 24.sp,
-                fontWeight = FontWeight.Medium,
+                fontWeight = FontWeight.Bold, // 使用粗体以匹配设计
                 color = Color(0xFF000000)
             )
         )
+        // 统计标签：小号灰色文字
         Text(
             text = stat.label,
             style = MaterialTheme.typography.bodySmall.copy(
                 fontSize = 11.sp,
-                fontWeight = FontWeight.Light,
+                fontWeight = FontWeight.Normal,
                 color = Color(0xFF242525).copy(alpha = 0.7f)
             ),
             textAlign = TextAlign.Center
@@ -580,5 +643,6 @@ private data class ProfileShortcut(
 
 private data class ProfileStat(
     val label: String,
-    val value: String
+    val value: String,
+    val route: String? = null
 )

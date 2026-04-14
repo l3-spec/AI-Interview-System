@@ -4,7 +4,14 @@ import SwiftUI
 final class JobsViewModel: ObservableObject {
   @Published var jobs: [JobSummary] = []
   @Published var isLoading = false
+  @Published var isLoadingMore = false
+  @Published var hasMore = true
+  @Published var page: Int = 1
   @Published var query: String = ""
+  @Published var location: String = ""
+  @Published var onlyRemote: Bool = false
+  @Published var selectedPositionIds: Set<String> = []
+  @Published var selectedPositionNames: [String: String] = [:]
   @Published var error: String?
 
   func load(using appState: AppState) async {
@@ -15,10 +22,50 @@ final class JobsViewModel: ObservableObject {
       let response = try await appState.jobsService.getPublicJobs(
         page: 1,
         pageSize: 30,
-        keyword: query.isEmpty ? nil : query
+        keyword: query.isEmpty ? nil : query,
+        location: location.isEmpty ? nil : location,
+        remoteOnly: onlyRemote,
+        dictionaryPositionIds: selectedPositionIds.isEmpty ? nil : selectedPositionIds.joined(separator: ",")
       )
       jobs = response.data ?? []
+      hasMore = response.hasMore ?? false
+      page = response.page ?? 1
       error = nil
+    } catch {
+      self.error = error.localizedDescription
+    }
+  }
+
+  func loadMore(using appState: AppState) async {
+    guard hasMore, !isLoading, !isLoadingMore else { return }
+    isLoadingMore = true
+    defer { isLoadingMore = false }
+    do {
+      let nextPage = page + 1
+      let response = try await appState.jobsService.getPublicJobs(
+        page: nextPage,
+        pageSize: 30,
+        keyword: query.isEmpty ? nil : query,
+        location: location.isEmpty ? nil : location,
+        remoteOnly: onlyRemote,
+        dictionaryPositionIds: selectedPositionIds.isEmpty ? nil : selectedPositionIds.joined(separator: ",")
+      )
+      jobs.append(contentsOf: response.data ?? [])
+      hasMore = response.hasMore ?? false
+      page = response.page ?? nextPage
+    } catch {
+      self.error = error.localizedDescription
+    }
+  }
+
+  func syncPreferences(using appState: AppState) async {
+    do {
+      let prefs = try await appState.jobsService.getPreferences()
+      selectedPositionIds = Set(prefs.positions.map { $0.id })
+      selectedPositionNames = prefs.positions.reduce(into: [:]) { partialResult, position in
+        partialResult[position.id] = position.name
+      }
+      await load(using: appState)
     } catch {
       self.error = error.localizedDescription
     }
@@ -52,43 +99,47 @@ final class JobDetailViewModel: ObservableObject {
 struct JobsView: View {
   @EnvironmentObject private var appState: AppState
   @StateObject private var viewModel = JobsViewModel()
+  @State private var showPreferences = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      HStack {
-        Image(systemName: "magnifyingglass")
-          .foregroundStyle(AppColor.textSecondary)
-        TextField("搜索岗位/关键词", text: $viewModel.query)
-#if os(iOS)
-          .textInputAutocapitalization(.never)
-#endif
-          .onSubmit {
-            Task { await viewModel.load(using: appState) }
-          }
-      }
-      .padding()
-      .background(AppColor.card)
-      .clipShape(RoundedRectangle(cornerRadius: 14))
-      .overlay(RoundedRectangle(cornerRadius: 14).stroke(AppColor.outline, lineWidth: 1))
-      .padding(.horizontal, 16)
-      .padding(.top, 12)
+      searchBar
+      filterBar
 
-      if viewModel.isLoading {
+      if viewModel.isLoading && viewModel.jobs.isEmpty {
         ProgressView()
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
       } else {
         ScrollView {
-          LazyVStack(spacing: 14, pinnedViews: []) {
+          LazyVStack(spacing: 14) {
             ForEach(viewModel.jobs) { job in
               NavigationLink(value: job.id) {
                 JobRow(job: job)
               }
               .buttonStyle(.plain)
+              .onAppear {
+                Task { await viewModel.loadMore(using: appState) }
+              }
+            }
+            if viewModel.isLoadingMore {
+              ProgressView()
+                .padding(.vertical, 12)
+            } else if !viewModel.hasMore {
+              Text("没有更多岗位了")
+                .font(AppFont.caption(12))
+                .foregroundStyle(AppColor.textSecondary)
+                .padding(.vertical, 12)
             }
           }
           .padding(.horizontal, 16)
           .padding(.bottom, 24)
         }
+      }
+      if let error = viewModel.error {
+        Text(error)
+          .foregroundStyle(.red)
+          .font(AppFont.caption(12))
+          .padding(.horizontal, 16)
       }
     }
     .background(AppColor.backgroundGradient.ignoresSafeArea())
@@ -96,15 +147,84 @@ struct JobsView: View {
       JobDetailView(jobId: id)
     }
     .task {
+      if !appState.sharedJobKeyword.isEmpty {
+        viewModel.query = appState.sharedJobKeyword
+      }
       await viewModel.load(using: appState)
     }
     .refreshable {
       await viewModel.load(using: appState)
     }
+    .sheet(isPresented: $showPreferences) {
+      JobPreferencesView()
+        .environmentObject(appState)
+    }
+    .onChange(of: viewModel.query) { newValue in
+      appState.sharedJobKeyword = newValue
+    }
+  }
+
+  private var searchBar: some View {
+    HStack {
+      Image(systemName: "magnifyingglass")
+        .foregroundStyle(AppColor.textSecondary)
+      TextField("搜索岗位/关键词", text: $viewModel.query)
+#if os(iOS)
+        .textInputAutocapitalization(.never)
+#endif
+        .onSubmit {
+          Task { await viewModel.load(using: appState) }
+        }
+      Button {
+        Task { await viewModel.load(using: appState) }
+      } label: {
+        Image(systemName: "arrow.clockwise")
+      }
+    }
+    .padding()
+    .background(AppColor.card)
+    .clipShape(RoundedRectangle(cornerRadius: 14))
+    .overlay(RoundedRectangle(cornerRadius: 14).stroke(AppColor.outline, lineWidth: 1))
+    .padding(.horizontal, 16)
+    .padding(.top, 12)
+  }
+
+  private var filterBar: some View {
+    ScrollView(.horizontal, showsIndicators: false) {
+      HStack(spacing: 10) {
+        Toggle(isOn: $viewModel.onlyRemote) {
+          Text("远程/弹性")
+            .font(AppFont.body(13))
+        }
+        .toggleStyle(.switch)
+        .onChange(of: viewModel.onlyRemote) { _ in
+          Task { await viewModel.load(using: appState) }
+        }
+
+        Button {
+          showPreferences = true
+        } label: {
+          PillTag("岗位意向", foreground: AppColor.accent, background: AppColor.accent.opacity(0.12))
+        }
+        .buttonStyle(.plain)
+
+        Button {
+          Task { await viewModel.syncPreferences(using: appState) }
+        } label: {
+          PillTag("同步偏好", foreground: AppColor.textPrimary, background: AppColor.outline)
+        }
+        .buttonStyle(.plain)
+
+        ForEach(Array(viewModel.selectedPositionIds), id: \.self) { id in
+          PillTag(viewModel.selectedPositionNames[id] ?? "偏好 \(id.prefix(4))", foreground: AppColor.textSecondary, background: AppColor.outline)
+        }
+      }
+      .padding(.horizontal, 16)
+    }
   }
 }
 
-private struct JobRow: View {
+struct JobRow: View {
   let job: JobSummary
 
   var body: some View {
@@ -153,6 +273,10 @@ private struct JobRow: View {
 struct JobDetailView: View {
   @EnvironmentObject private var appState: AppState
   @StateObject private var viewModel: JobDetailViewModel
+  @State private var applyNote: String = ""
+  @State private var isApplying = false
+  @State private var applyStatus: String?
+  @State private var showLogin = false
 
   init(jobId: String) {
     _viewModel = StateObject(wrappedValue: JobDetailViewModel(id: jobId))
@@ -163,12 +287,24 @@ struct JobDetailView: View {
       if let detail = viewModel.detail {
         ScrollView {
           VStack(alignment: .leading, spacing: 16) {
-            Text(detail.title)
-              .font(AppFont.title(22))
-              .foregroundStyle(AppColor.textPrimary)
-            Text(detail.companyName)
-              .font(AppFont.body(15))
-              .foregroundStyle(AppColor.textSecondary)
+            VStack(alignment: .leading, spacing: 8) {
+              Text(detail.title)
+                .font(AppFont.title(22))
+                .foregroundStyle(AppColor.textPrimary)
+              NavigationLink {
+                CompanyDetailView(companyId: detail.companyId)
+                  .environmentObject(appState)
+              } label: {
+                HStack(spacing: 6) {
+                  Text(detail.companyName)
+                    .font(AppFont.body(15))
+                    .foregroundStyle(AppColor.textSecondary)
+                  Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(AppColor.textSecondary)
+                }
+              }
+            }
             if let salary = detail.salary {
               PillTag(salary)
             }
@@ -214,6 +350,7 @@ struct JobDetailView: View {
             }
           }
           .padding(16)
+          applySection(detail: detail)
         }
       } else if viewModel.isLoading {
         ProgressView()
@@ -223,9 +360,47 @@ struct JobDetailView: View {
       }
     }
     .background(AppColor.backgroundGradient.ignoresSafeArea())
+    .sheet(isPresented: $showLogin) {
+      LoginView { data in
+        appState.updateAuth(token: data.token, user: data.user)
+        showLogin = false
+      }
+      .environmentObject(appState)
+    }
     .task {
       await viewModel.load(using: appState)
     }
+  }
+
+  private func applySection(detail: JobDetail) -> some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text("立即投递/约聊")
+        .font(AppFont.title(17))
+      TextField("给招聘方的留言（可选）", text: $applyNote)
+        .textFieldStyle(.roundedBorder)
+      PrimaryButton(title: "投递", isLoading: isApplying) {
+        guard appState.isLoggedIn else {
+          showLogin = true
+          return
+        }
+        Task {
+          isApplying = true
+          defer { isApplying = false }
+          do {
+            _ = try await appState.jobsService.apply(jobId: detail.id, message: applyNote.isEmpty ? nil : applyNote)
+            applyStatus = "已投递"
+          } catch {
+            applyStatus = error.localizedDescription
+          }
+        }
+      }
+      if let status = applyStatus {
+        Text(status)
+          .font(AppFont.caption(12))
+          .foregroundStyle(status == "已投递" ? AppColor.textSecondary : .red)
+      }
+    }
+    .padding(16)
   }
 }
 

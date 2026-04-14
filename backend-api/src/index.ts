@@ -207,14 +207,6 @@ httpServer.listen(PORT, () => {
   console.log(`🌟 环境: ${config.nodeEnv}`);
   console.log(`🎭 Fay WebSocket服务: ws://localhost:${PORT}`);
   console.log(`🎤 实时语音WebSocket服务: ws://localhost:${PORT}`);
-
-  // 初始化分析队列处理器
-  import('./jobs/analysisQueue').then(({ analysisQueue }) => {
-    analysisQueue.start();
-    console.log('📊 面试分析队列处理器已启动');
-  }).catch(error => {
-    console.error('⚠️  分析队列初始化失败:', error);
-  });
 });
 
 export default httpServer;

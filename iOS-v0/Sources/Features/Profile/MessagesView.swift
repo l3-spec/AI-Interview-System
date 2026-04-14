@@ -23,13 +23,12 @@ final class MessagesViewModel: ObservableObject {
 struct MessagesView: View {
   @EnvironmentObject private var appState: AppState
   @StateObject private var viewModel = MessagesViewModel()
-  @State private var selectedId: String?
 
   var body: some View {
     NavigationStack {
       List {
         ForEach(viewModel.messages) { message in
-          NavigationLink(destination: MessageDetailView(messageId: message.id), tag: message.id, selection: $selectedId) {
+          NavigationLink(value: message.id) {
             VStack(alignment: .leading, spacing: 6) {
               Text(message.title)
                 .font(AppFont.title(15))
@@ -46,6 +45,10 @@ struct MessagesView: View {
         ToolbarItem(placement: .cancellationAction) {
           Button("关闭") { dismiss() }
         }
+      }
+      .navigationDestination(for: String.self) { id in
+        MessageDetailView(messageId: id)
+          .environmentObject(appState)
       }
       .task { await viewModel.load(using: appState) }
       .refreshable { await viewModel.load(using: appState) }

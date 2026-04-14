@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node dist/index.js",
     "dev": "nodemon --exec ts-node src/index.ts",
+    "start:analysis-worker": "node dist/workers/analysisWorker.js",
+    "dev:analysis-worker": "nodemon --exec ts-node src/workers/analysisWorker.ts",
     "build": "tsc",
     "test": "jest",
     "test:interview": "node test_interview_flow_integration.js",

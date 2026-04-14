@@ -84,6 +84,7 @@ const mapCompanyToFormValues = (company: Company) => ({
   logo: company.logo,
   tagline: company.tagline,
   focusArea: company.focusArea,
+  companyStage: company.companyStage,
   themeColors: company.themeColors || [],
   highlights: company.highlights || [],
   culture: company.culture || [],
@@ -130,6 +131,7 @@ const CompanyProfile: React.FC = () => {
         logo: values.logo,
         tagline: values.tagline?.trim(),
         focusArea: values.focusArea?.trim(),
+        companyStage: values.companyStage?.trim(),
         themeColors: normalizeStringList(values.themeColors),
         highlights: normalizeStringList(values.highlights),
         culture: normalizeStringList(values.culture),
@@ -330,6 +332,18 @@ const CompanyProfile: React.FC = () => {
             </Col>
           </Row>
 
+          <Row gutter={24}>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label="企业阶段/标签"
+                name="companyStage"
+                extra="用于职位卡片和面试报告展示，例如：A轮、B轮、已上市、独角兽"
+              >
+                <Input placeholder="例如：A轮、已上市、独角兽" />
+              </Form.Item>
+            </Col>
+          </Row>
+
           <Form.Item label="企业简介" name="description">
             <TextArea rows={4} placeholder="请输入企业简介，支持多行内容" showCount maxLength={800} />
           </Form.Item>
@@ -498,6 +512,7 @@ const CompanyProfile: React.FC = () => {
             <Descriptions.Item label="企业名称">{company.name || '-'}</Descriptions.Item>
             <Descriptions.Item label="行业">{company.industry || '-'}</Descriptions.Item>
             <Descriptions.Item label="规模">{company.scale || '-'}</Descriptions.Item>
+            <Descriptions.Item label="企业阶段/标签">{company.companyStage || '-'}</Descriptions.Item>
             <Descriptions.Item label="官网">{company.website || '-'}</Descriptions.Item>
             <Descriptions.Item label="最近更新">{new Date(company.updatedAt).toLocaleString()}</Descriptions.Item>
           </Descriptions>

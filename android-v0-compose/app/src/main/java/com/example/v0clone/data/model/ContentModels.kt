@@ -1,22 +1,50 @@
 package com.xlwl.AiMian.data.model
 
+import com.google.gson.annotations.SerializedName
+
 /**
  * 内容类型
  */
-enum class ContentType {
-    ASSESSMENT,    // 热门测试
-    USER_POST,     // 热门分享
-    EXPERT_POST,   // 大咖分享
-    PROMOTED_JOB   // 热门职岗
+enum class HomeFeedType {
+    @SerializedName("hot_post")
+    HOT_POST,
+
+    @SerializedName("hot_company")
+    HOT_COMPANY,
+
+    @SerializedName("hot_job")
+    HOT_JOB
+}
+
+enum class HomeFeedTargetType {
+    @SerializedName("post")
+    POST,
+
+    @SerializedName("company")
+    COMPANY,
+
+    @SerializedName("job")
+    JOB
 }
 
 /**
  * 首页内容卡片（混排）
  */
 data class HomeFeedItem(
-    val type: ContentType,
     val id: String,
-    val data: Any // 可以是 Assessment、UserPost、ExpertPost 或 PromotedJob
+    val type: HomeFeedType,
+    val targetType: HomeFeedTargetType,
+    val targetId: String,
+    val title: String,
+    val summary: String? = null,
+    val imageUrl: String? = null,
+    val tags: List<String> = emptyList(),
+    val authorName: String,
+    val authorAvatar: String? = null,
+    val badge: String,
+    val metricLabel: String? = null,
+    val metricValue: String? = null,
+    val createdAt: String? = null
 )
 
 /**
@@ -114,4 +142,55 @@ data class HomeFeaturedArticle(
     val viewCount: Int = 0,
     val category: String?,
     val createdAt: String?
+)
+
+data class PostEngagement(
+    val postId: String,
+    val postType: String,
+    val likeCount: Int,
+    val commentCount: Int,
+    val favoriteCount: Int,
+    val isLiked: Boolean,
+    val isFavorited: Boolean
+)
+
+data class PostCommentAuthor(
+    val id: String?,
+    val name: String?,
+    val avatar: String?
+)
+
+data class PostCommentDto(
+    val id: String,
+    val content: String,
+    val createdAt: String,
+    val author: PostCommentAuthor,
+    val parentId: String? = null,
+    val replyToUserId: String? = null,
+    val replyToUserName: String? = null,
+    val likeCount: Int = 0,
+    val replyCount: Int = 0,
+    val isLiked: Boolean = false,
+    val reactions: Map<String, Int> = emptyMap(),
+    val replies: List<PostCommentDto> = emptyList()
+)
+
+data class CreatePostCommentRequest(
+    val content: String,
+    val parentId: String? = null,
+    val replyToUserId: String? = null
+)
+
+data class CreatePostCommentResult(
+    val comment: PostCommentDto?,
+    val engagement: PostEngagement?
+)
+
+data class CommentReactionRequest(
+    val emoji: String
+)
+
+data class CommentReactionResult(
+    val comment: PostCommentDto?,
+    val added: Boolean? = null
 )

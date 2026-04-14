@@ -17,7 +17,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -26,11 +31,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.AddComment
+import androidx.compose.material.icons.outlined.AttachFile
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.MarkEmailUnread
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -77,20 +86,30 @@ private val AccentOrange = Color(0xFFEC7C38)
 private val MutedText = Color(0xFF868A93)
 private val BubbleUser = Brush.verticalGradient(listOf(Color(0xFFFFA768), Color(0xFFEC7C38)))
 private val BubbleSystem = Color.White
-private val ChatBackground = Color(0xFFF6F7FB)
+private val ScreenGradient = Brush.verticalGradient(
+    colors = listOf(
+        Color(0xFF00ACC3),
+        Color(0xFFE9F7F9),
+        Color.White
+    ),
+    startY = 0f,
+    endY = 1600f
+)
 
 private val dateFormatter = DateTimeFormatter.ofPattern("MM-dd HH:mm")
+private val chatDateFormatter = DateTimeFormatter.ofPattern("M月d日 HH:mm")
 
 @Composable
 fun MessageCenterRoute(
     repository: MessageRepository,
     backStackEntry: NavBackStackEntry,
+    initialType: MessageType = MessageType.ALL,
     onBack: () -> Unit,
     onMessageSelected: (String) -> Unit,
     onCompose: () -> Unit
 ) {
     var uiState by remember { mutableStateOf(MessageCenterUiState(isLoading = true)) }
-    var selectedType by rememberSaveable { mutableStateOf(MessageType.ALL) }
+    var selectedType by rememberSaveable(initialType.routeKey) { mutableStateOf(initialType) }
     val scope = rememberCoroutineScope()
     val refreshSignal by backStackEntry.savedStateHandle
         .getStateFlow("should_refresh_messages", false)
@@ -165,11 +184,13 @@ private fun MessageCenterScreen(
     Scaffold(
         topBar = {
             CompactTopBar(
-                title = "消息中心",
+                title = "消息",
                 onBack = onBack,
-                containerColor = Color.White,
-                contentColor = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.background(ScreenGradient),
+                containerColor = Color.Transparent,
+                contentColor = Color.White,
                 shadowElevation = 0.dp,
+                dense = true,
                 actions = {
                     IconButton(onClick = onCompose) {
                         Icon(
@@ -180,13 +201,25 @@ private fun MessageCenterScreen(
                 }
             )
         },
-        containerColor = Color.White
+        containerColor = Color.Transparent
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(ScreenGradient)
                 .padding(padding)
+                .padding(
+                    bottom = WindowInsets.navigationBars
+                        .asPaddingValues()
+                        .calculateBottomPadding() + 48.dp
+                )
         ) {
+            // 搜索栏
+            SearchBar(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            )
             MessageFilterBar(selectedType = selectedType, onTypeChange = onTypeChange)
             when {
                 uiState.isLoading && uiState.messages.isEmpty() -> {
@@ -270,13 +303,12 @@ private fun MessageList(
     isRefreshing: Boolean,
     onMessageClick: (String) -> Unit
 ) {
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp), // 移除间距，使用分隔线
         contentPadding = PaddingValues(
-            start = 16.dp,
-            end = 16.dp,
-            bottom = 16.dp
+            bottom = navPadding.calculateBottomPadding() + 32.dp
         )
     ) {
         if (isRefreshing) {
@@ -304,86 +336,260 @@ private fun MessageList(
     }
 }
 
+// 搜索栏组件
+@Composable
+private fun SearchBar(
+    modifier: Modifier = Modifier
+) {
+    var searchText by rememberSaveable { mutableStateOf("") }
+    
+    OutlinedTextField(
+        value = searchText,
+        onValueChange = { searchText = it },
+        placeholder = {
+            Text(
+                text = "搜索联系人,公司,聊天记录",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    color = MutedText,
+                    fontSize = 14.sp
+                )
+            )
+        },
+        leadingIcon = {
+            Icon(
+                imageVector = Icons.Filled.Search,
+                contentDescription = "搜索",
+                tint = MutedText,
+                modifier = Modifier.size(20.dp)
+            )
+        },
+        modifier = modifier
+            .fillMaxWidth()
+            .height(44.dp),
+        shape = RoundedCornerShape(22.dp),
+        singleLine = true,
+        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+            unfocusedBorderColor = Color(0xFFE9ECF1),
+            focusedBorderColor = AccentOrange
+        )
+    )
+}
+
 @Composable
 private fun MessageItemCard(
     summary: MessageSummary,
     onClick: () -> Unit
 ) {
     val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .border(
-                width = 1.dp,
-                color = if (summary.status == "UNREAD") AccentOrange.copy(alpha = 0.4f) else Color(0xFFE9ECF1),
-                shape = RoundedCornerShape(16.dp)
-            )
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick
-            ),
-        color = Color.White,
-        shape = RoundedCornerShape(16.dp)
+    val typeUpper = summary.type.uppercase()
+    val isSystemNotification = typeUpper == "SYSTEM"
+    val isInterview = typeUpper == "INTERVIEW"
+    val isChat = typeUpper == "CHAT"
+    val isUnread = summary.status == "UNREAD" || summary.unreadCount > 0
+    
+    Column(
+        modifier = Modifier.fillMaxWidth()
     ) {
-        Column(
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(18.dp)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onClick
+                ),
+            color = Color.White,
+            shape = RoundedCornerShape(0.dp) // 移除圆角，使用扁平设计
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = summary.title,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 16.sp
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (summary.status == "UNREAD") {
-                    Box(
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(AccentOrange)
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
+            // 左侧图标/头像
+            if (isSystemNotification) {
+                // 系统通知：橙色圆形图标，带白色铃铛
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(AccentOrange),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Notifications,
+                        contentDescription = "系统通知",
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            } else {
+                // HR消息：圆形头像
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.linearGradient(
+                                colors = when {
+                                    isInterview -> listOf(Color(0xFF4FC3F7), Color(0xFF00ACC3))
+                                    isChat -> listOf(Color(0xFFFFD38A), Color(0xFFFFA768))
+                                    else -> listOf(Color(0xFFFFD54F), Color(0xFFFFB300))
+                                }
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // 这里可以显示头像图片，暂时显示首字母
+                    Text(
+                        text = summary.title.firstOrNull()?.toString() ?: "?",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp
+                        )
+                    )
+                }
+            }
+            
+            // 中间内容区域
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                // 发送者信息/标题
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (isSystemNotification) {
                         Text(
-                            text = "未读",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                color = Color.White,
-                                fontWeight = FontWeight.Medium
+                            text = summary.title,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 16.sp,
+                                color = Color.Black
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    } else {
+                        // HR消息：显示发送者信息
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = summary.title, // 发送者姓名
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 16.sp,
+                                    color = Color.Black
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            // 职位/公司信息（如果有）
+                            summary.summary?.takeIf { it.isNotBlank() }?.let { companyInfo ->
+                                Text(
+                                    text = "·$companyInfo",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = MutedText,
+                                        fontSize = 12.sp
+                                    ),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                    
+                    // 时间戳或未读指示器
+                    if (isUnread && summary.unreadCount == 0) {
+                        // 未读指示器：橙色圆点
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(AccentOrange)
+                        )
+                    } else {
+                        Text(
+                            text = formatDate(summary.lastActivityAt),
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = MutedText,
+                                fontSize = 12.sp
                             )
                         )
                     }
-                } else {
+                }
+                
+                // 消息预览
+                val tagLabel = when {
+                    isInterview -> "面试邀约"
+                    isChat -> "沟通消息"
+                    isSystemNotification -> "通知"
+                    else -> null
+                }
+                tagLabel?.let {
+                    MessageTypeBadge(label = it)
+                }
+
+                summary.latestEntry?.let { entry ->
                     Text(
-                        text = formatDate(summary.lastActivityAt),
-                        style = MaterialTheme.typography.bodySmall.copy(
+                        text = entry.content,
+                        style = MaterialTheme.typography.bodyMedium.copy(
                             color = MutedText,
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp
+                        ),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                } ?: summary.summary?.let { summaryText ->
+                    Text(
+                        text = summaryText,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = MutedText,
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp
+                        ),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            
+            // 右侧未读数徽章（如果有）
+            if (isUnread && summary.unreadCount > 0) {
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(AccentOrange)
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = summary.unreadCount.toString(),
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
                             fontSize = 12.sp
                         )
                     )
                 }
             }
-            summary.latestEntry?.let { entry ->
-                Text(
-                    text = entry.content,
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        color = MutedText,
-                        lineHeight = 20.sp
-                    ),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
         }
+        }
+        // 分隔线
+        HorizontalDivider(
+            color = Color(0xFFE9ECF1),
+            thickness = 0.5.dp,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
     }
 }
 
@@ -411,6 +617,8 @@ fun MessageDetailRoute(
                     detail = data
                     error = null
                     onMessagesShouldRefresh()
+                    // 标记已读，保持邀约/沟通列表状态同步
+                    repository.markMessageRead(messageId)
                     scrollToBottom(listState)
                 }.onFailure {
                     error = it.message ?: "获取消息详情失败"
@@ -467,20 +675,22 @@ private fun MessageDetailScreen(
 ) {
     Scaffold(
         topBar = {
-            CompactTopBar(
-                title = detail?.title ?: "消息详情",
-                onBack = onBack,
-                containerColor = ChatBackground,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-                shadowElevation = 0.dp
+            // 自定义顶部栏：显示聊天对象姓名和职位
+            ChatTopBar(
+                name = detail?.title ?: "消息",
+                subtitle = detail?.summary ?: "",
+                onBack = onBack
             )
         },
-        containerColor = ChatBackground
+        containerColor = Color.Transparent
     ) { padding ->
+        val navPadding = WindowInsets.navigationBars.asPaddingValues()
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(ScreenGradient)
                 .padding(padding)
+                .padding(bottom = navPadding.calculateBottomPadding())
         ) {
             when {
                 isLoading && detail == null -> {
@@ -499,28 +709,82 @@ private fun MessageDetailScreen(
                         onAction = onRetry
                     )
                 }
-                detail != null -> {
-                    Box(Modifier.fillMaxSize()) {
-                        ChatContent(
-                            entries = detail.entries,
-                            listState = listState,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(bottom = 96.dp)
-                        )
-                        Column(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .fillMaxWidth()
-                        ) {
-                            Divider(color = Color(0xFFE2E5EC))
-                            MessageInputBar(
-                                enabled = !isSending,
-                                onSend = onSend,
-                                isSending = isSending
-                            )
-                        }
-                    }
+                        detail != null -> {
+                            Box(Modifier.fillMaxSize()) {
+                                ChatContent(
+                                    entries = detail.entries,
+                                    listState = listState,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(bottom = navPadding.calculateBottomPadding() + 72.dp)
+                                )
+                                Column(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .fillMaxWidth()
+                                        .navigationBarsPadding()
+                                ) {
+                                    HorizontalDivider(color = Color(0xFFE2E5EC))
+                                    MessageInputBar(
+                                        enabled = !isSending,
+                                        onSend = onSend,
+                                        isSending = isSending
+                                    )
+                                }
+                            }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatTopBar(
+    name: String,
+    subtitle: String,
+    onBack: () -> Unit
+) {
+    Surface(color = Color.Transparent, shadowElevation = 0.dp) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(ScreenGradient)
+                .statusBarsPadding()
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = "返回",
+                    tint = Color.White
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (subtitle.isNotBlank()) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = Color.White.copy(alpha = 0.85f)
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }
@@ -575,57 +839,91 @@ private fun MessageInputBar(
     isSending: Boolean
 ) {
     var input by rememberSaveable { mutableStateOf("") }
-    Column(
+    
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(Color.White)
             .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.Bottom
     ) {
+        // 附件图标
+        IconButton(
+            onClick = { /* TODO: 处理附件 */ },
+            enabled = enabled,
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.AttachFile,
+                contentDescription = "附件",
+                tint = MutedText,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        
+        // 图片图标
+        IconButton(
+            onClick = { /* TODO: 处理图片 */ },
+            enabled = enabled,
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Image,
+                contentDescription = "图片",
+                tint = MutedText,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        
+        // 输入框
         OutlinedTextField(
             value = input,
             onValueChange = { input = it },
-            placeholder = { Text("输入留言内容...") },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = enabled,
-            shape = RoundedCornerShape(16.dp),
-            maxLines = 4
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedButton(
-                onClick = {
-                    if (input.isNotBlank()) {
-                        onSend(input.trim())
-                        input = ""
-                    }
-                },
-                enabled = enabled && input.isNotBlank(),
-                shape = RoundedCornerShape(20.dp)
-            ) {
-                if (isSending) {
-                    CircularProgressIndicator(
-                        modifier = Modifier
-                            .size(16.dp)
-                            .padding(end = 8.dp),
-                        strokeWidth = 2.dp,
-                        color = AccentOrange
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.Outlined.Send,
-                        contentDescription = "发送",
-                        tint = AccentOrange,
-                        modifier = Modifier.padding(end = 8.dp)
-                    )
-                }
+            placeholder = { 
                 Text(
-                    text = "发送",
-                    color = AccentOrange,
-                    fontWeight = FontWeight.Medium
+                    text = "回复消息",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        color = MutedText,
+                        fontSize = 14.sp
+                    )
+                )
+            },
+            modifier = Modifier
+                .weight(1f)
+                .heightIn(min = 40.dp, max = 120.dp),
+            enabled = enabled,
+            shape = RoundedCornerShape(20.dp),
+            maxLines = 4,
+            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                unfocusedBorderColor = Color(0xFFE9ECF1),
+                focusedBorderColor = AccentOrange
+            )
+        )
+        
+        // 发送按钮
+        IconButton(
+            onClick = {
+                if (input.isNotBlank() && !isSending) {
+                    onSend(input.trim())
+                    input = ""
+                }
+            },
+            enabled = enabled && input.isNotBlank() && !isSending,
+            modifier = Modifier.size(40.dp)
+        ) {
+            if (isSending) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = AccentOrange
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Outlined.Send,
+                    contentDescription = "发送",
+                    tint = if (input.isNotBlank()) AccentOrange else MutedText,
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
@@ -650,15 +948,19 @@ fun MessageComposeRoute(
             CompactTopBar(
                 title = "留言反馈",
                 onBack = onBack,
-                containerColor = Color.White,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-                shadowElevation = 0.dp
+                modifier = Modifier.background(ScreenGradient),
+                containerColor = Color.Transparent,
+                contentColor = Color.White,
+                shadowElevation = 0.dp,
+                dense = true
             )
-        }
+        },
+        containerColor = Color.Transparent
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(ScreenGradient)
                 .padding(padding)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -834,12 +1136,48 @@ private fun SystemBubble(content: String) {
     }
 }
 
+@Composable
+private fun MessageTypeBadge(label: String) {
+    Surface(
+        color = Color(0xFFEAF6FF),
+        shape = RoundedCornerShape(12.dp),
+        tonalElevation = 0.dp,
+        modifier = Modifier.padding(bottom = 4.dp)
+    ) {
+        Text(
+            text = label,
+            color = Color(0xFF1B8AD0),
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+        )
+    }
+}
+
 private fun formatDate(raw: String?): String {
     if (raw.isNullOrBlank()) return ""
     return runCatching {
         val instant = Instant.parse(raw)
         instant.atZone(ZoneId.systemDefault()).format(dateFormatter)
     }.getOrElse { raw.take(16) }
+}
+
+// 格式化聊天时间戳（显示"10月17日 20:24"格式）
+private fun formatChatDate(raw: String?): String {
+    if (raw.isNullOrBlank()) return ""
+    return runCatching {
+        val instant = Instant.parse(raw)
+        instant.atZone(ZoneId.systemDefault()).format(chatDateFormatter)
+    }.getOrElse { raw.take(16) }
+}
+
+// 判断是否应该显示时间戳（如果两条消息间隔超过5分钟，显示时间戳）
+private fun shouldShowTimestamp(prevTime: String, currentTime: String): Boolean {
+    return runCatching {
+        val prev = Instant.parse(prevTime)
+        val current = Instant.parse(currentTime)
+        val diffMinutes = java.time.Duration.between(prev, current).toMinutes()
+        diffMinutes >= 5
+    }.getOrElse { true }
 }
 
 private suspend fun scrollToBottom(listState: LazyListState) {
@@ -854,16 +1192,26 @@ private data class MessageCenterUiState(
     val error: String? = null
 )
 
-private enum class MessageType(
+enum class MessageType(
     val display: String,
     val typeKey: String?,
-    val statusKey: String?
+    val statusKey: String?,
+    val routeKey: String
 ) {
-    ALL("全部", null, null),
-    SYSTEM("系统通知", "SYSTEM", null),
-    INTERACTION("互动提醒", "INTERACTION", null),
-    SUPPORT("客服消息", "SUPPORT", null),
-    UNREAD("未读", null, "UNREAD")
+    ALL("全部", null, null, "ALL"),
+    INTERVIEW("面试邀约", "INTERVIEW", null, "INTERVIEW"),
+    CHAT("沟通消息", "CHAT", null, "CHAT"),
+    SYSTEM("系统通知", "SYSTEM", null, "SYSTEM"),
+    INTERACTION("互动提醒", "INTERACTION", null, "INTERACTION"),
+    SUPPORT("客服消息", "SUPPORT", null, "SUPPORT"),
+    UNREAD("未读", null, "UNREAD", "UNREAD");
+
+    companion object {
+        fun fromKey(key: String?): MessageType {
+            if (key.isNullOrBlank()) return ALL
+            return values().firstOrNull { it.routeKey.equals(key, ignoreCase = true) } ?: ALL
+        }
+    }
 }
 
 private enum class MessageComposeType(val display: String, val key: String) {

@@ -57,6 +57,7 @@ interface JobTemplate {
 }
 
 export class DeepseekService {
+  private providerName: string;
   private apiKey: string;
   private apiUrl: string;
   private model: string;
@@ -65,19 +66,20 @@ export class DeepseekService {
   private isEnabled: boolean;
 
   constructor() {
-    this.apiKey = process.env.DEEPSEEK_API_KEY || '';
-    this.apiUrl = process.env.DEEPSEEK_API_URL || 'https://api.deepseek.com/v1/chat/completions';
-    this.model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
-    this.maxTokens = parseInt(process.env.DEEPSEEK_MAX_TOKENS || '2000');
-    this.temperature = parseFloat(process.env.DEEPSEEK_TEMPERATURE || '0.7');
+    this.providerName = process.env.LLM_PROVIDER || 'deepseek';
+    this.apiKey = process.env.LLM_API_KEY || process.env.DEEPSEEK_API_KEY || '';
+    this.apiUrl = process.env.LLM_API_URL || process.env.DEEPSEEK_API_URL || 'https://api.deepseek.com/v1/chat/completions';
+    this.model = process.env.LLM_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+    this.maxTokens = parseInt(process.env.LLM_MAX_TOKENS || process.env.DEEPSEEK_MAX_TOKENS || '2000');
+    this.temperature = parseFloat(process.env.LLM_TEMPERATURE || process.env.DEEPSEEK_TEMPERATURE || '0.7');
 
     // 如果没有API密钥，启用模拟模式
     this.isEnabled = !!this.apiKey;
 
     if (!this.isEnabled) {
-      console.warn('⚠️  DEEPSEEK_API_KEY 未配置，将使用模拟模式生成问题');
+      console.warn(`⚠️  ${this.providerName.toUpperCase()} API Key 未配置，将使用模拟模式生成问题`);
     } else {
-      console.log('✅ Deepseek API 已配置，将使用真实API生成问题');
+      console.log(`✅ ${this.providerName} API 已配置，将使用真实API生成问题`);
     }
   }
 

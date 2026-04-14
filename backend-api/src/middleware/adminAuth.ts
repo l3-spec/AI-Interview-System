@@ -12,6 +12,7 @@ declare global {
       admin?: {
         id: string;
         email: string;
+        name?: string;
         role: string;
         permissions?: string[];
       };
@@ -111,6 +112,7 @@ export const adminAuth = async (req: Request, res: Response, next: NextFunction)
     req.admin = {
       id: admin.id,
       email: admin.email,
+      name: admin.name,
       role: admin.role,
       permissions: [] // 暂时设为空数组，后续可以根据角色设置权限
     };

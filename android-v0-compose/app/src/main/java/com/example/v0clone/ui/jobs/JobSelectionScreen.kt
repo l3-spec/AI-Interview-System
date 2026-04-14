@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -74,9 +77,8 @@ private const val MAX_SELECTION = 3
 private val GradientTop = Brush.verticalGradient(
     colors = listOf(
         Color(0xFF00ACC3),
-        Color(0xFF00ACC3),
         Color(0xFF51ABB9),
-        Color.White
+        Color(0xFFE9F7F9)
     )
 )
 private val AccentCyan = Color(0xFF00ADC1)
@@ -108,6 +110,7 @@ fun JobSelectionScreen(
     var categories by remember { mutableStateOf<List<JobDictionaryCategory>>(emptyList()) }
     var activeCategoryId by remember { mutableStateOf<String?>(null) }
     val selectedPositions = remember { mutableStateListOf<JobDictionaryPosition>() }
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
 
     val loadData = remember(repository, preferenceRepository) {
         suspend {
@@ -196,7 +199,7 @@ fun JobSelectionScreen(
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = 88.dp)
+                    .padding(bottom = navPadding.calculateBottomPadding() + 64.dp)
             ) {
                 CategorySidebar(
                     categories = categories,
@@ -242,7 +245,7 @@ fun JobSelectionScreen(
                         else -> {
                             LazyVerticalGrid(
                                 modifier = Modifier.fillMaxSize(),
-                                columns = GridCells.Fixed(3),
+                                columns = GridCells.Fixed(2),
                                 verticalArrangement = Arrangement.spacedBy(12.dp),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 contentPadding = PaddingValues(bottom = 16.dp, end = 12.dp)
@@ -321,7 +324,6 @@ private fun TopSection(
         modifier = Modifier
             .fillMaxWidth()
             .background(GradientTop)
-            .statusBarsPadding()
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         Row(
@@ -329,22 +331,20 @@ private fun TopSection(
         ) {
             IconButton(
                 onClick = onBack,
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
+                modifier = Modifier.size(40.dp)
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "返回",
-                    tint = Color.Black
+                    tint = Color(0xFF2D3036)
                 )
             }
 
             Text(
                 text = "意向职位",
-                color = Color.Black,
+                color = Color(0xFF2D3036),
                 fontSize = 20.sp,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(start = 8.dp)
             )
         }
@@ -376,35 +376,35 @@ private fun SearchField(
         onValueChange = onValueChange,
         singleLine = true,
         textStyle = TextStyle(
-            color = Color.Black,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Light,
+            color = Color(0xFF2D3036),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Normal,
         ),
         cursorBrush = SolidColor(AccentCyan),
         decorationBox = { innerTextField ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(32.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(12.dp))
                     .background(Color.White)
-                    .padding(horizontal = 24.dp),
+                    .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Icon(
                     imageVector = Icons.Filled.Search,
                     contentDescription = null,
                     tint = PlaceholderGrey,
-                    modifier = Modifier.size(12.dp)
+                    modifier = Modifier.size(16.dp)
                 )
                 Box(modifier = Modifier.weight(1f)) {
                     if (value.isBlank()) {
                         Text(
                             text = "搜索",
                             color = PlaceholderGrey,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Light
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Normal
                         )
                     }
                     innerTextField()
@@ -503,10 +503,10 @@ private fun CategoryItem(
     onClick: () -> Unit
 ) {
     val backgroundColor = if (selected) Color.White else SidebarBackground
-    val textColor = if (selected) AccentCyan else SidebarInactive
-    val fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal
-    val indicatorWidth = if (selected) 2.dp else 1.5.dp
-    val indicatorColor = if (selected) AccentCyan else SidebarBackground
+    val textColor = if (selected) Color(0xFF2D3036) else SidebarInactive
+    val fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+    val indicatorWidth = if (selected) 3.dp else 0.dp
+    val indicatorColor = AccentCyan
 
     Row(
         modifier = Modifier
@@ -516,13 +516,16 @@ private fun CategoryItem(
             .clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .width(indicatorWidth)
-                .fillMaxHeight()
-                .background(indicatorColor)
-        )
-        Spacer(modifier = Modifier.width(10.dp))
+        // 左侧蓝色高亮指示线
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .width(indicatorWidth)
+                    .fillMaxHeight()
+                    .background(indicatorColor)
+            )
+        }
+        Spacer(modifier = Modifier.width(if (selected) 12.dp else 15.dp))
         Text(
             text = category.name,
             color = textColor,
@@ -530,10 +533,10 @@ private fun CategoryItem(
             fontWeight = fontWeight,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
+            textAlign = TextAlign.Left,
             modifier = Modifier.weight(1f)
         )
-        Spacer(modifier = Modifier.width(10.dp))
+        Spacer(modifier = Modifier.width(12.dp))
     }
 }
 
@@ -631,7 +634,8 @@ private fun BottomBar(
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = Color.White,
-        shadowElevation = 0.dp
+        shadowElevation = 8.dp,
+        tonalElevation = 0.dp
     ) {
         Row(
             modifier = Modifier
@@ -639,44 +643,42 @@ private fun BottomBar(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // 重置按钮
             Surface(
+                onClick = onReset,
                 modifier = Modifier
                     .weight(1f)
                     .height(44.dp),
-                color = Color(0xFFF5F5F5),
+                color = Color(0xFFF4F5F8),
                 shape = RoundedCornerShape(40.dp),
                 shadowElevation = 0.dp
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onReset() }
-                        .padding(vertical = 10.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = "重置",
-                        color = SidebarInactive,
+                        color = Color(0xFF8C929A),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium
                     )
                 }
             }
 
-            val saveEnabled = selectionCount > 0 && !isSaving
+            // 保存按钮 - 允许空选择保存（清空筛选）
             Button(
                 onClick = onSave,
-                enabled = saveEnabled,
+                enabled = !isSaving,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (saveEnabled) AccentOrange else AccentOrange.copy(alpha = 0.4f),
+                    containerColor = AccentOrange,
                     contentColor = Color.White,
-                    disabledContainerColor = AccentOrange.copy(alpha = 0.4f),
+                    disabledContainerColor = AccentOrange.copy(alpha = 0.6f),
                     disabledContentColor = Color.White.copy(alpha = 0.7f)
                 ),
                 shape = RoundedCornerShape(40.dp),
                 modifier = Modifier
-                    .weight(2.06f)
+                    .weight(1.8f)
                     .height(44.dp),
                 contentPadding = PaddingValues(vertical = 10.dp)
             ) {

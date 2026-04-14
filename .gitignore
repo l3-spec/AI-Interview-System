@@ -33,4 +33,7 @@ release/
 .gradle/
 debug/
 Caches/
-uploads/
+uploads/duix-sdk/
+*.jpg
+*.mp4
+*.png

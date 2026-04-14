@@ -43,6 +43,7 @@ fun TopicAggregationRoute(
 ) {
     val detail = remember(topicId) { sampleTopicAggregation(topicId, topicTitle) }
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -79,7 +80,7 @@ fun TopicAggregationRoute(
                 .fillMaxSize()
                 .background(Color(0xFFF5F6FA))
                 .padding(innerPadding),
-            contentPadding = PaddingValues(bottom = 96.dp)
+            contentPadding = PaddingValues(bottom = navPadding.calculateBottomPadding() + 64.dp)
         ) {
             item { TopicHero(detail) }
             item { Spacer(Modifier.height(16.dp)) }

@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
 import { config } from '../config';
-import { toPublicUrl } from '../utils/ossUtils';
+import { toMediaUrl, toPublicUrl } from '../utils/ossUtils';
 
 /**
  * 管理员登录
@@ -245,10 +245,21 @@ export const getCompanies = async (req: Request, res: Response) => {
       prisma.company.count({ where })
     ]);
 
+    const normalizedCompanies = companies.map((company: any) => ({
+      ...company,
+      logo: toMediaUrl(company.logo) ?? company.logo,
+      verification: company.verification
+        ? {
+            ...company.verification,
+            businessLicense: toPublicUrl(company.verification.businessLicense),
+          }
+        : null,
+    }));
+
     res.json({
       success: true,
       data: {
-        companies,
+        companies: normalizedCompanies,
         pagination: {
           page: Number(page),
           pageSize: Number(pageSize),
@@ -464,6 +475,7 @@ export const getCompanyDetail = async (req: Request, res: Response) => {
       success: true,
       data: {
         ...company,
+        logo: toMediaUrl(company.logo) ?? company.logo,
         verification,
         themeColors: parseJsonArray<string>(company.themeColors, []),
         highlights: parseJsonArray<string>(company.highlights, []),
@@ -581,10 +593,51 @@ export const extendSubscription = async (req: Request, res: Response) => {
 };
 
 export const getSystemLogs = async (req: Request, res: Response) => {
-  res.status(501).json({
-    success: false,
-    message: '系统日志功能暂未实现，需要先更新数据库模型'
-  });
+  try {
+    const { page = 1, pageSize = 20, module, action, result, search } = req.query;
+    const skip = (Number(page) - 1) * Number(pageSize);
+    const take = Number(pageSize);
+
+    const where: any = {};
+    if (module) where.module = module;
+    if (action) where.action = action;
+    if (result) where.result = result;
+    if (search) {
+      where.OR = [
+        { description: { contains: search as string } },
+        { targetId: { contains: search as string } },
+      ];
+    }
+
+    const [logs, total] = await Promise.all([
+      prisma.systemLog.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { createdAt: 'desc' },
+        include: { admin: { select: { id: true, name: true, email: true } } },
+      }),
+      prisma.systemLog.count({ where }),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        list: logs,
+        total,
+        page: Number(page),
+        pageSize: Number(pageSize),
+        hasMore: skip + take < total,
+      },
+    });
+  } catch (error: any) {
+    console.error('获取系统日志失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '服务器内部错误',
+      error: error.message ?? 'Unknown error',
+    });
+  }
 };
 
 export const getAdmins = async (req: Request, res: Response) => {
@@ -857,10 +910,20 @@ export const getJobs = async (req: Request, res: Response) => {
       prisma.job.count({ where })
     ]);
 
+    const normalizedJobs = jobs.map((job: any) => ({
+      ...job,
+      company: job.company
+        ? {
+            ...job.company,
+            logo: toMediaUrl(job.company.logo) ?? job.company.logo,
+          }
+        : job.company,
+    }));
+
     res.json({
       success: true,
       data: {
-        jobs,
+        jobs: normalizedJobs,
         pagination: {
           page: Number(page),
           pageSize: Number(pageSize),
@@ -997,9 +1060,30 @@ export const getJobById = async (req: Request, res: Response) => {
       });
     }
 
+    const normalizedJob = {
+      ...job,
+      company: job.company
+        ? {
+            ...job.company,
+            logo: toMediaUrl(job.company.logo) ?? job.company.logo,
+          }
+        : job.company,
+      applications: Array.isArray(job.applications)
+        ? job.applications.map((application: any) => ({
+            ...application,
+            user: application.user
+              ? {
+                  ...application.user,
+                  avatar: toMediaUrl(application.user.avatar) ?? application.user.avatar,
+                }
+              : application.user,
+          }))
+        : job.applications,
+    };
+
     res.json({
       success: true,
-      data: job
+      data: normalizedJob
     });
   } catch (error) {
     console.error('获取职位详情错误:', error);

@@ -15,6 +15,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -28,7 +31,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
@@ -104,6 +107,7 @@ fun EditIntentionJobScreen(
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isSaving by remember { mutableStateOf(false) }
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
 
     LaunchedEffect(repository, preferenceRepository) {
         isLoading = true
@@ -181,7 +185,7 @@ fun EditIntentionJobScreen(
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = 104.dp) // leave space for bottom bar
+                    .padding(bottom = navPadding.calculateBottomPadding() + 72.dp) // leave space for bottom bar
             ) {
                 CategorySidebar(
                     categories = categories,
@@ -269,23 +273,20 @@ fun EditIntentionJobScreen(
                 selectedPositions.clear()
             },
             onSave = {
-                if (selectedPositions.isEmpty()) {
-                    Toast.makeText(context, "请至少选择一个职岗", Toast.LENGTH_SHORT).show()
-                } else {
-                    scope.launch {
-                        isSaving = true
-                        val result = preferenceRepository.savePreferences(selectedPositions.map { it.id })
-                        isSaving = false
-                        result.onSuccess { dto ->
-                            Toast.makeText(context, "意向职岗已保存", Toast.LENGTH_SHORT).show()
-                            onSaved(dto)
-                        }.onFailure { throwable ->
-                            Toast.makeText(
-                                context,
-                                throwable.message ?: "保存失败，请稍后重试",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
+                scope.launch {
+                    isSaving = true
+                    val result = preferenceRepository.savePreferences(selectedPositions.map { it.id })
+                    isSaving = false
+                    result.onSuccess { dto ->
+                        val msg = if (selectedPositions.isEmpty()) "已清空意向职岗" else "意向职岗已保存"
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                        onSaved(dto)
+                    }.onFailure { throwable ->
+                        Toast.makeText(
+                            context,
+                            throwable.message ?: "保存失败，请稍后重试",
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
                 }
             }
@@ -305,7 +306,6 @@ private fun TopSection(
         modifier = Modifier
             .fillMaxWidth()
             .background(GradientTop)
-            .statusBarsPadding()
             .padding(horizontal = 16.dp, vertical = 16.dp)
     ) {
         Row(
@@ -318,7 +318,7 @@ private fun TopSection(
                     .clip(RoundedCornerShape(18.dp))
             ) {
                 Icon(
-                    imageVector = Icons.Filled.ArrowBack,
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "返回",
                     tint = Color.Black
                 )

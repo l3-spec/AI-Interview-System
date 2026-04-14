@@ -185,7 +185,7 @@ const swaggerOptions = {
             answerVideoUrl: { 
               type: 'string', 
               example: 'https://oss.example.com/video.mp4',
-              description: '回答视频URL（可选）'
+              description: '回答视频URL或OSS对象路径（可选，支持interview-videos/{sessionId}/xxx.mp4）'
             },
             answerDuration: { 
               type: 'integer', 

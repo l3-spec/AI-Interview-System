@@ -21,6 +21,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -82,29 +85,30 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import java.util.Locale
 
-private val GradientTop = Color(0xFF00ACC3)
-private val GradientBottom = Color(0xFFE9F7F9)
-private val PageBackground = Color(0xFFF4F5F6)
-private val TextPrimary = Color(0xFF2D3036)
-private val TextSecondary = Color(0xFF8C929A)
-private val AccentOrange = Color(0xFFF28B3F)
-private val CardTagBackground = Color(0xFFF5F7FA)
-private val CardTagText = Color(0xFF5F6773)
+private val GradientTop = Color(0xFF00ADC1)
+private val GradientBottom = Color(0xFFE3F4FB)
+private val PageBackground = Color(0xFFEBEBEB)
+private val TextPrimary = Color(0xFF000000)
+private val TextSecondary = Color(0xFFB5B7B8)
+private val AccentOrange = Color(0xFFEC7C38)
+private val CardTagBackground = Color(0xFFF3F8FB)
+private val CardTagText = Color(0xFF000000)
 private val CardBorder = Color(0xFFE6E8EB)
-private val SearchPlaceholder = Color(0xFFA6ABB1)
+private val SearchPlaceholder = Color(0xFFB5B7B8)
 private val FilterGradientTop = Color(0xFF51ABB9)
 private val FilterFieldBorder = Color(0xFFD9D9D9)
 private val FilterChipDefaultBackground = Color(0xFFF4F5F8)
 private val FilterChipDefaultBorder = Color(0xFFE6E8EB)
 private val FilterChipSelectedBackground = Color(0xFFDFFBFF)
-private val FilterChipSelectedText = Color(0xFF00ACC3)
+private val FilterChipSelectedText = Color(0xFF00ADC1)
 private val DividerGray = Color(0xFFE5E7EB)
 private val JobsTopBarExpandedHeight = 76.dp
 private val JobsTopBarCollapsedHeight = 54.dp
 private val JobsTopBarMaxOffset = 120.dp
 private val JobsHeaderApproxHeight = JobsTopBarExpandedHeight + 126.dp
 private val PreferenceChipBackground = Color(0xFFDFFBFF)
-private val PreferenceChipOutline = Color(0xFF00ACC3)
+private val PreferenceChipOutline = Color(0xFF00ADC1)
+private val FigmaLetterSpacing = (-0.32).sp
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -126,6 +130,7 @@ fun JobsScreen(
     val listState = rememberLazyListState()
     val density = LocalDensity.current
     val maxOffsetPx = with(density) { JobsTopBarMaxOffset.toPx() }
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
     val topBarProgress by remember(maxOffsetPx) {
         derivedStateOf {
             if (maxOffsetPx <= 0f) return@derivedStateOf 1f
@@ -204,7 +209,7 @@ fun JobsScreen(
         LazyColumn(
             state = listState,
             contentPadding = PaddingValues(
-                bottom = 120.dp,
+                bottom = navPadding.calculateBottomPadding() + 68.dp,
                 start = 12.dp,
                 end = 12.dp
             ),
@@ -318,16 +323,16 @@ private fun JobsHeader(
 ) {
     val density = LocalDensity.current
     val barHeight = lerp(JobsTopBarExpandedHeight, JobsTopBarCollapsedHeight, progress)
-    val horizontalPadding = lerp(16.dp, 14.dp, progress)
-    val verticalPadding = lerp(12.dp, 10.dp, progress)
-    val titleSize = lerp(26.sp, 22.sp, progress)
-    val fieldHeight = lerp(42.dp, 38.dp, progress)
-    val searchIconSize = lerp(18.dp, 16.dp, progress)
-    val closeIconSize = lerp(18.dp, 16.dp, progress)
-    val rowSpacing = lerp(14.dp, 10.dp, progress)
+    val horizontalPadding = lerp(12.dp, 12.dp, progress)
+    val verticalPadding = lerp(15.dp, 11.dp, progress)
+    val titleSize = lerp(24.sp, 20.sp, progress)
+    val fieldHeight = lerp(32.dp, 30.dp, progress)
+    val searchIconSize = lerp(12.dp, 12.dp, progress)
+    val closeIconSize = lerp(16.dp, 14.dp, progress)
+    val rowSpacing = lerp(32.dp, 20.dp, progress)
     val translateYPx = 0f
-    val spacingBelowSearch = lerp(14.dp, 10.dp, progress)
-    val bottomPadding = lerp(14.dp, 10.dp, progress)
+    val spacingBelowSearch = lerp(14.dp, 12.dp, progress)
+    val bottomPadding = lerp(14.dp, 12.dp, progress)
 
     Column(
         modifier = modifier
@@ -353,12 +358,13 @@ private fun JobsHeader(
                 text = "职岗",
                 fontSize = titleSize,
                 fontWeight = FontWeight.SemiBold,
-                color = TextPrimary
+                color = TextPrimary,
+                letterSpacing = FigmaLetterSpacing
             )
             Surface(
                 color = Color.White,
-                shape = RoundedCornerShape(14.dp),
-                shadowElevation = 6.dp,
+                shape = RoundedCornerShape(8.dp),
+                shadowElevation = 0.dp,
                 tonalElevation = 0.dp,
                 modifier = Modifier
                     .height(fieldHeight)
@@ -384,7 +390,7 @@ private fun JobsHeader(
                         Row(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(horizontal = 12.dp, vertical = 4.dp),
+                                .padding(horizontal = 24.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
@@ -393,14 +399,16 @@ private fun JobsHeader(
                                 tint = SearchPlaceholder,
                                 modifier = Modifier.size(searchIconSize)
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
                             Box(modifier = Modifier.weight(1f)) {
                                 if (searchText.isBlank()) {
                                     Text(
                                         text = "搜索",
                                         color = SearchPlaceholder,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Normal
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Light,
+                                        lineHeight = 21.sp,
+                                        letterSpacing = FigmaLetterSpacing
                                     )
                                 }
                                 innerTextField()
@@ -459,8 +467,8 @@ private fun JobsIntentionCard(
     val hasPreferences = preferredPositions.isNotEmpty()
     val titleText = when {
         hasPreferences -> "${preferredPositions.first().name} (意向岗位)"
-        keyword.isNotBlank() -> keyword
-        else -> "前端开发（意向岗位）"
+        keyword.isNotBlank() -> "$keyword (意向岗位)"
+        else -> "前端开发 (意向岗位)"
     }
 
     Column(
@@ -478,8 +486,9 @@ private fun JobsIntentionCard(
             Text(
                 text = titleText,
                 color = TextPrimary,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = FigmaLetterSpacing,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -600,9 +609,10 @@ private fun PreferenceChipRow(
 private fun SortTab(label: String, active: Boolean, onClick: () -> Unit) {
     Text(
         text = label,
-        color = if (active) TextPrimary else CardTagText,
-        fontSize = 15.sp,
-        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+        color = if (active) TextPrimary else TextSecondary,
+        fontSize = 14.sp,
+        fontWeight = if (active) FontWeight.Medium else FontWeight.Normal,
+        letterSpacing = FigmaLetterSpacing,
         modifier = Modifier.clickable(onClick = onClick)
     )
 }
@@ -635,8 +645,8 @@ private fun JobCard(
 ) {
     Surface(
         color = Color.White,
-        shape = RoundedCornerShape(12.dp),
-        shadowElevation = 4.dp,
+        shape = RoundedCornerShape(8.dp),
+        shadowElevation = 0.dp,
         tonalElevation = 0.dp,
         border = BorderStroke(1.dp, CardBorder),
         modifier = Modifier
@@ -644,8 +654,8 @@ private fun JobCard(
             .clickable(onClick = onCardClick)
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -655,17 +665,20 @@ private fun JobCard(
                 Text(
                     text = job.title.ifBlank { "前端开发" },
                     color = TextPrimary,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    lineHeight = 21.sp,
+                    letterSpacing = FigmaLetterSpacing,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
                 Text(
-                    text = job.salary.ifBlank { "薪资面议" },
+                    text = job.salary.ifBlank { "10-20K" },
                     color = AccentOrange,
-                    fontSize = 17.sp,
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
+                    letterSpacing = FigmaLetterSpacing,
                     modifier = Modifier.padding(start = 8.dp)
                 )
             }
@@ -680,21 +693,21 @@ private fun JobCard(
 
             if (tagCandidates.isNotEmpty()) {
                 FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     tagCandidates.take(3).forEach { tag ->
                         Surface(
                             color = CardTagBackground,
-                            shape = RoundedCornerShape(6.dp),
-                            border = BorderStroke(1.dp, CardBorder)
+                            shape = RoundedCornerShape(4.dp),
+                            border = null
                         ) {
                             Text(
                                 text = tag,
                                 color = CardTagText,
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
+                                fontWeight = FontWeight.Light,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                             )
                         }
@@ -740,8 +753,8 @@ private fun JobCard(
                     Text(
                         text = job.company.ifBlank { "公司名称" },
                         color = TextPrimary,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Light,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -750,7 +763,7 @@ private fun JobCard(
                         text = job.companyTagline.ifBlank { "公司的简单介绍" },
                         color = TextSecondary,
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.Normal,
+                        fontWeight = FontWeight.Light,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -914,6 +927,11 @@ private fun JobFiltersSheet(
     var typeValue by remember { mutableStateOf(filters.type) }
     var levelValue by remember { mutableStateOf(filters.level) }
     var remoteOnly by remember { mutableStateOf(filters.remoteOnly) }
+    var graduationYear by remember { mutableStateOf(filters.graduationYear) }
+    var salaryRange by remember { mutableStateOf(filters.salaryRange) }
+    var companyNature by remember { mutableStateOf(filters.companyNature) }
+    var companyScale by remember { mutableStateOf(filters.companyScale) }
+    var financingStage by remember { mutableStateOf(filters.financingStage) }
     val scrollState = rememberScrollState()
 
     Dialog(
@@ -939,7 +957,6 @@ private fun JobFiltersSheet(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .statusBarsPadding()
             ) {
                 FilterHeader(onBack = onDismiss)
 
@@ -1266,6 +1283,53 @@ private val levelOptions = listOf(
 private val remoteOptions = listOf(
     FilterChoice("不限", false),
     FilterChoice("仅远程", true)
+)
+
+private val graduationYearOptions = listOf(
+    FilterChoice<String?>("不限", null),
+    FilterChoice<String?>("2025届", "2025"),
+    FilterChoice<String?>("2026届", "2026")
+)
+
+private val salaryRangeOptions = listOf(
+    FilterChoice<String?>("不限", null),
+    FilterChoice<String?>("面议", "NEGOTIABLE"),
+    FilterChoice<String?>("5k以下", "BELOW_5K"),
+    FilterChoice<String?>("5-10k", "5K_10K"),
+    FilterChoice<String?>("10-15k", "10K_15K"),
+    FilterChoice<String?>("15-25k", "15K_25K"),
+    FilterChoice<String?>("25k-50k", "25K_50K"),
+    FilterChoice<String?>("50k以上", "ABOVE_50K")
+)
+
+private val companyNatureOptions = listOf(
+    FilterChoice<String?>("不限", null),
+    FilterChoice<String?>("国企/央企", "STATE_OWNED"),
+    FilterChoice<String?>("外企", "FOREIGN"),
+    FilterChoice<String?>("民企", "PRIVATE"),
+    FilterChoice<String?>("事业单位", "PUBLIC_INSTITUTION")
+)
+
+private val companyScaleOptions = listOf(
+    FilterChoice<String?>("不限", null),
+    FilterChoice<String?>("0-20人", "0_20"),
+    FilterChoice<String?>("20-99人", "20_99"),
+    FilterChoice<String?>("100-499人", "100_499"),
+    FilterChoice<String?>("500-999人", "500_999"),
+    FilterChoice<String?>("1000-9999人", "1000_9999"),
+    FilterChoice<String?>("10000人以上", "ABOVE_10000")
+)
+
+private val financingStageOptions = listOf(
+    FilterChoice<String?>("不限", null),
+    FilterChoice<String?>("天使轮", "ANGEL"),
+    FilterChoice<String?>("A轮", "SERIES_A"),
+    FilterChoice<String?>("B轮", "SERIES_B"),
+    FilterChoice<String?>("C轮", "SERIES_C"),
+    FilterChoice<String?>("D轮及以上", "SERIES_D_PLUS"),
+    FilterChoice<String?>("未融资", "NO_FINANCING"),
+    FilterChoice<String?>("不需要融资", "NO_NEED_FINANCING"),
+    FilterChoice<String?>("已上市", "LISTED")
 )
 
 private fun formatJobType(type: String): String = when (type.uppercase(Locale.getDefault())) {

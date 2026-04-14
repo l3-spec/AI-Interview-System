@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { config } from '../config/config';
+import { buildAssetUrl } from '../utils/url';
 
 // API响应类型定义
 interface ApiResponse<T = any> {
@@ -189,6 +190,39 @@ export interface AppVersion {
   updatedAt: string;
 }
 
+export interface AdminMessageSummary {
+  id: string;
+  title: string;
+  summary?: string | null;
+  type: string;
+  status: string;
+  unreadCount: number;
+  lastActivityAt: string;
+  lastReadAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  user?: {
+    id: string;
+    name?: string | null;
+    email?: string | null;
+    phone?: string | null;
+  } | null;
+}
+
+export interface AdminMessageEntry {
+  id: string;
+  senderType: string;
+  senderId?: string | null;
+  senderName?: string | null;
+  content: string;
+  metadata?: any;
+  createdAt: string;
+}
+
+export interface AdminMessageDetail extends AdminMessageSummary {
+  entries: AdminMessageEntry[];
+}
+
 // 创建axios实例
 const apiClient = axios.create({
   baseURL: config.API_BASE_URL,
@@ -243,7 +277,7 @@ const mapCompanySummary = (company: any): AdminCompanySummary => ({
   id: company.id,
   email: company.email,
   name: company.name,
-  logo: company.logo,
+  logo: buildAssetUrl(company.logo),
   industry: company.industry,
   scale: company.scale,
   isActive: Boolean(company.isActive),
@@ -778,6 +812,17 @@ export const aiInterviewApi = {
   getSessionAnalysis: async (sessionId: string): Promise<ApiResponse<any>> => {
     return await apiClient.get(`/admin/ai-interviews/${sessionId}/analysis`);
   },
+  getAnalysisLogs: async (sessionId: string, params?: Record<string, any>): Promise<ApiResponse<any>> => {
+    return await apiClient.get('/admin/logs', {
+      params: {
+        module: 'INTERVIEW_ANALYSIS',
+        search: sessionId,
+        page: 1,
+        pageSize: 50,
+        ...params
+      }
+    });
+  },
   getAnalysisTasks: async (params?: Record<string, any>): Promise<ApiResponse<PaginationResult<any>>> => {
     return await apiClient.get('/admin/ai-interviews/tasks', { params });
   },
@@ -922,8 +967,8 @@ const mapUserPostAdmin = (post: any): UserPostAdmin => ({
   id: post.id,
   title: post.title,
   content: post.content,
-  coverImage: post.coverImage ?? null,
-  images: parseJsonArray<string>(post.images),
+  coverImage: post.coverImage ? buildAssetUrl(post.coverImage) : null,
+  images: parseJsonArray<string>(post.images).map((image) => buildAssetUrl(image)),
   tags: parseJsonArray<string>(post.tags),
   status: post.status,
   isHot: Boolean(post.isHot),
@@ -982,6 +1027,20 @@ export const postAdminApi = {
       response.data = mapUserPostAdmin(response.data);
     }
     return response as ApiResponse<UserPostAdmin>;
+  },
+};
+
+export const messageAdminApi = {
+  getMessages: async (params?: Record<string, any>): Promise<ApiResponse<PaginationResult<AdminMessageSummary>>> => {
+    const response = (await apiClient.get('/admin/messages', { params })) as ApiResponse<any>;
+    return response as ApiResponse<PaginationResult<AdminMessageSummary>>;
+  },
+  getMessageDetail: async (id: string): Promise<ApiResponse<AdminMessageDetail>> => {
+    const response = (await apiClient.get(`/admin/messages/${id}`)) as ApiResponse<any>;
+    return response as ApiResponse<AdminMessageDetail>;
+  },
+  replyMessage: async (id: string, content: string): Promise<ApiResponse> => {
+    return (await apiClient.post(`/admin/messages/${id}/reply`, { content })) as ApiResponse;
   },
 };
 

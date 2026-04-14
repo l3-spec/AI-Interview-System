@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -39,6 +40,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -57,6 +59,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.SubcomposeAsyncImage
 import com.xlwl.AiMian.data.repository.AiInterviewRepository
 import com.xlwl.AiMian.data.repository.JobRepository
+import android.app.Activity
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.view.WindowCompat
+import androidx.compose.ui.graphics.toArgb
 
 private val PageBackground = Color(0xFFF5F5F5) // Slightly lighter gray
 private val AccentOrange = Color(0xFFFF7D38) // More vibrant orange from design
@@ -84,6 +90,30 @@ fun JobDetailRoute(
   )
   val uiState by viewModel.uiState.collectAsState()
   val jobDetail = uiState.job
+
+  val context = LocalContext.current
+  val activity = generateSequence(context) { (it as? android.content.ContextWrapper)?.baseContext }
+      .filterIsInstance<Activity>()
+      .firstOrNull()
+      
+  DisposableEffect(activity) {
+    if (activity != null) {
+      val window = activity.window
+      val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+      val originalStatusBarColor = window.statusBarColor
+      val originalDarkIcons = insetsController.isAppearanceLightStatusBars
+
+      window.statusBarColor = android.graphics.Color.TRANSPARENT
+      insetsController.isAppearanceLightStatusBars = true // Dark icons
+
+      onDispose {
+        window.statusBarColor = originalStatusBarColor
+        insetsController.isAppearanceLightStatusBars = originalDarkIcons
+      }
+    } else {
+      onDispose {}
+    }
+  }
 
   LaunchedEffect(viewModel) {
     viewModel.events.collect { event ->
@@ -161,11 +191,13 @@ private fun JobDetailScreen(
         .padding(bottom = innerPadding.calculateBottomPadding())
     ) {
       // Custom Header
-      Column(modifier = Modifier.fillMaxWidth()) {
+      Column(modifier = Modifier
+        .fillMaxWidth()
+        .background(Color.White)
+      ) {
           Row(
             modifier = Modifier
               .fillMaxWidth()
-              .background(Color.White)
               .height(44.dp) // Compact fixed height
               .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -181,7 +213,7 @@ private fun JobDetailScreen(
               text = "职位详情",
               style = MaterialTheme.typography.titleMedium.copy(
                 fontWeight = FontWeight.Bold,
-                fontSize = 17.sp,
+                fontSize = 18.sp,
                 color = TextPrimary
               ),
               modifier = Modifier.weight(1f),
@@ -329,49 +361,56 @@ private fun JobCompanyCard(
 
 @Composable
 private fun CompanyLogo(detail: JobDetail) {
-  val placeholder = detail.company.take(1).ifBlank { "企" }
   Box(
-    modifier = Modifier
-      .size(48.dp)
-      .clip(CircleShape)
-      .background(Color.White), // White background for logo
+    modifier = Modifier.size(48.dp),
     contentAlignment = Alignment.Center
   ) {
     if (detail.companyLogo.isNullOrBlank()) {
-       // Fallback if no logo
-       Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(AccentOrange.copy(alpha = 0.1f)),
-        contentAlignment = Alignment.Center
-       ) {
-           Icon(
-             painter = painterResource(id = com.xlwl.AiMian.R.drawable.ic_tab_jobs_filled),
-             contentDescription = null,
-             tint = AccentOrange,
-             modifier = Modifier.size(24.dp)
-           )
-       }
+      // 默认橙色圆形图标
+      Surface(
+        shape = CircleShape,
+        color = AccentOrange,
+        modifier = Modifier.fillMaxSize()
+      ) {
+        Box(
+          contentAlignment = Alignment.Center,
+          modifier = Modifier.fillMaxSize()
+        ) {
+          Icon(
+            painter = painterResource(id = com.xlwl.AiMian.R.drawable.ic_tab_jobs_filled),
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size(24.dp)
+          )
+        }
+      }
     } else {
+      // 显示公司 Logo
       SubcomposeAsyncImage(
         model = detail.companyLogo,
         contentDescription = detail.company,
-        modifier = Modifier.fillMaxSize(),
-        contentScale = ContentScale.Fit, // Fit to show full logo
+        modifier = Modifier
+          .fillMaxSize()
+          .clip(CircleShape),
+        contentScale = ContentScale.Crop,
         error = {
-           Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(AccentOrange.copy(alpha = 0.1f)),
-            contentAlignment = Alignment.Center
-           ) {
-               Icon(
-                 painter = painterResource(id = com.xlwl.AiMian.R.drawable.ic_tab_jobs_filled),
-                 contentDescription = null,
-                 tint = AccentOrange,
-                 modifier = Modifier.size(24.dp)
-               )
-           }
+          Surface(
+            shape = CircleShape,
+            color = AccentOrange,
+            modifier = Modifier.fillMaxSize()
+          ) {
+            Box(
+              contentAlignment = Alignment.Center,
+              modifier = Modifier.fillMaxSize()
+            ) {
+              Icon(
+                painter = painterResource(id = com.xlwl.AiMian.R.drawable.ic_tab_jobs_filled),
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(24.dp)
+              )
+            }
+          }
         }
       )
     }
@@ -615,44 +654,76 @@ private fun RecommendedJobCard(
           verticalAlignment = Alignment.CenterVertically,
           modifier = Modifier.weight(1f)
         ) {
-          // Small company logo
-           Box(
-            modifier = Modifier
-              .size(24.dp)
-              .clip(CircleShape)
-              .background(Color.White),
+          // 公司 Logo - 小尺寸圆形图标
+          Box(
+            modifier = Modifier.size(24.dp),
             contentAlignment = Alignment.Center
           ) {
             if (job.companyLogo.isNullOrBlank()) {
-               Icon(
-                 painter = painterResource(id = com.xlwl.AiMian.R.drawable.ic_tab_jobs_filled),
-                 contentDescription = null,
-                 tint = AccentOrange,
-                 modifier = Modifier.padding(4.dp)
-               )
+              // 默认橙色圆形图标
+              Surface(
+                shape = CircleShape,
+                color = AccentOrange,
+                modifier = Modifier.fillMaxSize()
+              ) {
+                Box(
+                  contentAlignment = Alignment.Center,
+                  modifier = Modifier.fillMaxSize()
+                ) {
+                  Icon(
+                    painter = painterResource(id = com.xlwl.AiMian.R.drawable.ic_tab_jobs_filled),
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(14.dp)
+                  )
+                }
+              }
             } else {
-               SubcomposeAsyncImage(
+              // 显示公司 Logo
+              SubcomposeAsyncImage(
                 model = job.companyLogo,
                 contentDescription = job.company,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit
-               )
+                modifier = Modifier
+                  .fillMaxSize()
+                  .clip(CircleShape),
+                contentScale = ContentScale.Crop,
+                error = {
+                  Surface(
+                    shape = CircleShape,
+                    color = AccentOrange,
+                    modifier = Modifier.fillMaxSize()
+                  ) {
+                    Box(
+                      contentAlignment = Alignment.Center,
+                      modifier = Modifier.fillMaxSize()
+                    ) {
+                      Icon(
+                        painter = painterResource(id = com.xlwl.AiMian.R.drawable.ic_tab_jobs_filled),
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(14.dp)
+                      )
+                    }
+                  }
+                }
+              )
             }
           }
           
-          Text(
-            text = job.company,
-            style = MaterialTheme.typography.bodySmall.copy(
-              fontWeight = FontWeight.Normal,
-              fontSize = 13.sp,
-              color = TextSecondary
-            ),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-          )
-          
-          if (job.companyTagline.isNotBlank()) {
-             Text(
+          Column(modifier = Modifier.weight(1f)) {
+            Text(
+              text = job.company,
+              style = MaterialTheme.typography.bodySmall.copy(
+                fontWeight = FontWeight.Normal,
+                fontSize = 13.sp,
+                color = TextSecondary
+              ),
+              maxLines = 1,
+              overflow = TextOverflow.Ellipsis
+            )
+            
+            if (job.companyTagline.isNotBlank()) {
+              Text(
                 text = job.companyTagline,
                 style = MaterialTheme.typography.bodySmall.copy(
                   fontSize = 12.sp,
@@ -660,7 +731,8 @@ private fun RecommendedJobCard(
                 ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
-             )
+              )
+            }
           }
         }
         
@@ -684,7 +756,7 @@ private fun RecommendedJobCard(
 private fun TagChip(text: String) {
   Surface(
     color = ChipBackground,
-    shape = RoundedCornerShape(4.dp),
+    shape = RoundedCornerShape(10.dp),
     tonalElevation = 0.dp,
     shadowElevation = 0.dp
   ) {
@@ -718,6 +790,7 @@ private fun JobDetailBottomBar(
     Column(
       modifier = Modifier
         .fillMaxWidth()
+        .navigationBarsPadding()
         .padding(horizontal = 16.dp, vertical = 12.dp),
       horizontalAlignment = Alignment.CenterHorizontally,
       verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -729,10 +802,10 @@ private fun JobDetailBottomBar(
             containerColor = AccentOrange,
             disabledContainerColor = AccentOrange.copy(alpha = 0.6f)
         ),
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(14.dp),
         modifier = Modifier
           .fillMaxWidth()
-          .height(48.dp)
+          .height(52.dp)
       ) {
         when {
           isCheckingResume || isApplying -> {

@@ -61,6 +61,7 @@ const mapCompanyToFormValues = (company: Company) => ({
   logo: company.logo,
   tagline: company.tagline,
   focusArea: company.focusArea,
+  companyStage: company.companyStage,
   promotionPage: company.promotionPage,
   themeColors: company.themeColors?.length ? company.themeColors : [''],
   highlights: company.highlights?.length ? company.highlights : [''],
@@ -131,6 +132,7 @@ const Settings: React.FC = () => {
         logo: values.logo,
         tagline: values.tagline?.trim(),
         focusArea: values.focusArea?.trim(),
+        companyStage: values.companyStage?.trim(),
         promotionPage: values.promotionPage?.trim(),
         themeColors: normalizeStringList(values.themeColors),
         highlights: normalizeStringList(values.highlights),
@@ -401,6 +403,13 @@ const Settings: React.FC = () => {
               </Form.Item>
             </Col>
           </Row>
+          <Form.Item
+            label="企业阶段/标签"
+            name="companyStage"
+            extra="用于职位推荐和面试报告展示，例如：A轮、B轮、已上市、独角兽"
+          >
+            <Input placeholder="例如：A轮、已上市、独角兽" />
+          </Form.Item>
           <Form.Item label="宣传页链接" name="promotionPage">
             <Input placeholder="上传或引用企业宣传手册 / H5 页面链接" />
           </Form.Item>

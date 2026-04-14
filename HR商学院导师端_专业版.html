@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>HR商学院导师端</title>
+<style>
+:root {
+  --brand-1: #667EEA; --brand-2: #764BA2; --accent: #F5576C;
+  --green: #34C759; --orange: #FF9500; --red: #FF3B30; --blue: #007AFF;
+  --black: #1D1D1F; --dark-1: #3D3D3F; --gray-1: #636366;
+  --gray-2: #8E8E93; --gray-3: #C7C7CC; --gray-4: #D1D1D6; --gray-5: #E5E5EA; --gray-6: #F2F2F7;
+  --white: #FFFFFF;
+  --shadow-sm: 0 2px 8px rgba(0,0,0,0.06); --shadow-md: 0 4px 16px rgba(0,0,0,0.10);
+  --shadow-fab: 0 6px 20px rgba(102,126,234,0.45);
+  --grad-brand: linear-gradient(135deg, var(--brand-1) 0%, var(--brand-2) 100%);
+  --r-xl: 20px; --r-lg: 16px; --r-md: 12px; --r-sm: 8px;
+  --t-fast: 120ms; --t-base: 200ms; --t-slow: 300ms;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'PingFang SC', Helvetica, Arial, sans-serif;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+body { font-family: var(--font); background: #111; display: flex; justify-content: center; padding: 20px 0; -webkit-font-smoothing: antialiased; }
+button { font-family: var(--font); border: none; background: none; cursor: pointer; outline: none; }
+
+.phone { width: 390px; min-height: 844px; background: var(--gray-6); border-radius: 44px; overflow: hidden; position: relative; box-shadow: 0 32px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06) inset; }
+
+/* Status Bar */
+.sb { height: 54px; display: flex; align-items: flex-end; justify-content: center; padding: 0 24px 10px; position: relative; }
+.st { font-size: 15px; font-weight: 600; letter-spacing: -0.1px; }
+.si { position: absolute; right: 24px; bottom: 10px; display: flex; align-items: center; gap: 5px; }
+.sig { width: 16px; height: 10px; background: var(--black); border-radius: 3px; position: relative; }
+.sig::before { content: ''; position: absolute; width: 6px; height: 10px; background: var(--black); right: -7px; border-radius: 0 3px 3px 0; }
+.sig::after { content: ''; position: absolute; width: 2px; height: 5px; background: var(--black); right: -9px; top: 2.5px; border-radius: 0 1px 1px 0; }
+.wi { width: 10px; height: 10px; border: 2px solid var(--black); border-radius: 50%; position: relative; }
+.wi::after { content: ''; position: absolute; width: 4px; height: 4px; background: var(--black); border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%,-50%); }
+.ba { width: 22px; height: 11px; border: 1.5px solid var(--black); border-radius: 3px; position: relative; }
+.ba::after { content: ''; position: absolute; right: -3px; top: 50%; transform: translateY(-50%); width: 1.5px; height: 5px; background: var(--black); border-radius: 0 1px 1px 0; }
+.ba::before { content: ''; position: absolute; left: 1px; top: 1px; bottom: 1px; width: 60%; background: var(--black); border-radius: 1px; }
+
+/* Screen */
+.sc { height: calc(100% - 54px); overflow-y: auto; overflow-x: hidden; position: relative; }
+.sc::-webkit-scrollbar { display: none; }
+.sc > div { display: none; flex-direction: column; min-height: 100%; }
+.sc > div.active { display: flex; }
+
+/* ===== PAGE 1: AUTH ===== */
+#pg-auth { background: var(--grad-brand); justify-content: center; align-items: center; padding: 40px 28px; text-align: center; }
+.as { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.ac { position: absolute; border-radius: 50%; background: rgba(255,255,255,0.08); }
+.ac1 { width: 280px; height: 280px; top: -90px; right: -70px; }
+.ac2 { width: 180px; height: 180px; bottom: -50px; left: -50px; }
+.ac3 { width: 100px; height: 100px; top: 220px; left: 20px; }
+.ai { position: relative; z-index: 1; }
+.aii { width: 84px; height: 84px; background: white; border-radius: 24px; display: flex; align-items: center; justify-content: center; font-size: 42px; margin: 0 auto 22px; box-shadow: 0 16px 48px rgba(0,0,0,0.18); animation: fi 0.5s cubic-bezier(0.175,0.885,0.32,1.275); }
+@keyframes fi { from { opacity:0; transform: scale(0.7) translateY(30px); } to { opacity:1; transform: scale(1) translateY(0); } }
+.ait { font-size: 30px; font-weight: 700; color: white; letter-spacing: -0.5px; margin-bottom: 6px; }
+.ais { font-size: 14px; color: rgba(255,255,255,0.7); margin-bottom: 44px; }
+.aw { width: 100%; height: 54px; background: white; border-radius: 27px; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--brand-1); font-size: 16px; font-weight: 600; box-shadow: 0 8px 32px rgba(0,0,0,0.15); margin-bottom: 12px; transition: transform 0.12s, box-shadow 0.12s; }
+.aw:active { transform: scale(0.97); box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
+.aw svg { width: 22px; height: 22px; }
+.ask { font-size: 13px; color: rgba(255,255,255,0.55); margin-bottom: 44px; }
+.at { background: rgba(255,255,255,0.12); backdrop-filter: blur(20px); border-radius: 16px; padding: 16px 18px; text-align: left; margin-top: 44px; }
+.at-title { font-size: 11px; color: rgba(255,255,255,0.55); margin-bottom: 10px; font-weight: 500; }
+.at-row { display: flex; justify-content: space-between; font-size: 13px; color: rgba(255,255,255,0.9); padding: 4px 0; }
+.at-check { color: var(--green); }
+
+/* ===== PAGE 2: IDENTITY ===== */
+#pg-identity { background: var(--gray-6); }
+.ih { background: var(--grad-brand); padding: 48px 24px 36px; text-align: center; }
+.ih h2 { font-size: 24px; font-weight: 700; color: white; letter-spacing: -0.3px; margin-bottom: 6px; }
+.ih p { font-size: 13px; color: rgba(255,255,255,0.7); }
+.il { padding: 18px 18px 20px; display: flex; flex-direction: column; gap: 12px; }
+.ic-card { background: white; border-radius: var(--r-lg); padding: 18px; display: flex; align-items: center; gap: 14px; position: relative; border: 2px solid transparent; transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s; cursor: pointer; box-shadow: var(--shadow-sm); }
+.ic-card:active { transform: scale(0.985); }
+.ic-card.sel { border-color: var(--brand-1); box-shadow: var(--shadow-md); }
+.ic-card.sel::before { content: ''; position: absolute; top: 12px; right: 12px; width: 22px; height: 22px; background: var(--brand-1); border-radius: 50%; }
+.ic-card.sel::after { content: '✓'; position: absolute; top: 12px; right: 12px; width: 22px; height: 22px; color: white; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; z-index: 1; }
+.ici { width: 50px; height: 50px; border-radius: 13px; display: flex; align-items: center; justify-content: center; font-size: 26px; flex-shrink: 0; }
+.icia { background: var(--grad-brand); }
+.icic { background: linear-gradient(135deg, #F5576C, #F5365C); }
+.iciname { font-size: 15px; font-weight: 600; color: var(--black); margin-bottom: 3px; }
+.icidesc { font-size: 12px; color: var(--gray-2); line-height: 1.5; }
+.ib { padding: 0 18px 24px; }
+
+/* ===== PAGE 3: HOME ===== */
+#pg-home { background: var(--gray-6); padding-bottom: 80px; }
+.hh { background: var(--grad-brand); padding: 14px 18px 52px; }
+.hu { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.hav { width: 46px; height: 46px; border-radius: 50%; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; font-size: 22px; border: 2px solid rgba(255,255,255,0.25); }
+.hui { flex: 1; }
+.huin { font-size: 17px; font-weight: 700; color: white; }
+.huip { font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 1px; }
+.hub { background: rgba(255,255,255,0.18); backdrop-filter: blur(10px); padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: 600; color: white; }
+.htabs { display: flex; gap: 5px; background: rgba(255,255,255,0.15); backdrop-filter: blur(10px); border-radius: 11px; padding: 3px; }
+.htab { flex: 1; text-align: center; padding: 8px 0; border-radius: 9px; font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.65); cursor: pointer; transition: all 0.2s; }
+.htab.on { background: white; color: var(--brand-1); font-weight: 600; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+.hb { margin: -38px 14px 0; display: flex; flex-direction: column; gap: 12px; }
+.htc { display: none; flex-direction: column; gap: 12px; }
+.htc.on { display: flex; }
+
+/* Skill Card */
+.sk { background: white; border-radius: var(--r-lg); padding: 18px; box-shadow: var(--shadow-sm); animation: su 0.35s cubic-bezier(0.4,0,0.2,1); }
+@keyframes su { from { opacity:0; transform: translateY(14px); } to { opacity:1; transform: translateY(0); } }
+.sk-hd { display: flex; align-items: center; gap: 11px; margin-bottom: 12px; }
+.sk-ic { width: 46px; height: 46px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-size: 23px; }
+.sk-ica { background: var(--grad-brand); }
+.sk-icac { background: linear-gradient(135deg, #F5576C, #F5365C); }
+.sk-ti { flex: 1; }
+.sk-ti h4 { font-size: 15px; font-weight: 600; color: var(--black); margin-bottom: 3px; }
+.sk-badge { display: inline-flex; padding: 2px 7px; background: rgba(102,126,234,0.1); color: var(--brand-1); font-size: 10px; font-weight: 600; border-radius: 4px; margin-top: 3px; }
+.sk-meta { font-size: 11px; color: var(--gray-2); margin-top: 2px; }
+.sk-p { font-size: 13px; color: var(--dark-1); line-height: 1.7; margin-bottom: 12px; }
+.sk-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
+.sk-tag { padding: 3px 9px; background: var(--gray-6); border-radius: 5px; font-size: 11px; color: var(--dark-1); }
+.sk-vd { background: var(--gray-6); border-radius: var(--r-md); height: 115px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; cursor: pointer; overflow: hidden; position: relative; margin-bottom: 14px; }
+.sk-play { width: 42px; height: 42px; background: var(--grad-brand); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 15px; box-shadow: 0 4px 14px rgba(102,126,234,0.4); position: relative; z-index: 1; }
+.sk-vd span { font-size: 11px; color: var(--gray-2); position: relative; z-index: 1; }
+
+/* Income */
+.icd { background: var(--grad-brand); border-radius: var(--r-lg); padding: 18px; box-shadow: var(--shadow-md); }
+.icd h5 { font-size: 12px; color: rgba(255,255,255,0.7); font-weight: 500; }
+.icd-am { font-size: 34px; font-weight: 700; color: white; margin: 5px 0 3px; letter-spacing: -0.5px; }
+.icd small { font-size: 16px; }
+.icd-tr { display: inline-flex; background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.icd-sts { display: flex; gap: 8px; margin-top: 14px; }
+.icd-st { flex: 1; background: rgba(255,255,255,0.14); backdrop-filter: blur(10px); border-radius: 10px; padding: 10px 6px; text-align: center; }
+.icd-st .n { font-size: 17px; font-weight: 700; color: white; }
+.icd-st .d { font-size: 10px; color: rgba(255,255,255,0.65); margin-top: 2px; }
+
+/* Order Card */
+.oc { background: white; border-radius: var(--r-lg); padding: 15px; box-shadow: var(--shadow-sm); }
+.oc-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 11px; }
+.oc-id { font-size: 11px; color: var(--gray-2); }
+.oc-st { padding: 2px 9px; border-radius: 7px; font-size: 11px; font-weight: 600; }
+.oc-st.nw { background: rgba(0,122,255,0.1); color: var(--blue); }
+.oc-st.ac { background: rgba(102,126,234,0.1); color: var(--brand-1); }
+.oc-st.dn { background: var(--gray-5); color: var(--gray-2); }
+.oc-stu { display: flex; align-items: center; gap: 10px; margin-bottom: 11px; }
+.oc-av { width: 38px; height: 38px; border-radius: 50%; background: var(--grad-brand); display: flex; align-items: center; justify-content: center; color: white; font-size: 15px; font-weight: 600; }
+.oc-nm { font-size: 14px; font-weight: 600; color: var(--black); }
+.oc-sc { font-size: 11px; color: var(--gray-2); margin-top: 1px; }
+.oc-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 10px; }
+.oc-tag { padding: 2px 8px; background: var(--gray-6); border-radius: 4px; font-size: 11px; color: var(--dark-1); }
+.oc-dsc { background: var(--gray-6); border-radius: var(--r-sm); padding: 9px; font-size: 12px; color: var(--dark-1); line-height: 1.6; margin-bottom: 11px; }
+.oc-ac { display: flex; gap: 7px; }
+.b-sm { flex: 1; height: 36px; border-radius: 18px; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 4px; transition: opacity 0.12s; }
+.b-sm:active { opacity: 0.7; }
+.b-sm-br { background: var(--grad-brand); color: white; box-shadow: 0 2px 8px rgba(102,126,234,0.3); }
+.b-sm-bl { background: rgba(102,126,234,0.1); color: var(--brand-1); }
+.b-sm-g { background: var(--gray-6); color: var(--gray-1); }
+
+/* Mine */
+.mc { background: white; border-radius: var(--r-lg); padding: 16px; box-shadow: var(--shadow-sm); }
+.mlvd { display: flex; align-items: center; gap: 9px; margin-bottom: 13px; }
+.lvbadge { padding: 3px 11px; background: var(--grad-brand); border-radius: 7px; color: white; font-size: 11px; font-weight: 700; }
+.lvbar { flex: 1; height: 5px; background: var(--gray-5); border-radius: 3px; overflow: hidden; }
+.lvfill { height: 100%; background: var(--grad-brand); border-radius: 3px; width: 60%; }
+.lvpct { font-size: 10px; color: var(--gray-2); }
+.mst { display: flex; }
+.mst-it { flex: 1; text-align: center; padding: 8px 0; }
+.mst .n { font-size: 17px; font-weight: 700; color: var(--black); }
+.mst .l { font-size: 10px; color: var(--gray-2); margin-top: 2px; }
+.mst-div { width: 1px; background: var(--gray-5); }
+.rv-it { padding: 11px 0; border-bottom: 0.5px solid var(--gray-6); }
+.rv-it:last-child { border-bottom: none; }
+.rv-hd { display: flex; align-items: center; gap: 9px; margin-bottom: 7px; }
+.rvav { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; color: white; font-weight: 600; }
+.rvnm { font-size: 13px; font-weight: 600; flex: 1; }
+.rvtm { font-size: 10px; color: var(--gray-2); }
+.strs { display: flex; gap: 1px; font-size: 12px; }
+.strs.on { color: #FF9500; }
+.strs.off { color: var(--gray-3); }
+.rv-tx { font-size: 12px; color: var(--dark-1); line-height: 1.6; margin-top: 6px; }
+.mmit { display: flex; align-items: center; padding: 13px 0; border-bottom: 0.5px solid var(--gray-6); cursor: pointer; }
+.mmit:last-child { border-bottom: none; }
+.mmit .ic { font-size: 21px; margin-right: 11px; width: 26px; text-align: center; }
+.mmit .tx { flex: 1; font-size: 14px; color: var(--black); }
+.mmit .ar { font-size: 13px; color: var(--gray-3); }
+
+/* Bottom Nav */
+.bnav { position: absolute; bottom: 0; left: 0; right: 0; height: 66px; background: rgba(255,255,255,0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 0.5px solid rgba(0,0,0,0.07); display: flex; padding-bottom: 12px; z-index: 50; }
+.bni { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 2px; cursor: pointer; padding: 8px 0; }
+.bni-icon { font-size: 23px; margin-bottom: 1px; }
+.bni-label { font-size: 10px; color: var(--gray-2); transition: color 0.15s; }
+.bni.on .bni-label { color: var(--brand-1); }
+
+/* FAB */
+.fab { position: absolute; bottom: 86px; left: 50%; transform: translateX(-50%); width: 56px; height: 56px; background: var(--grad-brand); border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: 700; box-shadow: var(--shadow-fab); cursor: pointer; z-index: 40; transition: transform 0.12s cubic-bezier(0.175,0.885,0.32,1.275); }
+.fab:active { transform: translateX(-50%) scale(0.93); }
+.fabbd { position: absolute; top: -2px; right: -2px; width: 20px; height: 20px; background: var(--accent); border-radius: 50%; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; border: 2px solid var(--gray-6); }
+
+/* ===== PAGE 4: APPLY ===== */
+#pg-apply { background: var(--gray-6); }
+.aph { background: white; height: 54px; display: flex; align-items: center; padding: 0 4px 0 4px; border-bottom: 0.5px solid var(--gray-5); }
+.apbk { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 22px; color: var(--brand-1); cursor: pointer; border-radius: 50%; transition: background 0.12s; }
+.apbk:active { background: var(--gray-6); }
+.aph h2 { flex: 1; text-align: center; font-size: 16px; font-weight: 600; margin-right: 36px; }
+.apst { background: white; padding: 16px 20px; display: flex; }
+.apsti { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 10px; color: var(--gray-2); position: relative; }
+.apsti::after { content: ''; position: absolute; top: 12px; left: calc(50% + 14px); width: calc(100% - 28px); height: 2px; background: var(--gray-5); }
+.apsti:last-child::after { display: none; }
+.apsti.dk::after, .apsti.ac::after { background: var(--brand-1); }
+.apsti.dk, .apsti.ac { color: var(--brand-1); }
+.apstin { width: 24px; height: 24px; border-radius: 50%; background: var(--gray-5); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; transition: all 0.25s; z-index: 1; }
+.apsti.ac .apstin { background: var(--brand-1); color: white; box-shadow: 0 0 0 4px rgba(102,126,234,0.18); animation: pd 2s infinite; }
+.apsti.dk .apstin { background: var(--brand-1); color: white; }
+@keyframes pd { 0%,100% { box-shadow: 0 0 0 4px rgba(102,126,234,0.18); } 50% { box-shadow: 0 0 0 8px rgba(102,126,234,0.06); } }
+.apbody { padding: 14px 14px 90px; display: flex; flex-direction: column; gap: 11px; }
+.apsec { background: white; border-radius: var(--r-lg); padding: 15px; }
+.apti { font-size: 14px; font-weight: 600; color: var(--black); margin-bottom: 12px; padding-bottom: 9px; border-bottom: 0.5px solid var(--gray-6); }
+.frow { display: flex; align-items: center; padding: 11px 0; border-bottom: 0.5px solid var(--gray-6); }
+.frow:last-child { border-bottom: none; }
+.frow label { width: 70px; font-size: 14px; color: var(--dark-1); flex-shrink: 0; }
+.frow input { flex: 1; font-size: 14px; color: var(--black); border: none; outline: none; background: transparent; font-family: var(--font); }
+.frow input::placeholder { color: var(--gray-3); }
+.frow .fa { font-size: 15px; color: var(--gray-3); }
+.upz { border: 2px dashed var(--gray-4); border-radius: var(--r-md); padding: 26px; text-align: center; cursor: pointer; transition: all 0.2s; margin-top: 8px; }
+.upz:hover { border-color: var(--brand-1); background: rgba(102,126,234,0.04); }
+.upz-ic { font-size: 30px; color: var(--gray-3); margin-bottom: 7px; }
+.upz-p { font-size: 13px; color: var(--dark-1); }
+.upz-s { font-size: 11px; color: var(--gray-3); margin-top: 4px; }
+.skchips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 8px; }
+.skchip { padding: 5px 13px; border-radius: 20px; font-size: 12px; background: var(--gray-6); color: var(--dark-1); cursor: pointer; transition: all 0.15s; }
+.skchip.on { background: rgba(102,126,234,0.1); color: var(--brand-1); font-weight: 600; }
+
+/* Status Cards */
+.stc { background: white; border-radius: var(--r-lg); padding: 32px 20px; text-align: center; margin: 14px; }
+.stc-ic { font-size: 56px; margin-bottom: 14px; }
+.stc h3 { font-size: 18px; font-weight: 700; color: var(--black); margin-bottom: 8px; }
+.stc p { font-size: 13px; color: var(--gray-2); line-height: 1.6; }
+.tl { background: white; border-radius: var(--r-lg); margin: 0 14px 14px; padding: 18px 14px; }
+.ti { display: flex; gap: 11px; padding-bottom: 18px; position: relative; }
+.ti:last-child { padding-bottom: 0; }
+.ti::before { content: ''; position: absolute; left: 11px; top: 24px; bottom: 0; width: 2px; background: var(--gray-5); }
+.ti:last-child::before { display: none; }
+.tdot { width: 24px; height: 24px; border-radius: 50%; background: var(--gray-5); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; flex-shrink: 0; z-index: 1; }
+.ti.dk .tdot, .ti.ac .tdot { background: var(--brand-1); color: white; }
+.ti.ac .tdot { animation: pd 2s infinite; }
+.tc h5 { font-size: 13px; font-weight: 600; color: var(--black); }
+.tc p { font-size: 11px; color: var(--gray-2); margin-top: 2px; }
+.trc { background: rgba(102,126,234,0.05); border: 1px solid rgba(102,126,234,0.12); border-radius: var(--r-lg); padding: 24px; margin: 14px; text-align: center; }
+.trc-ic { font-size: 44px; margin-bottom: 10px; }
+.trc h4 { color: var(--brand-1); font-size: 15px; margin-bottom: 6px; }
+.trc p { font-size: 12px; color: var(--gray-2); }
+.apay { display: flex; justify-content: space-between; align-items: center; background: var(--gray-6); border-radius: var(--r-md); padding: 14px; margin: 14px; }
+.apay-l .t { font-size: 14px; font-weight: 600; color: var(--black); }
+.apay-l .s { font-size: 11px; color: var(--gray-2); margin-top: 3px; }
+.apay-r { text-align: right; }
+.apay-r .p { font-size: 20px; font-weight: 700; color: var(--brand-1); }
+.apay-r .op { font-size: 11px; color: var(--gray-3); text-decoration: line-through; }
+
+/* Animations */
+@keyframes en { from { opacity:0; } to { opacity:1; } }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="sb"><span class="st">9:41</span><div class="si"><div class="sig"></div><div class="wi"></div><div class="ba"></div></div></div>
+  <div class="sc">
+
+    <!-- PAGE 1: AUTH -->
+    <div id="pg-auth" class="active">
+      <div class="as">
+        <div class="ac ac1"></div><div class="ac ac2"></div><div class="ac ac3"></div>
+      </div>
+      <div class="ai">
+        <div class="aii">🎓</div>
+        <h1 class="ait">HR商学院</h1>
+        <p class="ais">专业指导师培训与接单平台</p>
+        <div class="aw" onclick="goto('pg-identity')">
+          <svg viewBox="0 0 24 24" fill="#667EEA"><path d="M8.69 6.95c.68-.55 1.51-.85 2.37-.85 2.05 0 3.71 1.66 3.71 3.71s-1.66 3.71-3.71 3.71c-.86 0-1.69-.3-2.37-.85C6.18 11.04 4.5 13.68 4.5 16.71c0 3.52 2.87 6.38 6.39 6.38 3.52 0 6.39-2.86 6.39-6.38 0-3.03-1.68-5.67-4.59-7.14z"/></svg>
+          微信一键授权
+        </div>
+        <p class="ask" onclick="goto('pg-identity')">暂不授权，直接进入 →</p>
+        <div class="at">
+          <div class="at-title">授权后将获得以下信息</div>
+          <div class="at-row"><span>头像</span><span class="at-check">✓ 已获取</span></div>
+          <div class="at-row"><span>昵称</span><span class="at-check">✓ 已获取</span></div>
+          <div class="at-row"><span>手机号</span><span class="at-check">✓ 已获取</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE 2: IDENTITY -->
+    <div id="pg-identity">
+      <div class="ih">
+        <h2>选择您的指导师身份</h2>
+        <p>可同时申请两种身份，灵活接单</p>
+      </div>
+      <div class="il">
+        <div class="ic-card sel" id="ca" onclick="pickId(this,'a')">
+          <div class="ici icia">📚</div>
+          <div><div class="iciname">学业指导师</div><div class="icidesc">帮助学员提升学业技能、考取证书、完成学业任务</div></div>
+        </div>
+        <div class="ic-card" id="cb" onclick="pickId(this,'c')">
+          <div class="ici icic">💼</div>
+          <div><div class="iciname">就业指导师</div><div class="icidesc">帮助学员提升面试技巧、职业规划、就业能力</div></div>
+        </div>
+      </div>
+      <div class="ib"><button class="btn-primary" onclick="goto('pg-home')">确认身份，进入平台</button></div>
+    </div>
+
+    <!-- PAGE 3: HOME -->
+    <div id="pg-home">
+      <div class="hh">
+        <div class="hu">
+          <div class="hav">👨‍🏫</div>
+          <div class="hui">
+            <div class="huin">张老师</div>
+            <div class="huip">学业指导师 · Lv.3</div>
+          </div>
+          <span class="hub">已认证</span>
+        </div>
+        <div class="htabs">
+          <div class="htab on" onclick="htab(0,this)">技能介绍</div>
+          <div class="htab" onclick="htab(1,this)">我的订单</div>
+          <div class="htab" onclick="htab(2,this)">我的</div>
+        </div>
+      </div>
+
+      <!-- Tab 0: 技能介绍 -->
+      <div class="hb">
+        <div class="htc on" id="htc0">
+          <div class="sk">
+            <div class="sk-hd">
+              <div class="sk-ic sk-ica">📚</div>
+              <div class="sk-ti">
+                <h4>学业指导服务</h4>
+                <span class="sk-badge">学业指导师</span>
+                <div class="sk-meta">Lv.3 · 已服务 128 位学员 · ★4.9</div>
+              </div>
+            </div>
+            <p class="sk-p">专注为在校学生和职场新人提供专业的学业规划、证书考取、论文写作、考研指导等服务。已帮助超过500位学员成功提升学业成绩和综合能力。</p>
+            <div class="sk-tags">
+              <span class="sk-tag">📝 论文指导</span>
+              <span class="sk-tag">📖 考证培训</span>
+              <span class="sk-tag">🎓 考研规划</span>
+              <span class="sk-tag">📋 作业辅导</span>
+              <span class="sk-tag">📊 技能培训</span>
+            </div>
+            <div class="sk-vd">
+              <div class="sk-play">▶</div>
+              <span>免费宣传视频 · 2分30秒</span>
+            </div>
+            <button class="btn-primary" onclick="goto('pg-apply')" style="height:46px;font-size:15px;">申请成为指导师</button>
+          </div>
+        </div>
+
+        <!-- Tab 1: 我的订单 -->
+        <div class="htc" id="htc1">
+          <div class="icd">
+            <h5>本月收益</h5>
+            <div class="icd-am"><small>¥</small>8,680</div>
+            <span class="icd-tr">较上月 +23.5% ↑</span>
+            <div class="icd-sts">
+              <div class="icd-st"><div class="n">42</div><div class="d">完成订单</div></div>
+              <div class="icd-st"><div class="n">38</div><div class="d">进行中</div></div>
+              <div class="icd-st"><div class="n">4.9</div><div class="d">平均评分</div></div>
+            </div>
+          </div>
+          <div class="oc">
+            <div class="oc-top">
+              <span class="oc-id">订单 #2024031501</span>
+              <span class="oc-st nw">新订单</span>
+            </div>
+            <div class="oc-stu">
+              <div class="oc-av">李</div>
+              <div><div class="oc-nm">李同学</div><div class="oc-sc">华东理工大学 · 大三</div></div>
+            </div>
+            <div class="oc-tags">
+              <span class="oc-tag">论文指导</span><span class="oc-tag">本科论文</span><span class="oc-tag">加急</span>
+            </div>
+            <div class="oc-dsc">需要指导本科毕业论文，方向是人力资源管理，预计字数15000字，4月底交初稿。</div>
+            <div class="oc-ac">
+              <button class="b-sm b-sm-br" onclick="doAccept(this)">接单</button>
+              <button class="b-sm b-sm-bl">💬 聊</button>
+              <button class="b-sm b-sm-g" onclick="doReject(this)">拒</button>
+            </div>
+          </div>
+          <div class="oc">
+            <div class="oc-top">
+              <span class="oc-id">订单 #2024031418</span>
+              <span class="oc-st ac">进行中</span>
+            </div>
+            <div class="oc-stu">
+              <div class="oc-av">王</div>
+              <div><div class="oc-nm">王同学</div><div class="oc-sc">上海交通大学 · 研二</div></div>
+            </div>
+            <div class="oc-tags">
+              <span class="oc-tag">考证培训</span><span class="oc-tag">人力资源师</span>
+            </div>
+            <div class="oc-dsc">备考人力资源管理师二级，需要系统复习计划和真题辅导。</div>
+            <div class="oc-ac">
+              <button class="b-sm b-sm-br" onclick="alert('查看详情')">查看详情</button>
+              <button class="b-sm b-sm-bl">💬 聊</button>
+            </div>
+          </div>
+          <div class="oc">
+            <div class="oc-top">
+              <span class="oc-id">订单 #2024031405</span>
+              <span class="oc-st dn">已完成</span>
+            </div>
+            <div class="oc-stu">
+              <div class="oc-av" style="background:var(--green)">陈</div>
+              <div><div class="oc-nm">陈同学</div><div class="oc-sc">浙江大学 · 大四</div></div>
+            </div>
+            <div class="oc-tags">
+              <span class="oc-tag">面试技巧</span><span class="oc-tag">STAR法则</span>
+            </div>
+            <div class="oc-dsc">面试技巧辅导，备战秋招，已获得阿里巴巴offer。</div>
+            <div class="oc-ac">
+              <button class="b-sm b-sm-bl">查看评价</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: 我的 -->
+        <div class="htc" id="htc2">
+          <div class="mc" style="margin:0;">
+            <div class="mlvd">
+              <span class="lvbadge">Lv.3</span>
+              <div class="lvbar"><div class="lvfill"></div></div>
+              <span class="lvpct">60%</span>
+            </div>
+            <div class="mst">
+              <div class="mst-it"><div class="n">¥12,480</div><div class="l">累计收益</div></div>
+              <div class="mst-div"></div>
+              <div class="mst-it"><div class="n">186</div><div class="l">服务学员</div></div>
+              <div class="mst-div"></div>
+              <div class="mst-it"><div class="n">4.9 ★</div><div class="l">平均评分</div></div>
+            </div>
+          </div>
+          <div class="mc">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+              <span style="font-size:14px;font-weight:600;">我的评价</span>
+              <span style="font-size:12px;color:var(--gray-2);">全部 →</span>
+            </div>
+            <div class="rv-it">
+              <div class="rv-hd">
+                <div class="rvav" style="background:var(--brand-1)">陈</div>
+                <div class="rvnm">陈学员</div>
+                <div class="strs"><span class="strs on">★</span><span class="strs on">★</span><span class="strs on">★</span><span class="strs on">★</span><span class="strs on">★</span></div>
+                <div class="rvtm">3天前</div>
+              </div>
+              <p class="rv-tx">老师非常耐心，论文框架讲得很清晰，对我帮助很大！</p>
+            </div>
+            <div class="rv-it">
+              <div class="rv-hd">
+                <div class="rvav" style="background:var(--accent)">林</div>
+                <div class="rvnm">林学员</div>
+                <div class="strs"><span class="strs on">★</span><span class="strs on">★</span><span class="strs on">★</span><span class="strs on">★</span><span class="strs on">★</span></div>
+                <div class="rvtm">1周前</div>
+              </div>
+              <p class="rv-tx">考证复习计划很实用，一次就过了二级！</p>
+            </div>
+          </div>
+          <div class="mc">
+            <div class="mmit" onclick="alert('收益明细')"><span class="ic">💰</span><span class="tx">收益明细</span><span class="ar">→</span></div>
+            <div class="mmit" onclick="alert('我的证书')"><span class="ic">📜</span><span class="tx">我的证书</span><span class="ar">→</span></div>
+            <div class="mmit" onclick="alert('资质认证')"><span class="ic">✅</span><span class="tx">资质认证</span><span class="ar">→</span></div>
+            <div class="mmit" onclick="alert('帮助中心')"><span class="ic">❓</span><span class="tx">帮助中心</span><span class="ar">→</span></div>
+            <div class="mmit" onclick="alert('联系客服')"><span class="ic">📞</span><span class="tx">联系客服</span><span class="ar">→</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FAB -->
+      <div class="fab" onclick="goto('pg-apply')">申<div class="fabbd">1</div></div>
+
+      <!-- Bottom Nav -->
+      <div class="bnav">
+        <div class="bni on" onclick="goto('pg-home')"><span class="bni-icon">🏠</span><span class="bni-label">首页</span></div>
+        <div class="bni" onclick="goOrders()"><span class="bni-icon">📋</span><span class="bni-label">订单</span></div>
+        <div class="bni" onclick="alert('消息中心')"><span class="bni-icon">💬</span><span class="bni-label">消息</span></div>
+        <div class="bni" onclick="goMine()"><span class="bni-icon">👤</span><span class="bni-label">我的</span></div>
+      </div>
+    </div>
+
+    <!-- PAGE 4: APPLY -->
+    <div id="pg-apply">
+      <div class="aph">
+        <div class="apbk" onclick="goto('pg-home')">←</div>
+        <h2>申请成为指导师</h2>
+      </div>
+
+      <!-- Steps -->
+      <div class="apst">
+        <div class="apsti ac" id="aps1"><div class="apstin">1</div><span>资料</span></div>
+        <div class="apsti" id="aps2"><div class="apstin">2</div><span>审核</span></div>
+        <div class="apsti" id="aps3"><div class="apstin">3</div><span>付费</span></div>
+        <div class="apsti" id="aps4"><div class="apstin">4</div><span>培训</span></div>
+        <div class="apsti" id="aps5"><div class="apstin">5</div><span>拿证</span></div>
+      </div>
+
+      <!-- Step 1: Form -->
+      <div id="apf1" class="apbody">
+        <div class="apsec">
+          <div class="apti">基本信息</div>
+          <div class="frow"><label>姓名</label><input type="text" value="张老师" placeholder="真实姓名"></div>
+          <div class="frow"><label>手机号</label><input type="tel" value="138****8888"></div>
+          <div class="frow"><label>身份证</label><input type="text" placeholder="实名认证必填"><span class="fa">→</span></div>
+        </div>
+        <div class="apsec">
+          <div class="apti">资质证明</div>
+          <p style="font-size:11px;color:var(--gray-2);margin-bottom:10px;">上传相关证书、从业证明等材料</p>
+          <div class="upz"><div class="upz-ic">📤</div><p class="upz-p">点击上传图片</p><p class="upz-s">支持 JPG/PNG，不超过 5MB</p></div>
+        </div>
+        <div class="apsec">
+          <div class="apti">擅长领域</div>
+          <div class="skchips">
+            <span class="skchip on" onclick="toggleChip(this)">论文指导</span>
+            <span class="skchip" onclick="toggleChip(this)">考证培训</span>
+            <span class="skchip" onclick="toggleChip(this)">考研规划</span>
+            <span class="skchip" onclick="toggleChip(this)">职业规划</span>
+            <span class="skchip" onclick="toggleChip(this)">面试技巧</span>
+            <span class="skchip" onclick="toggleChip(this)">技能培训</span>
+          </div>
+        </div>
+        <button class="btn-primary" onclick="apSubmit()">提交申请</button>
+      </div>
+
+      <!-- Step 2: 审核中 -->
+      <div id="apf2" style="display:none">
+        <div class="stc"><div class="stc-ic">⏳</div><h3>资料审核中</h3><p>预计 1-2 个工作日内完成审核<br>请保持手机畅通</p></div>
+        <div class="tl">
+          <div class="ti dk"><div class="tdot">✓</div><div class="tc"><h5>提交资料</h5><p>2024-03-31 17:10</p></div></div>
+          <div class="ti ac"><div class="tdot">2</div><div class="tc"><h5>人工审核</h5><p>预计 1-2 个工作日</p></div></div>
+          <div class="ti"><div class="tdot">3</div><div class="tc"><h5>付费培训</h5><p>审核通过后进行</p></div></div>
+          <div class="ti"><div class="tdot">4</div><div class="tc"><h5>完成培训</h5><p>线下/线上培训</p></div></div>
+          <div class="ti"><div class="tdot">5</div><div class="tc"><h5>上传证书</h5><p>获取指导师资格</p></div></div>
+        </div>
+      </div>
+
+      <!-- Step 3: 待付费 -->
+      <div id="apf3" style="display:none">
+        <div class="stc"><div class="stc-ic">✅</div><h3>审核通过！</h3><p>恭喜！您的资料已通过审核<br>请支付培训费用以继续</p></div>
+        <div class="apay">
+          <div class="apay-l"><div class="t">指导师培训课程</div><div class="s">含线上课程+线下工作坊+认证费</div></div>
+          <div class="apay-r"><div class="p">¥299</div><div class="op">原价 ¥899</div></div>
+        </div>
+        <div style="padding:0 14px"><button class="btn-primary" onclick="apPay()">立即支付 ¥299</button></div>
+      </div>
+
+      <!-- Step 4: 培训中 -->
+      <div id="apf4" style="display:none">
+        <div class="trc"><div class="trc-ic">🎓</div><h4>培训进行中</h4><p>已完成线上课程 3/5<br>线下工作坊时间：4月15日 · 杭州</p></div>
+        <div class="tl">
+          <div class="ti dk"><div class="tdot">✓</div><div class="tc"><h5>提交资料</h5><p>已完成</p></div></div>
+          <div class="ti dk"><div class="tdot">✓</div><div class="tc"><h5>人工审核</h5><p>已通过</p></div></div>
+          <div class="ti dk"><div class="tdot">✓</div><div class="tc"><h5>付费培训</h5><p>已完成</p></div></div>
+          <div class="ti ac"><div class="tdot">4</div><div class="tc"><h5>线下培训</h5><p>4月15日 · 杭州</p></div></div>
+          <div class="ti"><div class="tdot">5</div><div class="tc"><h5>上传证书</h5><p>培训完成后</p></div></div>
+        </div>
+        <div class="apsec" style="margin:0 14px 14px">
+          <div class="apti">培训任务</div>
+          <div style="padding:8px 0;border-bottom:0.5px solid var(--gray-6);display:flex;align-items:center;gap:10px">
+            <div style="width:22px;height:22px;background:rgba(52,199,89,0.15);border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--green);font-size:10px">✓</div>
+            <div style="flex:1"><div style="font-size:13px">完成线上视频课程</div><div style="font-size:11px;color:var(--gray-2)">3/5 已完成</div></div>
+          </div>
+          <div style="padding:8px 0;border-bottom:0.5px solid var(--gray-6);display:flex;align-items:center;gap:10px">
+            <div style="width:22px;height:22px;background:rgba(52,199,89,0.15);border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--green);font-size:10px">✓</div>
+            <div style="flex:1"><div style="font-size:13px">提交作业×2</div><div style="font-size:11px;color:var(--gray-2)">2/2 已提交</div></div>
+          </div>
+          <div style="padding:8px 0;display:flex;align-items:center;gap:10px">
+            <div style="width:22px;height:22px;background:var(--gray-5);border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--gray-2);font-size:10px">4</div>
+            <div style="flex:1"><div style="font-size:13px">参加线下工作坊</div><div style="font-size:11px;color:var(--gray-2)">4月15日 · 杭州</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 5: 拿证 -->
+      <div id="apf5" style="display:none">
+        <div class="stc"><div class="stc-ic">🎉</div><h3>培训完成！</h3><p>恭喜完成全部培训课程<br>请上传您的证书完成最终认证</p></div>
+        <div class="apsec" style="margin:0 14px">
+          <div class="apti">上传证书</div>
+          <div class="upz" style="margin-top:10px"><div class="upz-ic">📜</div><p class="upz-p">上传电子版证书照片</p><p class="upz-s">证书：人力资源管理师（二级）</p></div>
+          <button class="btn-primary" onclick="apCert()" style="margin-top:14px">提交认证</button>
+        </div>
+      </div>
+
+      <!-- Step 6: 成功 -->
+      <div id="apf6" style="display:none">
+        <div class="stc"><div class="stc-ic">🎊</div><h3>认证成功！</h3><p>恭喜您正式成为HR商学院指导师<br>可以开始接单赚钱了！</p></div>
+        <div style="padding:12px 14px"><button class="btn-primary" onclick="goto('pg-home')">进入平台接单 →</button></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function goto(id) {
+  document.querySelectorAll('.sc > div').forEach(function(d){ d.classList.remove('active'); });
+  document.getElementById(id).classList.add('active');
+  window.scrollTo(0,0);
+}
+
+function pickId(el, t) {
+  document.getElementById('ca').classList.remove('sel');
+  document.getElementById('cb').classList.remove('sel');
+  el.classList.add('sel');
+}
+
+function htab(n, el) {
+  document.querySelectorAll('.htc').forEach(function(c){ c.classList.remove('on'); });
+  document.querySelectorAll('.htab').forEach(function(t){ t.classList.remove('on'); });
+  el.classList.add('on');
+  document.getElementById('htc'+n).classList.add('on');
+}
+
+function goOrders() {
+  document.querySelectorAll('.htc').forEach(function(c){ c.classList.remove('on'); });
+  document.querySelectorAll('.htab').forEach(function(t){ t.classList.remove('on'); });
+  document.querySelectorAll('.htab')[1].classList.add('on');
+  document.getElementById('htc1').classList.add('on');
+}
+
+function goMine() {
+  document.querySelectorAll('.htc').forEach(function(c){ c.classList.remove('on'); });
+  document.querySelectorAll('.htab').forEach(function(t){ t.classList.remove('on'); });
+  document.querySelectorAll('.htab')[2].classList.add('on');
+  document.getElementById('htc2').classList.add('on');
+}
+
+function toggleChip(el) { el.classList.toggle('on'); }
+
+function apStep(n) {
+  for(var i=1;i<=5;i++){
+    var s=document.getElementById('aps'+i);
+    s.classList.remove('ac','dk');
+    if(i<n) s.classList.add('dk');
+    if(i===n) s.classList.add('ac');
+  }
+  for(var j=1;j<=6;j++){
+    var f=document.getElementById('apf'+j);
+    if(f) f.style.display='none';
+  }
+  var target=document.getElementById('apf'+n);
+  if(target){ target.style.display='flex'; target.classList.add('apbody'); }
+  window.scrollTo(0,0);
+}
+
+function apSubmit() {
+  apStep(2);
+  setTimeout(function(){ apStep(3); },3000);
+}
+function apPay() { apStep(4); }
+function apCert() { apStep(6); }
+
+function doAccept(btn) {
+  btn.textContent='已接单';
+  btn.style.background='var(--gray-5)';
+  btn.style.color='var(--gray-2)';
+  btn.style.boxShadow='none';
+  btn.disabled=true;
+  alert('接单成功！对方会收到通知');
+}
+function doReject(btn) {
+  var card=btn.closest('.oc');
+  card.style.transition='opacity 0.3s';
+  card.style.opacity='0';
+  setTimeout(function(){ card.style.display='none'; },300);
+}
+</script>
+</body>
+</html>

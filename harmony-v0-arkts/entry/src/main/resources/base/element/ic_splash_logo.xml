@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- STARLINK FUTURE 品牌 Logo -->
+<!-- 圆形图标：青色上弧(S) + 橙色下弧(F) -->
+<vector xmlns:ohos="http://schemas.huawei.com/res/ohos"
+    width="200vp"
+    height="200vp"
+    viewportWidth="200"
+    viewportHeight="200">
+
+    <!-- 青色上弧：STARLINK -->
+    <path
+        pathData="M55,90 Q55,50 100,50 Q145,50 145,80 Q145,110 100,110 Q70,110 70,90"
+        strokeWidth="16"
+        strokeColor="#00ADC1"
+        fillColor="#00000000"
+        strokeLineCap="round"
+        strokeLineJoin="round"/>
+
+    <!-- 青色上小弧 -->
+    <path
+        pathData="M70,68 Q70,56 100,56 Q125,56 125,68"
+        strokeWidth="10"
+        strokeColor="#00ADC1"
+        fillColor="#00000000"
+        strokeLineCap="round"/>
+
+    <!-- 橙色下弧：FUTURE -->
+    <path
+        pathData="M145,110 Q145,150 100,150 Q55,150 55,110"
+        strokeWidth="16"
+        strokeColor="#EC7C38"
+        fillColor="#00000000"
+        strokeLineCap="round"
+        strokeLineJoin="round"/>
+
+    <!-- 橙色下小弧 -->
+    <path
+        pathData="M130,130 Q130,144 100,144 Q75,144 75,130"
+        strokeWidth="10"
+        strokeColor="#EC7C38"
+        fillColor="#00000000"
+        strokeLineCap="round"/>
+
+</vector>

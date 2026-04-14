@@ -3,6 +3,7 @@
 package com.xlwl.AiMian.ui.profile
 
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,15 +15,16 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Logout
 import androidx.compose.material.icons.outlined.PrivacyTip
@@ -33,17 +35,14 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.Divider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,32 +52,39 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
-import com.google.gson.Gson
 import com.xlwl.AiMian.data.auth.AuthManager
-import com.xlwl.AiMian.data.model.User
+import com.xlwl.AiMian.ui.components.CompactTopBar
 import kotlinx.coroutines.launch
+
+private val PageGradient = Brush.verticalGradient(
+    colors = listOf(
+        Color(0xFF00ACC3), // 顶部蓝
+        Color(0xFFE9F7F9),
+        Color(0xFFE9F7F9)
+    )
+)
+private val AccentOrange = Color(0xFFEC7C38)
+private val AccentSoft = Color(0xFFFFC48A)
+private val TitleColor = Color(0xFF1D1F24)
+private val SubtleText = Color(0xFF7C818A)
+private val DividerColor = Color(0xFFE9EAEE)
+private val CardShape = RoundedCornerShape(12.dp)
 
 @Composable
 fun ProfileSettingsRoute(
     authManager: AuthManager,
     onBack: () -> Unit,
-    onLogoutSuccess: () -> Unit
+    onLogoutSuccess: () -> Unit,
+    onNavigatePersonalInfo: () -> Unit,
+    onNavigatePrivacy: () -> Unit
 ) {
     val context = LocalContext.current
-    val gson = remember { Gson() }
-    val userJson by authManager.userJsonFlow.collectAsState(initial = null)
-    val user = remember(userJson) {
-        userJson?.let { runCatching { gson.fromJson(it, User::class.java) }.getOrNull() }
-    }
     val scope = rememberCoroutineScope()
     var showConfirmDialog by rememberSaveable { mutableStateOf(false) }
 
@@ -91,10 +97,13 @@ fun ProfileSettingsRoute(
     }
 
     ProfileSettingsScreen(
-        user = user,
         onBack = onBack,
         onOptionSelected = { label ->
-            Toast.makeText(context, "$label 功能即将上线", Toast.LENGTH_SHORT).show()
+            when (label) {
+                "个人资料" -> onNavigatePersonalInfo()
+                "隐私与权限" -> onNavigatePrivacy()
+                else -> Toast.makeText(context, "$label 敬请期待", Toast.LENGTH_SHORT).show()
+            }
         },
         onLogoutClick = { showConfirmDialog = true }
     )
@@ -111,7 +120,7 @@ fun ProfileSettingsRoute(
                         logoutAction.value.invoke()
                     }
                 ) {
-                    Text("退出", color = Color(0xFFEC7C38))
+                    Text("退出", color = AccentOrange)
                 }
             },
             dismissButton = {
@@ -125,139 +134,68 @@ fun ProfileSettingsRoute(
 
 @Composable
 private fun ProfileSettingsScreen(
-    user: User?,
     onBack: () -> Unit,
     onOptionSelected: (String) -> Unit,
     onLogoutClick: () -> Unit
 ) {
     val scrollState = rememberScrollState()
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        text = "通用设置",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 18.sp
-                        )
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                            contentDescription = "返回"
-                        )
-                    }
-                }
+            CompactTopBar(
+                title = "通用设置",
+                onBack = onBack,
+                containerColor = Color.Transparent,
+                contentColor = Color.White
             )
         },
-        containerColor = Color(0xFFF7F7F9)
+        containerColor = Color.Transparent
     ) { padding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(scrollState)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .background(PageGradient)
         ) {
-            UserCard(user)
-            SettingSection(
-                title = "账号与安全",
-                options = listOf(
-                    SettingOption(
-                        icon = Icons.Outlined.Settings,
-                        label = "个人资料"
-                    ),
-                    SettingOption(
-                        icon = Icons.Outlined.PrivacyTip,
-                        label = "隐私与权限"
-                    )
-                ),
-                onOptionSelected = onOptionSelected
-            )
-            SettingSection(
-                title = "帮助与支持",
-                options = listOf(
-                    SettingOption(
-                        icon = Icons.Outlined.SupportAgent,
-                        label = "客服支持"
-                    )
-                ),
-                onOptionSelected = onOptionSelected
-            )
-            LogoutCard(onLogoutClick = onLogoutClick)
-            Spacer(modifier = Modifier.height(12.dp))
-        }
-    }
-}
-
-@Composable
-private fun UserCard(user: User?) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (!user?.avatar.isNullOrBlank()) {
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(user?.avatar)
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = "头像",
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(CircleShape)
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFFECEEF5)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = user?.name?.firstOrNull()?.uppercaseChar()?.toString() ?: "星",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                    .padding(bottom = navPadding.calculateBottomPadding() + 24.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                SettingSection(
+                    title = "账号与安全",
+                    subtitle = "个人资料、隐私控制",
+                    options = listOf(
+                        SettingOption(
+                            icon = Icons.Outlined.Settings,
+                            label = "个人资料",
+                            description = "头像、昵称、基础信息"
                         ),
-                        color = Color(0xFF2B2C34)
-                    )
-                }
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = user?.name?.takeIf { !it.isNullOrBlank() } ?: "星链候选人",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.SemiBold
+                        SettingOption(
+                            icon = Icons.Outlined.PrivacyTip,
+                            label = "隐私与权限",
+                            description = "登录设备、通知、数据授权"
+                        )
                     ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    onOptionSelected = onOptionSelected
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = user?.email ?: "登录邮箱未绑定",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        color = Color(0xFF8C8F93),
-                        fontSize = 13.sp
+                SettingSection(
+                    title = "帮助与支持",
+                    subtitle = "服务与反馈",
+                    options = listOf(
+                        SettingOption(
+                            icon = Icons.Outlined.SupportAgent,
+                            label = "客服支持",
+                            description = "遇到问题？联系人工客服"
+                        )
                     ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    onOptionSelected = onOptionSelected
                 )
+                LogoutCard(onLogoutClick = onLogoutClick)
+                Spacer(modifier = Modifier.height(8.dp))
             }
         }
     }
@@ -266,68 +204,62 @@ private fun UserCard(user: User?) {
 @Composable
 private fun SettingSection(
     title: String,
+    subtitle: String? = null,
     options: List<SettingOption>,
     onOptionSelected: (String) -> Unit
 ) {
     if (options.isEmpty()) return
-    Text(
-        text = title,
-        style = MaterialTheme.typography.titleSmall.copy(
-            fontWeight = FontWeight.Medium,
-            color = Color(0xFF6E7073)
-        ),
-        modifier = Modifier.padding(horizontal = 4.dp)
-    )
-    Spacer(modifier = Modifier.height(8.dp))
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        shape = RoundedCornerShape(16.dp)
+    Column(
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            options.forEachIndexed { index, option ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onOptionSelected(option.label) }
-                        .padding(horizontal = 20.dp, vertical = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Icon(
-                        imageVector = option.icon,
-                        contentDescription = option.label,
-                        tint = Color(0xFFEC7C38),
-                        modifier = Modifier.size(20.dp)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(7.dp)
+                    .background(
+                        brush = Brush.linearGradient(listOf(AccentSoft, AccentOrange)),
+                        shape = CircleShape
                     )
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = option.label,
-                            style = MaterialTheme.typography.bodyLarge.copy(
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Medium
-                            )
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TitleColor
+                    )
+                )
+                subtitle?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = SubtleText,
+                            fontSize = 12.sp
                         )
-                        option.description?.let {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = it,
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    color = Color(0xFF9A9DA3),
-                                    fontSize = 12.sp
-                                )
-                            )
-                        }
-                    }
-                    Icon(
-                        imageVector = Icons.Outlined.ChevronRight,
-                        contentDescription = null,
-                        tint = Color(0xFFB8BBC0)
                     )
                 }
-                if (index != options.lastIndex) {
-                    Divider(color = Color(0xFFF0F1F5), thickness = 0.8.dp)
+            }
+        }
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = CardShape,
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                options.forEachIndexed { index, option ->
+                    SettingRow(option = option, onClick = { onOptionSelected(option.label) })
+                    if (index != options.lastIndex) {
+                        HorizontalDivider(
+                            color = DividerColor,
+                            thickness = 0.6.dp,
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
+                    }
                 }
             }
         }
@@ -335,48 +267,132 @@ private fun SettingSection(
 }
 
 @Composable
+private fun SettingRow(
+    option: SettingOption,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .background(
+                    brush = Brush.linearGradient(listOf(AccentSoft, AccentOrange)),
+                    shape = CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = option.icon,
+                contentDescription = option.label,
+                tint = Color.White,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = option.label,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = TitleColor
+                )
+            )
+            option.description?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = SubtleText,
+                        fontSize = 12.sp
+                    )
+                )
+            }
+        }
+        Icon(
+            imageVector = Icons.Outlined.ChevronRight,
+            contentDescription = null,
+            tint = Color(0xFFB6BAC1)
+        )
+    }
+}
+
+@Composable
 private fun LogoutCard(onLogoutClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF5EE)),
+        shape = CardShape,
+        colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        shape = RoundedCornerShape(16.dp)
+        border = BorderStroke(1.dp, AccentOrange.copy(alpha = 0.2f))
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(PaddingValues(horizontal = 20.dp, vertical = 24.dp)),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 16.dp, vertical = 18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                text = "退出后您将无法收到消息通知，需要重新登录才能继续体验所有功能。",
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontSize = 13.sp,
-                    color = Color(0xFFBF5B21)
-                ),
-                modifier = Modifier.fillMaxWidth()
-            )
-            Button(
-                onClick = onLogoutClick,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFEC7C38),
-                    contentColor = Color.White
-                ),
-                shape = RoundedCornerShape(24.dp),
-                contentPadding = PaddingValues(horizontal = 32.dp, vertical = 10.dp)
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .background(
+                        brush = Brush.linearGradient(
+                            colors = listOf(AccentOrange, AccentSoft)
+                        ),
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Outlined.Logout,
                     contentDescription = "退出登录",
+                    tint = Color.White,
                     modifier = Modifier.size(18.dp)
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 Text(
                     text = "退出登录",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TitleColor
+                    )
+                )
+                Text(
+                    text = "退出后需要重新登录才能接收消息通知并使用AI面试",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = SubtleText,
+                        fontSize = 12.sp
+                    )
+                )
+            }
+            Button(
+                onClick = onLogoutClick,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = AccentOrange,
+                    contentColor = Color.White
+                ),
+                shape = RoundedCornerShape(20.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    text = "退出",
                     style = MaterialTheme.typography.labelLarge.copy(
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = 15.sp
+                        fontSize = 13.sp
                     )
                 )
             }
