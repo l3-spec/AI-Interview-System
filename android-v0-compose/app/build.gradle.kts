@@ -29,8 +29,8 @@ plugins {
 //val defaultApiHost = "10.0.1.61"
 //val defaultApiHost = "10.0.1.77"
 //val defaultApiHost = "192.168.10.62"
-//val defaultApiHost = "10.0.1.33"
-val defaultApiHost = "192.168.124.56"
+val defaultApiHost = "10.0.1.33"
+//val defaultApiHost = "192.168.124.56"
 val defaultApiPort = 3001
 val defaultApiPath = "api"
 
@@ -170,6 +170,9 @@ dependencies {
     implementation("io.coil-kt:coil-svg:2.6.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
 
+    // WebView-based Live2D renderer (Plan D)
+    implementation("androidx.webkit:webkit:1.8.0")
+
     // Retrofit for networking
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
@@ -191,7 +194,7 @@ dependencies {
     implementation("androidx.camera:camera-view:$cameraXVersion")
     implementation("androidx.camera:camera-video:$cameraXVersion")
     implementation("com.infobip:google-webrtc:1.0.45036")
-    implementation(project(":duix-sdk"))
+    // implementation(project(":duix-sdk"))
     implementation("com.aliyun.dpa:oss-android-sdk:2.9.13")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
