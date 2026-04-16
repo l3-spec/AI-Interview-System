@@ -29,5 +29,5 @@ dependencyResolutionManagement {
 rootProject.name = "android-v0-compose"
 
 include(":app")
-include(":duix-sdk")
-project(":duix-sdk").projectDir = File(rootDir, "../duix-sdk/duix-android/dh_aigc_android/duix-sdk")
+// include(":duix-sdk")
+// project(":duix-sdk").projectDir = File(rootDir, "../duix-sdk/duix-android/dh_aigc_android/duix-sdk")

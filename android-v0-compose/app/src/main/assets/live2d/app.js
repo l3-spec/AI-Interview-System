@@ -1,323 +1,188 @@
 /**
- * Live2D WebView App - JavaScript Interface for Android
- * Uses pixi-live2d-display for Cubism 4 model rendering
+ * Live2D WebView App - Debug v7
+ * Uses XMLHttpRequest instead of fetch() for local asset loading.
+ * fetch() cannot access file:// URLs in Android WebView — XHR can.
  */
-(function() {
+(function () {
     'use strict';
 
-    const Live2DApp = window.Live2DApp || {};
+    var Live2DApp = {};
+    var app = null;
+    var model = null;
+    var isReady = false;
+    var currentOpenY = 0.0;
+    var currentForm = 0.0;
 
-    // State
-    let app = null;
-    let model = null;
-    let isReady = false;
-    let modelPath = '';
+    // Log to both console and on-screen PIXI text
+    var statusText = null;
+    function log(msg) {
+        console.log('[Live2DApp] ' + msg);
+        var loading = document.getElementById('loading');
+        if (loading) loading.innerHTML = msg;
+        if (app && app.stage) showCanvasText(msg);
+    }
 
-    // Cubism parameter names
-    const PARAM_MOUTH_OPEN_Y = 'ParamMouthOpenY';
-    const PARAM_MOUTH_FORM = 'ParamMouthForm';
-
-    // Current mouth values
-    let currentOpenY = 0.0;
-    let currentForm = 0.0;
-
-    // Breathing animation
-    let breathTime = 0;
+    function showCanvasText(msg) {
+        try {
+            if (!statusText) {
+                statusText = new PIXI.Text('', {
+                    fill: 0x00FF00,
+                    fontSize: 13,
+                    fontFamily: 'monospace'
+                });
+                statusText.x = 8;
+                statusText.y = 8;
+                app.stage.addChild(statusText);
+            }
+            statusText.text = '[' + new Date().toISOString().substr(11, 12) + '] ' + msg;
+        } catch (e) {}
+    }
 
     /**
-     * Initialize Live2D app with model path
-     * @param {string} path - e.g., "model/haru/"
+     * Load a local file using XMLHttpRequest (works with file:// URLs in WebView).
+     * Returns a Promise resolving to the response text.
      */
-    function init(path) {
-        console.log('[Live2DApp] init:', path);
-        modelPath = path;
-
-        const canvas = document.getElementById('canvas');
-        const loading = document.getElementById('loading');
-
-        if (!canvas) {
-            notifyError('Canvas not found');
-            return;
-        }
-
-        try {
-            // Initialize PIXI Application
-            const pixiOptions = {
-                view: canvas,
-                autoStart: true,
-                backgroundColor: 0x000000,
-                antialias: true,
-                resolution: window.devicePixelRatio || 1,
-                autoDensity: true
-            };
-
-            app = new PIXI.Application(pixiOptions);
-
-            // Handle resize
-            const resize = () => {
-                const w = window.innerWidth;
-                const h = window.innerHeight;
-                app.renderer.resize(w, h);
-                if (model) {
-                    model.x = w / 2;
-                    model.y = h / 2;
-                    // Scale to fit
-                    const scale = Math.min(w, h) / 400;
-                    model.scale.set(scale);
+    function xhrLoad(url) {
+        return new Promise(function (resolve, reject) {
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', url, true);
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4) {
+                    if (xhr.status === 200 || xhr.status === 0) {
+                        resolve(xhr.responseText);
+                    } else {
+                        reject(new Error('XHR failed: status=' + xhr.status + ' url=' + url));
+                    }
                 }
             };
-            window.addEventListener('resize', resize);
+            xhr.onerror = function () {
+                reject(new Error('XHR error for: ' + url));
+            };
+            xhr.send(null);
+        });
+    }
 
-            // Load model
-            loadModel(path)
-                .then(() => {
-                    hideLoading();
-                    isReady = true;
-                    notifyReady();
-                    startAnimation();
-                    resize();
-                    console.log('[Live2DApp] Ready!');
-                })
-                .catch(err => {
-                    console.error('[Live2DApp] Load error:', err);
-                    // Show placeholder if model fails
-                    showPlaceholder();
-                    hideLoading();
-                    isReady = true;
-                    notifyReady();
-                    startAnimation();
-                });
+    function init(modelPath) {
+        try {
+            log('init() path=' + modelPath);
+
+            var canvas = document.getElementById('canvas');
+            if (!canvas) { log('ERROR: no canvas'); return; }
+            if (typeof PIXI === 'undefined') { log('ERROR: PIXI undefined'); return; }
+            log('PIXI ' + PIXI.VERSION + ' OK');
+
+            if (typeof PIXI.live2d === 'undefined') { log('ERROR: PIXI.live2d undefined'); return; }
+            log('PIXI.live2d OK');
+
+            var w = Math.max(canvas.clientWidth || 400, 400);
+            var h = Math.max(canvas.clientHeight || 400, 400);
+
+            app = new PIXI.Application({
+                view: canvas,
+                autoStart: true,
+                backgroundColor: 0x333333,
+                antialias: true,
+                resolution: window.devicePixelRatio || 1,
+                autoDensity: true,
+                width: w,
+                height: h
+            });
+            log('PIXI app created');
+
+            // Draw YELLOW circle
+            var g = new PIXI.Graphics();
+            g.beginFill(0xFFFF00);
+            g.drawCircle(w / 2, h / 2, 100);
+            g.endFill();
+            app.stage.addChild(g);
+
+            var label = new PIXI.Text('YELLOW CIRCLE = PIXI OK', {
+                fill: 0xFFFF00, fontSize: 16, fontFamily: 'monospace'
+            });
+            label.x = w / 2 - 100;
+            label.y = h / 2 + 120;
+            app.stage.addChild(label);
+
+            log('Yellow circle OK, loading model via XHR...');
+            loadModelWithXHR(modelPath);
 
         } catch (err) {
-            console.error('[Live2DApp] Init error:', err);
-            notifyError(err.message);
-            showPlaceholder();
-            hideLoading();
-            isReady = true;
-            notifyReady();
+            log('init() CRASHED: ' + err.message);
         }
     }
 
-    /**
-     * Load Live2D model using pixi-live2d-display
-     */
-    async function loadModel(path) {
-        const modelJsonPath = path + 'haru.model3.json';
+    function loadModelWithXHR(modelPath) {
+        // Build absolute path to model JSON
+        var modelJsonUrl = 'file:///android_asset/live2d/' + modelPath + 'haru.model3.json';
+        log('XHR loading: ' + modelJsonUrl);
 
-        console.log('[Live2DApp] Loading:', modelJsonPath);
+        xhrLoad(modelJsonUrl)
+            .then(function (jsonText) {
+                log('XHR got ' + jsonText.length + ' bytes');
+                var modelJson = JSON.parse(jsonText);
+                log('JSON parsed, keys=' + Object.keys(modelJson).join(','));
 
-        const response = await fetch(modelJsonPath);
-        if (!response.ok) {
-            throw new Error('Failed to fetch model JSON: ' + response.status);
-        }
+                var tex = (modelJson.FileReferences && modelJson.FileReferences.Textures) || [];
+                var moc = (modelJson.FileReferences && modelJson.FileReferences.Moc) || '?';
+                log('Moc=' + moc + ', Textures=' + JSON.stringify(tex));
 
-        const modelJson = await response.json();
+                // Now try Live2DModel.from with the absolute file:// URL
+                log('Creating Live2DModel from: ' + modelJsonUrl);
+                return PIXI.live2d.Live2DModel.from(modelJsonUrl, { autoInteract: false });
+            })
+            .then(function (mdl) {
+                log('Live2DModel SUCCESS!');
+                model = mdl;
+                app.stage.removeChildren();
+                app.stage.addChild(model);
 
-        // Preload textures
-        const texturePaths = modelJson.FileReferences.Textures || [];
-        const textures = [];
+                var scale = Math.min(app.screen.width, app.screen.height) / 400;
+                model.x = app.screen.width / 2;
+                model.y = app.screen.height / 2;
+                model.scale.set(scale);
 
-        for (const texPath of texturePaths) {
-            const fullPath = path + texPath;
-            try {
-                const tex = await loadTexture(fullPath);
-                textures.push(tex);
-            } catch (e) {
-                console.warn('[Live2DApp] Texture load failed:', fullPath, e);
-                // Continue without this texture
-            }
-        }
-
-        if (textures.length === 0) {
-            throw new Error('No textures loaded');
-        }
-
-        // Create Live2D model using PIXI Live2D
-        const { Live2DModel } = PIXI.live2d;
-
-        model = await Live2DModel.from(modelJsonPath, {
-            autoInteract: false
-        });
-
-        // Set first texture if model loaded
-        if (textures.length > 0 && model.internalModel) {
-            try {
-                model.internalModel.setTexture(0, textures[0]);
-            } catch (e) {
-                console.warn('[Live2DApp] Could not set texture:', e);
-            }
-        }
-
-        app.stage.addChild(model);
-
-        console.log('[Live2DApp] Model loaded successfully');
-        return model;
+                isReady = true;
+                notifyReady();
+                log('>>> MODEL VISIBLE <<<');
+            })
+            .catch(function (err) {
+                log('Model load FAILED: ' + err.message);
+                isReady = true;
+                notifyReady();
+            });
     }
 
-    /**
-     * Load texture as PIXI texture
-     */
-    function loadTexture(path) {
-        return new Promise((resolve, reject) => {
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.onload = () => {
-                const baseTexture = PIXI.BaseTexture.from(img);
-                resolve(new PIXI.Texture(baseTexture));
-            };
-            img.onerror = reject;
-            img.src = path;
-        });
-    }
+    function setMouthOpenness(v) { currentOpenY = Math.max(0, Math.min(1, v)); }
+    function setMouthForm(v) { currentForm = Math.max(-1, Math.min(1, v)); }
+    function reset() { currentOpenY = 0; currentForm = 0; }
+    function checkReady() { return isReady; }
 
-    /**
-     * Show placeholder (simple animated face) when model fails
-     */
-    function showPlaceholder() {
-        const g = new PIXI.Graphics();
-        const w = app.screen.width;
-        const h = app.screen.height;
-
-        // Draw a simple animated placeholder
-        const drawFace = (openY) => {
-            g.clear();
-            g.beginFill(0xFFE4C4);
-            g.drawCircle(w/2, h/2, 80);
-            g.endFill();
-
-            // Eyes
-            g.beginFill(0x333333);
-            g.drawCircle(w/2 - 25, h/2 - 10, 8);
-            g.drawCircle(w/2 + 25, h/2 - 10, 8);
-            g.endFill();
-
-            // Mouth (oval that changes with openY)
-            g.beginFill(0xCC4444);
-            const mouthW = 30;
-            const mouthH = 10 + openY * 25;
-            g.drawEllipse(w/2, h/2 + 30, mouthW, mouthH);
-            g.endFill();
-        };
-
-        drawFace(0);
-
-        app.stage.addChild(g);
-
-        // Animate
-        let t = 0;
-        app.ticker.add(() => {
-            t += 0.05;
-            const openY = (Math.sin(t) + 1) / 2 * currentOpenY;
-            drawFace(openY || 0.1);
-        });
-    }
-
-    /**
-     * Start idle animation loop
-     */
-    function startAnimation() {
-        app.ticker.add(() => {
-            breathTime += 0.016;
-            updateMouthAnimation();
-        });
-    }
-
-    /**
-     * Update mouth animation based on current values
-     */
-    function updateMouthAnimation() {
-        if (!model) return;
-
-        try {
-            // Apply mouth parameters
-            model.setParameterById(PARAM_MOUTH_OPEN_Y, currentOpenY);
-            model.setParameterById(PARAM_MOUTH_FORM, currentForm);
-
-            // Subtle breathing
-            const breath = Math.sin(breathTime * 1.5) * 0.02 + 0.5;
-            try {
-                model.setParameterById('ParamBreast', breath);
-            } catch (e) { /* ignore */ }
-        } catch (e) {
-            // Model might not have these parameters
-        }
-    }
-
-    /**
-     * Set mouth openness (0.0 - 1.0)
-     */
-    function setMouthOpenness(value) {
-        currentOpenY = Math.max(0.0, Math.min(1.0, value));
-        console.log('[Live2DApp] setMouthOpenness:', currentOpenY);
-    }
-
-    /**
-     * Set mouth form (-1.0 to 1.0)
-     */
-    function setMouthForm(value) {
-        currentForm = Math.max(-1.0, Math.min(1.0, value));
-        console.log('[Live2DApp] setMouthForm:', currentForm);
-    }
-
-    /**
-     * Reset to neutral
-     */
-    function reset() {
-        currentOpenY = 0.0;
-        currentForm = 0.0;
-        console.log('[Live2DApp] reset');
-    }
-
-    /**
-     * Check if ready
-     */
-    function isReady() {
-        return isReady;
-    }
-
-    /**
-     * Hide loading indicator
-     */
-    function hideLoading() {
-        const loading = document.getElementById('loading');
-        if (loading) loading.style.display = 'none';
-    }
-
-    /**
-     * Notify Android that model is ready
-     */
     function notifyReady() {
-        if (window.Android && typeof window.Android.onReady === 'function') {
-            try {
-                window.Android.onReady();
-            } catch (e) {
-                console.warn('[Live2DApp] Android.onReady error:', e);
-            }
-        }
+        try { if (window.Android && window.Android.onReady) window.Android.onReady(); } catch (e) {}
     }
 
-    /**
-     * Notify Android of error
-     */
-    function notifyError(msg) {
-        if (window.Android && typeof window.Android.onError === 'function') {
-            try {
-                window.Android.onError(msg);
-            } catch (e) {
-                console.warn('[Live2DApp] Android.onError error:', e);
-            }
-        }
-    }
-
-    // Export API
     window.Live2DApp = {
-        init,
-        setMouthOpenness,
-        setMouthForm,
-        reset,
-        isReady
+        init: init,
+        setMouthOpenness: setMouthOpenness,
+        setMouthForm: setMouthForm,
+        reset: reset,
+        isReady: checkReady
     };
 
-    console.log('[Live2DApp] Script loaded.');
+    function bootstrap() {
+        if (typeof PIXI === 'undefined') {
+            setTimeout(bootstrap, 300);
+            return;
+        }
+        log('PIXI ready, init starting...');
+        init('model/haru/');
+    }
 
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bootstrap);
+    } else {
+        bootstrap();
+    }
+
+    log('app.js v7 loaded (XHR mode)');
 })();

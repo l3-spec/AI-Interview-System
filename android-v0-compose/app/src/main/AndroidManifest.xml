@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- 阿里云数字人 SDK 要求 minSdkVersion 26 -->
+    <uses-sdk
+        android:minSdkVersion="24"
+        tools:overrideLibrary="com.tongyi.video_chat_sdk,com.alivc.rtc" />
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -40,6 +46,13 @@
         <!-- 数字人面试全屏Activity -->
         <activity
             android:name=".DigitalInterviewActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.DigitalInterview" />
+
+        <!-- 阿里云数字人面试 Activity（替代 Live2D 方案） -->
+        <activity
+            android:name=".AliyunAvatarInterviewActivity"
             android:exported="false"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.DigitalInterview" />

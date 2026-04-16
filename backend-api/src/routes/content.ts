@@ -23,6 +23,11 @@ import {
   createUserPost,
   getMyPosts,
   deleteMyPost,
+  likeComment,
+  unlikeComment,
+  addCommentReaction,
+  removeCommentReaction,
+  getCommentReplies,
 } from '../controllers/contentController';
 import { authenticateToken, optionalAuthenticate, requireUser } from '../middleware/auth';
 import { uploadMultiple } from '../middleware/upload';
@@ -63,5 +68,14 @@ router.delete('/expert-posts/:id/favorite', authenticateToken, requireUser, unfa
 // 推广职位路由
 router.get('/promoted-jobs', getPromotedJobs);
 router.post('/promoted-jobs/:id/click', recordPromotedJobClick);
+
+// 评论通用路由
+router.post('/comments/:id/like', authenticateToken, requireUser, likeComment);
+router.delete('/comments/:id/like', authenticateToken, requireUser, unlikeComment);
+router.post('/comments/:id/reactions', authenticateToken, requireUser, addCommentReaction);
+// 同时支持 DELETE 和 POST 用于移除表情，避免 DELETE 带 body 的问题
+router.delete('/comments/:id/reactions', authenticateToken, requireUser, removeCommentReaction);
+router.post('/comments/:id/reactions/remove', authenticateToken, requireUser, removeCommentReaction);
+router.get('/comments/:id/replies', optionalAuthenticate, getCommentReplies);
 
 export default router;

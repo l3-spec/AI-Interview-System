@@ -1,38 +1,54 @@
 package com.xlwl.AiMian.digitalhuman
 
-import android.webkit.WebView
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import com.xlwl.AiMian.duix.Live2DJSBridge
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * [DigitalHumanController] implementation backed by the Live2D WebView.
+ * Live2D-based implementation of [DigitalHumanController].
  *
- * Each instance owns a [Live2DJSBridge] that communicates with the
- * WebView's JavaScript layer via evaluateJavascript.
- *
- * Used by [com.xlwl.AiMian.duix.DuixViewHost] via
- * [com.xlwl.AiMian.duix.createLive2DDigitalHumanController].
+ * Collects mouth-parameter updates from [LipSyncDriver] and forwards them
+ * to the WebView JS layer via [Live2DJSBridge].
  */
+@Composable
+fun rememberLive2DDigitalHumanController(
+    webViewRef: () -> Live2DJSBridge?
+): Live2DDigitalHumanController {
+    return remember {
+        Live2DDigitalHumanController(webViewRef)
+    }
+}
+
 class Live2DDigitalHumanController(
-    private val webView: WebView
+    private val webViewRef: () -> Live2DJSBridge?
 ) : DigitalHumanController {
 
-    private val bridge = Live2DJSBridge(webView)
+    private val _mouthOpenness = MutableStateFlow(0f)
+    private val _mouthForm = MutableStateFlow(0f)
 
     override fun updateMouthOpenness(value: Float) {
-        bridge.setMouthOpenness(value)
+        _mouthOpenness.value = value.coerceIn(0f, 1f)
+        webViewRef()?.setMouthOpenness(_mouthOpenness.value)
     }
 
     override fun updateMouthForm(value: Float) {
-        bridge.setMouthForm(value)
+        _mouthForm.value = value.coerceIn(-1f, 1f)
+        webViewRef()?.setMouthForm(_mouthForm.value)
     }
 
     override fun resetMouth() {
-        bridge.resetMouth()
+        _mouthOpenness.value = 0f
+        _mouthForm.value = 0f
+        webViewRef()?.resetMouth()
     }
 
     override fun onTtsPlayback(audioPath: String?, text: String?) {
-        // Audio playback is handled by VolcanoTtsService.
-        // Reset mouth after audio finishes to return to idle expression.
-        bridge.resetMouth()
+        // Handled by LipSyncDriver directly
     }
+
+    val mouthOpenness: StateFlow<Float> = _mouthOpenness.asStateFlow()
+    val mouthForm: StateFlow<Float> = _mouthForm.asStateFlow()
 }

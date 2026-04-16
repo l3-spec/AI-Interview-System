@@ -24,9 +24,9 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -48,6 +48,9 @@ import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.SentimentSatisfied
 import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import android.view.inputmethod.InputMethodManager
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -999,6 +1002,17 @@ private fun CommentsBottomSheetContent(
     onLoadReplies: (String) -> Unit,
     onClose: () -> Unit
 ) {
+    val focusRequester = remember { FocusRequester() }
+    val context = LocalContext.current
+    
+    LaunchedEffect(replyTarget) {
+        if (replyTarget != null) {
+            focusRequester.requestFocus()
+            val imm = context.getSystemService(InputMethodManager::class.java)
+            imm?.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
+        }
+    }
+    
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -1111,7 +1125,8 @@ private fun CommentsBottomSheetContent(
                             ),
                             modifier = Modifier
                                 .weight(1f)
-                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                                .padding(horizontal = 16.dp, vertical = 10.dp)
+                                .focusRequester(focusRequester),
                             decorationBox = { innerTextField ->
                                 val placeholder = if (replyTarget != null) "回复 @${replyTarget.author}" else "留下你的想法吧"
                                 if (commentDraft.isBlank()) {
@@ -1284,7 +1299,9 @@ private class PostDetailViewModel(
         if (content.isEmpty() || _uiState.value.isSubmittingComment) return
 
         val replyTarget = _uiState.value.replyTarget
-        val parentId = replyTarget?.id ?: replyTarget?.parentId
+        // 如果回复目标本身有parentId，则回复到同一个parentId（两级评论结构）
+        // 否则回复到该评论本身
+        val parentId = replyTarget?.let { it.parentId ?: it.id }
         val replyToUserId = replyTarget?.authorId
 
         viewModelScope.launch {
@@ -1318,16 +1335,17 @@ private class PostDetailViewModel(
     fun toggleCommentLike(commentId: String) {
         viewModelScope.launch {
             val comment = findComment(commentId) ?: return@launch
-            val currentlyLiked = comment.isLiked
+            val originalIsLiked = comment.isLiked
+            val originalLikeCount = comment.likeCount
 
             updateCommentInDetail(commentId) { 
                 it.copy(
-                    isLiked = !currentlyLiked,
-                    likeCount = if (currentlyLiked) max(0, it.likeCount - 1) else it.likeCount + 1
+                    isLiked = !originalIsLiked,
+                    likeCount = if (originalIsLiked) max(0, originalLikeCount - 1) else originalLikeCount + 1
                 ) 
             }
 
-            val result = if (currentlyLiked) {
+            val result = if (originalIsLiked) {
                 repository.unlikeComment(commentId)
             } else {
                 repository.likeComment(commentId)
@@ -1336,8 +1354,8 @@ private class PostDetailViewModel(
             result.onFailure {
                 updateCommentInDetail(commentId) { 
                     it.copy(
-                        isLiked = currentlyLiked,
-                        likeCount = if (currentlyLiked) it.likeCount + 1 else max(0, it.likeCount - 1)
+                        isLiked = originalIsLiked,
+                        likeCount = originalLikeCount
                     ) 
                 }
                 _uiState.value = _uiState.value.copy(message = "操作失败")
@@ -1350,6 +1368,7 @@ private class PostDetailViewModel(
         viewModelScope.launch {
             val comment = findComment(commentId) ?: return@launch
             val currentlyReacted = (comment.reactions[emoji] ?: 0) > 0
+            val originalReactions = comment.reactions.toMap()
             
             updateCommentInDetail(commentId) { 
                 val currentCount = it.reactions[emoji] ?: 0
@@ -1369,6 +1388,9 @@ private class PostDetailViewModel(
             }
             
             result.onFailure {
+                updateCommentInDetail(commentId) { 
+                    it.copy(reactions = originalReactions) 
+                }
                 _uiState.value = _uiState.value.copy(message = "操作失败")
             }
         }

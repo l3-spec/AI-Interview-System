@@ -67,11 +67,20 @@ export class DeepseekService {
 
   constructor() {
     this.providerName = process.env.LLM_PROVIDER || 'deepseek';
-    this.apiKey = process.env.LLM_API_KEY || process.env.DEEPSEEK_API_KEY || '';
-    this.apiUrl = process.env.LLM_API_URL || process.env.DEEPSEEK_API_URL || 'https://api.deepseek.com/v1/chat/completions';
-    this.model = process.env.LLM_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-chat';
-    this.maxTokens = parseInt(process.env.LLM_MAX_TOKENS || process.env.DEEPSEEK_MAX_TOKENS || '2000');
-    this.temperature = parseFloat(process.env.LLM_TEMPERATURE || process.env.DEEPSEEK_TEMPERATURE || '0.7');
+
+    // 支持火山引擎豆包
+    if (this.providerName === 'volcengine') {
+      this.apiKey = process.env.VOLCENGINE_API_KEY || '';
+      this.apiUrl = process.env.VOLCENGINE_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
+      this.model = process.env.VOLCENGINE_DOUBAO_MODEL || '';
+    } else {
+      this.apiKey = process.env.LLM_API_KEY || process.env.DEEPSEEK_API_KEY || '';
+      this.apiUrl = process.env.LLM_API_URL || process.env.DEEPSEEK_API_URL || 'https://api.deepseek.com/v1/chat/completions';
+      this.model = process.env.LLM_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+    }
+
+    this.maxTokens = parseInt(process.env.LLM_MAX_TOKENS || process.env.DEEPSEEK_MAX_TOKENS || process.env.VOLCENGINE_MAX_TOKENS || '2000');
+    this.temperature = parseFloat(process.env.LLM_TEMPERATURE || process.env.DEEPSEEK_TEMPERATURE || process.env.VOLCENGINE_TEMPERATURE || '0.7');
 
     // 如果没有API密钥，启用模拟模式
     this.isEnabled = !!this.apiKey;
@@ -383,13 +392,20 @@ export class DeepseekService {
       stream: false,
     };
 
+    const logTag = this.providerName === 'volcengine' ? '[豆包]' : '[Deepseek]';
     try {
-      console.log('[Deepseek] 请求报文:', JSON.stringify(requestData, null, 2));
+      console.log(`${logTag} 请求报文:`, JSON.stringify(requestData, null, 2));
     } catch (error) {
-      console.warn('[Deepseek] 请求报文记录失败:', error);
+      console.warn(`${logTag} 请求报文记录失败:`, error);
     }
 
-    const response = await axios.post(this.apiUrl, requestData, {
+    // 火山引擎格式：baseUrl 可能以 /api/v3 结尾，需要加上 /chat/completions
+    let finalUrl = this.apiUrl;
+    if (this.providerName === 'volcengine' && !finalUrl.includes('/chat/completions')) {
+      finalUrl = finalUrl.replace(/\/$/, '') + '/chat/completions';
+    }
+
+    const response = await axios.post(finalUrl, requestData, {
       headers: {
         'Authorization': `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json',
@@ -401,12 +417,12 @@ export class DeepseekService {
 
     const responseContent = responseData?.choices?.[0]?.message?.content ?? '';
     try {
-      console.log('[Deepseek] 返回内容:', responseContent);
+      console.log(`${logTag} 返回内容:`, responseContent);
       if (responseData?.usage) {
-        console.log('[Deepseek] Token 用量:', responseData.usage);
+        console.log(`${logTag} Token 用量:`, responseData.usage);
       }
     } catch (error) {
-      console.warn('[Deepseek] 返回内容记录失败:', error);
+      console.warn(`${logTag} 返回内容记录失败:`, error);
     }
 
     return responseData;
