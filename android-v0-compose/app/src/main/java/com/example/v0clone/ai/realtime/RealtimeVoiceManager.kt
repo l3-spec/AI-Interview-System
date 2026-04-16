@@ -10,6 +10,7 @@ import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.media.audiofx.Visualizer
 import android.util.Log
+import com.xlwl.AiMian.ai.realtime.VolcanoTtsService
 import com.xlwl.AiMian.digitalhuman.DigitalHumanController
 import io.socket.client.IO
 import io.socket.client.Socket
@@ -260,6 +261,7 @@ class RealtimeVoiceManager(private val context: Context) {
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val aliyunSpeechService = AliyunSpeechService(context.applicationContext)
+    private val volcanoTtsService = VolcanoTtsService(context.applicationContext)
     
     // VAD检测器
     private val vadDetector = VoiceActivityDetector(
@@ -991,9 +993,9 @@ class RealtimeVoiceManager(private val context: Context) {
         
         scope.launch {
             try {
-                Log.i(TAG, "开始调用阿里云TTS - textLen=${text.length}, textHash=$textHash")
-                val audioFile = aliyunSpeechService.synthesizeSpeech(text)
-                Log.i(TAG, "TTS成功，开始播放 - file=${audioFile.absolutePath}, textHash=$textHash")
+                Log.i(TAG, "开始调用火山引擎TTS - textLen=${text.length}, textHash=$textHash")
+                val audioFile = volcanoTtsService.synthesizeSpeech(text)
+                Log.i(TAG, "火山TTS成功，开始播放 - file=${audioFile.absolutePath}, textHash=$textHash")
                 playAudioFromPath(audioFile.absolutePath, textHash, text)
             } catch (e: Exception) {
                 Log.e(TAG, "客户端TTS失败", e)

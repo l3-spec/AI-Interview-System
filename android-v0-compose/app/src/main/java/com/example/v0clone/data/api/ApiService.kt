@@ -127,7 +127,7 @@ interface ApiService {
         @Body request: CommentReactionRequest
     ): ApiResponse<CommentReactionResult>
 
-    @DELETE("content/comments/{id}/reactions")
+    @POST("content/comments/{id}/reactions/remove")
     suspend fun removeCommentReaction(
         @Path("id") commentId: String,
         @Body request: CommentReactionRequest

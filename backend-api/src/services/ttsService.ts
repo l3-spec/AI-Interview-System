@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs';
 import { PrismaClient } from '@prisma/client';
 import * as crypto from 'crypto';
+import { volcengineTtsService } from './volcengine';
 
 const prisma = new PrismaClient();
 
@@ -77,6 +78,8 @@ export class TTSService {
         return !!(process.env.AZURE_TTS_KEY && process.env.AZURE_TTS_REGION);
       case 'baidu':
         return !!(process.env.BAIDU_TTS_APP_ID && process.env.BAIDU_TTS_API_KEY && process.env.BAIDU_TTS_SECRET_KEY);
+      case 'volcengine':
+        return !!process.env.VOLCENGINE_API_KEY;
       default:
         return false;
     }
@@ -124,6 +127,9 @@ export class TTSService {
             break;
           case 'baidu':
             result = await this.baiduTTS(text, voice);
+            break;
+          case 'volcengine':
+            result = await this.volcengineTTS(text, voice);
             break;
           default:
             throw new Error(`不支持的TTS提供商: ${this.provider}`);
@@ -712,6 +718,36 @@ export class TTSService {
   }
 
   /**
+   * 火山引擎 TTS
+   */
+  private async volcengineTTS(text: string, voice?: string): Promise<TTSResult> {
+    try {
+      const result = await volcengineTtsService.synthesize({
+        text,
+        voice,
+        saveToFile: true,
+      });
+
+      if (!result.success) {
+        console.log('火山引擎TTS失败，降级到模拟模式');
+        return await this.simulateTTS(text);
+      }
+
+      return {
+        success: true,
+        audioPath: result.audioPath,
+        audioUrl: result.audioUrl,
+        duration: result.duration,
+        fileSize: result.fileSize,
+      };
+    } catch (error) {
+      console.error('火山引擎TTS转换失败:', error);
+      console.log('降级到模拟模式');
+      return await this.simulateTTS(text);
+    }
+  }
+
+  /**
    * 获取支持的语音列表
    */
   getSupportedVoices(): { [provider: string]: string[] } {
@@ -725,12 +761,20 @@ export class TTSService {
       aliyun: ['siqi', 'xiaoyun', 'xiaogang', 'ruoxi', 'xiaowei'],
       azure: [
         'zh-CN-XiaoxiaoNeural',
-        'zh-CN-YunxiNeural', 
+        'zh-CN-YunxiNeural',
         'zh-CN-YunjianNeural',
         'zh-CN-XiaoyiNeural',
         'zh-CN-YunyangNeural'
       ],
       baidu: ['度小宇', '度小美', '度逍遥', '度丫丫'],
+      volcengine: [
+        'zh_female_qingxin',
+        'zh_female_wanrou',
+        'zh_female_tianmei',
+        'zh_female_zhiyin',
+        'zh_male_chunhou',
+        'zh_male_zhuangzhong'
+      ],
     };
   }
 

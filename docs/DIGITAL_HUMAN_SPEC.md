@@ -1,5 +1,16 @@
 # 数字人集成规范 - 三端统一标准
 
+## ✅ 已批准方案
+
+**方案 D**: WebRTC + 火山引擎 ASR/TTS + Live2D 渲染
+
+技术架构：
+```
+麦克风 → 火山引擎 ASR → DeepSeek → 火山引擎 TTS → Live2D 渲染
+```
+
+---
+
 ## 核心要求
 
 ### 性能指标（三端必须统一）
@@ -11,58 +22,28 @@
 | 帧率 | ≥ 30 FPS | 数字人动画流畅度 |
 | 内存占用 | < 100MB | 数字人模块单独计算 |
 
-### 风格选择
-- 卡通：适合年轻用户群体
-- 真人：适合正式面试场景
-- 2D：性能和包体积最优
+### 渲染方案
+- **统一渲染**: Live2D Cubism SDK
+- **平台支持**: Unity 版本支持 Android/iOS/HarmonyOS
+- **风格**: 卡通为主，可扩展真人/2D
 
-**禁止**：卡顿、死板、明显的合成感
-
----
-
-## 技术方案
-
-### Android（已实现）
-- SDK: DUIX SDK
-- 渲染: Live2D + GLSurfaceView
-- 语音: 火山引擎 ASR + VAD
-
-### iOS（待实现）
-- 方案待定，需要与 Android 对齐
-- 推荐优先考虑 WebRTC 方案
-
-### HarmonyOS（待实现）
-- 方案待定，需要与 Android 对齐
-- 使用 ArkTS 调用原生能力
+**禁止**: 卡顿、死板、明显的合成感
 
 ---
 
-## 统一接口
+## 技术实现
 
-### 数字人控制接口
+### 统一接口
 
 ```typescript
 interface DigitalHuman {
-  // 启动数字人
   start(): Promise<void>;
-  
-  // 停止数字人
   stop(): Promise<void>;
-  
-  // 发送语音数据（驱动口型）
   sendAudio(audioData: ArrayBuffer): void;
-  
-  // 接收文字并驱动数字人说话
   speak(text: string): Promise<void>;
-  
-  // 设置数字人样式
   setStyle(style: 'cartoon' | 'realistic' | '2d'): void;
 }
-```
 
-### 事件回调
-
-```typescript
 interface DigitalHumanListener {
   onReady(): void;
   onError(error: Error): void;
@@ -70,6 +51,16 @@ interface DigitalHumanListener {
   onAnimationFrame(frame: AnimationFrame): void;
 }
 ```
+
+### 技术栈
+
+| 组件 | 技术 | 状态 |
+|------|------|------|
+| ASR | 火山引擎 ASR | 已集成（Android） |
+| TTS | 火山引擎 TTS | 已集成（Android） |
+| 对话 | DeepSeek | 已集成（后端） |
+| 渲染 | Live2D Cubism SDK | 已集成（Android） |
+| 传输 | WebRTC | 待优化 |
 
 ---
 
@@ -86,4 +77,4 @@ interface DigitalHumanListener {
 
 ---
 
-最后更新: 2026-04-14
+最后更新: 2026-04-14 (方案 D 已批准)

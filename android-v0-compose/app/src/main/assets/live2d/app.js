@@ -1,8 +1,7 @@
 /**
- * Live2D WebView App
- * Self-contained: loads PIXI.js + pixi-live2d-display + model from local assets.
- * Exposes window.Live2DApp with init / setMouthOpenness / setMouthForm / reset / isReady.
- * Communicates with Kotlin via window.Android.onReady() / window.Android.onError(msg).
+ * Live2D WebView App - Debugged Version
+ * Every step logs visibly and falls back gracefully.
+ * Exposes window.Live2DApp with init/setMouthOpenness/setMouthForm/reset/isReady.
  */
 (function () {
     'use strict';
@@ -19,27 +18,49 @@
     let currentOpenY = 0.0;
     let currentForm = 0.0;
 
-    // Speaking state
-    let isSpeaking = false;
-    let speakingTicker = null;
+    // Placeholder circle color for debugging
+    let placeholderCircle = null;
 
-    // Placeholder graphics
-    let placeholderGraphics = null;
-    let placeholderT = 0;
+    // =============================================================
+    // STEP 1: Validate PIXI is loaded
+    // =============================================================
+    function log(msg) {
+        console.log('[Live2DApp] ' + msg);
+        const el = document.getElementById('loading');
+        if (el) el.innerHTML = msg;
+    }
 
-    /** Called by Android to initialise the model */
     function init(modelPath) {
-        console.log('[Live2DApp] init:', modelPath);
+        log('init() started, modelPath=' + modelPath);
 
         const canvas = document.getElementById('canvas');
-        const loading = document.getElementById('loading');
-
         if (!canvas) {
+            log('ERROR: canvas not found!');
             notifyError('Canvas not found');
             return;
         }
 
+        // STEP 2: Check PIXI
+        if (typeof PIXI === 'undefined') {
+            log('ERROR: PIXI not loaded!');
+            notifyError('PIXI not loaded');
+            return;
+        }
+        log('PIXI detected: ' + PIXI.VERSION);
+
+        // STEP 3: Check PIXI.live2d
+        if (typeof PIXI.live2d === 'undefined') {
+            log('ERROR: PIXI.live2d not available!');
+            notifyError('PIXI.live2d not available');
+            // Still try to show placeholder with basic PIXI
+            tryPIXIOnly(canvas);
+            return;
+        }
+        log('PIXI.live2d detected');
+
+        // STEP 4: Try creating PIXI Application
         try {
+            log('Creating PIXI.Application...');
             app = new PIXI.Application({
                 view: canvas,
                 autoStart: true,
@@ -47,21 +68,26 @@
                 antialias: true,
                 resolution: window.devicePixelRatio || 1,
                 autoDensity: true,
-                width: window.innerWidth,
-                height: window.innerHeight
+                width: canvas.clientWidth || window.innerWidth,
+                height: canvas.clientHeight || window.innerHeight
             });
+            log('PIXI.Application created OK, renderer=' + (app.renderer ? 'OK' : 'NULL'));
 
+            // Draw a visible diagnostic circle immediately
+            drawDiagnosticCircle(app);
+
+            // STEP 5: Try loading the model
             loadModel(modelPath)
-                .then(() => {
+                .then(function () {
+                    log('Model loaded successfully!');
                     hideLoading();
                     isReady = true;
                     notifyReady();
                     startAnimation();
                     resize();
-                    console.log('[Live2DApp] Ready!');
                 })
                 .catch(function (err) {
-                    console.error('[Live2DApp] Model load failed, showing placeholder:', err);
+                    log('Model load failed: ' + err.message + ' — showing placeholder');
                     showPlaceholder();
                     hideLoading();
                     isReady = true;
@@ -70,111 +96,142 @@
                 });
 
         } catch (err) {
-            console.error('[Live2DApp] Init error:', err);
+            log('PIXI Application error: ' + err.message);
             notifyError(err.message);
-            showPlaceholder();
+            // Try to show something with basic PIXI
+            tryPIXIOnly(canvas);
+        }
+    }
+
+    /** Draw a visible YELLOW circle so we know PIXI is rendering */
+    function drawDiagnosticCircle(pixiApp) {
+        try {
+            var g = new PIXI.Graphics();
+            g.beginFill(0xFFFF00); // Yellow
+            g.drawCircle(pixiApp.screen.width / 2, pixiApp.screen.height / 2, 60);
+            g.endFill();
+            pixiApp.stage.addChild(g);
+            log('Diagnostic circle drawn');
+        } catch (e) {
+            log('Cannot draw circle: ' + e.message);
+        }
+    }
+
+    /** Fallback: basic PIXI circle even without model */
+    function tryPIXIOnly(canvas) {
+        try {
+            if (!app) {
+                app = new PIXI.Application({
+                    view: canvas,
+                    autoStart: true,
+                    backgroundColor: 0x222222,
+                    width: window.innerWidth,
+                    height: window.innerHeight
+                });
+            }
+            drawDiagnosticCircle(app);
+            hideLoading();
+            isReady = true;
+            notifyReady();
+            startAnimation();
+        } catch (e) {
+            log('Even basic PIXI failed: ' + e.message);
             hideLoading();
             isReady = true;
             notifyReady();
         }
     }
 
-    /** Load Live2D model via Live2DModel.from() */
+    /** Load Live2D model */
     async function loadModel(modelPath) {
-        const modelJsonPath = modelPath + 'haru.model3.json';
-        console.log('[Live2DApp] Loading model JSON:', modelJsonPath);
+        var modelJsonPath = modelPath + 'haru.model3.json';
+        log('Fetching: ' + modelJsonPath);
 
-        const response = await fetch(modelJsonPath);
+        var response = await fetch(modelJsonPath);
+        log('Fetch status: ' + response.status);
+
         if (!response.ok) {
-            throw new Error('Failed to load model JSON: ' + response.status);
+            throw new Error('HTTP ' + response.status + ': ' + response.statusText);
         }
 
-        const modelJson = await response.json();
-        console.log('[Live2DApp] Model JSON loaded, creating Live2DModel...');
+        var modelJson = await response.json();
+        log('Model JSON parsed, keys: ' + Object.keys(modelJson).join(', '));
 
-        // Preload textures
-        const texturePaths = modelJson.FileReferences.Textures || [];
-        const textures = await Promise.all(texturePaths.map(function (texPath) {
-            return new Promise(function (resolve, reject) {
-                const img = new Image();
-                img.crossOrigin = 'anonymous';
-                img.onload = function () {
-                    resolve(new PIXI.Texture(new PIXI.BaseTexture(img)));
-                };
-                img.onerror = function () { reject(new Error('Texture load failed: ' + texPath)); };
-                img.src = modelPath + texPath;
-            });
-        }));
+        // Log texture paths
+        var textures = modelJson.FileReferences.Textures || [];
+        log('Texture count: ' + textures.length);
 
-        console.log('[Live2DApp] Textures loaded:', textures.length);
-
-        // Live2DModel.from handles everything from a URL
+        // Try Live2DModel.from
+        log('Calling PIXI.live2d.Live2DModel.from("' + modelJsonPath + '")...');
         model = await PIXI.live2d.Live2DModel.from(modelJsonPath, {
             autoInteract: false
         });
-
-        console.log('[Live2DApp] Live2DModel created, adding to stage...');
+        log('Live2DModel created');
 
         app.stage.addChild(model);
-        resize();
+
+        // Scale to fit
+        var scale = Math.min(window.innerWidth, window.innerHeight) / 400;
+        model.x = window.innerWidth / 2;
+        model.y = window.innerHeight / 2;
+        model.scale.set(scale);
+        log('Model added to stage, scale=' + scale);
     }
 
-    /** Draw simple animated placeholder */
+    /** Simple animated placeholder face */
     function showPlaceholder() {
-        placeholderGraphics = new PIXI.Graphics();
-        const w = app.screen.width;
-        const h = app.screen.height;
+        if (!app) return;
+        log('Creating placeholder face');
 
-        function draw(openY) {
-            placeholderGraphics.clear();
-            // Head
-            placeholderGraphics.beginFill(0xffe4c4);
-            placeholderGraphics.drawCircle(w / 2, h / 2, Math.min(w, h) * 0.35);
-            placeholderGraphics.endFill();
-            // Eyes
-            placeholderGraphics.beginFill(0x333333);
-            placeholderGraphics.drawCircle(w / 2 - 30, h / 2 - 20, 10);
-            placeholderGraphics.drawCircle(w / 2 + 30, h / 2 - 20, 10);
-            placeholderGraphics.endFill();
-            // Mouth
-            placeholderGraphics.beginFill(0xcc4444);
-            placeholderGraphics.drawEllipse(w / 2, h / 2 + 40, 30, 8 + openY * 30);
-            placeholderGraphics.endFill();
-        }
+        var g = new PIXI.Graphics();
+        var t = 0;
 
-        draw(0);
-        app.stage.addChild(placeholderGraphics);
+        app.stage.addChild(g);
 
         app.ticker.add(function () {
-            placeholderT += 0.05;
-            draw((Math.sin(placeholderT) + 1) / 2 * currentOpenY);
+            t += 0.05;
+            g.clear();
+
+            // Face
+            g.beginFill(0xFFE4C4);
+            g.drawCircle(app.screen.width / 2, app.screen.height / 2, 80);
+            g.endFill();
+
+            // Eyes
+            g.beginFill(0x333333);
+            g.drawCircle(app.screen.width / 2 - 25, app.screen.height / 2 - 20, 8);
+            g.drawCircle(app.screen.width / 2 + 25, app.screen.height / 2 - 20, 8);
+            g.endFill();
+
+            // Mouth (animates with currentOpenY)
+            var mouthOpen = currentOpenY * 25 + 5;
+            g.beginFill(0xCC4444);
+            g.drawEllipse(app.screen.width / 2, app.screen.height / 2 + 30, 30, mouthOpen);
+            g.endFill();
+
+            log('Placeholder tick t=' + t.toFixed(2));
+        });
+    }
+
+    function startAnimation() {
+        if (!app) return;
+        app.ticker.add(function () {
+            if (!model) return;
+            try {
+                model.setParameterById(PARAM_MOUTH_OPEN_Y, currentOpenY);
+            } catch (e) { /* ignore param errors */ }
+            try {
+                model.setParameterById(PARAM_MOUTH_FORM, currentForm);
+            } catch (e) { /* ignore */ }
         });
     }
 
     function resize() {
         if (!app) return;
         app.renderer.resize(window.innerWidth, window.innerHeight);
-        if (model) {
-            const scale = Math.min(window.innerWidth, window.innerHeight) / 400;
-            model.x = window.innerWidth / 2;
-            model.y = window.innerHeight / 2;
-            model.scale.set(scale);
-        }
     }
 
     window.addEventListener('resize', resize);
-
-    function startAnimation() {
-        app.ticker.add(function () {
-            if (!model) return;
-            try {
-                model.setParameterById(PARAM_MOUTH_OPEN_Y, currentOpenY);
-            } catch (e) { /* ignore */ }
-            try {
-                model.setParameterById(PARAM_MOUTH_FORM, currentForm);
-            } catch (e) { /* ignore */ }
-        });
-    }
 
     function setMouthOpenness(value) {
         currentOpenY = Math.max(0.0, Math.min(1.0, value));
@@ -193,117 +250,34 @@
         return isReady;
     }
 
-    // =============================================================
-    // Speaking animation
-    // =============================================================
-
-    function startSpeaking() {
-        if (isSpeaking) return;
-        isSpeaking = true;
-        console.log('[Live2DApp] startSpeaking');
-
-        // If model supports internal speaking motion, play it
-        if (model && model.internal && model.internal.motion) {
-            try {
-                model.motion('haru_g_m08'); // Common idle/speaking motion
-            } catch (e) {
-                console.warn('[Live2DApp] No speaking motion available');
-            }
-        }
-    }
-
-    function stopSpeaking() {
-        if (!isSpeaking) return;
-        isSpeaking = false;
-        console.log('[Live2DApp] stopSpeaking');
-
-        if (model && model.internal && model.internal.motion) {
-            try {
-                model.motion('idle'); // Return to idle
-            } catch (e) {
-                console.warn('[Live2DApp] No idle motion available');
-            }
-        }
-    }
-
-    // =============================================================
-    // Expressions
-    // =============================================================
-
-    function setExpression(expressionName) {
-        console.log('[Live2DApp] setExpression:', expressionName);
-        if (!model) return;
-        try {
-            if (model.expressions) {
-                const expr = model.expressions.find(function (e) {
-                    return e.name === expressionName;
-                });
-                if (expr) {
-                    model.expression = expr;
-                }
-            }
-        } catch (e) {
-            console.warn('[Live2DApp] setExpression failed:', e);
-        }
-    }
-
-    // =============================================================
-    // Motion playback
-    // =============================================================
-
-    function playMotion(motionName) {
-        console.log('[Live2DApp] playMotion:', motionName);
-        if (!model) return;
-        try {
-            if (model.motions && model.motions[motionName]) {
-                model.motion(motionName);
-            } else {
-                // Try partial match
-                const keys = Object.keys(model.motions || {});
-                const match = keys.find(function (k) {
-                    return k.indexOf(motionName) >= 0;
-                });
-                if (match) {
-                    model.motion(match);
-                }
-            }
-        } catch (e) {
-            console.warn('[Live2DApp] playMotion failed:', e);
-        }
-    }
-
-    // =============================================================
-    // Helpers
-    // =============================================================
-
     function hideLoading() {
-        const el = document.getElementById('loading');
+        var el = document.getElementById('loading');
         if (el) el.style.display = 'none';
+        log('hideLoading called');
     }
 
     function notifyReady() {
+        log('Calling Android.onReady()');
         if (window.Android && typeof window.Android.onReady === 'function') {
             try { window.Android.onReady(); } catch (e) { console.warn(e); }
         }
     }
 
     function notifyError(msg) {
+        log('Calling Android.onError(' + msg + ')');
         if (window.Android && typeof window.Android.onError === 'function') {
             try { window.Android.onError(msg); } catch (e) { console.warn(e); }
         }
     }
 
+    // Expose API
     window.Live2DApp = {
         init: init,
         setMouthOpenness: setMouthOpenness,
         setMouthForm: setMouthForm,
         reset: reset,
-        isReady: checkReady,
-        startSpeaking: startSpeaking,
-        stopSpeaking: stopSpeaking,
-        setExpression: setExpression,
-        playMotion: playMotion
+        isReady: checkReady
     };
 
-    console.log('[Live2DApp] app.js loaded');
+    log('app.js loaded');
 })();
