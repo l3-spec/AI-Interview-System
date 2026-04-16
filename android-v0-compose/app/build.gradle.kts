@@ -64,6 +64,17 @@ val airiWebUrl: String = (project.findProperty("AIRI_WEB_URL") as String?)
     ?.takeIf { it.isNotEmpty() }
     ?: "http://10.10.1.10:3000/avatar"
 
+// 阿里云数字人配置
+val defaultAliyunAvatarProjectId = "C1vPn2gVB9WVpj8yxLR2jV-g"
+val aliyunAvatarProjectId: String = (project.findProperty("ALIYUN_AVATAR_PROJECT_ID") as String?)
+    ?.trim()
+    ?.takeIf { it.isNotEmpty() }
+    ?: defaultAliyunAvatarProjectId
+val aliyunAvatarApiUrl: String = (project.findProperty("ALIYUN_AVATAR_API_URL") as String?)
+    ?.trim()
+    ?.takeIf { it.isNotEmpty() }
+    ?: ""
+
 fun String.escapeForBuildConfig(): String = this.replace("\"", "\\\"")
 
 // 可选：通过 -PLIVE2D_CORE_INCLUDE 传入 Live2D Core 头文件目录
@@ -113,6 +124,16 @@ android {
             "String",
             "VOLCANO_API_KEY",
             "\"${(project.findProperty("volcano_api_key") as? String)?.escapeForBuildConfig() ?: defaultVolcanoApiKey.escapeForBuildConfig()}\""
+        )
+        buildConfigField(
+            "String",
+            "ALIYUN_AVATAR_PROJECT_ID",
+            "\"${aliyunAvatarProjectId.escapeForBuildConfig()}\""
+        )
+        buildConfigField(
+            "String",
+            "ALIYUN_AVATAR_API_URL",
+            "\"${aliyunAvatarApiUrl.escapeForBuildConfig()}\""
         )
 
         resValue("string", "api_host", resolvedApiHost)
@@ -172,6 +193,14 @@ dependencies {
 
     // WebView-based Live2D renderer (Plan D)
     implementation("androidx.webkit:webkit:1.8.0")
+
+    // 阿里云数字人 SDK (视频通话数字人)
+    implementation(files("libs/video_chat_sdk-release.aar"))
+    // OKHttp required by video_chat_sdk
+    implementation("com.squareup.okhttp3:okhttp:4.10.0")
+    implementation("com.squareup.okio:okio:3.0.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.10.0")
+    implementation("com.google.code.gson:gson:2.10.1")
 
     // Retrofit for networking
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
