@@ -1,7 +1,7 @@
 /**
- * Live2D WebView App - Debug v6
- * Yellow circle proves PIXI works. Model fetch now uses absolute file:// URL.
- * Loading bar + text on canvas show model loading progress.
+ * Live2D WebView App - Debug v7
+ * Uses XMLHttpRequest instead of fetch() for local asset loading.
+ * fetch() cannot access file:// URLs in Android WebView — XHR can.
  */
 (function () {
     'use strict';
@@ -12,18 +12,17 @@
     var isReady = false;
     var currentOpenY = 0.0;
     var currentForm = 0.0;
-    var canvasH = 0;
 
+    // Log to both console and on-screen PIXI text
+    var statusText = null;
     function log(msg) {
         console.log('[Live2DApp] ' + msg);
         var loading = document.getElementById('loading');
         if (loading) loading.innerHTML = msg;
-        showCanvasText(msg);
+        if (app && app.stage) showCanvasText(msg);
     }
 
-    var statusText = null;
     function showCanvasText(msg) {
-        if (!app || !app.stage) return;
         try {
             if (!statusText) {
                 statusText = new PIXI.Text('', {
@@ -33,12 +32,34 @@
                 });
                 statusText.x = 8;
                 statusText.y = 8;
-                statusText.width = 500;
                 app.stage.addChild(statusText);
             }
-            var ts = new Date().toISOString().substr(11, 12);
-            statusText.text = '[' + ts + '] ' + msg;
+            statusText.text = '[' + new Date().toISOString().substr(11, 12) + '] ' + msg;
         } catch (e) {}
+    }
+
+    /**
+     * Load a local file using XMLHttpRequest (works with file:// URLs in WebView).
+     * Returns a Promise resolving to the response text.
+     */
+    function xhrLoad(url) {
+        return new Promise(function (resolve, reject) {
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', url, true);
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4) {
+                    if (xhr.status === 200 || xhr.status === 0) {
+                        resolve(xhr.responseText);
+                    } else {
+                        reject(new Error('XHR failed: status=' + xhr.status + ' url=' + url));
+                    }
+                }
+            };
+            xhr.onerror = function () {
+                reject(new Error('XHR error for: ' + url));
+            };
+            xhr.send(null);
+        });
     }
 
     function init(modelPath) {
@@ -48,14 +69,13 @@
             var canvas = document.getElementById('canvas');
             if (!canvas) { log('ERROR: no canvas'); return; }
             if (typeof PIXI === 'undefined') { log('ERROR: PIXI undefined'); return; }
-            log('PIXI ' + PIXI.VERSION);
+            log('PIXI ' + PIXI.VERSION + ' OK');
 
             if (typeof PIXI.live2d === 'undefined') { log('ERROR: PIXI.live2d undefined'); return; }
             log('PIXI.live2d OK');
 
             var w = Math.max(canvas.clientWidth || 400, 400);
-            canvasH = Math.max(canvas.clientHeight || 400, 400);
-            log('Canvas: ' + w + 'x' + canvasH);
+            var h = Math.max(canvas.clientHeight || 400, 400);
 
             app = new PIXI.Application({
                 view: canvas,
@@ -65,14 +85,14 @@
                 resolution: window.devicePixelRatio || 1,
                 autoDensity: true,
                 width: w,
-                height: canvasH
+                height: h
             });
             log('PIXI app created');
 
             // Draw YELLOW circle
             var g = new PIXI.Graphics();
             g.beginFill(0xFFFF00);
-            g.drawCircle(w / 2, canvasH / 2, 100);
+            g.drawCircle(w / 2, h / 2, 100);
             g.endFill();
             app.stage.addChild(g);
 
@@ -80,66 +100,38 @@
                 fill: 0xFFFF00, fontSize: 16, fontFamily: 'monospace'
             });
             label.x = w / 2 - 100;
-            label.y = canvasH / 2 + 120;
+            label.y = h / 2 + 120;
             app.stage.addChild(label);
 
-            log('Yellow circle done, loading model...');
-
-            // Proceed to load model
-            doLoadModel(modelPath);
+            log('Yellow circle OK, loading model via XHR...');
+            loadModelWithXHR(modelPath);
 
         } catch (err) {
             log('init() CRASHED: ' + err.message);
         }
     }
 
-    function doLoadModel(modelPath) {
+    function loadModelWithXHR(modelPath) {
+        // Build absolute path to model JSON
         var modelJsonUrl = 'file:///android_asset/live2d/' + modelPath + 'haru.model3.json';
-        log('FETCH: ' + modelJsonUrl);
+        log('XHR loading: ' + modelJsonUrl);
 
-        // Show loading bar on canvas
-        var barBg = new PIXI.Graphics();
-        barBg.beginFill(0x222222);
-        barBg.drawRect(20, canvasH - 80, app.screen.width - 40, 40);
-        barBg.endFill();
-        app.stage.addChild(barBg);
-
-        var barFill = new PIXI.Graphics();
-        barFill.beginFill(0x00AAFF);
-        barFill.drawRect(20, canvasH - 80, 0, 40);
-        barFill.endFill();
-        app.stage.addChild(barFill);
-
-        var loadLabel = new PIXI.Text('Fetching haru.model3.json...', {
-            fill: 0xFFFFFF, fontSize: 12, fontFamily: 'monospace'
-        });
-        loadLabel.x = 28;
-        loadLabel.y = canvasH - 72;
-        app.stage.addChild(loadLabel);
-
-        fetch(modelJsonUrl, { cache: 'no-cache' })
-            .then(function (resp) {
-                loadLabel.text = 'HTTP ' + resp.status + ': ' + resp.statusText;
-                barFill.scale.x = resp.ok ? 0.5 : 0;
-                log('HTTP ' + resp.status);
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                return resp.json();
-            })
-            .then(function (modelJson) {
-                loadLabel.text = 'JSON parsed: ' + Object.keys(modelJson).join(', ');
-                barFill.scale.x = 1.0;
-                log('JSON keys: ' + Object.keys(modelJson).join(','));
+        xhrLoad(modelJsonUrl)
+            .then(function (jsonText) {
+                log('XHR got ' + jsonText.length + ' bytes');
+                var modelJson = JSON.parse(jsonText);
+                log('JSON parsed, keys=' + Object.keys(modelJson).join(','));
 
                 var tex = (modelJson.FileReferences && modelJson.FileReferences.Textures) || [];
                 var moc = (modelJson.FileReferences && modelJson.FileReferences.Moc) || '?';
-                loadLabel.text = 'Moc=' + moc + ', ' + tex.length + ' textures';
-                log('Moc=' + moc + ', tex=' + JSON.stringify(tex));
+                log('Moc=' + moc + ', Textures=' + JSON.stringify(tex));
 
+                // Now try Live2DModel.from with the absolute file:// URL
+                log('Creating Live2DModel from: ' + modelJsonUrl);
                 return PIXI.live2d.Live2DModel.from(modelJsonUrl, { autoInteract: false });
             })
             .then(function (mdl) {
-                loadLabel.text = 'Live2DModel created!';
-                log('Live2DModel SUCCESS');
+                log('Live2DModel SUCCESS!');
                 model = mdl;
                 app.stage.removeChildren();
                 app.stage.addChild(model);
@@ -151,10 +143,9 @@
 
                 isReady = true;
                 notifyReady();
-                log('>>> MODEL ON STAGE <<<');
+                log('>>> MODEL VISIBLE <<<');
             })
             .catch(function (err) {
-                loadLabel.text = 'ERROR: ' + err.message;
                 log('Model load FAILED: ' + err.message);
                 isReady = true;
                 notifyReady();
@@ -183,6 +174,7 @@
             setTimeout(bootstrap, 300);
             return;
         }
+        log('PIXI ready, init starting...');
         init('model/haru/');
     }
 
@@ -192,5 +184,5 @@
         bootstrap();
     }
 
-    log('app.js v6 loaded');
+    log('app.js v7 loaded (XHR mode)');
 })();
