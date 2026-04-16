@@ -19,6 +19,14 @@
     let currentOpenY = 0.0;
     let currentForm = 0.0;
 
+    // Speaking state
+    let isSpeaking = false;
+    let speakingTicker = null;
+
+    // Placeholder graphics
+    let placeholderGraphics = null;
+    let placeholderT = 0;
+
     /** Called by Android to initialise the model */
     function init(modelPath) {
         console.log('[Live2DApp] init:', modelPath);
@@ -113,34 +121,33 @@
 
     /** Draw simple animated placeholder */
     function showPlaceholder() {
-        const g = new PIXI.Graphics();
+        placeholderGraphics = new PIXI.Graphics();
         const w = app.screen.width;
         const h = app.screen.height;
-        let t = 0;
 
         function draw(openY) {
-            g.clear();
+            placeholderGraphics.clear();
             // Head
-            g.beginFill(0xffe4c4);
-            g.drawCircle(w / 2, h / 2, Math.min(w, h) * 0.35);
-            g.endFill();
+            placeholderGraphics.beginFill(0xffe4c4);
+            placeholderGraphics.drawCircle(w / 2, h / 2, Math.min(w, h) * 0.35);
+            placeholderGraphics.endFill();
             // Eyes
-            g.beginFill(0x333333);
-            g.drawCircle(w / 2 - 30, h / 2 - 20, 10);
-            g.drawCircle(w / 2 + 30, h / 2 - 20, 10);
-            g.endFill();
+            placeholderGraphics.beginFill(0x333333);
+            placeholderGraphics.drawCircle(w / 2 - 30, h / 2 - 20, 10);
+            placeholderGraphics.drawCircle(w / 2 + 30, h / 2 - 20, 10);
+            placeholderGraphics.endFill();
             // Mouth
-            g.beginFill(0xcc4444);
-            g.drawEllipse(w / 2, h / 2 + 40, 30, 8 + openY * 30);
-            g.endFill();
+            placeholderGraphics.beginFill(0xcc4444);
+            placeholderGraphics.drawEllipse(w / 2, h / 2 + 40, 30, 8 + openY * 30);
+            placeholderGraphics.endFill();
         }
 
         draw(0);
-        app.stage.addChild(g);
+        app.stage.addChild(placeholderGraphics);
 
         app.ticker.add(function () {
-            t += 0.05;
-            draw((Math.sin(t) + 1) / 2 * currentOpenY);
+            placeholderT += 0.05;
+            draw((Math.sin(placeholderT) + 1) / 2 * currentOpenY);
         });
     }
 
@@ -186,6 +193,89 @@
         return isReady;
     }
 
+    // =============================================================
+    // Speaking animation
+    // =============================================================
+
+    function startSpeaking() {
+        if (isSpeaking) return;
+        isSpeaking = true;
+        console.log('[Live2DApp] startSpeaking');
+
+        // If model supports internal speaking motion, play it
+        if (model && model.internal && model.internal.motion) {
+            try {
+                model.motion('haru_g_m08'); // Common idle/speaking motion
+            } catch (e) {
+                console.warn('[Live2DApp] No speaking motion available');
+            }
+        }
+    }
+
+    function stopSpeaking() {
+        if (!isSpeaking) return;
+        isSpeaking = false;
+        console.log('[Live2DApp] stopSpeaking');
+
+        if (model && model.internal && model.internal.motion) {
+            try {
+                model.motion('idle'); // Return to idle
+            } catch (e) {
+                console.warn('[Live2DApp] No idle motion available');
+            }
+        }
+    }
+
+    // =============================================================
+    // Expressions
+    // =============================================================
+
+    function setExpression(expressionName) {
+        console.log('[Live2DApp] setExpression:', expressionName);
+        if (!model) return;
+        try {
+            if (model.expressions) {
+                const expr = model.expressions.find(function (e) {
+                    return e.name === expressionName;
+                });
+                if (expr) {
+                    model.expression = expr;
+                }
+            }
+        } catch (e) {
+            console.warn('[Live2DApp] setExpression failed:', e);
+        }
+    }
+
+    // =============================================================
+    // Motion playback
+    // =============================================================
+
+    function playMotion(motionName) {
+        console.log('[Live2DApp] playMotion:', motionName);
+        if (!model) return;
+        try {
+            if (model.motions && model.motions[motionName]) {
+                model.motion(motionName);
+            } else {
+                // Try partial match
+                const keys = Object.keys(model.motions || {});
+                const match = keys.find(function (k) {
+                    return k.indexOf(motionName) >= 0;
+                });
+                if (match) {
+                    model.motion(match);
+                }
+            }
+        } catch (e) {
+            console.warn('[Live2DApp] playMotion failed:', e);
+        }
+    }
+
+    // =============================================================
+    // Helpers
+    // =============================================================
+
     function hideLoading() {
         const el = document.getElementById('loading');
         if (el) el.style.display = 'none';
@@ -208,7 +298,11 @@
         setMouthOpenness: setMouthOpenness,
         setMouthForm: setMouthForm,
         reset: reset,
-        isReady: checkReady
+        isReady: checkReady,
+        startSpeaking: startSpeaking,
+        stopSpeaking: stopSpeaking,
+        setExpression: setExpression,
+        playMotion: playMotion
     };
 
     console.log('[Live2DApp] app.js loaded');
