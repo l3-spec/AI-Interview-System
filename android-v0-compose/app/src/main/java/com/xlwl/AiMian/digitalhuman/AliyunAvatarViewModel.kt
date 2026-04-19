@@ -22,10 +22,10 @@ sealed class AliyunAvatarUiState {
  * 使用 DashScopeAvatarService 直接调用 DashScope API，
  * 获取 TYAvatarInitData 用于初始化数字人 SDK。
  *
- * @param dashScopeService DashScope 直连服务
+ * @param lingmouService 灵眸 OpenAPI 服务
  */
 class AliyunAvatarViewModel(
-    private val dashScopeService: DashScopeAvatarService
+    private val lingmouService: AliyunLingmouService
 ) : ViewModel() {
 
     companion object {
@@ -48,8 +48,8 @@ class AliyunAvatarViewModel(
 
         _uiState.value = AliyunAvatarUiState.Loading
         viewModelScope.launch {
-            Log.d(TAG, "正在调用 DashScope CreateChatSession, projectId=$projectId, instanceId=$instanceId")
-            val result = dashScopeService.createChatSession(projectId, instanceId)
+            Log.d(TAG, "正在调用 灵眸 OpenAPI CreateChatSession, projectId=$projectId, instanceId=$instanceId")
+            val result = lingmouService.createChatSession(projectId, instanceId)
             result.onSuccess { (initData, sessionId) ->
                 Log.d(TAG, "✅ CreateChatSession 成功, sessionId=$sessionId")
                 _uiState.value = AliyunAvatarUiState.Success(
@@ -66,12 +66,13 @@ class AliyunAvatarViewModel(
     }
 
     class Factory(
-        private val dashScopeService: DashScopeAvatarService = DashScopeAvatarService()
+        private val context: android.content.Context
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(AliyunAvatarViewModel::class.java)) {
+                val service = AliyunLingmouService(context)
                 @Suppress("UNCHECKED_CAST")
-                return AliyunAvatarViewModel(dashScopeService) as T
+                return AliyunAvatarViewModel(service) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class")
         }

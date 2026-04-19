@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -91,7 +92,7 @@ fun AliyunAvatarInterviewScreen(
 
     // 使用 DashScope 直连 ViewModel（不需要后端代理）
     val viewModel: AliyunAvatarViewModel = viewModel(
-        factory = AliyunAvatarViewModel.Factory()
+        factory = AliyunAvatarViewModel.Factory(context)
     )
     val uiState by viewModel.uiState.collectAsState()
 
@@ -116,6 +117,9 @@ fun AliyunAvatarInterviewScreen(
 
     val isReady by avatarController.isReady.collectAsState()
     val dialogState by avatarController.dialogState.collectAsState()
+    val userVolume by avatarController.userVolume.collectAsState()
+    val avatarVolume by avatarController.avatarVolume.collectAsState()
+    val latencyMetrics by avatarController.latencyMetrics.collectAsState()
 
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -260,6 +264,25 @@ fun AliyunAvatarInterviewScreen(
             Icon(Icons.Default.Close, contentDescription = "退出", tint = Color.White, modifier = Modifier.size(20.dp))
         }
 
+        // Performance Debug HUD (Top right, subtle)
+        if (isReady) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 45.dp, end = 16.dp)
+                    .zIndex(20f),
+                horizontalAlignment = Alignment.End
+            ) {
+                latencyMetrics.forEach { (key, value) ->
+                    Text(
+                        text = "$key: $value",
+                        color = Color.White.copy(alpha = 0.5f),
+                        fontSize = 8.sp
+                    )
+                }
+            }
+        }
+
         // Center UI if wait for user answer
         val isUserTurn = dialogState == ConvConstants.DialogState.DIALOG_LISTENING || dialogState == ConvConstants.DialogState.DIALOG_IDLE
         if (isUserTurn && isReady) {
@@ -288,10 +311,55 @@ fun AliyunAvatarInterviewScreen(
                         .clickable { avatarController.interrupt() },
                     contentAlignment = Alignment.Center
                 ) {
+                    // Audio Level Pulse if user is speaking
+                    if (userVolume > 5) {
+                        val infiniteTransition = rememberInfiniteTransition(label = "")
+                        val pulseScale by infiniteTransition.animateFloat(
+                            initialValue = 1f,
+                            targetValue = 1f + (userVolume / 100f) * 0.5f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(300),
+                                repeatMode = RepeatMode.Reverse
+                            ),
+                            label = ""
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    scaleX = pulseScale
+                                    scaleY = pulseScale
+                                }
+                                .background(Color(0xFF00C78A).copy(alpha = 0.3f), CircleShape)
+                        )
+                    }
+
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Default.Mic, contentDescription = null, tint = Color.White, modifier = Modifier.size(28.dp))
                         Text("开始答题", color = Color.White, fontSize = 12.sp)
                     }
+                }
+            }
+        }
+
+        // Avatar Speaking Wave (Bottom right of main video or near subtitles)
+        if (avatarVolume > 5 && !isCameraMaximized) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(bottom = 100.dp, end = 24.dp)
+                    .zIndex(20f),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                repeat(4) { i ->
+                    val h = 10.dp + (avatarVolume.dp * (0.2f + i * 0.2f)).coerceAtMost(40.dp)
+                    Box(
+                        modifier = Modifier
+                            .width(4.dp)
+                            .height(h)
+                            .background(Color(0xFF00C78A), RoundedCornerShape(2.dp))
+                    )
                 }
             }
         }

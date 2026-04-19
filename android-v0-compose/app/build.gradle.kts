@@ -81,6 +81,18 @@ val aliyunAvatarInstanceId: String = (project.findProperty("ALIYUN_AVATAR_INSTAN
     ?.takeIf { it.isNotEmpty() }
     ?: defaultAliyunAvatarInstanceId
 
+// 阿里云 RAM (AccessKey) 配置
+val defaultAliyunAccessKeyId = "LTAI5tCVEqD97rEMyyJEVpp5"
+val defaultAliyunAccessKeySecret = "K272Yb0Bl7NsU5mj5t1GlCrB0Zodfv"
+val aliyunAccessKeyId: String = (project.findProperty("aliyun_access_key_id") as? String?)
+    ?.trim()
+    ?.takeIf { it.isNotEmpty() }
+    ?: defaultAliyunAccessKeyId
+val aliyunAccessKeySecret: String = (project.findProperty("aliyun_access_key_secret") as? String?)
+    ?.trim()
+    ?.takeIf { it.isNotEmpty() }
+    ?: defaultAliyunAccessKeySecret
+
 // DashScope API 配置（直接调用阿里云数字人 OpenAPI）
 val defaultDashScopeApiKey = "sk-8c965da07f6344208bfe875493384a33"
 val dashScopeApiKey: String = (project.findProperty("DASHSCOPE_API_KEY") as String?)
@@ -166,6 +178,16 @@ android {
             "String",
             "DASHSCOPE_BASE_URL",
             "\"${dashScopeBaseUrl.escapeForBuildConfig()}\""
+        )
+        buildConfigField(
+            "String",
+            "ALIYUN_ACCESS_KEY_ID",
+            "\"${aliyunAccessKeyId.escapeForBuildConfig()}\""
+        )
+        buildConfigField(
+            "String",
+            "ALIYUN_ACCESS_KEY_SECRET",
+            "\"${aliyunAccessKeySecret.escapeForBuildConfig()}\""
         )
 
         resValue("string", "api_host", resolvedApiHost)

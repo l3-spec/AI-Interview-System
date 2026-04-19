@@ -82,6 +82,15 @@ class AliyunAvatarController(
     private val _surfaceView = MutableStateFlow<SurfaceView?>(null)
     val surfaceView: StateFlow<SurfaceView?> = _surfaceView.asStateFlow()
 
+    private val _userVolume = MutableStateFlow(0f)
+    val userVolume: StateFlow<Float> = _userVolume.asStateFlow()
+
+    private val _avatarVolume = MutableStateFlow(0f)
+    val avatarVolume: StateFlow<Float> = _avatarVolume.asStateFlow()
+
+    private val _latencyMetrics = MutableStateFlow<Map<String, String>>(emptyMap())
+    val latencyMetrics: StateFlow<Map<String, String>> = _latencyMetrics.asStateFlow()
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     /**
@@ -117,12 +126,13 @@ class AliyunAvatarController(
             val dialogConfig = TYDialogConfig().apply {
                 // renderType: 渲染类型（当前仅支持云渲染）
                 renderType = TYAvatarRenderType.REMOTE_RENDER_AVATAR
-                // mode: 对话模式（当前仅支持 Tap2Talk）
+                // mode: 对话模式
                 mode = TYVoiceChatMode.TAP2TALK
-                // keepAlive: 是否开启心跳保活（默认开启）
+                // keepAlive: 是否开启心跳保活
                 keepAlive = true
-                // keepAlivePeriod: 心跳保活间隔（默认10s，使用默认值）
-                // outboundSampleRate: TTS音频播放采样率（默认48000）
+                // keepAlivePeriod: 心跳保活间隔（默认10s）
+                keepAlivePeriod = 10000
+                // outboundSampleRate: TTS音频播放采样率（建议 48000）
                 outboundSampleRate = 48000
             }
 
@@ -254,7 +264,12 @@ class AliyunAvatarController(
 
         /** onVolumeChanged: 音频强度回调 */
         override fun onVolumeChanged(audioLevel: Float, audioType: TYVolumeSourceType) {
-            // 可用于音量指示动画
+            // audioLevel: [0, 100]
+            if (audioType == TYVolumeSourceType.MIC) {
+                _userVolume.value = audioLevel
+            } else {
+                _avatarVolume.value = audioLevel
+            }
         }
 
         /**
@@ -300,6 +315,9 @@ class AliyunAvatarController(
             performanceInfo: String
         ) {
             Log.d(TAG, "📊 Performance: $performanceInfoType = $performanceInfo")
+            val current = _latencyMetrics.value.toMutableMap()
+            current[performanceInfoType.name] = performanceInfo
+            _latencyMetrics.value = current
         }
 
         /** onLocalAvatarDidAudioLag: 端渲染数字人音频卡顿（云渲染模式下不会触发）*/
