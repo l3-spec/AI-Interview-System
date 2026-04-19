@@ -108,6 +108,8 @@ fun V0App() {
                     currentRoute == Routes.PROFILE -> true
                     currentRoute == Routes.JOB_SELECTION -> true
                     currentRoute == Routes.EDIT_INTENTION -> true
+                    currentRoute == Routes.PROFILE_RESUME_REPORT -> true
+                    currentRoute == Routes.PROFILE_ASSESSMENTS -> true
                     currentRoute.startsWith("content/") -> true
                     currentRoute.startsWith("circle/") -> true
                     else -> false
