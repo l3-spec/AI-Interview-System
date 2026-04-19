@@ -60,6 +60,25 @@ interface DimensionDetail {
     description: string;
 }
 
+interface MultimodalScores {
+    expressionStability: number; // 表情稳定性 0-10
+    eyeContact: number; // 眼神接触 0-10
+    toneStability: number; // 语气稳定性 0-10
+    speechFluency: number; // 语速流畅度 0-10
+    hesitationCount: number; // 卡顿次数
+    overallMultimodalScore: number; // 综合多模态得分 0-10
+}
+
+// 新6维度评分结果（0-10分制）
+interface NewDimensionScores {
+    professionalAbilityScore: number;         // 1. 专业能力
+    learningGrowthScore: number;              // 2. 学习成长
+    communicationCollaborationScore: number;  // 3. 沟通协作
+    problemSolvingNewScore: number;            // 4. 问题解决
+    achievementExecutionScore: number;        // 5. 成就执行
+    stressResilienceScore: number;            // 6. 抗压韧性
+}
+
 interface ObjectiveScores {
     overallScore: number;
     dimensions: Record<DimensionKey, number>; // 0-100
@@ -79,6 +98,7 @@ interface ObjectiveScores {
         gazeFocus?: number | null;
         microExpressionScore?: number | null;
         fidgetingScore?: number | null;
+        professionalAccuracyScore?: number | null; // 新增：专业准确度信号
     };
 }
 
@@ -119,6 +139,15 @@ interface AnalysisResult {
         logicalCoherenceScore: number;
         feedback: string;  // 针对该问题的简短反馈
     }>;
+    // 新增：多模态+逐题评分字段
+    multimodalScores?: MultimodalScores;            // 多模态评分
+    questionByQuestion?: Array<{                    // 逐题评分详情
+        questionIndex: number;
+        question: string;
+        answer: string;
+        score: number;
+    }>;
+    contentMultimodalFusion?: Record<string, any>;  // 内容+多模态融合详情
 }
 
 interface IntegrityCheck {
@@ -614,8 +643,8 @@ export class AnalysisService {
                     overallScore: 0,
                     communicationScore: 0,
                     technicalScore: 0,
-                    problemSolvingScore: 0,
-                    teamworkScore: 0,
+                    problemSolvingNewScore: 0,
+                    collaborationResponsibilityScore: 0,
                     adaptabilityScore: 0,
                     learningScore: 0,
                     analysisStatus: 'FAILED',
@@ -978,6 +1007,43 @@ export class AnalysisService {
             speechMetrics,
             videoSummary
         );
+
+        // ========== 新评分体系：内容+多模态融合 ==========
+        // 1. 计算多模态综合评分
+        const multimodalScores = this.calculateMultimodalScores(videoSummary, speechMetrics);
+
+        // 2. 计算专业硬能力内容得分（使用技术得分+问题解决得分+专业准确度得分的平均值）
+        const professionalAbilityContentScore = this.clampScore(
+            (adjustedScores.learningResearch + adjustedScores.opennessInnovation + (objectiveScores.signals.professionalAccuracyScore ?? 60)) / 3
+        );
+
+        // 3. 融合内容评分与多模态评分，得到新6维度得分（0-10分）
+        const newDimensionScores = this.fuseContentAndMultimodalScores(
+            adjustedScores,
+            multimodalScores.overallMultimodalScore,
+            professionalAbilityContentScore,
+            textAnalysis.competencies.opennessInnovation // 旧版问题解决得分0-1
+        );
+
+        // 4. 构建逐题评分详情
+        const questionByQuestion = questionsAndAnswers.map((qa, idx) => ({
+            questionIndex: idx + 1,
+            question: qa.question,
+            answer: qa.answer,
+            score: objectiveScores.dimensions.teamwork // 简单示例，实际可以替换为逐题的具体得分
+        }));
+
+        // 5. 构建内容与多模态融合详情
+        const contentMultimodalFusion = {
+            contentScores: adjustedScores,
+            multimodalScores,
+            newDimensionScores,
+            fusionRules: {
+                professionalAbility: '内容80% + 多模态20%',
+                stressTolerance: '内容20% + 多模态80%',
+                others: '内容80% + 多模态20%'
+            }
+        };
         const normalizedCompetencies = this.normalizeCompetencies(adjustedScores);
 
         const bodyLanguageScore = this.calculateBodyLanguageScore(videoSummary);
@@ -997,7 +1063,12 @@ export class AnalysisService {
             gazeFocus: videoSummary?.avgGazeFocus,
             videoAnalysisResults,
             integrity,
-            voiceprint
+            voiceprint,
+            // 新评分体系字段
+            ...newDimensionScores,
+            multimodalScores,
+            questionByQuestion,
+            contentMultimodalFusion
         };
     }
 
@@ -1095,6 +1166,8 @@ export class AnalysisService {
             emotionDistribution: Record<string, number>;
             avgPostureStability?: number;
             avgGazeFocus?: number;
+            avgMicroExpressionScore?: number;
+            avgFidgetingScore?: number;
         } | null;
         answerCoverage?: number;
         detailedScores?: {
@@ -1461,6 +1534,121 @@ export class AnalysisService {
         return Math.max(0, Math.min(100, score));
     }
 
+    // 归一化0-100分值到0-10
+    private normalizeTo10Scale(score: number | null | undefined): number {
+        if (score === null || score === undefined || !Number.isFinite(score)) {
+            return 6.0; // 默认分
+        }
+        return Number((Math.max(0, Math.min(100, score)) / 10).toFixed(1));
+    }
+
+    /**
+     * 计算多模态综合评分
+     * 公式：多模态综合分 = (表情稳定性 + 眼神接触 + 语气稳定性 + 语速流畅度) / 4 - (卡顿次数 * 0.2)
+     */
+    private calculateMultimodalScores(
+        videoSummary: {
+            avgConfidence: number;
+            avgStability: number;
+            avgPostureStability?: number;
+            avgGazeFocus?: number;
+            avgMicroExpressionScore?: number;
+            avgFidgetingScore?: number;
+        } | null,
+        speechMetrics: SpeechMetricsSummary | undefined
+    ): MultimodalScores {
+        // 归一化各项指标到0-10分
+        const expressionStability = this.normalizeTo10Scale(videoSummary?.avgStability ?? 60);
+        const eyeContact = this.normalizeTo10Scale(videoSummary?.avgGazeFocus ?? 60);
+        const toneStability = this.normalizeTo10Scale(speechMetrics?.avgVolumeStability ?? 60);
+        const speechFluency = this.normalizeTo10Scale(
+            speechMetrics && speechMetrics.avgFillerRatio !== null && speechMetrics.avgFillerRatio !== undefined
+                ? (100 - Math.min(speechMetrics.avgFillerRatio * 10, 100))
+                : 60
+        );
+        const hesitationCount = speechMetrics?.samples?.length ?? 0;
+
+        // 计算综合多模态得分
+        let overallMultimodalScore = Number((
+            (expressionStability + eyeContact + toneStability + speechFluency) / 4 
+            - (hesitationCount * 0.2)
+        ).toFixed(1));
+
+        // 确保得分在0-10之间
+        overallMultimodalScore = Math.max(0, Math.min(10, overallMultimodalScore));
+
+        return {
+            expressionStability,
+            eyeContact,
+            toneStability,
+            speechFluency,
+            hesitationCount,
+            overallMultimodalScore
+        };
+    }
+
+    /**
+     * 融合内容评分和多模态评分得到最终维度得分
+     * 规则：
+     * 1. 专业能力：内容(85%) + 多模态(15%)
+     * 2. 学习成长：内容(70%) + 多模态(30%)
+     * 3. 沟通协作：内容(60%) + 多模态(40%)
+     * 4. 问题解决：内容(80%) + 多模态(20%)
+     * 5. 成就执行：内容(75%) + 多模态(25%)
+     * 6. 抗压韧性：内容(20%) + 多模态(80%)
+     */
+    private fuseContentAndMultimodalScores(
+        contentScores: Record<DimensionKey, number>, // 0-100分
+        multimodalScore: number, // 0-10分
+        professionalAbilityContentScore: number, // 专业能力内容得分0-100
+        oldProblemSolvingScore?: number // 旧版问题解决得分0-1
+    ): NewDimensionScores {
+        // 归一化内容得分到0-10
+        const normalizeContent = (score: number) => Number((score / 10).toFixed(1));
+
+        // 1. 专业能力：内容85% + 多模态15%
+        const professionalAbilityScore = Number((
+            normalizeContent(professionalAbilityContentScore) * 0.85 + multimodalScore * 0.15
+        ).toFixed(1));
+
+        // 2. 学习成长：内容70% + 多模态30%（映射旧学习研究维度）
+        const learningGrowthScore = Number((
+            normalizeContent(contentScores.learningResearch) * 0.7 + multimodalScore * 0.3
+        ).toFixed(1));
+
+        // 3. 沟通协作：内容60% + 多模态40%（合并旧团队协作+人际沟通）
+        const communicationCollaborationScore = Number((
+            normalizeContent((contentScores.teamwork + contentScores.interpersonalCommunication) / 2) * 0.6 + multimodalScore * 0.4
+        ).toFixed(1));
+
+        // 4. 问题解决：内容80% + 多模态20%（从旧版problemSolvingScore 0-1转换为0-10，如果没有则使用开放创新+成就导向平均值）
+        const problemSolvingContentScore = oldProblemSolvingScore !== undefined && oldProblemSolvingScore !== null
+            ? oldProblemSolvingScore * 10 // 0-1转0-10
+            : normalizeContent((contentScores.opennessInnovation + contentScores.achievementOrientation) / 2);
+        const problemSolvingNewScore = Number((
+            problemSolvingContentScore * 0.8 + multimodalScore * 0.2
+        ).toFixed(1));
+
+        // 5. 成就执行：内容75% + 多模态25%（合并旧成就导向+开放创新）
+        const achievementExecutionScore = Number((
+            normalizeContent((contentScores.achievementOrientation + contentScores.opennessInnovation) / 2) * 0.75 + multimodalScore * 0.25
+        ).toFixed(1));
+
+        // 6. 抗压韧性：内容20% + 多模态80%（映射旧压力承受维度）
+        const stressResilienceScore = Number((
+            normalizeContent(contentScores.stressTolerance) * 0.2 + multimodalScore * 0.8
+        ).toFixed(1));
+
+        return {
+            professionalAbilityScore,
+            learningGrowthScore,
+            communicationCollaborationScore,
+            problemSolvingNewScore,
+            achievementExecutionScore,
+            stressResilienceScore
+        };
+    }
+
     /**
      * 使用LLM执行分析
      */
@@ -1649,7 +1837,12 @@ ${qaText}
                 strengths: parsed.strengths || [],
                 improvements: parsed.improvements || [],
                 jobMatch: parsed.jobMatch,
-                tips: parsed.tips || '继续保持良好的学习态度，不断提升专业能力。'
+                tips: parsed.tips || '继续保持良好的学习态度，不断提升专业能力。',
+                // 新增字段默认值
+                relevanceScore: 0,
+                completenessScore: 0,
+                professionalAccuracyScore: 0,
+                logicalCoherenceScore: 0
             };
 
         } catch (error) {
@@ -1713,7 +1906,25 @@ ${qaText}
                     objectiveScores: result.objectiveScores || null,
                     integrity: result.integrity || null,
                     voiceprint: result.voiceprint || null
-                }) : null
+                }) : null,
+            // 新6维度评分体系 (0-10分)
+            professionalAbilityScore: result.professionalAbilityScore ?? null,
+            achievementInnovationScore: result.achievementInnovationScore ?? null,
+            learningAbilityScore: result.learningAbilityScore ?? null,
+            opennessInnovationScore: result.opennessInnovationScore ?? null,
+            stressResistanceScore: result.stressResistanceScore ?? null,
+            communicationAbilityScore: result.communicationAbilityScore ?? null,
+            collaborationResponsibilityScore: result.collaborationResponsibilityScore ?? null,
+            // 新版6维度评分体系（2026）
+            learningGrowthScore: result.learningGrowthScore ?? null,
+            communicationCollaborationScore: result.communicationCollaborationScore ?? null,
+            problemSolvingNewScore: result.problemSolvingNewScore ?? null,
+            achievementExecutionScore: result.achievementExecutionScore ?? null,
+            stressResilienceScore: result.stressResilienceScore ?? null,
+            // 新增JSON字段
+            multimodalScoresJson: result.multimodalScores ? JSON.stringify(result.multimodalScores) : null,
+            questionByQuestionJson: result.questionByQuestion ? JSON.stringify(result.questionByQuestion) : null,
+            contentMultimodalFusionJson: result.contentMultimodalFusion ? JSON.stringify(result.contentMultimodalFusion) : null
         };
 
         await prisma.aIInterviewAnalysisReport.upsert({
@@ -1774,6 +1985,25 @@ ${qaText}
                 gazeFocus,
                 microExpressionScore: fallbackMicroExpressionScore
             },
+            // 新6维度评分体系
+            newDimensionScores: {
+                professionalAbilityScore: report.professionalAbilityScore,
+                achievementInnovationScore: report.achievementInnovationScore,
+                learningAbilityScore: report.learningAbilityScore,
+                opennessInnovationScore: report.opennessInnovationScore,
+                stressResistanceScore: report.stressResistanceScore,
+                collaborationResponsibilityScore: report.collaborationResponsibilityScore,
+                // 新版2026维度
+                learningGrowthScore: report.learningGrowthScore,
+                communicationCollaborationScore: report.communicationCollaborationScore,
+                problemSolvingScore: report.problemSolvingNewScore,
+                achievementExecutionScore: report.achievementExecutionScore,
+                stressResilienceScore: report.stressResilienceScore
+            },
+            // 新增JSON字段
+            multimodalScores: report.multimodalScoresJson ? JSON.parse(report.multimodalScoresJson) : null,
+            questionByQuestion: report.questionByQuestionJson ? JSON.parse(report.questionByQuestionJson) : null,
+            contentMultimodalFusion: report.contentMultimodalFusionJson ? JSON.parse(report.contentMultimodalFusionJson) : null,
             integrity: insights?.integrity || null,
             voiceprint: insights?.voiceprint || null,
             insights,
@@ -1809,7 +2039,6 @@ ${qaText}
             } : null
         };
     }
-}
 
     /**
      * 生成简历能力交叉验证结果

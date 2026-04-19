@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -99,9 +100,11 @@ data class ResumeJobMatch(
 
 data class ResumeCompetency(
   val name: String,
-  val score: Float,
+  val score: Float, // 0-10 or 0-1
   val ratingLabel: String,
-  val description: String
+  val description: String,
+  val icon: String = "💡", // Added icon
+  val statusTag: String = "待提升" // Added status tag
 )
 
 data class JobRecommendation(
@@ -179,7 +182,7 @@ private fun ResumeReportListScreen(
   onRefresh: () -> Unit,
   onSelectReport: (ResumeReportListItem) -> Unit
 ) {
-  val headerHeight = 96.dp
+  val headerHeight = 100.dp
   val listTopPadding = headerHeight
   val navPadding = WindowInsets.navigationBars.asPaddingValues()
   val listBottomPadding = navPadding.calculateBottomPadding() + 72.dp
@@ -196,6 +199,7 @@ private fun ResumeReportListScreen(
         .zIndex(1f)
     ) {
       ResumeReportTopBar(
+        modifier = Modifier.align(Alignment.BottomCenter),
         onBack = onBack,
         onRefresh = onRefresh
       )
@@ -440,27 +444,26 @@ private fun ReportErrorPlaceholder(
 // Native detailed screen implementation starts below
 
 fun generateValidMockResumeReport(item: ResumeReportListItem): ResumeReport {
-    val testedDate = java.text.SimpleDateFormat("MM月dd日 HH:mm", java.util.Locale.CHINA).format(java.util.Date())
-    val shortDate = java.text.SimpleDateFormat("MM月dd日", java.util.Locale.CHINA).format(java.util.Date())
+    val testedDate = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.CHINA).format(java.util.Date())
     
     return ResumeReport(
         title = "U-Talent视频简历报告",
-        testedAt = "测试日期 ${item.testedAt?.takeIf { it.isNotBlank() } ?: testedDate}",
+        testedAt = "测试日期 $testedDate",
         bestMatch = ResumeJobMatch(
             title = item.jobCategory?.takeIf { it.isNotBlank() } ?: "研发类",
             description = "具有极强的创新能力、并且对于开放环境感到放松，很适合在初创公司里担任研发工作，能够产生很多的创新产品。",
             matchRatio = 0.95f
         ),
         competencies = listOf(
-            ResumeCompetency("学习研究", 0.95f, "优秀", "在工作中表现出极强的学习和研究能力，对于新的知识和技能能够快速掌握，对于复杂的问题能够深入研究并找到解决方案。"),
-            ResumeCompetency("团队协作", 0.90f, "优秀", "在团队合作中表现出色，能够快速融入团队，善于与团队成员沟通，能够在团队中发挥出强大的协作能力。"),
-            ResumeCompetency("人际沟通", 0.85f, "良好", "在人际沟通中表现出良好的沟通能力，能够准确地表达自己的想法，能够倾听他人的意见，能够在沟通中找到共识。"),
-            ResumeCompetency("压力承受", 0.85f, "良好", "在压力下能够保持冷静，能够承受一定的工作压力，能够在高压环境下保持良好的工作状态。"),
-            ResumeCompetency("成就导向", 0.95f, "优秀", "在工作中表现出极强的成就导向，对于目标有清晰的认识，能够为了实现目标而不断努力，能够在工作中取得优异的成绩。"),
-            ResumeCompetency("开放创新", 0.90f, "优秀", "在工作中表现出极强的创新能力，对于新的事物能够接受，能够在工作中提出创新的想法和方案。")
+            ResumeCompetency("专业能力", 0.0f, "0.0/10", "岗位硬技能目前处于起步阶段，建议加强基础理论和实操练习。", "💡", "待提升"),
+            ResumeCompetency("学习成长", 0.0f, "0.0/10", "学习成长的潜质尚待挖掘，保持好奇心是快速提升的关键。", "📈", "待提升"),
+            ResumeCompetency("沟通协作", 0.0f, "0.0/10", "沟通协作能力有待提升，建议多参与团队活动，锻炼表达与倾听。", "🤝", "待提升"),
+            ResumeCompetency("问题解决", 0.0f, "0.0/10", "分析与解决问题的逻辑思维需进一步强化，通过实战积累经验。", "🧩", "待提升"),
+            ResumeCompetency("成就执行", 0.0f, "0.0/10", "执行力是达成目标的基石，建议从微小目标开始，培养结果导向习惯。", "🎯", "待提升"),
+            ResumeCompetency("抗压韧性", 0.0f, "0.0/10", "抗压能力仍有较大提升空间，保持心态平和，积极面对各种挑战。", "🛡️", "待提升")
         ),
-        tips = "你的团队协作能力很好，继续保持～对于一些高压的情况下也可以尝试深呼吸，你可以做的更好～也可以多关注一下身边人的情绪，这样你在团队协同中会表现得更好。",
-        generatedNote = "报告生成于$shortDate 报告有效期为您测试日为准后之一年内有效",
+        tips = "你的协作能力、团队责任能力很好，继续保持～对于一些高压的情况下也可以尝试深呼吸，你可以做的更好～也可以多关注一下身边人的情绪，这样你在团队协同中会表现得更好。",
+        generatedNote = "报告有效期为您测试日为准后之一年内有效",
         recommendedJobs = listOf(
             JobRecommendation(
                 title = "前端开发",
@@ -488,8 +491,8 @@ fun ResumeReportScreen(
   onBack: () -> Unit,
   onRetest: () -> Unit = {}
 ) {
-  val headerHeightMax = 96.dp
-  val headerHeightMin = 64.dp
+  val headerHeightMax = 100.dp
+  val headerHeightMin = 72.dp
   val density = LocalDensity.current
   val listState = androidx.compose.foundation.lazy.rememberLazyListState()
   
@@ -526,6 +529,9 @@ fun ResumeReportScreen(
       }
       item {
         CompetencyRadarCard(report.competencies)
+      }
+      item {
+        CompetencyDetailsHeader()
       }
       item {
         CompetencyDetailsCard(report.competencies)
@@ -570,6 +576,7 @@ private fun ResumeReportTopBar(
   Row(
     modifier = modifier
       .fillMaxWidth()
+      .statusBarsPadding()
       .padding(horizontal = 12.dp, vertical = 8.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.SpaceBetween
@@ -673,9 +680,10 @@ private fun BestMatchCard(match: ResumeJobMatch) {
       ) {
         MetricProgressBar(
           progress = match.matchRatio,
-          modifier = Modifier.weight(1f)
+          modifier = Modifier.weight(1f),
+          color = Color(0xFF2196F3) // Updated to blue to match evaluation theme
         )
-        // 橙色标签显示百分比
+        // 橙色标签显示百分比 (Keeping orange for the match percentage badge as a highlight)
         Surface(
           color = AccentOrange,
           shape = RoundedCornerShape(4.dp)
@@ -702,28 +710,84 @@ private fun CompetencyRadarCard(competencies: List<ResumeCompetency>) {
   Card(
     modifier = Modifier.fillMaxWidth(),
     shape = RoundedCornerShape(8.dp),
-    colors = CardDefaults.cardColors(containerColor = TealCardBackground),
+    colors = CardDefaults.cardColors(containerColor = Color.White), // Change to white as in Screenshot 2
     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
   ) {
     Column(
       modifier = Modifier.padding(16.dp),
-      verticalArrangement = Arrangement.spacedBy(16.dp)
+      verticalArrangement = Arrangement.spacedBy(16.dp),
+      horizontalAlignment = Alignment.CenterHorizontally
     ) {
       Text(
-        text = "职场六大核心竞争力",
-        style = MaterialTheme.typography.titleSmall.copy(
-          fontSize = 14.sp,
+        text = "综合能力评估", // Updated Title
+        style = MaterialTheme.typography.titleMedium.copy(
+          fontSize = 16.sp,
           color = Color.Black,
-          fontWeight = FontWeight.Medium
+          fontWeight = FontWeight.Bold
+        ),
+        modifier = Modifier.align(Alignment.Start)
+      )
+      
+      Box(contentAlignment = Alignment.Center) {
+        CompetencyRadarChart(
+          competencies = competencies,
+          modifier = Modifier
+            .fillMaxWidth()
+            .height(260.dp)
         )
-      )
-      CompetencyRadarChart(
-        competencies = competencies,
-        modifier = Modifier
-          .fillMaxWidth()
-          .height(220.dp)
-      )
+        
+        // Centered Overall Score as seen in Screenshot 2
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+          Text(text = "综合评分", fontSize = 12.sp, color = Color.Gray)
+          Text(
+            text = buildAnnotatedString {
+              withStyle(SpanStyle(fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFA000))) {
+                append("7.0")
+              }
+              withStyle(SpanStyle(fontSize = 14.sp, color = Color.Gray)) {
+                append(" /10")
+              }
+            }
+          )
+        }
+      }
+      
+      // Legend
+      Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.Center,
+          modifier = Modifier.fillMaxWidth()
+      ) {
+          Box(modifier = Modifier.size(10.dp).background(Color(0xFF2196F3)))
+          Spacer(modifier = Modifier.width(4.dp))
+          Text(text = "能力评分", fontSize = 12.sp, color = Color(0xFF2196F3))
+      }
     }
+  }
+}
+
+@Composable
+private fun CompetencyDetailsHeader() {
+  Row(
+    verticalAlignment = Alignment.CenterVertically,
+    modifier = Modifier
+      .fillMaxWidth()
+      .padding(vertical = 8.dp)
+  ) {
+    Icon(
+      imageVector = Icons.Default.KeyboardArrowDown,
+      contentDescription = null,
+      tint = Color.Gray,
+      modifier = Modifier.size(20.dp)
+    )
+    Spacer(modifier = Modifier.width(4.dp))
+    Text(
+      text = "查看各维度详细评分",
+      style = MaterialTheme.typography.bodyMedium.copy(
+        fontSize = 14.sp,
+        color = Color.Gray
+      )
+    )
   }
 }
 
@@ -760,7 +824,7 @@ private fun CompetencyDetailsCard(competencies: List<ResumeCompetency>) {
 private fun CompetencyRadarChart(
   competencies: List<ResumeCompetency>,
   modifier: Modifier = Modifier,
-  gridLevels: Int = 4
+  gridLevels: Int = 5
 ) {
   BoxWithConstraints(modifier = modifier) {
     val density = LocalDensity.current
@@ -768,18 +832,22 @@ private fun CompetencyRadarChart(
     val heightPx = constraints.maxHeight.toFloat()
     val sizePx = min(widthPx, heightPx)
     val center = Offset(widthPx / 2f, heightPx / 2f)
-    val radius = sizePx / 2f * 0.72f
+    val radius = sizePx / 2f * 0.75f
     val angleStep = (2 * PI) / competencies.size
     val startAngle = -PI / 2
     val strokeWidth = with(density) { 1.dp.toPx() }
+    
+    val chartColor = Color(0xFF2196F3) // Blue
+    
     val labelPaint = android.graphics.Paint().apply {
       isAntiAlias = true
       textAlign = android.graphics.Paint.Align.CENTER
-      color = android.graphics.Color.parseColor("#B5B7B8")
-      textSize = with(density) { 14.sp.toPx() }
+      color = android.graphics.Color.parseColor("#757575")
+      textSize = with(density) { 12.sp.toPx() }
     }
+    
     Canvas(modifier = Modifier.fillMaxSize()) {
-      // Draw grid levels
+      // Draw grid levels (Hexagon rings)
       for (level in 1..gridLevels) {
         val ratio = level / gridLevels.toFloat()
         val path = Path()
@@ -798,7 +866,7 @@ private fun CompetencyRadarChart(
         path.close()
         drawPath(
           path = path,
-          color = TrackGray,
+          color = Color.LightGray.copy(alpha = 0.3f),
           style = Stroke(width = strokeWidth)
         )
       }
@@ -811,17 +879,17 @@ private fun CompetencyRadarChart(
           y = center.y + sin(angle).toFloat() * radius
         )
         drawLine(
-          color = TrackGray,
+          color = Color.LightGray.copy(alpha = 0.3f),
           start = center,
           end = point,
           strokeWidth = strokeWidth
         )
       }
 
-      // Draw data area
+      // Draw data area (Filled blue)
       val dataPath = Path()
       competencies.forEachIndexed { index, competency ->
-        val valueRatio = competency.score.coerceIn(0f, 1f)
+        val valueRatio = (competency.score / 10f).coerceIn(0f, 1f)
         val angle = startAngle + index * angleStep
         val point = Offset(
           x = center.x + cos(angle).toFloat() * radius * valueRatio,
@@ -836,25 +904,30 @@ private fun CompetencyRadarChart(
       dataPath.close()
       drawPath(
         path = dataPath,
-        color = AccentOrange.copy(alpha = 0.2f)
+        color = chartColor.copy(alpha = 0.15f)
       )
       drawPath(
         path = dataPath,
-        color = AccentOrange,
-        style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        color = chartColor,
+        style = Stroke(width = strokeWidth * 2, cap = StrokeCap.Round, join = StrokeJoin.Round)
       )
 
       // Draw points
       competencies.forEachIndexed { index, competency ->
-        val valueRatio = competency.score.coerceIn(0f, 1f)
+        val valueRatio = (competency.score / 10f).coerceIn(0f, 1f)
         val angle = startAngle + index * angleStep
         val point = Offset(
           x = center.x + cos(angle).toFloat() * radius * valueRatio,
           y = center.y + sin(angle).toFloat() * radius * valueRatio
         )
         drawCircle(
-          color = AccentOrange,
+          color = Color.White,
           radius = with(density) { 4.dp.toPx() },
+          center = point
+        )
+        drawCircle(
+          color = chartColor,
+          radius = with(density) { 3.dp.toPx() },
           center = point
         )
       }
@@ -863,9 +936,11 @@ private fun CompetencyRadarChart(
       drawIntoCanvas { canvas ->
         competencies.forEachIndexed { index, competency ->
           val angle = startAngle + index * angleStep
-          val labelRadius = radius + with(density) { 20.dp.toPx() }
+          // Offset labels slightly more for readability
+          val labelRadius = radius + with(density) { 25.dp.toPx() }
           val x = center.x + cos(angle).toFloat() * labelRadius
           val y = center.y + sin(angle).toFloat() * labelRadius
+          
           canvas.nativeCanvas.drawText(
             competency.name,
             x,
@@ -881,42 +956,77 @@ private fun CompetencyRadarChart(
 @Composable
 private fun CompetencyItem(competency: ResumeCompetency) {
   Column(
-    verticalArrangement = Arrangement.spacedBy(8.dp)
+    verticalArrangement = Arrangement.spacedBy(10.dp),
+    modifier = Modifier.fillMaxWidth()
   ) {
+    // Top Row: Icon + Name + Status Chip + Score
     Row(
       modifier = Modifier.fillMaxWidth(),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(8.dp)
+      verticalAlignment = Alignment.CenterVertically
     ) {
+      Text(
+        text = competency.icon,
+        fontSize = 18.sp,
+        modifier = Modifier.padding(end = 8.dp)
+      )
       Text(
         text = competency.name,
         style = MaterialTheme.typography.bodyMedium.copy(
-          fontSize = 14.sp,
-          fontWeight = FontWeight.Medium,
+          fontSize = 15.sp,
+          fontWeight = FontWeight.SemiBold,
           color = Color.Black
-        )
-      )
-      MetricProgressBar(
-        progress = competency.score,
+        ),
         modifier = Modifier.weight(1f)
       )
-      // 评分标签：橙色文字
+      
+      // Status Chip
+      Box(
+        modifier = Modifier
+          .clip(RoundedCornerShape(4.dp))
+          .background(Color(0xFFFFEBEE)) // Light red for "待提升"
+          .padding(horizontal = 6.dp, vertical = 2.dp)
+      ) {
+        Text(
+          text = competency.statusTag,
+          style = MaterialTheme.typography.bodySmall.copy(
+            fontSize = 11.sp,
+            color = Color(0xFFEF5350), // Red
+            fontWeight = FontWeight.Bold
+          )
+        )
+      }
+    }
+
+    // Middle Row: Progress Bar + Score Text
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+      MetricProgressBar(
+        progress = competency.score / 10f, // Assuming score is 0-10 now
+        modifier = Modifier.weight(1f),
+        color = Color(0xFF2196F3) // Blue theme
+      )
       Text(
         text = competency.ratingLabel,
         style = MaterialTheme.typography.bodySmall.copy(
-          fontSize = 12.sp,
-          color = AccentOrange,
-          fontWeight = FontWeight.Medium
+          fontSize = 13.sp,
+          color = Color(0xFFEF5350), // Red for low scores as in screenshot
+          fontWeight = FontWeight.Bold
         )
       )
     }
+
+    // Bottom Row: AI Feedback Brief
     Text(
       text = competency.description,
-      style = MaterialTheme.typography.bodyMedium.copy(
-        fontSize = 14.sp,
-        lineHeight = 22.sp,
-        color = Color.Black
-      )
+      style = MaterialTheme.typography.bodySmall.copy(
+        fontSize = 13.sp,
+        lineHeight = 18.sp,
+        color = Color.Gray
+      ),
+      modifier = Modifier.fillMaxWidth()
     )
   }
 }
@@ -1137,19 +1247,20 @@ private fun RecommendationCard(job: JobRecommendation) {
 private fun MetricProgressBar(
   progress: Float,
   modifier: Modifier = Modifier,
-  height: Dp = 4.dp
+  height: Dp = 4.dp,
+  color: Color = AccentOrange
 ) {
   Box(
     modifier = modifier
       .height(height)
       .clip(RoundedCornerShape(2.dp))
-      .background(TrackGray)
+      .background(TrackGray.copy(alpha = 0.5f))
   ) {
     Box(
       modifier = Modifier
         .fillMaxHeight()
         .fillMaxWidth(progress.coerceIn(0f, 1f))
-        .background(AccentOrange)
+        .background(color)
     )
   }
 }

@@ -45,6 +45,7 @@ const SystemLayout: React.FC = () => {
     { path: '/home-content', label: '首页内容', icon: '🎯' },
     { path: '/posts', label: '帖子管理', icon: '📰' },
     { path: '/assessments', label: '职业测评', icon: '📝' },
+    { path: '/dimensions', label: '维度配置', icon: '📐' },
     { path: '/app-versions', label: '版本管理', icon: '📱' },
     { path: '/interview-analysis', label: '面试/简历分析', icon: '🤖' },
     { path: '/admins', label: '管理员', icon: '🔑' },

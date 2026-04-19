@@ -17,6 +17,7 @@ import HomeContentManagement from '../pages/HomeContentManagement';
 import AssessmentManagement from '../pages/AssessmentManagement';
 import PostManagement from '../pages/PostManagement';
 import AppVersionManagement from '../pages/AppVersionManagement';
+import DimensionManagement from '../pages/DimensionManagement';
 
 export const AppRoutes: React.FC = () => {
   const { isAuthenticated } = useAuth();
@@ -48,6 +49,7 @@ export const AppRoutes: React.FC = () => {
         <Route path="permissions" element={<PermissionManagement />} />
         <Route path="billing" element={<BillingManagement />} />
         <Route path="settings" element={<SystemSettings />} />
+        <Route path="dimensions" element={<DimensionManagement />} />
       </Route>
       <Route path="/login" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

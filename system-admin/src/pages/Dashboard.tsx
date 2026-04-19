@@ -1,6 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { config } from '../config/config';
+import { 
+  Radar, 
+  RadarChart, 
+  PolarGrid, 
+  PolarAngleAxis, 
+  PolarRadiusAxis,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer
+} from 'recharts';
 
 interface DashboardStats {
   overview: {
@@ -219,6 +234,54 @@ const Dashboard: React.FC = () => {
               {getGrowthRate(stats?.overview.jobs.total || 0)}
             </span>
           </div>
+        </div>
+      </div>
+
+      {/* 6维度统计区域 */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))', gap: '20px', marginBottom: '24px' }}>
+        {/* 雷达图 - 维度平均分 */}
+        <div style={{ background: '#fff', padding: '24px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+          <h3 style={{ margin: '0 0 16px 0' }}>能力维度平均分</h3>
+          <ResponsiveContainer width="100%" height={350}>
+            <RadarChart data={[
+              { name: '专业能力 💡', value: 78, fullMark: 100 },
+              { name: '学习成长 📈', value: 75, fullMark: 100 },
+              { name: '沟通协作 🤝', value: 88, fullMark: 100 },
+              { name: '问题解决 🧩', value: 85, fullMark: 100 },
+              { name: '成就执行 🎯', value: 82, fullMark: 100 },
+              { name: '抗压韧性 🛡️', value: 82, fullMark: 100 }
+            ]}>
+              <PolarGrid />
+              <PolarAngleAxis dataKey="name" />
+              <PolarRadiusAxis angle={30} domain={[0, 100]} />
+              <Radar name="平均分" dataKey="value" stroke="#1890ff" fill="#1890ff" fillOpacity={0.6} />
+              <Tooltip />
+              <Legend />
+            </RadarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* 柱状图 - 多模态 vs 内容评分 */}
+        <div style={{ background: '#fff', padding: '24px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+          <h3 style={{ margin: '0 0 16px 0' }}>维度评分分布 (内容 vs 多模态)</h3>
+          <ResponsiveContainer width="100%" height={350}>
+            <BarChart data={[
+              { name: '专业能力 💡', content: 78, multimodal: 72 },
+              { name: '学习成长 📈', content: 75, multimodal: 68 },
+              { name: '沟通协作 🤝', content: 85, multimodal: 82 },
+              { name: '问题解决 🧩', content: 65, multimodal: 88 },
+              { name: '成就执行 🎯', content: 82, multimodal: 80 },
+              { name: '抗压韧性 🛡️', content: 82, multimodal: 78 }
+            ]}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" />
+              <YAxis domain={[0, 100]} />
+              <Tooltip />
+              <Legend />
+              <Bar name="内容评分" dataKey="content" fill="#1890ff" />
+              <Bar name="多模态评分" dataKey="multimodal" fill="#52c41a" />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       </div>
 

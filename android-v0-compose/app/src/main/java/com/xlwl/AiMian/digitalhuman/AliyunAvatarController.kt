@@ -8,6 +8,7 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -294,7 +295,9 @@ class AliyunAvatarController(
             currentSurfaceView = renderView
             _surfaceView.value = renderView
             try {
-                renderView.setZOrderOnTop(false)
+                // 设置为背景层（在窗口之下），但需要主布局透明才能看到
+                // 或者设置为 MediaOverlay 置于窗口之上但其他 UI 之下
+                renderView.setZOrderMediaOverlay(true)
                 renderView.holder.setFormat(android.graphics.PixelFormat.TRANSLUCENT)
             } catch (e: Exception) {
                 Log.e(TAG, "setFormat error", e)
@@ -352,6 +355,8 @@ fun AliyunAvatarView(
     controller: AliyunAvatarController
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
+    // 关键修正：使用 collectAsState 动态观察 SurfaceView 状态
+    val renderView by controller.surfaceView.collectAsState()
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -368,10 +373,14 @@ fun AliyunAvatarView(
         factory = { ctx -> FrameLayout(ctx) },
         modifier = modifier,
         update = { container ->
-            val sv = controller.getSurfaceView()
+            val sv = renderView
             if (sv != null && sv.parent != container) {
-                for (i in container.childCount - 1 downTo 0) container.removeViewAt(i)
-                if (sv.parent != null) (sv.parent as ViewGroup).removeView(sv)
+                Log.d("AliyunAvatarView", "RTC RenderView 就绪，开始挂载到界面: $sv")
+                container.removeAllViews()
+                
+                // 确保是从旧父容器中移除
+                (sv.parent as? ViewGroup)?.removeView(sv)
+                
                 container.addView(sv, FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT

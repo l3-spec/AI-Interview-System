@@ -447,6 +447,26 @@ model AIInterviewAnalysisReport {
   recommendationLetterJson String? @db.Text @map("recommendation_letter_json") // 推荐函内容 (JSON)
   voiceprintDetailsJson    String? @db.Text @map("voiceprint_details_json") // 声纹分析详细信息 (JSON)
 
+  // 新6维度评分体系 (0-10分制)
+  professionalAbilityScore       Float? @map("professional_ability_score")        // 1. 专业能力
+  learningAbilityScore           Float? @map("learning_research_score")           // 2. 学习能力
+  collaborationResponsibilityScore Float? @map("teamwork_score_new")              // 3. 协作能力、团队责任
+  stressResistanceScore          Float? @map("stress_tolerance_score_new")       // 4. 抗压能力
+  communicationAbilityScore      Float? @map("communication_ability_score")      // 5. 沟通能力
+  achievementInnovationScore     Float? @map("achievement_orientation_score")    // 6. 成就导向、创新能力（取成就导向为主）
+  // 保留旧字段兼容
+  opennessInnovationScore        Float? @map("openness_innovation_score")        // 开放创新（兼容旧数据）
+  // ========== 新6维度评分体系 V2 2026 ==========
+  learningGrowthScore            Float? @map("learning_growth_score")             // 学习成长评分 0-10
+  communicationCollaborationScore Float? @map("communication_collaboration_score")// 沟通协作评分 0-10
+  problemSolvingNewScore         Float? @map("problem_solving_new_score")         // 问题解决评分 0-10（新版）
+  achievementExecutionScore      Float? @map("achievement_execution_score")       // 成就执行评分 0-10
+  stressResilienceScore          Float? @map("stress_resilience_score")           // 抗压韧性评分 0-10
+  // 新增评分JSON字段
+  multimodalScoresJson         String? @db.Text @map("multimodal_scores_json") // 多模态评分 (JSON)
+  questionByQuestionJson       String? @db.Text @map("question_by_question_json") // 逐题评分详情 (JSON)
+  contentMultimodalFusionJson  String? @db.Text @map("content_multimodal_fusion_json") // 内容+多模态融合详情 (JSON)
+
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
 
@@ -455,6 +475,12 @@ model AIInterviewAnalysisReport {
 
   @@index([sessionId])
   @@index([analysisStatus])
+  @@index([professionalAbilityScore])
+  @@index([learningAbilityScore])
+  @@index([collaborationResponsibilityScore])
+  @@index([stressResistanceScore])
+  @@index([communicationAbilityScore])
+  @@index([achievementInnovationScore])
   @@map("ai_interview_analysis_reports")
 }
 

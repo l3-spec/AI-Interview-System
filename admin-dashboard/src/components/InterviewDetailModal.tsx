@@ -15,7 +15,8 @@ import {
   Spin,
   message,
   Row,
-  Col
+  Col,
+  Progress
 } from 'antd';
 import { 
   UserOutlined, 
@@ -348,9 +349,56 @@ const InterviewDetailModal: React.FC<Props> = ({
                         </Paragraph>
                       </div>
                       
+                      {/* 本题各维度得分 */}
+                      {qa.dimensionScores && Object.keys(qa.dimensionScores).length > 0 && (
+                        <div style={{ marginBottom: '16px' }}>
+                          <Text strong>本题维度得分：</Text>
+                          <Row gutter={[12, 8]} style={{ marginTop: '8px' }}>
+                            {Object.entries(qa.dimensionScores).map(([key, score]) => {
+                              const dimensionMap: Record<string, { label: string; color: string }> = {
+                                // 新6维度
+                                professionalAbilityScore: { label: '专业能力 💡', color: '#1890ff' },
+                                learningGrowthScore: { label: '学习成长 📈', color: '#fa8c16' },
+                                communicationCollaborationScore: { label: '沟通协作 🤝', color: '#52c41a' },
+                                problemSolvingScore: { label: '问题解决 🧩', color: '#722ed1' },
+                                achievementExecutionScore: { label: '成就执行 🎯', color: '#eb2f96' },
+                                stressResilienceScore: { label: '抗压韧性 🛡️', color: '#13c2c2' },
+                                // 兼容旧/过渡字段
+                                achievementInnovationScore: { label: '成就导向、创新能力 🚀', color: '#722ed1' },
+                                learningAbilityScore: { label: '学习能力 📚', color: '#fa8c16' },
+                                opennessInnovationScore: { label: '开放创新(兼容) ✨', color: '#eb2f96' },
+                                stressResistanceScore: { label: '抗压能力 🛡️', color: '#13c2c2' },
+                                communicationAbilityScore: { label: '沟通能力 💬', color: '#faad14' },
+                                collaborationResponsibilityScore: { label: '协作能力、团队责任 🤝', color: '#52c41a' },
+                                learningResearchScore: { label: '学习研究 📚', color: '#fa8c16' },
+                                teamworkScore: { label: '团队协作 🤝', color: '#52c41a' },
+                                interpersonalCommunicationScore: { label: '人际沟通 💬', color: '#faad14' },
+                                stressToleranceScore: { label: '压力承受 🛡️', color: '#13c2c2' },
+                                achievementOrientationScore: { label: '成就导向 🎯', color: '#eb2f96' }
+                              };
+                              const dim = dimensionMap[key] || { label: key, color: '#999' };
+                              return (
+                                <Col span={12} key={key}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <Text style={{ fontSize: '12px', width: '110px' }}>{dim.label}</Text>
+                                    <Progress 
+                                      percent={(score || 0) * 10} 
+                                      size="small"
+                                      strokeColor={dim.color}
+                                      format={() => `${(score || 0).toFixed(1)}/10`}
+                                      style={{ flex: 1 }}
+                                    />
+                                  </div>
+                                </Col>
+                              );
+                            })}
+                          </Row>
+                        </div>
+                      )}
+
                       {qa.feedback && (
                         <div>
-                          <Text strong>评价：</Text>
+                          <Text strong>AI评语：</Text>
                           <Paragraph style={{ marginTop: '8px', color: '#666' }}>
                             {qa.feedback}
                           </Paragraph>

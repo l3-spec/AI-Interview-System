@@ -139,10 +139,23 @@ export interface CandidateInterviewSummary {
   videoUrl?: string;
 }
 
+// 维度评分等级
+export type ScoreLevel = '优秀' | '良好' | '一般' | '待提升';
+
+// 多模态评估数据
+export interface MultimodalAssessment {
+  expressionStability: number; // 表情稳定性 0-10
+  eyeContact: number; // 眼神接触 0-10
+  toneStability: number; // 语气稳定性 0-10
+  speechFluency: number; // 语速流畅度 0-10
+  stutterCount: number; // 卡顿次数
+}
+
 // 能力评估
 export interface AbilityAssessment {
   id: string;
   interviewId: string;
+  // 旧字段（保留用于向后兼容）
   technicalSkills: number; // 技术能力
   communication: number; // 沟通能力 
   problemSolving: number; // 问题解决能力
@@ -150,10 +163,36 @@ export interface AbilityAssessment {
   leadership: number; // 领导力
   creativity: number; // 创新能力
   adaptability: number; // 适应能力
+  learningResearchScore?: number;
+  interpersonalCommunicationScore?: number;
+  stressToleranceScore?: number;
+  achievementOrientationScore?: number;
+  // 新6维度 (0-10分制)
+  professionalAbilityScore?: number; // 1. 专业能力 - 岗位硬技能、知识储备、实操水平 💡
+  learningGrowthScore?: number; // 2. 学习成长 - 学习速度、知识迁移、自我驱动 📈
+  communicationCollaborationScore?: number; // 3. 沟通协作 - 表达清晰、倾听理解、团队配合 🤝
+  problemSolvingScore?: number; // 4. 问题解决 - 分析能力、创新思维、方案落地 🧩
+  achievementExecutionScore?: number; // 5. 成就执行 - 目标导向、结果驱动、责任担当 🎯
+  stressResilienceScore?: number; // 6. 抗压韧性 - 情绪稳定、逆商、快速恢复 🛡️
+  // 兼容已有新字段
+  learningAbilityScore?: number;
+  opennessInnovationScore?: number;
+  stressResistanceScore?: number;
+  communicationAbilityScore?: number;
+  collaborationResponsibilityScore?: number;
+  achievementInnovationScore?: number;
   overallScore: number; // 综合评分
   feedback: string; // 详细反馈
   strengths: string[]; // 优势
   improvements: string[]; // 改进建议
+  // 多模态评估
+  multimodal?: MultimodalAssessment;
+  // 各维度评分说明
+  dimensionDetails?: Record<string, {
+    score: number;
+    level: ScoreLevel;
+    description: string;
+  }>;
 }
 
 // 面试问题和回答
@@ -166,6 +205,15 @@ export interface InterviewQA {
   feedback: string;
   duration: number; // 回答时长
   category: 'technical' | 'behavioral' | 'situational' | 'general';
+  // 本题各维度得分
+  dimensionScores?: {
+    professionalAbilityScore?: number;
+    achievementOrientationScore?: number;
+    learningResearchScore?: number;
+    opennessInnovationScore?: number;
+    stressToleranceScore?: number;
+    teamworkScore?: number;
+  };
 }
 
 // 候选人筛选条件

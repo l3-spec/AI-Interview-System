@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { deepseekService } from './deepseekService';
+import { QuestionTemplate, ScoringRubric } from '../config/interviewQuestionTemplates';
 
 /**
  * 问答评估服务
@@ -13,43 +14,60 @@ export interface EvaluationContext {
   expectedKeywords?: string[]; // 期望关键词
 }
 
+export interface MultimodalScores {
+  expressionScore: number;      // 表情评分 0-10（自然/紧张/说谎）
+  eyeContactScore: number;      // 眼神评分 0-10（专注/闪躲/游离）
+  toneScore: number;            // 语气评分 0-10（自信/犹豫/不确定）
+  speechRateScore: number;      // 语速评分 0-10（正常/过快/过慢）
+  stutterScore: number;         // 卡顿评分 0-10（流畅/卡顿/重复）
+  overallMultimodalScore: number; // 综合多模态评分 0-10
+}
+
 export interface QAEvaluationResult {
-  // 四维评分
-  relevanceScore: number;           // 0-100
-  completenessScore: number;        // 0-100
-  professionalAccuracyScore: number; // 0-100
-  logicalCoherenceScore: number;    // 0-100
+  // 四维评分（0-100）
+  relevanceScore: number;           
+  completenessScore: number;        
+  professionalAccuracyScore: number;
+  logicalCoherenceScore: number;    
   
-  // 综合评分
-  overallScore: number;             // 0-100（四维加权平均）
+  // 维度综合评分（0-10，内部使用）
+  dimensionContentScore: number;    // 内容评分 0-10
+  dimensionMultimodalScore: number; // 多模态评分 0-10
+  dimensionOverallScore: number;    // 维度最终评分 0-10（按权重融合）
+  
+  // 综合评分（0-100，前端展示）
+  overallScore: number;             
   
   // 详细反馈
-  feedback: string;                 // 整体反馈
+  feedback: string;                 
   relevanceDetails: {
-    embeddingSimilarity: number;    // embedding 相似度
-    keywordOverlap: number;         // 关键词重叠率
-    semanticMatch: boolean;         // 语义是否匹配
+    embeddingSimilarity: number;
+    keywordOverlap: number;
+    semanticMatch: boolean;
   };
   completenessDetails: {
-    hasStructure: boolean;          // 是否有结构
-    hasExamples: boolean;           // 是否有案例
-    hasData: boolean;               // 是否有数据
-    subQuestionsCovered: number;    // 子问题覆盖数
-    subQuestionsTotal: number;      // 子问题总数
-    missingItems: string[];         // 缺失项
+    hasStructure: boolean;
+    hasExamples: boolean;
+    hasData: boolean;
+    subQuestionsCovered: number;
+    subQuestionsTotal: number;
+    missingItems: string[];
   };
   accuracyDetails: {
-    conceptsExtracted: string[];    // 提取的专业概念
-    verifiedConcepts: string[];     // 已验证正确的概念
-    suspectConcepts: string[];      // 可疑概念
-    wrongConcepts: string[];        // 错误概念
+    conceptsExtracted: string[];
+    verifiedConcepts: string[];
+    suspectConcepts: string[];
+    wrongConcepts: string[];
   };
   coherenceDetails: {
-    argumentCount: number;          // 论点数量
-    contradictions: string[];       // 矛盾点
-    logicalGaps: string[];          // 逻辑跳跃
-    redundancy: string[];           // 冗余内容
+    argumentCount: number;
+    contradictions: string[];
+    logicalGaps: string[];
+    redundancy: string[];
   };
+  // 关键词匹配结果
+  keywordMatchRate: number;         // 期望关键词匹配率 0-100
+  quantifiableMetricsFound: string[]; // 发现的可量化指标
 }
 
 interface EmbeddingConfig {
@@ -107,12 +125,25 @@ export class QAEvaluationService {
   }
 
   /**
-   * 主要评估入口
+   * 主要评估入口（兼容旧版）
    */
   async evaluate(
     question: string,
     answer: string,
     context: EvaluationContext = {}
+  ): Promise<QAEvaluationResult | null> {
+    return this.evaluateWithTemplate(question, answer, context, null, null);
+  }
+
+  /**
+   * 新的评估入口：支持评分模板和多模态融合
+   */
+  async evaluateWithTemplate(
+    question: string,
+    answer: string,
+    context: EvaluationContext = {},
+    scoringRubric: ScoringRubric | null = null, // 评分规则模板
+    multimodalScores: MultimodalScores | null = null // 多模态分析结果
   ): Promise<QAEvaluationResult | null> {
     if (!this.isEnabled()) {
       return null;
@@ -126,25 +157,57 @@ export class QAEvaluationService {
       // 并行执行四个维度的评估
       const [relevanceResult, completenessResult, accuracyResult, coherenceResult] = await Promise.all([
         this.evaluateSemanticRelevance(question, answer),
-        this.evaluateCompleteness(question, answer, context.expectedKeywords || []),
+        this.evaluateCompleteness(question, answer, context.expectedKeywords || (scoringRubric?.keywords || [])),
         this.evaluateProfessionalAccuracy(question, answer, context),
         this.evaluateLogicalCoherence(question, answer)
       ]);
 
-      // 计算综合评分，默认权重：相关性30%，完整度25%，专业度25%，逻辑20%
-      const overallScore = Math.round(
+      // 计算基础综合评分，默认权重：相关性30%，完整度25%，专业度25%，逻辑20%
+      const contentOverallScore = Math.round(
         relevanceResult.score * 0.3 +
         completenessResult.score * 0.25 +
         accuracyResult.score * 0.25 +
         coherenceResult.score * 0.2
       );
 
+      // 转换为0-10分制的内容评分
+      const dimensionContentScore = Math.round(contentOverallScore / 10);
+
+      // 计算多模态评分（默认10分满分，如果没有多模态数据）
+      let dimensionMultimodalScore = 10;
+      if (multimodalScores) {
+        dimensionMultimodalScore = multimodalScores.overallMultimodalScore;
+      }
+
+      // 按评分规则中的权重融合内容和多模态评分
+      let dimensionOverallScore = dimensionContentScore;
+      if (scoringRubric) {
+        dimensionOverallScore = Math.round(
+          dimensionContentScore * scoringRubric.contentWeight + 
+          dimensionMultimodalScore * scoringRubric.multimodalWeight
+        );
+      } else {
+        // 默认权重：内容80%，多模态20%
+        dimensionOverallScore = Math.round(dimensionContentScore * 0.8 + dimensionMultimodalScore * 0.2);
+      }
+      dimensionOverallScore = Math.max(0, Math.min(10, dimensionOverallScore));
+
+      // 最终前端展示的0-100分制
+      const overallScore = dimensionOverallScore * 10;
+
+      // 计算关键词匹配率和可量化指标
+      const keywordMatchRate = completenessResult.details.subQuestionsCovered / completenessResult.details.subQuestionsTotal * 100;
+      const quantifiableMetricsFound = answer.match(/\d+(\.\d+)?%?/g) || [];
+
       // 生成整体反馈
       const feedback = this.generateOverallFeedback(
         relevanceResult,
         completenessResult,
         accuracyResult,
-        coherenceResult
+        coherenceResult,
+        scoringRubric,
+        multimodalScores,
+        dimensionOverallScore
       );
 
       return {
@@ -152,12 +215,17 @@ export class QAEvaluationService {
         completenessScore: completenessResult.score,
         professionalAccuracyScore: accuracyResult.score,
         logicalCoherenceScore: coherenceResult.score,
+        dimensionContentScore,
+        dimensionMultimodalScore,
+        dimensionOverallScore,
         overallScore,
         feedback,
         relevanceDetails: relevanceResult.details,
         completenessDetails: completenessResult.details,
         accuracyDetails: accuracyResult.details,
-        coherenceDetails: coherenceResult.details
+        coherenceDetails: coherenceResult.details,
+        keywordMatchRate,
+        quantifiableMetricsFound
       };
     } catch (error) {
       console.error('[QAEvaluationService] 评估失败', error);
@@ -546,13 +614,16 @@ export class QAEvaluationService {
   }
 
   /**
-   * 生成整体反馈
+   * 生成整体反馈（支持评分模板和多模态）
    */
   private generateOverallFeedback(
     relevance: { score: number; details: QAEvaluationResult['relevanceDetails'] },
     completeness: { score: number; details: QAEvaluationResult['completenessDetails'] },
     accuracy: { score: number; details: QAEvaluationResult['accuracyDetails'] },
-    coherence: { score: number; details: QAEvaluationResult['coherenceDetails'] }
+    coherence: { score: number; details: QAEvaluationResult['coherenceDetails'] },
+    scoringRubric: ScoringRubric | null = null,
+    multimodalScores: MultimodalScores | null = null,
+    dimensionOverallScore: number = 0
   ): string {
     const feedbackParts: string[] = [];
 
@@ -595,6 +666,36 @@ export class QAEvaluationService {
     }
     if (coherence.details.contradictions.length === 0 && coherence.details.logicalGaps.length === 0 && coherence.details.redundancy.length === 0) {
       feedbackParts.push('✅ 逻辑连贯，论证清晰，没有明显的逻辑问题');
+    }
+
+    // 多模态反馈
+    if (multimodalScores) {
+      if (multimodalScores.overallMultimodalScore >= 8) {
+        feedbackParts.push('✅ 多模态表现良好：表情自然，眼神专注，语气自信，表达流畅');
+      } else if (multimodalScores.overallMultimodalScore >= 5) {
+        const issues: string[] = [];
+        if (multimodalScores.expressionScore < 5) issues.push('表情紧张');
+        if (multimodalScores.eyeContactScore < 5) issues.push('眼神闪躲');
+        if (multimodalScores.toneScore < 5) issues.push('语气犹豫');
+        if (multimodalScores.speechRateScore < 5) issues.push('语速异常');
+        if (multimodalScores.stutterScore < 5) issues.push('表达卡顿');
+        feedbackParts.push(`⚠️ 多模态表现有待提升：${issues.join('、')}`);
+      } else {
+        feedbackParts.push('❌ 多模态表现较差，存在明显的紧张、不自信或说谎嫌疑');
+      }
+    }
+
+    // 评分等级反馈
+    if (scoringRubric) {
+      const scoreLevel = dimensionOverallScore >= 8 ? '优秀' : dimensionOverallScore >= 5 ? '一般' : '不足';
+      feedbackParts.push(`📊 评分等级：${scoreLevel}（${dimensionOverallScore}/10）`);
+      if (dimensionOverallScore >= 8) {
+        feedbackParts.push(`✅ ${scoringRubric.criteria.score10}`);
+      } else if (dimensionOverallScore >= 5) {
+        feedbackParts.push(`⚠️ ${scoringRubric.criteria.score5}`);
+      } else {
+        feedbackParts.push(`❌ ${scoringRubric.criteria.score0}`);
+      }
     }
 
     return feedbackParts.join('\n');

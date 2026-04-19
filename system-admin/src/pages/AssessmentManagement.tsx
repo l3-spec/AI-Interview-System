@@ -853,6 +853,21 @@ const AssessmentManagement: React.FC = () => {
                 <InputNumber min={0} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
+            <Col span={12}>
+              <Form.Item
+                label="关联维度"
+                name="dimension"
+                rules={[{ required: true, message: '请选择题目关联的能力维度' }]}
+              >
+                <Select placeholder="请选择维度">
+                  {dimensions.map(dim => (
+                    <Option key={dim.value} value={dim.value}>
+                      {dim.label}
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
             <Col span={6}>
               <Form.Item name="sortOrder" label="排序" initialValue={0}>
                 <InputNumber min={0} style={{ width: '100%' }} />

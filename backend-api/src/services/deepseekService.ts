@@ -908,6 +908,44 @@ export class DeepseekService {
       };
     }
   }
+
+  /**
+   * 通用聊天完成方法，供 qaEvaluationService 等调用
+   */
+  async chatCompletion(
+    messages: Array<{ role: string; content: string }>,
+    options?: { temperature?: number; maxTokens?: number; response_format?: any }
+  ): Promise<string> {
+    if (!this.isEnabled) {
+      return '{}';
+    }
+
+    try {
+      const response = await axios.post(
+        this.apiUrl,
+        {
+          model: this.model,
+          messages,
+          max_tokens: options?.maxTokens || 2000,
+          temperature: options?.temperature ?? 0.7,
+          stream: false,
+          ...(options?.response_format ? { response_format: options.response_format } : {})
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 30000
+        }
+      );
+
+      return response.data?.choices?.[0]?.message?.content || '{}';
+    } catch (error: any) {
+      console.error('chatCompletion 失败:', error.message);
+      return '{}';
+    }
+  }
 }
 
-export const deepseekService = new DeepseekService(); 
+export const deepseekService = new DeepseekService();
