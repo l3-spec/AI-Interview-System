@@ -111,7 +111,7 @@ const RegisterPage: React.FC = () => {
           color: '#1890ff',
           margin: '0 0 8px 0'
         }}>
-          AI面试系统
+          U-Talent
         </h1>
         <p style={{ 
           fontSize: '16px',

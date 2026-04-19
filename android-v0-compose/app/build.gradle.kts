@@ -29,8 +29,9 @@ plugins {
 //val defaultApiHost = "10.0.1.61"
 //val defaultApiHost = "10.0.1.77"
 //val defaultApiHost = "192.168.10.62"
-val defaultApiHost = "10.0.1.33"
+//val defaultApiHost = "10.0.1.33"
 //val defaultApiHost = "192.168.124.56"
+val defaultApiHost = "192.168.10.84"
 val defaultApiPort = 3001
 val defaultApiPath = "api"
 
@@ -65,7 +66,7 @@ val airiWebUrl: String = (project.findProperty("AIRI_WEB_URL") as String?)
     ?: "http://10.10.1.10:3000/avatar"
 
 // 阿里云数字人配置
-val defaultAliyunAvatarProjectId = "C1vPn2gVB9WVpj8yxLR2jV-g"
+val defaultAliyunAvatarProjectId = "C1r5mxl2jnYnWxQQJeM7rBlQ"
 val aliyunAvatarProjectId: String = (project.findProperty("ALIYUN_AVATAR_PROJECT_ID") as String?)
     ?.trim()
     ?.takeIf { it.isNotEmpty() }
@@ -74,6 +75,22 @@ val aliyunAvatarApiUrl: String = (project.findProperty("ALIYUN_AVATAR_API_URL") 
     ?.trim()
     ?.takeIf { it.isNotEmpty() }
     ?: ""
+val defaultAliyunAvatarInstanceId = "avatar_2dchat_public_cn-p9m4quua301"
+val aliyunAvatarInstanceId: String = (project.findProperty("ALIYUN_AVATAR_INSTANCE_ID") as String?)
+    ?.trim()
+    ?.takeIf { it.isNotEmpty() }
+    ?: defaultAliyunAvatarInstanceId
+
+// DashScope API 配置（直接调用阿里云数字人 OpenAPI）
+val defaultDashScopeApiKey = "sk-8c965da07f6344208bfe875493384a33"
+val dashScopeApiKey: String = (project.findProperty("DASHSCOPE_API_KEY") as String?)
+    ?.trim()
+    ?.takeIf { it.isNotEmpty() }
+    ?: defaultDashScopeApiKey
+val dashScopeBaseUrl: String = (project.findProperty("DASHSCOPE_BASE_URL") as String?)
+    ?.trim()
+    ?.takeIf { it.isNotEmpty() }
+    ?: "https://lingmou.cn-beijing.aliyuncs.com"
 
 fun String.escapeForBuildConfig(): String = this.replace("\"", "\\\"")
 
@@ -134,6 +151,21 @@ android {
             "String",
             "ALIYUN_AVATAR_API_URL",
             "\"${aliyunAvatarApiUrl.escapeForBuildConfig()}\""
+        )
+        buildConfigField(
+            "String",
+            "ALIYUN_AVATAR_INSTANCE_ID",
+            "\"${aliyunAvatarInstanceId.escapeForBuildConfig()}\""
+        )
+        buildConfigField(
+            "String",
+            "DASHSCOPE_API_KEY",
+            "\"${dashScopeApiKey.escapeForBuildConfig()}\""
+        )
+        buildConfigField(
+            "String",
+            "DASHSCOPE_BASE_URL",
+            "\"${dashScopeBaseUrl.escapeForBuildConfig()}\""
         )
 
         resValue("string", "api_host", resolvedApiHost)
@@ -196,6 +228,8 @@ dependencies {
 
     // 阿里云数字人 SDK (视频通话数字人)
     implementation(files("libs/video_chat_sdk-release.aar"))
+    // AliRTC ARTC SDK（阿里云实时音视频，video_chat_sdk 的核心依赖）
+    implementation("com.aliyun.aio:AliVCSDK_ARTC:7.3.0")
     // OKHttp required by video_chat_sdk
     implementation("com.squareup.okhttp3:okhttp:4.10.0")
     implementation("com.squareup.okio:okio:3.0.0")

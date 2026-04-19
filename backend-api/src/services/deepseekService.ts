@@ -47,6 +47,14 @@ export interface ClosingResult {
   closing: string;
 }
 
+export interface QuestionAnswerAnalysisResult {
+  relevanceScore: number; // 0-100
+  completenessScore: number; // 0-100
+  professionalAccuracyScore: number; // 0-100
+  logicalCoherenceScore: number; // 0-100
+  feedback: string; // 简短反馈
+}
+
 interface JobTemplate {
   id: string;
   jobTitle: string;
@@ -574,7 +582,7 @@ export class DeepseekService {
     `.trim();
 
     if (!this.isEnabled) {
-      return { opening: isFirstTime ? "您好，欢迎来到AI面试系统。" : "欢迎回来，让我们继续面试。" };
+      return { opening: isFirstTime ? "您好，欢迎来到U-Talent面试系统。" : "欢迎回来，让我们继续面试。" };
     }
 
     try {
@@ -790,6 +798,114 @@ export class DeepseekService {
     } catch (error: any) {
       console.error('DeepSeek生成回复失败:', error.message);
       return "抱歉，我没有听清楚。请再说一遍。";
+    }
+  }
+
+  /**
+   * 分析单个问答对，返回4个维度评分和反馈
+   * @param question 问题文本
+   * @param answer 答案文本
+   * @param context 上下文信息（职位类型、要求等）
+   */
+  async analyzeQuestionAnswerPair(
+    question: string,
+    answer: string,
+    context: { jobCategory?: string; jobRequirements?: string; questionType?: string }
+  ): Promise<QuestionAnswerAnalysisResult> {
+    // 空答案降级处理
+    if (!answer || answer.trim().length === 0) {
+      return {
+        relevanceScore: 0,
+        completenessScore: 0,
+        professionalAccuracyScore: 0,
+        logicalCoherenceScore: 0,
+        feedback: '未回答该问题'
+      };
+    }
+
+    // 模拟模式降级
+    if (!this.isEnabled) {
+      const randomScore = () => Math.floor(Math.random() * 40) + 60;
+      return {
+        relevanceScore: randomScore(),
+        completenessScore: randomScore(),
+        professionalAccuracyScore: randomScore(),
+        logicalCoherenceScore: randomScore(),
+        feedback: '回答基本符合要求，建议增加具体案例支撑'
+      };
+    }
+
+    try {
+      const jobCategory = context.jobCategory || '通用类';
+      const systemPrompt = `你是一位专业的面试评估专家，负责评估候选人回答的质量。请严格按照以下维度对问答对进行评分，输出严格为JSON格式，不要任何其他内容。
+
+【评分规则】
+1. 相关性评分（relevanceScore：0-100）：评估答案与问题的匹配程度，完全答非所问为0，完全匹配为100
+2. 完整度评分（completenessScore：0-100）：评估答案是否充分、有结构、有举例，检查是否有具体案例/数据支撑、是否有逻辑层次、字数是否合理、是否回答了所有子问题
+3. 专业准确度评分（professionalAccuracyScore：0-100）：评估答案中的专业知识是否准确，针对${jobCategory}职位检查专业术语使用或方法论合理性，是否存在知识性错误
+4. 逻辑连贯性评分（logicalCoherenceScore：0-100）：评估答案的逻辑是否清晰连贯，是否存在自相矛盾、逻辑跳跃，论证过程是否完整（观点→论据→结论）
+5. feedback：100字以内的简短反馈，指出优缺点和改进建议
+
+【输出格式】
+{
+  "relevanceScore": 数字,
+  "completenessScore": 数字,
+  "professionalAccuracyScore": 数字,
+  "logicalCoherenceScore": 数字,
+  "feedback": "反馈内容"
+}`;
+
+      const userPrompt = `问题：${question}
+回答：${answer}
+职位要求：${context.jobRequirements || '无特殊要求'}
+请按照上述规则进行评分。`;
+
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ];
+
+      const response = await axios.post(
+        this.apiUrl,
+        {
+          model: this.model,
+          messages,
+          max_tokens: 1000,
+          temperature: 0.3,
+          stream: false,
+          response_format: { type: 'json_object' }
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 30000
+        }
+      );
+
+      const content = response.data?.choices?.[0]?.message?.content || '';
+      const result = JSON.parse(content) as QuestionAnswerAnalysisResult;
+
+      // 校验分数范围
+      const clampScore = (score: number) => Math.max(0, Math.min(100, score || 0));
+      return {
+        relevanceScore: clampScore(result.relevanceScore),
+        completenessScore: clampScore(result.completenessScore),
+        professionalAccuracyScore: clampScore(result.professionalAccuracyScore),
+        logicalCoherenceScore: clampScore(result.logicalCoherenceScore),
+        feedback: result.feedback?.trim() || '无反馈'
+      };
+    } catch (error: any) {
+      console.error('问答对分析失败:', error.message);
+      // 错误降级，返回基础评分
+      return {
+        relevanceScore: 50,
+        completenessScore: 50,
+        professionalAccuracyScore: 50,
+        logicalCoherenceScore: 50,
+        feedback: '系统分析异常，评分仅供参考'
+      };
     }
   }
 }

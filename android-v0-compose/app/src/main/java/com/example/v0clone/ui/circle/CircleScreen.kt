@@ -682,12 +682,14 @@ private fun CircleHeader(
                 )
             )
             .padding(
-                top = containerTopPadding,
                 bottom = containerBottomPadding,
                 start = horizontalPadding,
                 end = horizontalPadding
             )
     ) {
+        // 允许内容从状态栏下方开始绘制（沉浸式），但实际部件通过 padding 避开状态栏
+        Spacer(modifier = Modifier.statusBarsPadding())
+        Spacer(modifier = Modifier.height(10.dp))
         Row(
             modifier = Modifier
                 .fillMaxWidth()

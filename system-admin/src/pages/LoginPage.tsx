@@ -60,7 +60,7 @@ const LoginPage: React.FC = () => {
             color: '#2d3748',
             marginBottom: '0.5rem'
           }}>
-            AI面试系统
+            U-Talent
           </h1>
           <p style={{ 
             color: '#718096',

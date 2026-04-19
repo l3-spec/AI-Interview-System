@@ -12,7 +12,7 @@ const FeatureGuide: React.FC<Props> = ({ onClose }) => {
   const steps: TourProps['steps'] = [
     {
       title: '面试者管理',
-      description: '这是AI面试系统的企业管理后台，您可以在这里管理所有的面试者和面试记录。',
+      description: '这是U-Talent的企业管理后台，您可以在这里管理所有的面试者和面试记录。',
       target: () => document.querySelector('.ant-layout-header') as HTMLElement,
     },
     {

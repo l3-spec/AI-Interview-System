@@ -35,7 +35,7 @@ const LoginPage: React.FC = () => {
       <div className="login-content">
         <Card bordered={false} className="login-card">
           <div className="login-header">
-            <Title level={2} style={{ marginBottom: 0 }}>AI面试系统</Title>
+            <Title level={2} style={{ marginBottom: 0 }}>U-Talent</Title>
             <Text type="secondary">企业管理后台</Text>
           </div>
 

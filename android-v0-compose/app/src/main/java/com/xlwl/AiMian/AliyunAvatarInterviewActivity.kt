@@ -41,6 +41,8 @@ class AliyunAvatarInterviewActivity : ComponentActivity() {
                 modifier = Modifier.fillMaxSize(),
                 color = Color(0xFF0C1220)
             ) {
+                // 不再需要手动创建 Retrofit/AliyunAvatarApi，
+                // AliyunAvatarInterviewScreen 内部使用 DashScopeAvatarService 直连
                 AliyunAvatarInterviewScreen(
                     projectId = BuildConfig.ALIYUN_AVATAR_PROJECT_ID,
                     interviewQuestion = questionText,

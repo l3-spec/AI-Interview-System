@@ -434,7 +434,18 @@ model AIInterviewAnalysisReport {
   bodyLanguageScore    Float?  @map("body_language_score") // 肢体语言评分 0-100
   postureStability     Float?  @map("posture_stability") // 姿态稳定性 0-100
   gazeFocus            Float?  @map("gaze_focus") // 视线专注度 0-100
+  // 新增：逐题分析维度评分
+  relevanceScore        Int? @map("relevance_score") // 平均相关性评分 0-100
+  completenessScore     Int? @map("completeness_score") // 平均完整度评分 0-100
+  professionalAccuracyScore Int? @map("professional_accuracy_score") // 平均专业准确度评分 0-100
+  logicalCoherenceScore Int? @map("logical_coherence_score") // 平均逻辑连贯性评分 0-100
+  questionAnalysisDetails String? @db.Text @map("question_analysis_details") // JSON: 每个问题的详细分析
   videoInsights        String? @db.Text @map("video_insights") // JSON: 详细视频分析结果
+
+  // 新增：声纹分析和简历交叉验证结果
+  crossValidationJson      String? @db.Text @map("cross_validation_json") // 简历能力交叉验证结果 (JSON)
+  recommendationLetterJson String? @db.Text @map("recommendation_letter_json") // 推荐函内容 (JSON)
+  voiceprintDetailsJson    String? @db.Text @map("voiceprint_details_json") // 声纹分析详细信息 (JSON)
 
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")

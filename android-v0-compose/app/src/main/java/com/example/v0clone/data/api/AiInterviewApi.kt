@@ -8,12 +8,16 @@ import com.xlwl.AiMian.data.model.AiInterviewSubmitAnswerRequest
 import com.xlwl.AiMian.data.model.CreateAiInterviewSessionRequest
 import com.xlwl.AiMian.data.model.NextAiInterviewQuestionResponse
 import com.xlwl.AiMian.data.model.SubmitAiInterviewAnswerResponse
-import retrofit2.http.Body
-import retrofit2.http.GET
-import retrofit2.http.POST
-import retrofit2.http.Path
+import okhttp3.MultipartBody
+import retrofit2.http.*
 
 interface AiInterviewApi {
+
+  @Multipart
+  @POST("ai-interview/face-photo")
+  suspend fun uploadFacePhoto(
+    @Part image: MultipartBody.Part
+  ): ApiResponse<Unit>
 
   @POST("ai-interview/create-session")
   suspend fun createSession(

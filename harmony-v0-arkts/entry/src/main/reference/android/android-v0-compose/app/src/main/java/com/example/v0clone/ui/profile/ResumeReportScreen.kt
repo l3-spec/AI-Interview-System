@@ -104,7 +104,7 @@ fun ResumeReportRoute(onBack: () -> Unit) {
   val report = remember {
     val description = "希望在工作中取得新突破或新进展，时常为自己设定有挑战的目标。喜欢尝试新事物，时常迸发新的想法，工作中比较喜欢提出原创性的解决方案。通常会遵循规则和程序，但有时也会打破常规来完成任务"
     ResumeReport(
-      title = "星链未来视频简历报告",
+      title = "U-Talent视频简历报告",
       testedAt = "测试日期 10月17日 22:58",
       bestMatch = ResumeJobMatch(
         title = "研发类",

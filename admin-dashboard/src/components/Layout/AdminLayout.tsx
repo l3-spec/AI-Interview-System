@@ -161,12 +161,12 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
         >
           <img
             src={logoImage}
-            alt="AI面试系统"
+            alt="U-Talent"
             style={{ width: 36, height: 36, borderRadius: 12 }}
           />
           {!collapsed && (
             <span style={{ color: '#e0e7ff', fontWeight: 600, fontSize: 16 }}>
-              AI面试系统
+              U-Talent
             </span>
           )}
         </div>

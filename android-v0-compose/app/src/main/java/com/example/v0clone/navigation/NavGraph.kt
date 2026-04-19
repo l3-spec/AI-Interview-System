@@ -8,8 +8,10 @@ import android.widget.Toast
 import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.xlwl.AiMian.ai.DigitalInterviewScreen
-import com.xlwl.AiMian.ai.DigitalInterviewViewModel
+import com.xlwl.AiMian.digitalhuman.AliyunAvatarInterviewScreen
+import com.xlwl.AiMian.ai.guide.InterviewPrecautionsScreen
+import com.xlwl.AiMian.ai.guide.InterviewCameraTestScreen
+import com.xlwl.AiMian.ai.guide.InterviewDeviceTestScreen
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -154,6 +156,7 @@ fun AppNavHost(navController: NavHostController) {
     val apiService = remember(client) { RetrofitClient.createService(ApiService::class.java, client) }
     val jobDictionaryApi = remember(client) { RetrofitClient.createService(JobDictionaryApi::class.java, client) }
     val aiInterviewApi = remember(client) { RetrofitClient.createService(AiInterviewApi::class.java, client) }
+    val aliyunAvatarApi = remember(client) { RetrofitClient.createService(com.xlwl.AiMian.api.AliyunAvatarApi::class.java, client) } // @Deprecated — 保留向后兼容
     val ossApi = remember(client) { RetrofitClient.createService(OssApi::class.java, client) }
     val aiInterviewRepository = remember(aiInterviewApi) { AiInterviewRepository(aiInterviewApi) }
     val ossRepository = remember(ossApi) { OssRepository(ossApi) }
@@ -429,7 +432,7 @@ fun AppNavHost(navController: NavHostController) {
                         } else {
                             navController.currentBackStackEntry?.savedStateHandle?.set("selected_job_id", jobId)
                         }
-                        navController.navigate(Routes.DIGITAL_INTERVIEW) {
+                        navController.navigate(Routes.DIGITAL_INTERVIEW_PRECAUTIONS) {
                             launchSingleTop = true
                         }
                     }
@@ -460,7 +463,7 @@ fun AppNavHost(navController: NavHostController) {
                         backStackEntry.savedStateHandle.set("selected_position", position.name)
                         backStackEntry.savedStateHandle.set("selected_category", categoryName)
                         backStackEntry.savedStateHandle.set("selected_job_id", position.id)
-                        navController.navigate(Routes.DIGITAL_INTERVIEW) {
+                        navController.navigate(Routes.DIGITAL_INTERVIEW_PRECAUTIONS) {
                             launchSingleTop = true
                         }
                     }
@@ -986,6 +989,91 @@ fun AppNavHost(navController: NavHostController) {
             )
         }
 
+        // AI面试前置引导 - 面试注意事项
+        composable(Routes.DIGITAL_INTERVIEW_PRECAUTIONS) { backStackEntry ->
+            if (token.isNullOrEmpty()) {
+                LaunchedEffect(Unit) {
+                    navController.navigate(LOGIN) { launchSingleTop = true }
+                }
+            } else {
+                InterviewPrecautionsScreen(
+                    onBack = { navController.popBackStack() },
+                    onNext = {
+                        val sourceEntry = navController.previousBackStackEntry
+                        val pos = sourceEntry?.savedStateHandle?.get<String>("selected_position") ?: backStackEntry.savedStateHandle.get<String>("selected_position")
+                        val cat = sourceEntry?.savedStateHandle?.get<String>("selected_category") ?: backStackEntry.savedStateHandle.get<String>("selected_category")
+                        val jId = sourceEntry?.savedStateHandle?.get<String>("selected_job_id") ?: backStackEntry.savedStateHandle.get<String>("selected_job_id")
+                        
+                        navController.currentBackStackEntry?.savedStateHandle?.set("selected_position", pos)
+                        navController.currentBackStackEntry?.savedStateHandle?.set("selected_category", cat)
+                        if (jId != null) {
+                            navController.currentBackStackEntry?.savedStateHandle?.set("selected_job_id", jId)
+                        } else {
+                            navController.currentBackStackEntry?.savedStateHandle?.remove<String>("selected_job_id")
+                        }
+                        navController.navigate(Routes.DIGITAL_INTERVIEW_CAMERA_TEST) { launchSingleTop = true }
+                    }
+                )
+            }
+        }
+
+        // AI面试前置引导 - 相机测试
+        composable(Routes.DIGITAL_INTERVIEW_CAMERA_TEST) { backStackEntry ->
+            if (token.isNullOrEmpty()) {
+                LaunchedEffect(Unit) {
+                    navController.navigate(LOGIN) { launchSingleTop = true }
+                }
+            } else {
+                InterviewCameraTestScreen(
+                    repository = aiInterviewRepository,
+                    onBack = { navController.popBackStack() },
+                    onNext = {
+                        val sourceEntry = navController.previousBackStackEntry
+                        val pos = sourceEntry?.savedStateHandle?.get<String>("selected_position") ?: backStackEntry.savedStateHandle.get<String>("selected_position")
+                        val cat = sourceEntry?.savedStateHandle?.get<String>("selected_category") ?: backStackEntry.savedStateHandle.get<String>("selected_category")
+                        val jId = sourceEntry?.savedStateHandle?.get<String>("selected_job_id") ?: backStackEntry.savedStateHandle.get<String>("selected_job_id")
+                        
+                        navController.currentBackStackEntry?.savedStateHandle?.set("selected_position", pos)
+                        navController.currentBackStackEntry?.savedStateHandle?.set("selected_category", cat)
+                        if (jId != null) {
+                            navController.currentBackStackEntry?.savedStateHandle?.set("selected_job_id", jId)
+                        } else {
+                            navController.currentBackStackEntry?.savedStateHandle?.remove<String>("selected_job_id")
+                        }
+                        navController.navigate(Routes.DIGITAL_INTERVIEW_DEVICE_TEST) { launchSingleTop = true }
+                    }
+                )
+            }
+        }
+
+        // AI面试前置引导 - 设备调试
+        composable(Routes.DIGITAL_INTERVIEW_DEVICE_TEST) { backStackEntry ->
+            if (token.isNullOrEmpty()) {
+                LaunchedEffect(Unit) {
+                    navController.navigate(LOGIN) { launchSingleTop = true }
+                }
+            } else {
+                InterviewDeviceTestScreen(
+                    onBack = { navController.popBackStack() },
+                    onFinish = {
+                        val sourceEntry = navController.previousBackStackEntry
+                        val pos = sourceEntry?.savedStateHandle?.get<String>("selected_position") ?: backStackEntry.savedStateHandle.get<String>("selected_position")
+                        val cat = sourceEntry?.savedStateHandle?.get<String>("selected_category") ?: backStackEntry.savedStateHandle.get<String>("selected_category")
+                        val jId = sourceEntry?.savedStateHandle?.get<String>("selected_job_id") ?: backStackEntry.savedStateHandle.get<String>("selected_job_id")
+                        
+                        navController.currentBackStackEntry?.savedStateHandle?.set("selected_position", pos)
+                        navController.currentBackStackEntry?.savedStateHandle?.set("selected_category", cat)
+                        if (jId != null) {
+                            navController.currentBackStackEntry?.savedStateHandle?.set("selected_job_id", jId)
+                        } else {
+                            navController.currentBackStackEntry?.savedStateHandle?.remove<String>("selected_job_id")
+                        }
+                        navController.navigate(Routes.DIGITAL_INTERVIEW) { launchSingleTop = true }
+                    }
+                )
+            }
+        }
+
         // 数字人面试页面 - DUIX 数字人全屏体验
         composable(Routes.DIGITAL_INTERVIEW) { backStackEntry ->
             if (token.isNullOrEmpty()) {
@@ -1089,40 +1177,9 @@ fun AppNavHost(navController: NavHostController) {
                         sessionData != null -> {
                             val data = sessionData!!
                             val firstQuestion = data.questions.minByOrNull { it.questionIndex }
-                            val countdownSeconds = data.plannedDuration?.takeIf { it > 0 }?.let { it * 60 } ?: 180
-                            val application = context.applicationContext as Application
-                            val viewModelKey = "digitalInterview-${data.sessionId}-$reloadKey"
-                            val viewModel: DigitalInterviewViewModel = viewModel(
-                                key = viewModelKey,
-                                factory = DigitalInterviewViewModel.Factory(
-                                    application = application,
-                                    position = selectedPosition,
-                                    questionText = firstQuestion?.questionText ?: "请做一下自我介绍",
-                                    currentQuestion = (firstQuestion?.questionIndex ?: 0) + 1,
-                                    totalQuestions = data.totalQuestions,
-                                    countdownSeconds = countdownSeconds,
-                                    sessionId = data.sessionId,
-                                    ossRepository = ossRepository,
-                                    aiInterviewRepository = aiInterviewRepository
-                                )
-                            )
-                            val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-
-                            val videoRecorder = remember(context) { 
-                                com.xlwl.AiMian.ai.video.InterviewVideoRecorder(context) 
-                            }
-                            
-                            DisposableEffect(viewModelKey) {
-                                onDispose { 
-                                    viewModel.endSession()
-                                    videoRecorder.release()
-                                }
-                            }
-
-                            DigitalInterviewScreen(
-                                uiState = uiState,
-                                onStartAnswer = { viewModel.onStartAnswer() },
-                                onRetry = { viewModel.retryConnection() },
+                            AliyunAvatarInterviewScreen(
+                                projectId = com.xlwl.AiMian.BuildConfig.ALIYUN_AVATAR_PROJECT_ID,
+                                interviewQuestion = firstQuestion?.questionText ?: "请做一下自我介绍",
                                 onInterviewComplete = { sessionId ->
                                     coroutineScope.launch {
                                         runCatching {
@@ -1137,9 +1194,8 @@ fun AppNavHost(navController: NavHostController) {
                                         popUpTo(Routes.DIGITAL_INTERVIEW) { inclusive = true }
                                     }
                                 },
-                                videoRecorder = videoRecorder,
-                                onRecordingFinished = { file, duration ->
-                                    viewModel.submitAnswer(file, duration)
+                                onBack = {
+                                    navController.popBackStack()
                                 }
                             )
                         }

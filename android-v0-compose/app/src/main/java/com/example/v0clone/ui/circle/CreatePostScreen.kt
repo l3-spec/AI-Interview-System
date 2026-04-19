@@ -180,33 +180,6 @@ fun CreatePostRoute(
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
-    // ── 状态栏：白底 + 深色图标 ──
-    val context = LocalContext.current
-    val activity = remember(context) { 
-        generateSequence(context) { (it as? android.content.ContextWrapper)?.baseContext }
-            .filterIsInstance<android.app.Activity>()
-            .firstOrNull()
-    }
-
-    DisposableEffect(activity) {
-        if (activity != null) {
-            val window = activity.window
-            val insetsController = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
-            val originalStatusBarColor = window.statusBarColor
-            val originalDarkIcons = insetsController.isAppearanceLightStatusBars
-
-            window.statusBarColor = AndroidColor.WHITE
-            insetsController.isAppearanceLightStatusBars = true // 深色图标
-
-            onDispose {
-                window.statusBarColor = originalStatusBarColor
-                insetsController.isAppearanceLightStatusBars = originalDarkIcons
-            }
-        } else {
-            onDispose {}
-        }
-    }
-
     LaunchedEffect(uiState.error) {
         uiState.error?.let { message ->
             coroutineScope.launch {

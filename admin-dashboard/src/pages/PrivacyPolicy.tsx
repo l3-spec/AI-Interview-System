@@ -35,7 +35,7 @@ const PrivacyPolicy: React.FC = () => {
           </header>
 
           <p className="legal-page__intro">
-            星链未来非常重视您的个人信息保护。本《隐私政策》旨在说明我们如何收集、使用、存储、共享及保护您的信息。
+            柚汀教育科技（U-Talent）非常重视您的个人信息保护。本《隐私政策》旨在说明我们如何收集、使用、存储、共享及保护您的信息。
           </p>
 
           <div className="legal-page__sections">

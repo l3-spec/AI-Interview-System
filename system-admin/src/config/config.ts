@@ -22,7 +22,7 @@ export const config = {
   TOKEN_EXPIRY_KEY: 'admin_token_expiry',
   
   // 应用配置
-  APP_NAME: 'AI面试系统管理后台',
+  APP_NAME: 'U-Talent 系统管理后台',
   APP_VERSION: '1.0.0',
   
   // 调试配置

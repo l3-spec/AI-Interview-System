@@ -60,7 +60,8 @@ data class SessionData(
     val avatarInitData: TYAvatarInitData
 )
 
-/** Retrofit API 接口 */
+/** Retrofit API 接口 - 后端代理模式 */
+@Deprecated("已改用 DashScopeAvatarService 直连 DashScope API，此接口保留用于将来可能回切后端代理模式")
 interface AliyunAvatarApi {
 
     @POST("api/aliyun/avatar/create-session")

@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import utalentLogo from '../assets/utalent-logo.png';
 
 const SystemLayout: React.FC = () => {
   const location = useLocation();
@@ -70,44 +71,13 @@ const SystemLayout: React.FC = () => {
           textAlign: 'center'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '8px' }}>
-            <svg width="36" height="36" viewBox="0 0 120 120" fill="none">
-              {/* labubu 身体 */}
-              <path
-                d="M60,25C78.77,25 94,40.23 94,59C94,77.77 78.77,93 60,93C41.23,93 26,77.77 26,59C26,40.23 41.23,25 60,25Z"
-                fill="#FFF8E7"
-              />
-              {/* 左耳朵 */}
-              <path
-                d="M35,40C35,30 30,25 25,30C20,35 22,45 30,48C35,45 38,42 35,40Z"
-                fill="#FFF8E7"
-              />
-              {/* 右耳朵 */}
-              <path
-                d="M85,40C85,30 90,25 95,30C100,35 98,45 90,48C85,45 82,42 85,40Z"
-                fill="#FFF8E7"
-              />
-              {/* 眼睛 */}
-              <circle cx="48" cy="55" r="8" fill="#000" />
-              <circle cx="72" cy="55" r="8" fill="#000" />
-              <circle cx="50" cy="53" r="2" fill="#fff" />
-              <circle cx="74" cy="53" r="2" fill="#fff" />
-              {/* 嘴巴 */}
-              <path
-                d="M57,75C59,77 61,77 63,75"
-                stroke="#000"
-                strokeWidth="1.5"
-                fill="none"
-              />
-              {/* 胸前显示屏 - 显示系统管理元素 */}
-              <ellipse cx="60" cy="80" rx="10" ry="5" fill="#722ed1" opacity="0.8" />
-              <ellipse cx="60" cy="80" rx="8" ry="3" fill="#a855f7" opacity="0.6" />
-              {/* 小齿轮图标在显示屏上 */}
-              <circle cx="60" cy="80" r="2" fill="#fff" opacity="0.8" />
-              <circle cx="58" cy="78" r="1" fill="#fff" opacity="0.6" />
-              <circle cx="62" cy="82" r="1" fill="#fff" opacity="0.6" />
-            </svg>
+            <img
+              src={utalentLogo}
+              alt="U-Talent"
+              style={{ width: 48, height: 48, borderRadius: 12 }}
+            />
           </div>
-          <h2 style={{ margin: 0, color: '#fff', fontSize: '18px' }}>系统管理</h2>
+          <h2 style={{ margin: 0, color: '#fff', fontSize: '18px' }}>U-Talent 管理</h2>
           <p style={{ margin: '5px 0 0 0', fontSize: '12px', color: '#8c8c8c' }}>
             超级管理员控制台
           </p>
@@ -185,7 +155,7 @@ const SystemLayout: React.FC = () => {
             {menuItems.find(item => location.pathname === item.path || location.pathname.startsWith(`${item.path}/`))?.label || '系统管理'}
           </h1>
           <div style={{ fontSize: '14px', color: '#666' }}>
-            AI面试系统 v1.0 | 系统管理后台
+            U-Talent v1.0 | 系统管理后台
           </div>
         </header>
 

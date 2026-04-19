@@ -26,7 +26,7 @@ app.get('/health', (req, res) => {
 // API文档
 app.get('/api/docs', (req, res) => {
   res.send(`
-    <h1>AI面试系统 API文档</h1>
+    <h1>U-Talent API文档</h1>
     <h2>可用端点:</h2>
     <ul>
       <li>POST /api/interview/start - 开始面试</li>
@@ -231,7 +231,7 @@ app.get('/api/interview/sessions', (req, res) => {
 
 // 启动服务器
 app.listen(PORT, () => {
-  console.log(`🚀 AI面试系统后端服务已启动`);
+  console.log(`🚀 U-Talent后端服务已启动`);
   console.log(`📍 服务地址: http://localhost:${PORT}`);
   console.log(`📚 API文档: http://localhost:${PORT}/api/docs`);
   console.log(`🌟 环境: development`);

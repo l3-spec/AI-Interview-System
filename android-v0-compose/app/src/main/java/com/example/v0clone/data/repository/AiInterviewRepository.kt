@@ -10,11 +10,33 @@ import com.xlwl.AiMian.data.model.AiInterviewSubmitAnswerRequest
 import com.xlwl.AiMian.data.model.CreateAiInterviewSessionRequest
 import com.xlwl.AiMian.data.model.NextAiInterviewQuestionResponse
 import com.xlwl.AiMian.data.model.SubmitAiInterviewAnswerResponse
+import android.graphics.Bitmap
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.ByteArrayOutputStream
+import java.util.UUID
 
 class AiInterviewRepository(private val api: AiInterviewApi) {
 
   suspend fun createSession(request: CreateAiInterviewSessionRequest): Result<AiInterviewCreateSessionData> =
     safe { api.createSession(request) }
+
+  suspend fun uploadFacePhoto(bitmap: Bitmap): Result<Unit> = try {
+    val bos = ByteArrayOutputStream()
+    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, bos)
+    val bytes = bos.toByteArray()
+    val requestFile = bytes.toRequestBody("image/jpeg".toMediaTypeOrNull())
+    val body = MultipartBody.Part.createFormData("image", "${UUID.randomUUID()}.jpg", requestFile)
+    val response = api.uploadFacePhoto(body)
+    if (response.success) {
+      Result.success(Unit)
+    } else {
+      Result.failure(Exception(response.message ?: response.error ?: "图片上传失败"))
+    }
+  } catch (e: Exception) {
+    Result.failure(e)
+  }
 
   suspend fun sessionDetail(sessionId: String): Result<AiInterviewSessionDetail> =
     safe { api.getSession(sessionId) }

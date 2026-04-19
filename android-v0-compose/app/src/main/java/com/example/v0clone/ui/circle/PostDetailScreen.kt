@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
@@ -143,31 +144,7 @@ fun PostDetailRoute(
     val detail = uiState.detail
     var showCommentsSheet by remember { mutableStateOf(false) }
     val commentsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
-
-    // ── 状态栏：白底 + 深色图标 ──
     val context = LocalContext.current
-    val activity = generateSequence(context) { (it as? android.content.ContextWrapper)?.baseContext }
-        .filterIsInstance<Activity>()
-        .firstOrNull()
-
-    DisposableEffect(activity) {
-        if (activity != null) {
-            val window = activity.window
-            val insetsController = WindowCompat.getInsetsController(window, window.decorView)
-            val originalStatusBarColor = window.statusBarColor
-            val originalDarkIcons = insetsController.isAppearanceLightStatusBars
-
-            window.statusBarColor = android.graphics.Color.WHITE
-            insetsController.isAppearanceLightStatusBars = true // 深色图标
-
-            onDispose {
-                window.statusBarColor = originalStatusBarColor
-                insetsController.isAppearanceLightStatusBars = originalDarkIcons
-            }
-        } else {
-            onDispose {}
-        }
-    }
 
     LaunchedEffect(uiState.message) {
         uiState.message?.let { message ->
@@ -187,14 +164,12 @@ fun PostDetailRoute(
                 color = PageBackground,
                 shadowElevation = 0.dp
             ) {
-                val statusTopPadding = WindowInsets.statusBars
-                    .asPaddingValues()
-                    .calculateTopPadding()
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .statusBarsPadding()
                         .padding(horizontal = 14.dp)
-                        .padding(vertical = 8.dp),
+                        .padding(top = 8.dp, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(

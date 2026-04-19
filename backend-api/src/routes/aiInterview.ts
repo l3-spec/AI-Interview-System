@@ -1,12 +1,118 @@
 import express from 'express';
+import fs from 'fs';
+import path from 'path';
 import { body, param, query, validationResult } from 'express-validator';
 import { aiInterviewService } from '../services/aiInterviewService';
 import { deepseekService } from '../services/deepseekService';
 import { ttsService } from '../services/ttsService';
 import { nlpParsingService } from '../services/nlpParsingService';
 import { authenticateToken } from '../middleware/auth';
+import { uploadSingle } from '../middleware/upload';
+import { ossService } from '../services/ossService';
+import { isOSSConfigured } from '../utils/ossUtils';
 
 const router = express.Router();
+
+const IMAGE_MIME_TO_EXT: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+};
+
+const cleanupTempFile = (filePath?: string) => {
+  if (!filePath) return;
+  fs.promises.unlink(filePath).catch(() => undefined);
+};
+
+/**
+ * @swagger
+ * /api/ai-interview/face-photo:
+ *   post:
+ *     summary: 上传面试照片（字段名：image）
+ *     tags: [🤖 U-Talent面试]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [image]
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: 上传成功
+ *       400:
+ *         description: 参数错误
+ *       503:
+ *         description: OSS未配置
+ */
+router.post(
+  ['/face-photo', '/face-verify'],
+  authenticateToken,
+  uploadSingle('image'),
+  async (req: any, res: any) => {
+    const file = req.file as Express.Multer.File | undefined;
+
+    if (!isOSSConfigured()) {
+      cleanupTempFile(file?.path);
+      return res.status(503).json({
+        success: false,
+        message: 'OSS 未配置，无法上传面试照片',
+      });
+    }
+
+    if (!file) {
+      return res.status(400).json({
+        success: false,
+        message: '请上传照片文件（字段名：image）',
+      });
+    }
+
+    if (!file.mimetype.startsWith('image/')) {
+      cleanupTempFile(file.path);
+      return res.status(400).json({
+        success: false,
+        message: '仅支持上传图片文件',
+      });
+    }
+
+    const userId = (req.user?.id || 'anonymous').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const extFromName = path.extname(file.originalname || '').toLowerCase();
+    const ext =
+      (extFromName && /^[.][a-z0-9]{1,8}$/.test(extFromName) ? extFromName : '') ||
+      IMAGE_MIME_TO_EXT[file.mimetype] ||
+      '.jpg';
+    const objectKey = `uploads/ai-interview/face-photos/${userId}/${Date.now()}_${Math.random()
+      .toString(36)
+      .slice(2, 10)}${ext}`;
+
+    try {
+      const result = await ossService.uploadLocalFile(file.path, objectKey);
+      return res.json({
+        success: true,
+        data: null,
+        message: '面试照片上传成功',
+        photoUrl: result.url,
+        objectKey: result.objectKey,
+      });
+    } catch (error) {
+      cleanupTempFile(file.path);
+      console.error('上传面试照片到OSS失败:', error);
+      return res.status(500).json({
+        success: false,
+        message: '面试照片上传失败',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+);
 
 /**
  * @swagger
@@ -23,7 +129,7 @@ const router = express.Router();
  *       - 这是第4项功能的核心接口
  *       - 会话创建可能需要5-15秒（包含AI生成时间）
  *       - 返回的语音文件可直接播放给用户
- *     tags: [🤖 AI面试系统]
+ *     tags: [🤖 U-Talent面试]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -317,7 +423,7 @@ router.get('/session/:sessionId',
  *       - 自动更新当前问题索引
  *       - 返回问题文本和对应的语音文件URL
  *       - 支持断点续传，可从中断处继续
- *     tags: [🤖 AI面试系统]
+ *     tags: [🤖 U-Talent面试]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -454,7 +560,7 @@ router.get('/next-question/:sessionId',
  *       - 当前以视频答案为准，可选携带文本辅助信息
  *       - 视频文件应先上传到OSS，然后提交URL
  *       - 自动记录回答时间和时长
- *     tags: [🤖 AI面试系统]
+ *     tags: [🤖 U-Talent面试]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -613,7 +719,7 @@ router.post('/submit-answer',
  *       - 更新会话状态为 COMPLETED
  *       - 记录完成时间
  *       - 面试完成后可生成报告和分析
- *     tags: [🤖 AI面试系统]
+ *     tags: [🤖 U-Talent面试]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -715,7 +821,7 @@ router.post('/complete/:sessionId',
  *       - 支持断点续传功能
  *       - 返回最近的未完成面试会话
  *       - 用户可从中断处继续面试
- *     tags: [🤖 AI面试系统]
+ *     tags: [🤖 U-Talent面试]
  *     security:
  *       - bearerAuth: []
  *     responses:
@@ -900,7 +1006,7 @@ router.post('/cancel/:sessionId',
  *       - 用于验证TTS服务是否正常工作
  *       - 返回生成的音频文件URL
  *       - 开发和调试时使用
- *     tags: [🤖 AI面试系统]
+ *     tags: [🤖 U-Talent面试]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -1034,7 +1140,7 @@ router.post('/test-tts',
  *       - 按提供商分组显示
  *       - 包含语音名称和描述
  *       - 用于前端语音选择功能
- *     tags: [🤖 AI面试系统]
+ *     tags: [🤖 U-Talent面试]
  *     responses:
  *       200:
  *         description: 获取语音列表成功
@@ -1108,7 +1214,7 @@ router.get('/supported-voices', (req: any, res: any) => {
  *       - "应聘腾讯前端开发，会React和Vue，有2年工作经验"
  *       - "Java开发，3年经验"
  *       - "前端工程师，刚毕业"
- *     tags: [🤖 AI面试系统]
+ *     tags: [🤖 U-Talent面试]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -1320,7 +1426,7 @@ router.post('/smart-create-session',
  *     description: |
  *       预览用户描述的解析结果，不创建实际的面试会话
  *       用于让用户确认解析是否准确，然后再决定是否创建会话
- *     tags: [🤖 AI面试系统]
+ *     tags: [🤖 U-Talent面试]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -1420,7 +1526,7 @@ router.post('/preview-parse',
  *   get:
  *     summary: 获取视频简历报告 🧾
  *     description: 返回适配客户端 ResumeReport 数据模型的面试报告结构
- *     tags: [🤖 AI面试系统]
+ *     tags: [🤖 U-Talent面试]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -1511,7 +1617,7 @@ router.get('/sessions/:sessionId/report',
  *   get:
  *     summary: 获取面试分析报告 📊
  *     description: 获取已完成面试的综合分析报告，包含多维度职场素养评估
- *     tags: [🤖 AI面试系统]
+ *     tags: [🤖 U-Talent面试]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -1579,7 +1685,7 @@ router.get('/sessions/:sessionId/analysis',
  *   get:
  *     summary: 获取分析状态 🔍
  *     description: 查询面试分析任务的当前状态
- *     tags: [🤖 AI面试系统]
+ *     tags: [🤖 U-Talent面试]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -1638,7 +1744,7 @@ router.get('/sessions/:sessionId/analysis/status',
  *   post:
  *     summary: 重试失败的分析 🔄
  *     description: 重新触发失败的面试分析任务
- *     tags: [🤖 AI面试系统]
+ *     tags: [🤖 U-Talent面试]
  *     security:
  *       - bearerAuth: []
  *     parameters:

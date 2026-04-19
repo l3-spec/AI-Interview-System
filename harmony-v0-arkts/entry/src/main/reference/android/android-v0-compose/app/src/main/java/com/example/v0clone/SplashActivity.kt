@@ -105,7 +105,7 @@ fun SplashScreen(onSplashFinished: () -> Unit) {
         }
 
         Text(
-            text = "星链未来 成就职业梦想",
+            text = "U-Talent 成就职业梦想",
             color = Color(0xFFEC7C38),
             fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold,

@@ -1,7 +1,7 @@
 {
   "name": "ai-interview-system-admin",
   "version": "1.0.0",
-  "description": "AI面试系统 - 系统管理后台",
+  "description": "U-Talent - 系统管理后台",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",

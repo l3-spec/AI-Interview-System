@@ -35,14 +35,14 @@ const PrivacyRights: React.FC = () => {
           </header>
 
           <p className="legal-page__intro">
-            欢迎使用星链未来（以下简称“本平台”）。在注册或使用本平台服务前，请仔细阅读并理解本《隐私权利》。一旦您点击“同意”或实际使用本平台，即视为已充分理解并接受以下条款：
+            欢迎使用柚汀教育科技（U-Talent）（以下简称“本平台”）。在注册或使用本平台服务前，请仔细阅读并理解本《隐私权利》。一旦您点击“同意”或实际使用本平台，即视为已充分理解并接受以下条款：
           </p>
 
           <div className="legal-page__sections">
             <section className="legal-page__section">
               <h2 className="legal-page__section-title">一、服务说明</h2>
               <ol className="legal-page__section-list">
-                <li>星链未来是一款提供求职与职业发展服务的移动应用，旨在帮助用户获取岗位信息、投递简历、与企业沟通并提升职业匹配效率。</li>
+                <li>柚汀教育科技（U-Talent）是一款提供求职与职业发展服务的移动应用，旨在帮助用户获取岗位信息、投递简历、与企业沟通并提升职业匹配效率。</li>
                 <li>本平台不直接参与招聘过程，仅提供信息展示、沟通渠道及工具服务。</li>
                 <li>平台保留对服务内容进行优化、调整、暂停或终止的权利，并会在合理范围内提前通知用户。</li>
               </ol>
@@ -79,7 +79,7 @@ const PrivacyRights: React.FC = () => {
             <section className="legal-page__section">
               <h2 className="legal-page__section-title">五、知识产权</h2>
               <p>
-                平台内的所有内容（包括但不限于文字、图片、图标、界面设计、程序代码等）均归星链未来或相关权利人所有，
+                平台内的所有内容（包括但不限于文字、图片、图标、界面设计、程序代码等）均归柚汀教育科技（U-Talent）或相关权利人所有，
                 未经许可不得复制、修改、传播或用于商业用途。
               </p>
             </section>
@@ -94,7 +94,7 @@ const PrivacyRights: React.FC = () => {
           </div>
 
           <p className="legal-page__note">
-            感谢您信任星链未来。如您对本政策有任何疑问，请随时与我们联系，我们将尽快为您处理。
+            感谢您信任柚汀教育科技（U-Talent）。如您对本政策有任何疑问，请随时与我们联系，我们将尽快为您处理。
           </p>
 
           <div className="legal-page__download">

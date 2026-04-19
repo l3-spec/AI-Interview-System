@@ -28,7 +28,6 @@ import com.tongyi.video_chat_sdk.data.IChatCallback
 import com.tongyi.video_chat_sdk.data.TYError
 import com.tongyi.video_chat_sdk.data.TYVoiceChatMessage
 import com.tongyi.video_chat_sdk.data.request.TYDialogConfig
-import com.tongyi.video_chat_sdk.data.request.TYRtcConfig
 import com.tongyi.video_chat_sdk.data.response.TYAvatarInitData
 import com.tongyi.video_chat_sdk.TYVideoChat
 import com.xlwl.AiMian.BuildConfig
@@ -43,13 +42,12 @@ import kotlinx.coroutines.launch
 /**
  * 阿里云数字人（通义万相 2D）控制器
  *
- * 通过 TYVideoChat SDK 驱动云渲染 2D 数字人。
- * 内部处理 ASR → LLM → TTS → 数字人驱动全流程。
- *
  * 使用云渲染模式（REMOTE_RENDER_AVATAR）：
- * 1. 从后端获取 TYAvatarInitData（CreateChatSession API）
- * 2. init(activity, initData, dialogConfig)
- * 3. start(chatCallback)
+ * 1. 调用灵眸 OpenAPI CreateChatSession 获取 TYAvatarInitData（RTC入会信息）
+ * 2. init(activity, initData, dialogConfig) — 初始化SDK
+ * 3. start(chatCallback) — 启动对话流程
+ *
+ * 官方文档：https://help.aliyun.com/zh/avatar/avatar-application/developer-reference/digital-people-conversation-androidsdk
  *
  * @param activity 用于初始化 SDK 的 Activity（必须）
  * @param projectId 阿里云数字人项目 ID（默认从 BuildConfig 读取）
@@ -87,79 +85,110 @@ class AliyunAvatarController(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     /**
-     * 初始化并启动数字人会话
+     * 初始化并启动数字人会话（云渲染模式）
      *
-     * 真实场景：先从后端调用 CreateChatSession API 获取 initData，再调用此方法。
-     * Demo 模式：传入 null 会使用内置的示例数据（仅用于测试，真实 RTC 通道会失败）。
+     * 流程（对照官方文档）：
+     * 1. 调用灵眸 OpenAPI CreateChatSession 获取 TYAvatarInitData
+     *    - 包含 sessionId、rtcParams（RTC入会信息）、avatarAssets（资产信息）
+     * 2. TYVideoChat.getInstance() 获取单例
+     * 3. 配置 TYDialogConfig（renderType、mode、keepAlive等）
+     * 4. init(activity, initData, dialogConfig) 初始化SDK
+     * 5. start(chatCallback) 启动对话流程
      *
-     * @param initData 后端 API 获取的 TYAvatarInitData，传入 null 使用 Demo 数据
+     * @param initData 灵眸 CreateChatSession API 返回的 TYAvatarInitData
      */
     @SuppressLint("MissingPermission")
     fun startSession(initData: TYAvatarInitData? = null) {
         scope.launch {
+            if (initData == null) {
+                _statusMessage.value = "⚠️ 初始化数据为空"
+                Log.e(TAG, "initData 为 null，无法启动数字人")
+                return@launch
+            }
+
+            Log.d(TAG, "📥 云渲染模式初始化")
+            Log.d(TAG, "   sessionId: ${initData.sessionId}")
+            Log.d(TAG, "   rtcParams: ${initData.rtcParams?.toString()?.take(200) ?: "null"}")
+
             _statusMessage.value = "正在连接数字人服务..."
             _isReady.value = false
 
-            // 使用传入的数据或 Demo 数据
-            if (initData == null) {
-                _statusMessage.value = "⚠️ Demo 模式（未配置后端 API）"
+            // ====== 步骤1: 构建对话配置（对照官方文档 TYDialogConfig）======
+            val dialogConfig = TYDialogConfig().apply {
+                // renderType: 渲染类型（当前仅支持云渲染）
+                renderType = TYAvatarRenderType.REMOTE_RENDER_AVATAR
+                // mode: 对话模式（当前仅支持 Tap2Talk）
+                mode = TYVoiceChatMode.TAP2TALK
+                // keepAlive: 是否开启心跳保活（默认开启）
+                keepAlive = true
+                // keepAlivePeriod: 心跳保活间隔（默认10s，使用默认值）
+                // outboundSampleRate: TTS音频播放采样率（默认48000）
+                outboundSampleRate = 48000
             }
 
-            // 构建对话配置（云渲染 TAP2TALK 模式）
-            val dialogConfig = TYDialogConfig()
-            dialogConfig.mode = TYVoiceChatMode.TAP2TALK
-            dialogConfig.renderType = TYAvatarRenderType.REMOTE_RENDER_AVATAR
-            // keepAlive / avatarBlendShapeScale / outboundSampleRate 使用字段直接访问
-            // （这些是 Java 私有字段，Kotlin 会通过 getter/setter 转换为属性访问）
-            dialogConfig.keepAlive = true
-            dialogConfig.avatarBlendShapeScale = 1.0f
-            dialogConfig.outboundSampleRate = 48000
-
-            // 获取 TYVideoChat 实例并配置
+            // ====== 步骤2: 获取 TYVideoChat 单例 ======
             tyVideoChat = TYVideoChat.getInstance()
 
-            // 配置 RTC 音频音量
+            // ====== 步骤3: 配置 RTC 音频参数（可选，对照官方文档扩展接口）======
             tyVideoChat?.getRtcConfig()?.apply {
+                // TTS音频增益（默认100，值域[0,400]）
                 setPlayOutAudioVolume(100)
+                // VAD唤起前采集音量（默认100）
                 setRecordAudioVolumeBeforeVAD(100)
             }
 
+            // ====== 步骤4: 初始化 SDK（对照官方文档 init 方法）======
             _statusMessage.value = "正在初始化数字人..."
+            Log.d(TAG, "🔧 调用 init(activity, initData, dialogConfig)...")
 
-            // 云渲染模式：init → start
-            tyVideoChat?.init(activity, initData ?: createDemoInitData(), dialogConfig)
+            val initResult = tyVideoChat?.init(activity, initData, dialogConfig)
+            Log.d(TAG, "   init 返回: $initResult")
+
+            if (initResult == false) {
+                _statusMessage.value = "❌ SDK 初始化失败"
+                Log.e(TAG, "init 返回 false，SDK 初始化失败")
+                onError?.invoke("SDK 初始化失败")
+                return@launch
+            }
+
+            // ====== 步骤5: 启动对话流程（对照官方文档 start 方法）======
+            Log.d(TAG, "🚀 调用 start(chatCallback)...")
             tyVideoChat?.start(chatCallback)
         }
     }
 
     /**
      * 发送面试题目（prompt 模式，触发数字人主动说话）
+     * 对照官方文档 requestToRespond 方法
      * @param question 面试题目文本
      */
     fun sendInterviewQuestion(question: String) {
         if (_isReady.value) {
-            Log.d(TAG, "sendInterviewQuestion: $question")
+            Log.d(TAG, "📤 sendInterviewQuestion: $question")
+            // type="prompt" 表示把文本送大模型回答
             tyVideoChat?.requestToRespond("prompt", question)
         } else {
             Log.w(TAG, "sendInterviewQuestion called but not ready")
         }
     }
 
-    /** 打断数字人当前说话 */
+    /** 打断数字人当前说话（对照官方文档 interrupt 方法）*/
     fun interrupt() {
+        Log.d(TAG, "⏹️ 打断数字人说话")
         tyVideoChat?.interrupt()
     }
 
     /** 获取渲染 SurfaceView */
     fun getSurfaceView(): SurfaceView? = currentSurfaceView
 
-    // ///////////////// DigitalHumanController 接口（无操作，SDK 内部处理） /////////////////
+    // ///////////////// DigitalHumanController 接口 /////////////////
+    // 云渲染模式下，口型由云端驱动，无需手动控制
     override fun updateMouthOpenness(value: Float) {}
     override fun updateMouthForm(value: Float) {}
     override fun resetMouth() {}
     override fun onTtsPlayback(audioPath: String?, text: String?) {}
 
-    /** 释放资源 */
+    /** 释放资源（对照官方文档 exit 方法）*/
     fun release() {
         try {
             tyVideoChat?.exit()
@@ -173,60 +202,42 @@ class AliyunAvatarController(
         _surfaceView.value = null
     }
 
-    // ///////////////// Demo 模式示例数据（真实场景应从后端获取） /////////////////
-    private fun createDemoInitData(): TYAvatarInitData {
-        // 注意：这是示例数据，真实 RTC 通道会失败。
-        // 真实场景：通过后端 CreateChatSession API 获取真实数据。
-        val timestamp = (System.currentTimeMillis() / 1000) + 3600
-        val json = """
-        {
-            "rtcParams": {
-                "appId": "470552b0-9401-4b2c-8456-df39f2e5a986",
-                "channel": "DEMO_CHANNEL_${System.currentTimeMillis().toString().take(8)}",
-                "gslb": "https://gw.rtn.aliyuncs.com",
-                "timestamp": $timestamp,
-                "token": "DEMO_TOKEN",
-                "clientUserId": "client-${System.currentTimeMillis()}",
-                "serverUserId": "system-6956483516401508",
-                "avatarUserId": "avatar-8504256390345063",
-                "nonce": ""
-            },
-            "avatarAssets": {
-                "url": "https://daily-avatar-property.oss-cn-beijing.aliyuncs.com/avatar-share-property/AVATAR_2D_MOBILE/Mt.CQKY55EXBBYU2/secret_assets_android.zip",
-                "md5": "ACAABC1234567890CEDCA96A1CC2169848",
-                "secret": "DEMO_SECRET"
-            },
-            "sessionId": "DEMO-${java.util.UUID.randomUUID()}"
-        }
-        """.trimIndent()
-        return com.google.gson.Gson().fromJson(json, TYAvatarInitData::class.java)
-    }
-
-    // ///////////////// IChatCallback 实现 /////////////////
+    // ///////////////// IChatCallback 实现（对照官方文档回调列表）///////////////
     private val chatCallback = object : IChatCallback {
 
+        /**
+         * onStartResult: 对话启动结果
+         * 鉴权、客户端加入通道成功后回调
+         */
         override fun onStartResult(isSuccess: Boolean, errorInfo: TYError?) {
-            Log.d(TAG, "onStartResult: success=$isSuccess error=$errorInfo")
+            Log.d(TAG, "onStartResult: success=$isSuccess, error=$errorInfo")
             if (isSuccess) {
-                _statusMessage.value = "✅ 数字人已就绪"
+                _statusMessage.value = "✅ 对话通道已建立"
             } else {
-                val msg = "启动失败: ${errorInfo?.message ?: "未知错误"}"
+                val msg = "启动失败: ${errorInfo?.message ?: "未知错误"} (code=${errorInfo?.key})"
                 _statusMessage.value = msg
+                Log.e(TAG, msg)
                 onError?.invoke(msg)
             }
         }
 
+        /** onInterruptResult: 主动打断的回调（手动打断或语音打断）*/
         override fun onInterruptResult(isSuccess: Boolean, errorInfo: TYError?) {
             Log.d(TAG, "onInterruptResult: success=$isSuccess")
         }
 
+        /**
+         * onReadyToSpeech: 对话准备完成
+         * 三端（客户端/VoiceChat/Avatar）均加入通道后回调，此时才能调用业务接口
+         */
         override fun onReadyToSpeech() {
-            Log.d(TAG, "onReadyToSpeech")
+            Log.d(TAG, "✅ onReadyToSpeech - 数字人已就绪，可以开始对话")
             _isReady.value = true
             _statusMessage.value = "✅ 请点击数字人开始对话"
             onSessionReady?.invoke()
         }
 
+        /** onStateChanged: 数字人状态切换 */
         override fun onStateChanged(state: DialogState) {
             Log.d(TAG, "onStateChanged: $state")
             _dialogState.value = state
@@ -241,12 +252,17 @@ class AliyunAvatarController(
             onStateChanged?.invoke(state)
         }
 
+        /** onVolumeChanged: 音频强度回调 */
         override fun onVolumeChanged(audioLevel: Float, audioType: TYVolumeSourceType) {
             // 可用于音量指示动画
         }
 
+        /**
+         * onMessageReceived: 对话过程中的文本详情回调
+         * TYVoiceChatMessage 包含: chatMessageType(SPEAKING/RESPONDING), chatMessageText, isFinish
+         */
         override fun onMessageReceived(message: TYVoiceChatMessage) {
-            Log.d(TAG, "onMessageReceived: $message")
+            Log.d(TAG, "onMessageReceived: text=${message.chatMessageText?.take(50)}, type=${message.chatMessageType}, isFinish=${message.isFinish}")
             val text = message.chatMessageText ?: return
             if (text.isNotBlank()) {
                 val isUser = message.chatMessageType == ChatMessageType.SPEAKING
@@ -254,8 +270,12 @@ class AliyunAvatarController(
             }
         }
 
+        /**
+         * onGotRenderView: RTC准备好的渲染组件
+         * 云渲染模式下，数字人视频流通过此回调获取 SurfaceView
+         */
         override fun onGotRenderView(renderView: SurfaceView) {
-            Log.d(TAG, "onGotRenderView: $renderView")
+            Log.d(TAG, "✅ onGotRenderView - RTC 渲染视图就绪")
             currentSurfaceView = renderView
             _surfaceView.value = renderView
             try {
@@ -266,35 +286,43 @@ class AliyunAvatarController(
             }
         }
 
+        /** onErrorReceived: 对话过程中的异常回调 */
         override fun onErrorReceived(errorInfo: TYError) {
-            val msg = "错误: ${errorInfo.message}"
-            Log.e(TAG, "onErrorReceived: $errorInfo")
+            val msg = "错误: ${errorInfo.message} (code=${errorInfo.key})"
+            Log.e(TAG, "❌ onErrorReceived: $errorInfo")
             _statusMessage.value = msg
             onError?.invoke(msg)
         }
 
+        /** onPerformanceInfoTrack: 对话过程中的性能监测（耗时统计）*/
         override fun onPerformanceInfoTrack(
             performanceInfoType: Constant.TYPerformanceInfoType,
             performanceInfo: String
         ) {
-            // 性能日志（耗时统计：llmDelay, ttsDelay, avatarDelay, totalDelay）
+            Log.d(TAG, "📊 Performance: $performanceInfoType = $performanceInfo")
         }
 
+        /** onLocalAvatarDidAudioLag: 端渲染数字人音频卡顿（云渲染模式下不会触发）*/
         override fun onLocalAvatarDidAudioLag() {
-            Log.w(TAG, "onLocalAvatarDidAudioLag")
+            Log.w(TAG, "⚠️ onLocalAvatarDidAudioLag")
         }
 
+        /** onLocalAvatarRealtimeFps: 端渲染实时FPS（云渲染模式下不会触发）*/
         override fun onLocalAvatarRealtimeFps(fps: Float) {
-            Log.v(TAG, "onLocalAvatarRealtimeFps: $fps")
+            Log.v(TAG, "🎬 FPS: $fps")
         }
 
+        /** onLocalAvatarRealtimeBSInfo: 端渲染 BlendShape 信息（云渲染模式下不会触发）*/
         override fun onLocalAvatarRealtimeBSInfo(bsInfo: String) {
-            Log.v(TAG, "onLocalAvatarRealtimeBSInfo: $bsInfo")
+            Log.v(TAG, "😐 BlendShape: $bsInfo")
         }
 
+        /**
+         * onLocalAvatarAudioDataToPlay: 端渲染待播放的音频数据
+         * 云渲染模式下返回 false，由 SDK 内部处理
+         */
         override fun onLocalAvatarAudioDataToPlay(audioData: ByteArray, sampleRate: Int): Boolean {
-            // false = SDK 内部播放音频
-            return false
+            return false // false = SDK 内部播放音频
         }
     }
 }

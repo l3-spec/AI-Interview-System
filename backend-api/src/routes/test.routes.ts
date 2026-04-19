@@ -10,7 +10,7 @@ const router = Router();
 router.get('/health', (req, res) => {
   res.json({
     success: true,
-    message: 'AI面试系统健康检查',
+    message: 'U-Talent健康检查',
     timestamp: new Date().toISOString(),
     services: {
       deepseek: process.env.DEEPSEEK_API_KEY ? 'configured' : 'mock_mode',

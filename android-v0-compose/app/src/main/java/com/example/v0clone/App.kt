@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.WindowInsets
@@ -28,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -39,12 +41,15 @@ import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.xlwl.AiMian.data.auth.AuthManager
@@ -77,7 +82,7 @@ fun V0App() {
         currentRoute.startsWith("content") ||
         currentRoute.startsWith("${Routes.CIRCLE}/") ||
         currentRoute == Routes.AI ||
-        currentRoute == Routes.DIGITAL_INTERVIEW ||
+        currentRoute.startsWith(Routes.DIGITAL_INTERVIEW) ||
         currentRoute == Routes.INTERVIEW_COMPLETE ||
         currentRoute == Routes.EDIT_INTENTION ||
         currentRoute.startsWith(Routes.JOB_DETAIL) ||
@@ -85,6 +90,43 @@ fun V0App() {
 
     val aiSelected = isAiRoute(currentRoute)
     val selectedTabIndex = routeToTabIndex(currentRoute, aiSelected)
+
+    // ── 系统状态栏颜色管理 ──
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = (context as? Activity)?.window
+            if (window != null) {
+                val insetsController = WindowCompat.getInsetsController(window, view)
+                
+                // 需要蓝色渐变背景（白色图标）的路由
+                val needsBlueStatus = when {
+                    currentRoute == Routes.HOME -> true
+                    currentRoute == Routes.JOBS -> true
+                    currentRoute == Routes.AI -> true
+                    currentRoute == Routes.CIRCLE -> true
+                    currentRoute == Routes.PROFILE -> true
+                    currentRoute == Routes.JOB_SELECTION -> true
+                    currentRoute == Routes.EDIT_INTENTION -> true
+                    currentRoute.startsWith("content/") -> true
+                    currentRoute.startsWith("circle/") -> true
+                    else -> false
+                }
+                
+                // Log.d("StatusBar", "Current route: $currentRoute, Needs blue: $needsBlueStatus")
+                
+                if (needsBlueStatus) {
+                    // 开启全屏显示时，状态栏应设为透明，让页面的渐变背景显示出来
+                    window.statusBarColor = android.graphics.Color.TRANSPARENT
+                    insetsController.isAppearanceLightStatusBars = false // 白色图标
+                } else {
+                    // 其他页面（如详情页、设置页）默认使用白底黑字
+                    window.statusBarColor = android.graphics.Color.WHITE
+                    insetsController.isAppearanceLightStatusBars = true // 黑色图标
+                }
+            }
+        }
+    }
 
     Scaffold(containerColor = Color.Transparent) { innerPadding ->
         val density = LocalDensity.current
@@ -94,7 +136,6 @@ fun V0App() {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = innerPadding.calculateTopPadding())
         ) {
             Box(
                 modifier = Modifier

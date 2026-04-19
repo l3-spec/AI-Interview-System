@@ -51,7 +51,7 @@ fun AuthBrandLockup(modifier: Modifier = Modifier) {
     ) {
         Image(
             painter = painterResource(id = R.drawable.ic_splash_logo_new_png),
-            contentDescription = "STARLINK FUTURE Logo",
+            contentDescription = "U-Talent 柚汀教育科技 Logo",
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Fit
         )

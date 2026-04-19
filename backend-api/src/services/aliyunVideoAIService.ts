@@ -44,6 +44,20 @@ interface FaceRect {
 /**
  * 视频分析结果
  */
+interface BodyLanguageDetails {
+    headMovementFrequency: number; // 头部晃动频率 0-100
+    bodyTiltAngle: number; // 身体倾斜角度
+    postureNaturalness: number; // 姿态自然度 0-100
+    fidgetingScore: number; // 小动作频率 0-100（越高越紧张）
+}
+
+interface EmotionTimelineEntry {
+    timeMs: number;
+    dominantEmotion: string;
+    confidence: number;
+    microExpressions?: string[]; // 微表情标签
+}
+
 interface VideoAnalysisResult {
     emotions: EmotionResult[]; // 各帧的情绪分析
     overallConfidence: number; // 综合自信度 0-100
@@ -61,6 +75,10 @@ interface VideoAnalysisResult {
         faceRect?: FaceRect | null;
         rawFace?: Record<string, any> | null;
     }>;
+    // 新增字段
+    microExpressionScore: number; // 微表情综合评分 0-100（越高越自信）
+    bodyLanguageDetails?: BodyLanguageDetails; // 肢体语言详细分析
+    emotionTimeline?: EmotionTimelineEntry[]; // 情绪时间线
 }
 
 /**
@@ -144,15 +162,34 @@ class AliyunVideoAIService {
                 rawFace: frame.rawFace ?? null
             }));
 
+            // 微表情分析
+            const microExpressionResult = this.analyzeMicroExpressions(frameResults);
+            
+            // 肢体语言分析
+            const bodyLanguageDetails = this.analyzeBodyLanguage(frameResults);
+            
+            // 情绪时间线
+            const emotionTimeline = this.buildEmotionTimeline(frameResults, microExpressionResult.tags);
+            
+            // 融合微表情和肢体语言到整体自信度
+            const baseConfidence = this.calculateOverallConfidence(emotions);
+            const postureBonus = postureStability ? (postureStability - 60) * 0.1 : 0;
+            const gazeBonus = gazeFocus ? (gazeFocus - 60) * 0.1 : 0;
+            const microBonus = (microExpressionResult.score - 60) * 0.2;
+            const overallConfidence = this.clampScore(baseConfidence + postureBonus + gazeBonus + microBonus);
+
             const result = {
                 emotions,
-                overallConfidence: this.calculateOverallConfidence(emotions),
+                overallConfidence,
                 dominantEmotion: this.getDominantEmotion(emotions),
                 emotionStability: this.calculateEmotionStability(emotions),
                 postureStability,
                 gazeFocus,
                 headPose: avgPose || undefined,
-                frameMetrics
+                frameMetrics,
+                microExpressionScore: microExpressionResult.score,
+                bodyLanguageDetails,
+                emotionTimeline
             };
 
             console.log(`[AliyunVideoAI] 分析完成: 主导情绪=${result.dominantEmotion}, 自信度=${result.overallConfidence}, 姿态稳定=${result.postureStability ?? 'N/A'}, 视线专注=${result.gazeFocus ?? 'N/A'}`);
@@ -166,7 +203,6 @@ class AliyunVideoAIService {
 
     /**
      * 分析视频帧（提取关键帧并识别表情）
-     * 简化实现：仅分析视频封面
      */
     private async analyzeVideoFrames(videoUrl: string): Promise<FrameAnalysis[]> {
         if (!this.client) {
@@ -185,6 +221,7 @@ class AliyunVideoAIService {
 
         try {
             const frameResults: FrameAnalysis[] = [];
+            // 优先使用自定义时间点，否则使用智能抽帧
             const times = this.parseSnapshotTimes(process.env.VIDEO_SNAPSHOT_TIMES_MS);
             let extractedFrames: Array<{ timeMs: number; path: string }> = [];
             let cleanup: (() => void) | null = null;
@@ -369,6 +406,52 @@ class AliyunVideoAIService {
         return urls;
     }
 
+    /**
+     * 智能抽帧策略
+     * 根据视频长度动态调整抽帧间隔，并限制最大帧数
+     */
+    private generateSmartSnapshotTimes(videoDuration?: number): number[] {
+        // 从环境变量读取配置
+        const defaultInterval = parseInt(process.env.VIDEO_SNAPSHOT_INTERVAL_MS || '2000', 10);
+        const maxFrames = parseInt(process.env.VIDEO_MAX_FRAMES || '15', 10);
+        const analysisWindow = parseInt(process.env.VIDEO_ANALYSIS_WINDOW_MS || '30000', 10);
+
+        // 如果不知道视频时长，使用默认时间点
+        if (!videoDuration || videoDuration <= 0) {
+            const times: number[] = [];
+            for (let i = 1; i <= maxFrames; i++) {
+                const time = i * defaultInterval;
+                if (time > analysisWindow) break;
+                times.push(time);
+            }
+            return times.length > 0 ? times : [1000, 3000, 5000];
+        }
+
+        // 限制分析窗口
+        const maxDuration = Math.min(videoDuration, analysisWindow);
+        let interval: number;
+
+        // 根据视频长度调整间隔
+        if (maxDuration < 10000) {
+            interval = 1000; // <10秒视频，每秒1帧
+        } else if (maxDuration < 30000) {
+            interval = 2000; // 10-30秒视频，每2秒1帧
+        } else {
+            interval = 3000; // >30秒视频，每3秒1帧
+        }
+
+        // 生成时间点
+        const times: number[] = [];
+        for (let i = 1; i <= maxFrames; i++) {
+            const time = i * interval;
+            if (time > maxDuration) break;
+            times.push(time);
+        }
+
+        // 确保至少有几帧
+        return times.length >= 3 ? times : [1000, 2000, 3000];
+    }
+
     private parseSnapshotTimes(raw?: string | null): number[] {
         if (raw) {
             const parsed = raw
@@ -376,10 +459,10 @@ class AliyunVideoAIService {
                 .map(value => parseInt(value.trim(), 10))
                 .filter(value => Number.isFinite(value) && value > 0);
             if (parsed.length) {
-                return parsed.slice(0, 5);
+                return parsed.slice(0, parseInt(process.env.VIDEO_MAX_FRAMES || '15', 10));
             }
         }
-        return [1000, 3000, 5000];
+        return this.generateSmartSnapshotTimes();
     }
 
     private appendProcessToUrl(url: string, process: string): string {
@@ -902,6 +985,163 @@ class AliyunVideoAIService {
     }
 
     /**
+     * 微表情分析
+     * 基于多帧人脸属性识别紧张、焦虑、自信等微表情信号
+     */
+    private analyzeMicroExpressions(frameResults: FrameAnalysis[]): { score: number; tags: string[] } {
+        if (frameResults.length === 0) {
+            return { score: 60, tags: [] };
+        }
+
+        const tags: string[] = [];
+        let totalScore = 0;
+        let validFrames = 0;
+
+        for (const frame of frameResults) {
+            const { eyeOpen, pose, gaze, emotions } = frame;
+            let frameScore = 50;
+
+            // 眨眼频率（眼开度变化）
+            if (eyeOpen !== null) {
+                if (eyeOpen < 30) {
+                    frameScore -= 10;
+                    tags.push('频繁眨眼');
+                } else if (eyeOpen > 70) {
+                    frameScore += 5;
+                }
+            }
+
+            // 表情情绪
+            const dominantEmotion = emotions.sort((a, b) => b.confidence - a.confidence)[0];
+            if (dominantEmotion) {
+                if (dominantEmotion.type === 'happiness') {
+                    frameScore += 10;
+                    tags.push('微笑');
+                } else if (['fear', 'sadness', 'anger'].includes(dominantEmotion.type)) {
+                    frameScore -= 15;
+                    tags.push('负面情绪');
+                }
+            }
+
+            // 头部姿态稳定性
+            if (pose) {
+                const poseDeviation = Math.abs(pose.pitch) + Math.abs(pose.yaw) + Math.abs(pose.roll);
+                if (poseDeviation > 30) {
+                    frameScore -= 5;
+                    tags.push('头部晃动');
+                } else if (poseDeviation < 10) {
+                    frameScore += 5;
+                    tags.push('姿态稳定');
+                }
+            }
+
+            // 视线专注度
+            if (gaze) {
+                const gazeDeviation = Math.abs(gaze.pitch) + Math.abs(gaze.yaw);
+                if (gazeDeviation > 20) {
+                    frameScore -= 10;
+                    tags.push('视线游离');
+                } else if (gazeDeviation < 5) {
+                    frameScore += 10;
+                    tags.push('视线稳定');
+                }
+            }
+
+            totalScore += this.clampScore(frameScore);
+            validFrames++;
+        }
+
+        // 计算帧间表情变化率（波动越大越紧张）
+        let emotionFluctuation = 0;
+        for (let i = 1; i < frameResults.length; i++) {
+            const prevDominant = frameResults[i-1].emotions.sort((a,b) => b.confidence - a.confidence)[0]?.type;
+            const currDominant = frameResults[i].emotions.sort((a,b) => b.confidence - a.confidence)[0]?.type;
+            if (prevDominant && currDominant && prevDominant !== currDominant) {
+                emotionFluctuation += 1;
+            }
+        }
+
+        const fluctuationPenalty = Math.min(20, emotionFluctuation * 3);
+        const avgScore = validFrames > 0 ? totalScore / validFrames : 60;
+        const finalScore = this.clampScore(avgScore - fluctuationPenalty);
+
+        // 去重标签
+        const uniqueTags = Array.from(new Set(tags));
+
+        return { score: finalScore, tags: uniqueTags };
+    }
+
+    /**
+     * 肢体语言分析
+     * 基于头部姿态序列分析动作频率、倾斜角度等
+     */
+    private analyzeBodyLanguage(frameResults: FrameAnalysis[]): BodyLanguageDetails | null {
+        const poseFrames = frameResults.map(f => f.pose).filter(Boolean) as FacePose[];
+        if (poseFrames.length < 3) {
+            return null;
+        }
+
+        // 计算头部晃动频率（标准差越大晃动越频繁）
+        const pitchStd = this.calculateStdDev(poseFrames.map(p => p.pitch));
+        const yawStd = this.calculateStdDev(poseFrames.map(p => p.yaw));
+        const rollStd = this.calculateStdDev(poseFrames.map(p => p.roll));
+        const headMovementFrequency = this.clampScore((pitchStd + yawStd + rollStd) * 2);
+
+        // 计算身体倾斜角度（yaw均值绝对值）
+        const avgYaw = Math.abs(poseFrames.reduce((sum, p) => sum + p.yaw, 0) / poseFrames.length);
+        const bodyTiltAngle = Math.round(avgYaw);
+
+        // 姿态自然度（与标准坐姿偏差越小越高）
+        const avgDeviation = poseFrames.reduce((sum, p) => {
+            return sum + Math.abs(p.pitch) + Math.abs(p.yaw) + Math.abs(p.roll);
+        }, 0) / poseFrames.length;
+        const postureNaturalness = this.clampScore(100 - avgDeviation * 1.2);
+
+        // 小动作频率（基于姿态变化幅度）
+        let totalChange = 0;
+        for (let i = 1; i < poseFrames.length; i++) {
+            const deltaPitch = Math.abs(poseFrames[i].pitch - poseFrames[i-1].pitch);
+            const deltaYaw = Math.abs(poseFrames[i].yaw - poseFrames[i-1].yaw);
+            const deltaRoll = Math.abs(poseFrames[i].roll - poseFrames[i-1].roll);
+            totalChange += deltaPitch + deltaYaw + deltaRoll;
+        }
+        const avgChange = totalChange / (poseFrames.length - 1);
+        const fidgetingScore = this.clampScore(avgChange * 3);
+
+        return {
+            headMovementFrequency,
+            bodyTiltAngle,
+            postureNaturalness,
+            fidgetingScore
+        };
+    }
+
+    /**
+     * 构建情绪时间线
+     */
+    private buildEmotionTimeline(frameResults: FrameAnalysis[], microExpressionTags: string[]): EmotionTimelineEntry[] {
+        return frameResults.map(frame => {
+            const dominant = frame.emotions.sort((a, b) => b.confidence - a.confidence)[0];
+            return {
+                timeMs: frame.timeMs,
+                dominantEmotion: dominant?.type || 'neutral',
+                confidence: dominant?.confidence || 0.5,
+                microExpressions: microExpressionTags
+            };
+        });
+    }
+
+    /**
+     * 计算标准差
+     */
+    private calculateStdDev(values: number[]): number {
+        if (values.length === 0) return 0;
+        const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
+        const variance = values.reduce((sum, v) => sum + Math.pow(v - avg, 2), 0) / values.length;
+        return Math.sqrt(variance);
+    }
+
+    /**
      * 获取默认结果（服务未启用或分析失败时使用）
      */
     private getDefaultResult(): VideoAnalysisResult {
@@ -912,7 +1152,15 @@ class AliyunVideoAIService {
             emotionStability: 70,
             postureStability: 70,
             gazeFocus: 70,
-            headPose: { pitch: 0, yaw: 0, roll: 0 }
+            headPose: { pitch: 0, yaw: 0, roll: 0 },
+            microExpressionScore: 60,
+            bodyLanguageDetails: {
+                headMovementFrequency: 30,
+                bodyTiltAngle: 0,
+                postureNaturalness: 70,
+                fidgetingScore: 30
+            },
+            emotionTimeline: []
         };
     }
 

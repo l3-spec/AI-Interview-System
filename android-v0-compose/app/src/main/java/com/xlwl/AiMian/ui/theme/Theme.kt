@@ -29,11 +29,10 @@ fun AiMianTheme(
     val colorScheme = LightColorScheme
     val view = LocalView.current
 
+    // 系统栏颜色管理已移至 V0App 中根据路由动态设置
     if (!view.isInEditMode) {
         SideEffect {
-            val window = (view.context as Activity).window
-            window.statusBarColor = PrimaryBlue.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
+            // 这里可以处理一些通用的针对 Activity 的设置，但具体的颜色管理应交给页面或 V0App
         }
     }
 

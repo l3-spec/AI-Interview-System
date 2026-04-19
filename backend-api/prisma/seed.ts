@@ -68,8 +68,8 @@ const companies: CompanySeed[] = [
   {
     email: 'company@aiinterview.com',
     password: 'company123456',
-    name: '星链未来科技',
-    description: '专注于AI面试与智能招聘解决方案的高成长科技公司，致力于帮助企业更高效地发现人才。',
+    name: '柚汀教育科技',
+    description: '专注于智能面试与招聘解决方案的高成长科技公司，致力于帮助企业更高效地发现人才。',
     industry: '互联网/AI',
     scale: '200-500人',
     address: '北京市海淀区中关村科技园',
@@ -81,7 +81,7 @@ const companies: CompanySeed[] = [
     themeColors: ['#4F46E5', '#6366F1'],
     stats: [
       { label: '企业客户', value: '180+' },
-      { label: 'AI面试场次', value: '12,000+' },
+      { label: '面试场次', value: '12,000+' },
       { label: '平均缩短招聘周期', value: '45%', accent: '#F97316' }
     ],
     highlights: ['自研AI数字人面试官', '全链路招聘管理平台', '行业领先的语音情绪分析'],
@@ -92,7 +92,7 @@ const companies: CompanySeed[] = [
     email: 'talent@brightai.com',
     password: 'brightai123456',
     name: '灵眸智能科技',
-    description: '国内领先的AI企业服务提供商，在智能客服、AI面试和人才培养领域深耕多年。',
+    description: '国内领先的AI企业服务提供商，在智能客服、智能面试和人才培养领域深耕多年。',
     industry: '人工智能',
     scale: '500-1000人',
     address: '上海市浦东新区张江高科园区',
@@ -100,12 +100,12 @@ const companies: CompanySeed[] = [
     logo: '/static/images/company/brightai-logo.svg',
     contact: '021-66889900',
     tagline: '智能连接企业与候选人',
-    focusArea: 'AI面试与企业人才运营平台',
+    focusArea: '智能面试与企业人才运营平台',
     themeColors: ['#0EA5E9', '#38BDF8'],
     stats: [
       { label: '服务行业', value: '30+' },
       { label: 'SaaS客户续约率', value: '96%' },
-      { label: 'AI面试准确率', value: '93%', accent: '#0EA5E9' }
+      { label: '面试准确率', value: '93%', accent: '#0EA5E9' }
     ],
     highlights: ['全渠道人才触达', 'AI驱动招聘流程自动化', '丰富的评测模型库'],
     culture: ['开放透明', '快速执行', '拥抱变化'],
@@ -141,7 +141,7 @@ const jobs: JobSeed[] = [
     id: 'job-senior-fe',
     companyEmail: 'company@aiinterview.com',
     title: '资深前端开发工程师',
-    description: '负责AI面试系统前端应用的规划、开发与性能优化，打造极致的候选人面试体验。',
+    description: '负责U-Talent前端应用的规划、开发与性能优化，打造极致的候选人面试体验。',
     responsibilities: [
       '主导前端架构设计与关键功能开发，提升系统稳定性与扩展性',
       '与产品、设计协同，迭代核心业务流程与互动体验',
@@ -175,7 +175,7 @@ const jobs: JobSeed[] = [
     id: 'job-backend-lead',
     companyEmail: 'company@aiinterview.com',
     title: '后端技术负责人',
-    description: '负责AI面试平台的后端架构与服务治理，支撑业务持续快速增长。',
+    description: '负责U-Talent平台的后端架构与服务治理，支撑业务持续快速增长。',
     responsibilities: [
       '负责核心服务的架构设计与演进，保障系统高可用与高性能',
       '建设服务治理体系，搭建监控告警、自动化测试与部署流程',

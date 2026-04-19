@@ -73,7 +73,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
             🤖
           </div>
           <Title level={2} style={{ margin: 0, color: '#333' }}>
-            AI面试系统
+            U-Talent
           </Title>
           <Text type="secondary">企业招聘管理平台</Text>
         </div>
@@ -175,7 +175,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
           color: '#999',
           fontSize: '12px'
         }}>
-          <div>© 2023 AI面试系统. All rights reserved.</div>
+          <div>© 2024 U-Talent 柚汀教育科技. All rights reserved.</div>
           <div style={{ marginTop: '8px' }}>
             <Text type="secondary">智能招聘，精准匹配</Text>
           </div>

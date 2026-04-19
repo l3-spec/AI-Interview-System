@@ -213,6 +213,102 @@
   list-style: disc;
 }
 
+/* 表格样式 - 用于隐私政策等法律文档中的表格 */
+.legal-page__table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 8px 0;
+}
+
+.legal-page__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.5;
+  min-width: 500px;
+}
+
+.legal-page__table th,
+.legal-page__table td {
+  border: 1px solid #e5e7eb;
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+  word-break: break-word;
+}
+
+.legal-page__table th {
+  background: #f6f7f9;
+  font-weight: 600;
+  font-size: 13px;
+  color: #242525;
+  white-space: nowrap;
+}
+
+.legal-page__table td {
+  color: #3c3d3f;
+}
+
+.legal-page__table a {
+  color: #2563eb;
+  word-break: break-all;
+}
+
+.legal-page__table a:hover {
+  text-decoration: underline;
+}
+
+/* 占位符高亮样式 */
+.legal-page__placeholder {
+  background: #fef3c7;
+  color: #92400e;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* 子章节缩进 */
+.legal-page__subsection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.legal-page__subsection-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  color: #242525;
+}
+
+/* 加粗强调文字 */
+.legal-page__section strong {
+  font-weight: 600;
+  color: #111827;
+}
+
+.legal-page__section .legal-page__highlight {
+  background: #fef9c3;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+/* 目录列表 */
+.legal-page__toc {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+  color: #374151;
+  line-height: 1.6;
+}
+
 .legal-page__download {
   margin-top: 4px;
   display: flex;

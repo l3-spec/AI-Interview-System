@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
-import { deepseekService } from './deepseekService';
+import { deepseekService, type QuestionAnswerAnalysisResult } from './deepseekService';
+import { qaEvaluationService, type QAEvaluationResult } from './qaEvaluationService';
 import { aliyunVideoAIService, type VideoAnalysisResult } from './aliyunVideoAIService';
 import { speechMetricsService, type SpeechMetricsSummary } from './speechMetricsService';
 import {
@@ -76,6 +77,8 @@ interface ObjectiveScores {
         emotionStability?: number | null;
         postureStability?: number | null;
         gazeFocus?: number | null;
+        microExpressionScore?: number | null;
+        fidgetingScore?: number | null;
     };
 }
 
@@ -102,6 +105,20 @@ interface AnalysisResult {
     videoAnalysisResults?: VideoAnalysisResult[];
     integrity?: IntegrityReport;
     voiceprint?: VoiceprintAnalysisSummary;
+    // 新增逐题分析维度
+    relevanceScore: number;         // 平均相关性评分
+    completenessScore: number;      // 平均完整度评分
+    professionalAccuracyScore: number; // 平均专业准确度评分
+    logicalCoherenceScore: number;  // 平均逻辑连贯性评分
+    questionAnalysisDetails?: Array<{  // 每个问题的详细分析
+        questionIndex: number;
+        questionText: string;
+        relevanceScore: number;
+        completenessScore: number;
+        professionalAccuracyScore: number;
+        logicalCoherenceScore: number;
+        feedback: string;  // 针对该问题的简短反馈
+    }>;
 }
 
 interface IntegrityCheck {
@@ -147,6 +164,25 @@ interface QuestionAnalysisInput {
     answerDuration?: number | null;
 }
 
+// 能力交叉验证结果接口
+export interface CrossValidationResult {
+    claimedSkills: string[];        // 简历中声明的技能
+    demonstratedSkills: string[];   // 面试中展现的技能
+    matchedSkills: string[];        // 匹配的技能
+    missingSkills: string[];        // 声明但未展现的技能
+    discoveredSkills: string[];     // 面试中发现的额外技能
+    consistencyScore: number;       // 一致性评分 0-100
+}
+
+// 推荐函接口
+export interface RecommendationLetter {
+    summary: string;           // 简短总结（1-2句话）
+    strengths: string[];       // 核心优势
+    suitableRoles: string[];   // 适合岗位
+    cautionPoints: string[];   // 风险提示
+    overallRating: number;     // 综合评级 1-5星
+}
+
 interface PreparedAnswer {
     questionIndex: number;
     question: string;
@@ -181,6 +217,197 @@ export class AnalysisService {
             result: params.result || 'SUCCESS',
             errorMsg: params.errorMsg || null
         });
+    }
+
+    /**
+     * 执行逐题精细化分析
+     * @param sessionId 会话ID
+     * @param questions 问题列表
+     * @param jobContext 职位上下文
+     */
+    private async performDetailedQuestionAnalysis(
+        sessionId: string,
+        questions: QuestionAnalysisInput[],
+        jobContext: { jobCategory?: string; jobRequirements?: string }
+    ): Promise<{
+        questionAnalysisDetails: AnalysisResult['questionAnalysisDetails'];
+        avgRelevanceScore: number;
+        avgCompletenessScore: number;
+        avgProfessionalAccuracyScore: number;
+        avgLogicalCoherenceScore: number;
+    }> {
+        const questionAnalysisDetails: AnalysisResult['questionAnalysisDetails'] = [];
+        let totalRelevance = 0;
+        let totalCompleteness = 0;
+        let totalProfessional = 0;
+        let totalLogical = 0;
+        let validCount = 0;
+
+        console.log(`[AnalysisService] 开始逐题分析，共${questions.length}道题`);
+
+        for (const question of questions) {
+            try {
+                const answerText = question.answerText || '';
+                let relevanceScore: number;
+                let completenessScore: number;
+                let professionalAccuracyScore: number;
+                let logicalCoherenceScore: number;
+                let feedback: string;
+
+                // 优先使用深度问答评估服务
+                const qaEvaluationResult = await qaEvaluationService.evaluate(
+                    question.questionText,
+                    answerText,
+                    jobContext
+                );
+
+                if (qaEvaluationResult) {
+                    // 使用新服务的结果
+                    relevanceScore = qaEvaluationResult.relevanceScore;
+                    completenessScore = qaEvaluationResult.completenessScore;
+                    professionalAccuracyScore = qaEvaluationResult.professionalAccuracyScore;
+                    logicalCoherenceScore = qaEvaluationResult.logicalCoherenceScore;
+                    feedback = qaEvaluationResult.feedback;
+                } else {
+                    // 降级到原有DeepSeek评分
+                    const analysisResult = await deepseekService.analyzeQuestionAnswerPair(
+                        question.questionText,
+                        answerText,
+                        jobContext
+                    );
+
+                    // 计算基于关键词的相似度（原有逻辑）
+                    const keywordSimilarity = this.calculateKeywordSimilarity(question.questionText, answerText);
+                    // 将LLM评分和关键词相似度融合，权重各50%
+                    relevanceScore = Math.round((analysisResult.relevanceScore * 0.5) + (keywordSimilarity * 0.5));
+                    completenessScore = analysisResult.completenessScore;
+                    professionalAccuracyScore = analysisResult.professionalAccuracyScore;
+                    logicalCoherenceScore = analysisResult.logicalCoherenceScore;
+                    feedback = analysisResult.feedback;
+                }
+
+                questionAnalysisDetails.push({
+                    questionIndex: question.questionIndex,
+                    questionText: question.questionText,
+                    relevanceScore,
+                    completenessScore,
+                    professionalAccuracyScore,
+                    logicalCoherenceScore,
+                    feedback
+                });
+
+                totalRelevance += relevanceScore;
+                totalCompleteness += completenessScore;
+                totalProfessional += professionalAccuracyScore;
+                totalLogical += logicalCoherenceScore;
+                validCount++;
+            } catch (error) {
+                console.warn(`[AnalysisService] 问题${question.questionIndex}分析失败，跳过`, error);
+                // 失败时添加默认结果
+                questionAnalysisDetails.push({
+                    questionIndex: question.questionIndex,
+                    questionText: question.questionText,
+                    relevanceScore: 0,
+                    completenessScore: 0,
+                    professionalAccuracyScore: 0,
+                    logicalCoherenceScore: 0,
+                    feedback: '分析失败，请重试'
+                });
+            }
+        }
+
+        // 计算平均分
+        const avgRelevanceScore = validCount > 0 ? Math.round(totalRelevance / validCount) : 0;
+        const avgCompletenessScore = validCount > 0 ? Math.round(totalCompleteness / validCount) : 0;
+        const avgProfessionalAccuracyScore = validCount > 0 ? Math.round(totalProfessional / validCount) : 0;
+        const avgLogicalCoherenceScore = validCount > 0 ? Math.round(totalLogical / validCount) : 0;
+
+        console.log(`[AnalysisService] 逐题分析完成，平均分：相关性${avgRelevanceScore}，完整度${avgCompletenessScore}，专业度${avgProfessionalAccuracyScore}，逻辑${avgLogicalCoherenceScore}`);
+
+        return {
+            questionAnalysisDetails,
+            avgRelevanceScore,
+            avgCompletenessScore,
+            avgProfessionalAccuracyScore,
+            avgLogicalCoherenceScore
+        };
+    }
+
+    /**
+     * 计算问题和答案的关键词相似度（预留Embedding接口，临时实现）
+     */
+    private calculateKeywordSimilarity(question: string, answer: string): number {
+        if (!answer || answer.trim().length === 0) return 0;
+
+        // 提取问题中的关键词（去掉停用词）
+        const stopWords = ['的', '了', '和', '是', '在', '我', '你', '有', '要', '会', '吗', '呢', '啊'];
+        const questionWords = question.split(/\s+/).filter(word => word.length > 1 && !stopWords.includes(word));
+        const answerWords = answer.split(/\s+/).filter(word => word.length > 1 && !stopWords.includes(word));
+
+        if (questionWords.length === 0) return 100;
+
+        // 计算匹配率
+        const matchedWords = questionWords.filter(word => answerWords.some(aw => aw.includes(word) || word.includes(aw)));
+        const matchRate = matchedWords.length / questionWords.length;
+
+        return Math.round(matchRate * 100);
+    }
+
+    /**
+     * 职位分类
+     */
+    private categorizeJob(jobTarget: string): string {
+        const techKeywords = ['开发', '程序员', '工程师', '技术', 'java', 'python', 'javascript', 'php', '前端', '后端', '全栈'];
+        const managementKeywords = ['经理', '主管', '总监', '领导', '管理'];
+        const salesKeywords = ['销售', '业务', '客户', '市场'];
+        const designKeywords = ['设计', 'UI', 'UX', '美工', '视觉'];
+        const hrKeywords = ['人事', 'HR', '招聘', '行政'];
+
+        const lowerJobTarget = jobTarget.toLowerCase();
+
+        if (techKeywords.some(keyword => lowerJobTarget.includes(keyword))) {
+            return '技术类';
+        } else if (managementKeywords.some(keyword => lowerJobTarget.includes(keyword))) {
+            return '管理类';
+        } else if (salesKeywords.some(keyword => lowerJobTarget.includes(keyword))) {
+            return '销售类';
+        } else if (designKeywords.some(keyword => lowerJobTarget.includes(keyword))) {
+            return '设计类';
+        } else if (hrKeywords.some(keyword => lowerJobTarget.includes(keyword))) {
+            return 'HR类';
+        }
+
+        return '通用类';
+    }
+
+    /**
+     * 归一化语速：正常语速(180-220字/分钟)得100分，过快或过慢递减
+     */
+    private normalizeSpeechRate(speechRate: number): number {
+        const optimalMin = 180;
+        const optimalMax = 220;
+        if (speechRate >= optimalMin && speechRate <= optimalMax) {
+            return 100;
+        } else if (speechRate < optimalMin) {
+            return Math.max(0, Math.round(100 - (optimalMin - speechRate) * 0.5));
+        } else {
+            return Math.max(0, Math.round(100 - (speechRate - optimalMax) * 0.5));
+        }
+    }
+
+    /**
+     * 归一化停顿率：正常停顿率(5%-15%)得100分，过高或过低递减
+     */
+    private normalizePauseRatio(pauseRatio: number): number {
+        const optimalMin = 0.05;
+        const optimalMax = 0.15;
+        if (pauseRatio >= optimalMin && pauseRatio <= optimalMax) {
+            return 100;
+        } else if (pauseRatio < optimalMin) {
+            return Math.max(0, Math.round(100 - (optimalMin - pauseRatio) * 1000));
+        } else {
+            return Math.max(0, Math.round(100 - (pauseRatio - optimalMax) * 500));
+        }
     }
 
     /**
@@ -249,6 +476,17 @@ export class AnalysisService {
                     result: 'WARNING'
                 });
             }
+
+            // 执行逐题精细化分析
+            const jobCategory = this.categorizeJob(session.jobTarget || '');
+            const detailedAnalysisResult = await this.performDetailedQuestionAnalysis(
+                sessionId,
+                questions,
+                {
+                    jobCategory,
+                    jobRequirements: session.jobRequirements || ''
+                }
+            );
 
             // 2. 检查是否已有分析报告
             const existingReport = await prisma.aIInterviewAnalysisReport.findUnique({
@@ -782,11 +1020,24 @@ export class AnalysisService {
         const gazeSamples = videoAnalysisResults
             .map(v => v.gazeFocus)
             .filter(value => typeof value === 'number') as number[];
+        const microExpressionSamples = videoAnalysisResults
+            .map(v => v.microExpressionScore)
+            .filter(value => typeof value === 'number') as number[];
+        const fidgetingSamples = videoAnalysisResults
+            .map(v => v.bodyLanguageDetails?.fidgetingScore)
+            .filter(value => typeof value === 'number') as number[];
+
         const avgPostureStability = postureSamples.length
             ? postureSamples.reduce((sum, v) => sum + v, 0) / postureSamples.length
             : undefined;
         const avgGazeFocus = gazeSamples.length
             ? gazeSamples.reduce((sum, v) => sum + v, 0) / gazeSamples.length
+            : undefined;
+        const avgMicroExpressionScore = microExpressionSamples.length
+            ? microExpressionSamples.reduce((sum, v) => sum + v, 0) / microExpressionSamples.length
+            : undefined;
+        const avgFidgetingScore = fidgetingSamples.length
+            ? fidgetingSamples.reduce((sum, v) => sum + v, 0) / fidgetingSamples.length
             : undefined;
 
         const emotionCounts: Record<string, number> = {};
@@ -796,7 +1047,7 @@ export class AnalysisService {
 
         const dominantEmotion = Object.entries(emotionCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
 
-        console.log(`[AnalysisService] 视频分析结果: 平均自信度=${avgConfidence}, 情绪稳定性=${avgStability}, 姿态稳定=${avgPostureStability ?? 'N/A'}, 视线专注=${avgGazeFocus ?? 'N/A'}`);
+        console.log(`[AnalysisService] 视频分析结果: 平均自信度=${avgConfidence}, 情绪稳定性=${avgStability}, 姿态稳定=${avgPostureStability ?? 'N/A'}, 视线专注=${avgGazeFocus ?? 'N/A'}, 微表情得分=${avgMicroExpressionScore ?? 'N/A'}`);
 
         return {
             avgConfidence,
@@ -804,7 +1055,9 @@ export class AnalysisService {
             dominantEmotion: dominantEmotion || 'neutral',
             emotionDistribution: emotionCounts,
             avgPostureStability,
-            avgGazeFocus
+            avgGazeFocus,
+            avgMicroExpressionScore,
+            avgFidgetingScore
         };
     }
 
@@ -844,6 +1097,12 @@ export class AnalysisService {
             avgGazeFocus?: number;
         } | null;
         answerCoverage?: number;
+        detailedScores?: {
+            avgRelevance: number;
+            avgCompleteness: number;
+            avgProfessional: number;
+            avgLogical: number;
+        };
     }): ObjectiveScores {
         const text = params.transcript || '';
         const textLength = text.replace(/\s+/g, '').length;
@@ -882,6 +1141,8 @@ export class AnalysisService {
         const emotionStability = params.videoSummary?.avgStability ?? null;
         const postureStability = params.videoSummary?.avgPostureStability ?? null;
         const gazeFocus = params.videoSummary?.avgGazeFocus ?? null;
+        const microExpressionScore = params.videoSummary?.avgMicroExpressionScore ?? null;
+        const fidgetingScore = params.videoSummary?.avgFidgetingScore ?? null;
 
         const lengthBonus = Math.min(10, Math.round(textLength / 120));
         const numericBonus = Math.min(15, numericEvidence * 3);
@@ -910,9 +1171,11 @@ export class AnalysisService {
         const stabilityBonus = emotionStability !== null ? emotionStability * 0.3 : 0;
         const confidenceBonus = videoConfidence !== null ? videoConfidence * 0.1 : 0;
         const postureBonus = postureStability !== null ? postureStability * 0.12 : 0;
+        const microBonus = microExpressionScore !== null ? (microExpressionScore - 60) * 0.15 : 0;
+        const fidgetingPenalty = fidgetingScore !== null ? fidgetingScore * 0.2 : 0;
         const stressPausePenalty = pauseRatio !== null ? pauseRatio * 100 * 0.1 : 0;
         const stressTolerance = this.clampScore(
-            50 + Math.min(20, keywordHits.stressTolerance * 4) + stabilityBonus + confidenceBonus + postureBonus - stressPausePenalty
+            50 + Math.min(20, keywordHits.stressTolerance * 4) + stabilityBonus + confidenceBonus + postureBonus + microBonus - fidgetingPenalty - stressPausePenalty
         );
 
         const dimensions: Record<DimensionKey, number> = {
@@ -924,8 +1187,45 @@ export class AnalysisService {
             stressTolerance
         };
 
-        const overallScore = Math.round(
+        // 计算各维度得分，使用推荐权重：文本内容(50%) + 逐题评分(25%) + 语音指标(15%) + 视频指标(10%)
+        const textScore = Math.round(
             Object.values(dimensions).reduce((sum, score) => sum + score, 0) / DIMENSIONS.length
+        );
+
+        // 逐题评分（如果有）
+        let detailedScore = 0;
+        if (params.detailedScores) {
+            detailedScore = Math.round(
+                (params.detailedScores.avgRelevance + 
+                 params.detailedScores.avgCompleteness + 
+                 params.detailedScores.avgProfessional + 
+                 params.detailedScores.avgLogical) / 4
+            );
+        }
+
+        // 语音指标分（归一化）
+        const speechScores: number[] = [];
+        if (speechQuality !== null) speechScores.push(speechQuality);
+        if (speechRate !== null) speechScores.push(this.normalizeSpeechRate(speechRate));
+        if (pauseRatio !== null) speechScores.push(this.normalizePauseRatio(pauseRatio));
+        if (fillerRatio !== null) speechScores.push(100 - Math.min(fillerRatio * 10, 100)); // 填充词越少得分越高
+        if (volumeStability !== null) speechScores.push(volumeStability);
+        const speechScore = speechScores.length > 0 ? Math.round(speechScores.reduce((a, b) => a + b, 0) / speechScores.length) : 60;
+
+        // 视频指标分
+        const videoScores: number[] = [];
+        if (videoConfidence !== null) videoScores.push(videoConfidence);
+        if (emotionStability !== null) videoScores.push(emotionStability);
+        if (postureStability !== null) videoScores.push(postureStability);
+        if (gazeFocus !== null) videoScores.push(gazeFocus);
+        const videoScore = videoScores.length > 0 ? Math.round(videoScores.reduce((a, b) => a + b, 0) / videoScores.length) : 60;
+
+        // 加权计算最终总分
+        const overallScore = Math.round(
+            textScore * 0.5 +
+            detailedScore * 0.25 +
+            speechScore * 0.15 +
+            videoScore * 0.1
         );
 
         return {
@@ -944,7 +1244,9 @@ export class AnalysisService {
                 videoConfidence,
                 emotionStability,
                 postureStability,
-                gazeFocus
+                gazeFocus,
+                microExpressionScore,
+                fidgetingScore
             }
         };
     }
@@ -1105,6 +1407,8 @@ export class AnalysisService {
         avgStability: number;
         avgPostureStability?: number;
         avgGazeFocus?: number;
+        avgMicroExpressionScore?: number;
+        avgFidgetingScore?: number;
     } | null) {
         if (!videoSummary) {
             return undefined;
@@ -1115,11 +1419,18 @@ export class AnalysisService {
         const gaze = typeof videoSummary.avgGazeFocus === 'number'
             ? videoSummary.avgGazeFocus
             : 70;
+        const micro = typeof videoSummary.avgMicroExpressionScore === 'number'
+            ? videoSummary.avgMicroExpressionScore
+            : 70;
+        const fidgeting = typeof videoSummary.avgFidgetingScore === 'number'
+            ? (100 - videoSummary.avgFidgetingScore) // 小动作分数越高越不好，所以反向计算
+            : 70;
         return Math.round(
-            videoSummary.avgConfidence * 0.3 +
-            videoSummary.avgStability * 0.3 +
+            micro * 0.3 +
+            videoSummary.avgStability * 0.2 +
             posture * 0.2 +
-            gaze * 0.2
+            gaze * 0.2 +
+            fidgeting * 0.1
         );
     }
 
@@ -1389,6 +1700,12 @@ ${qaText}
             bodyLanguageScore: result.bodyLanguageScore ?? null,
             postureStability: result.postureStability ?? null,
             gazeFocus: result.gazeFocus ?? null,
+            // 新增：逐题分析维度评分
+            relevanceScore: result.relevanceScore ?? null,
+            completenessScore: result.completenessScore ?? null,
+            professionalAccuracyScore: result.professionalAccuracyScore ?? null,
+            logicalCoherenceScore: result.logicalCoherenceScore ?? null,
+            questionAnalysisDetails: result.questionAnalysisDetails ? JSON.stringify(result.questionAnalysisDetails) : null,
             videoInsights: result.videoAnalysisResults || result.speechMetrics || result.objectiveScores ?
                 JSON.stringify({
                     video: result.videoAnalysisResults || [],
@@ -1429,6 +1746,9 @@ ${qaText}
         const fallbackEmotionStability = videoItems.length
             ? Math.round(videoItems.reduce((sum: number, item: any) => sum + (item.emotionStability || 0), 0) / videoItems.length)
             : null;
+        const fallbackMicroExpressionScore = videoItems.length
+            ? Math.round(videoItems.reduce((sum: number, item: any) => sum + (item.microExpressionScore || 0), 0) / videoItems.length)
+            : null;
         const postureStability = report.postureStability ?? fallbackPosture;
         const gazeFocus = report.gazeFocus ?? fallbackGaze;
 
@@ -1451,7 +1771,8 @@ ${qaText}
                 speechQuality: report.speechQuality,
                 bodyLanguageScore: report.bodyLanguageScore,
                 postureStability,
-                gazeFocus
+                gazeFocus,
+                microExpressionScore: fallbackMicroExpressionScore
             },
             integrity: insights?.integrity || null,
             voiceprint: insights?.voiceprint || null,
@@ -1487,6 +1808,163 @@ ${qaText}
                 errorMessage: task.errorMessage
             } : null
         };
+    }
+}
+
+    /**
+     * 生成简历能力交叉验证结果
+     * @param sessionId 面试会话ID
+     * @param interviewAnalysis 面试分析结果
+     * @param userSkills 用户简历中声明的技能
+     * @returns 交叉验证结果
+     */
+    async generateResumeInsights(
+        sessionId: string,
+        interviewAnalysis: AnalysisResult,
+        userSkills?: string[]
+    ): Promise<CrossValidationResult> {
+        try {
+            // 1. 获取用户声明的技能
+            const claimedSkills = userSkills || [];
+            
+            // 2. 从面试分析结果中提取展现的技能
+            const demonstratedSkills = this.extractDemonstratedSkills(interviewAnalysis);
+            
+            // 3. 计算匹配的技能
+            const matchedSkills = claimedSkills.filter(skill => 
+                demonstratedSkills.some(ds => ds.toLowerCase().includes(skill.toLowerCase()) || skill.toLowerCase().includes(ds.toLowerCase()))
+            );
+            
+            // 4. 计算缺失的技能（声明了但没展现的）
+            const missingSkills = claimedSkills.filter(skill => !matchedSkills.includes(skill));
+            
+            // 5. 计算发现的额外技能（展现了但没声明的）
+            const discoveredSkills = demonstratedSkills.filter(skill => 
+                !claimedSkills.some(cs => cs.toLowerCase().includes(skill.toLowerCase()) || skill.toLowerCase().includes(cs.toLowerCase()))
+            );
+            
+            // 6. 计算一致性评分
+            const consistencyScore = claimedSkills.length > 0 
+                ? Math.round((matchedSkills.length / claimedSkills.length) * 100) 
+                : 100;
+            
+            return {
+                claimedSkills,
+                demonstratedSkills,
+                matchedSkills,
+                missingSkills,
+                discoveredSkills,
+                consistencyScore,
+            };
+        } catch (error) {
+            console.warn('[AnalysisService] 简历交叉验证生成失败:', error);
+            return {
+                claimedSkills: [],
+                demonstratedSkills: [],
+                matchedSkills: [],
+                missingSkills: [],
+                discoveredSkills: [],
+                consistencyScore: 0,
+            };
+        }
+    }
+    
+    /**
+     * 从面试分析结果中提取展现的技能
+     */
+    private extractDemonstratedSkills(analysis: AnalysisResult): string[] {
+        const skills: string[] = [];
+        
+        // 从优势中提取
+        analysis.strengths.forEach(strength => {
+            // 简单的关键词提取，实际可以使用NLP工具更精确
+            const skillKeywords = ['Java', 'Python', 'JavaScript', 'TypeScript', 'React', 'Vue', 'Node.js', 'Spring', 'MySQL', 'Redis', 'Docker', 'Kubernetes', 'AWS', '阿里云', '腾讯云', 'Git', 'Linux', '算法', '数据结构', '系统设计', '微服务', '分布式', '高并发', '性能优化', '安全', '测试', 'DevOps', '产品经理', 'UI设计', 'UX设计', '运营', '市场营销', '销售', '人力资源', '财务', '项目管理', '敏捷开发', 'Scrum'];
+            skillKeywords.forEach(keyword => {
+                if (strength.includes(keyword) && !skills.includes(keyword)) {
+                    skills.push(keyword);
+                }
+            });
+        });
+        
+        // 从能力维度中提取
+        analysis.competenciesDetailed.forEach(detail => {
+            if (detail.score >= 0.7) {
+                skills.push(detail.name);
+            }
+        });
+        
+        return [...new Set(skills)];
+    }
+    
+    /**
+     * 生成推荐函
+     * @param crossValidation 交叉验证结果
+     * @param interviewAnalysis 面试分析结果
+     * @param targetJob 目标职位（可选）
+     * @returns 推荐函内容
+     */
+    async generateRecommendationLetter(
+        crossValidation: CrossValidationResult,
+        interviewAnalysis: AnalysisResult,
+        targetJob?: { title: string; requirements: string[] }
+    ): Promise<RecommendationLetter> {
+        try {
+            // 1. 生成简短总结
+            const summary = `该候选人综合得分${interviewAnalysis.overallScore}分，能力一致性评分${crossValidation.consistencyScore}分，整体表现${interviewAnalysis.overallScore >= 80 ? '优秀' : interviewAnalysis.overallScore >= 60 ? '良好' : '一般'}。`;
+            
+            // 2. 核心优势
+            const strengths = [
+                ...interviewAnalysis.strengths,
+                crossValidation.matchedSkills.length > 0 ? `掌握简历中声明的${crossValidation.matchedSkills.join('、')}等技能` : '',
+                crossValidation.discoveredSkills.length > 0 ? `额外展现出${crossValidation.discoveredSkills.join('、')}等能力` : '',
+            ].filter(Boolean);
+            
+            // 3. 适合岗位
+            const suitableRoles: string[] = [];
+            if (interviewAnalysis.jobMatch) {
+                suitableRoles.push(interviewAnalysis.jobMatch.title);
+            }
+            // 根据技能推荐相关岗位
+            const skillToRoleMap: Record<string, string[]> = {
+                'Java': ['后端开发工程师', 'Java高级工程师', '技术架构师'],
+                'Python': ['Python开发工程师', '数据分析师', '算法工程师'],
+                'JavaScript': ['前端开发工程师', '全栈开发工程师'],
+                'React': ['前端开发工程师', 'React高级工程师'],
+                '产品经理': ['产品经理', '产品总监'],
+                '项目管理': ['项目经理', '项目总监'],
+            };
+            crossValidation.matchedSkills.forEach(skill => {
+                if (skillToRoleMap[skill]) {
+                    suitableRoles.push(...skillToRoleMap[skill]);
+                }
+            });
+            
+            // 4. 风险提示
+            const cautionPoints: string[] = [
+                ...interviewAnalysis.improvements,
+                crossValidation.missingSkills.length > 0 ? `简历中声明的${crossValidation.missingSkills.join('、')}等技能在面试中未充分展现，建议进一步考察` : '',
+            ].filter(Boolean);
+            
+            // 5. 综合评级
+            const overallRating = Math.min(5, Math.max(1, Math.round(interviewAnalysis.overallScore / 20)));
+            
+            return {
+                summary,
+                strengths: [...new Set(strengths)],
+                suitableRoles: [...new Set(suitableRoles)],
+                cautionPoints,
+                overallRating,
+            };
+        } catch (error) {
+            console.warn('[AnalysisService] 推荐函生成失败:', error);
+            return {
+                summary: '暂无推荐信息',
+                strengths: [],
+                suitableRoles: [],
+                cautionPoints: [],
+                overallRating: 0,
+            };
+        }
     }
 }
 

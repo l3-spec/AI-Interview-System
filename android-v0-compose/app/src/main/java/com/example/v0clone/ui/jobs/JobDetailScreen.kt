@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -90,30 +91,6 @@ fun JobDetailRoute(
   )
   val uiState by viewModel.uiState.collectAsState()
   val jobDetail = uiState.job
-
-  val context = LocalContext.current
-  val activity = generateSequence(context) { (it as? android.content.ContextWrapper)?.baseContext }
-      .filterIsInstance<Activity>()
-      .firstOrNull()
-      
-  DisposableEffect(activity) {
-    if (activity != null) {
-      val window = activity.window
-      val insetsController = WindowCompat.getInsetsController(window, window.decorView)
-      val originalStatusBarColor = window.statusBarColor
-      val originalDarkIcons = insetsController.isAppearanceLightStatusBars
-
-      window.statusBarColor = android.graphics.Color.TRANSPARENT
-      insetsController.isAppearanceLightStatusBars = true // Dark icons
-
-      onDispose {
-        window.statusBarColor = originalStatusBarColor
-        insetsController.isAppearanceLightStatusBars = originalDarkIcons
-      }
-    } else {
-      onDispose {}
-    }
-  }
 
   LaunchedEffect(viewModel) {
     viewModel.events.collect { event ->
@@ -198,7 +175,7 @@ private fun JobDetailScreen(
           Row(
             modifier = Modifier
               .fillMaxWidth()
-              .height(44.dp) // Compact fixed height
+              .statusBarsPadding()
               .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically
           ) {

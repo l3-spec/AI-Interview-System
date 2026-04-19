@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🚀 启动AI面试系统后端服务..."
+echo "🚀 启动U-Talent后端服务..."
 
 # 检查Node.js版本
 node_version=$(node -v)

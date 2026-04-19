@@ -609,7 +609,7 @@ fun CodeLoginScreen(
 private fun AppLogo(modifier: Modifier = Modifier) {
     androidx.compose.foundation.Image(
         painter = androidx.compose.ui.res.painterResource(id = R.drawable.login_logo),
-        contentDescription = "星链未来 Logo",
+        contentDescription = "U-Talent Logo",
         modifier = modifier
     )
 }

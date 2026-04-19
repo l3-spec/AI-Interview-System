@@ -9,10 +9,10 @@ const swaggerOptions = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'AI面试系统 API文档',
+      title: 'U-Talent API文档',
       version: '1.0.0',
       description: `
-# AI面试系统 API文档
+# U-Talent API文档
 
 ## 🎯 系统功能
 - **智能问题生成**: 基于Deepseek大模型，根据职位生成专业面试问题
@@ -44,7 +44,7 @@ const swaggerOptions = {
 - 支持断点续传，未完成的面试可以恢复
       `,
       contact: {
-        name: 'AI面试系统支持',
+        name: 'U-Talent技术支持',
         email: 'support@aiinterview.com'
       }
     },
@@ -245,7 +245,7 @@ export const setupSwagger = (app: Express) => {
       .swagger-ui .btn.authorize { background-color: #10b981; border-color: #10b981; }
       .swagger-ui .btn.authorize:hover { background-color: #059669; }
     `,
-    customSiteTitle: 'AI面试系统 API文档'
+    customSiteTitle: 'U-Talent API文档'
   };
 
   app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(specs, swaggerUiOptions));

@@ -38,7 +38,7 @@ const HomePage: React.FC = () => {
     {
       name: '阿里巴巴',
       logo: alibabaLogo,
-      quote: '"AI面试系统帮助我们提升了面试效率，候选人体验也更好了"',
+      quote: '"U-Talent帮助我们提升了面试效率，候选人体验也更好了"',
       resultLabel: '面试效率提升',
       resultValue: '85%'
     },
@@ -205,10 +205,10 @@ const HomePage: React.FC = () => {
           <div className="logo">
             <img
               src={companyLogo}
-              alt="AI面试系统"
+              alt="U-Talent"
               className="logo-image"
             />
-            <span className="logo-text">AI面试系统</span>
+            <span className="logo-text">U-Talent</span>
           </div>
           <nav className="nav-menu">
             <a href="#features">产品特色</a>
@@ -248,7 +248,7 @@ const HomePage: React.FC = () => {
       <section className="hero-section">
         <div className="hero-container">
           <div className="hero-content">
-            <h1 className="hero-title">智能AI面试平台</h1>
+            <h1 className="hero-title">U-Talent 智能面试平台</h1>
             <h2 className="hero-subtitle">让招聘更智能1，让面试更高效</h2>
             <p className="hero-description">
               基于先进AI技术，为企业提供智能化面试解决方案，
@@ -401,7 +401,7 @@ const HomePage: React.FC = () => {
       <section className="cta-section">
         <div className="container">
           <h2>准备开始智能招聘了吗？</h2>
-          <p>立即注册，体验AI面试系统带来的招聘革命</p>
+          <p>立即注册，体验U-Talent带来的招聘革命</p>
           <button 
             className="cta-primary large"
             onClick={() => setShowRegisterModal(true)}
@@ -430,7 +430,7 @@ const HomePage: React.FC = () => {
             <span className="home-footer__separator">|</span>
             <Link to="/privacy-rights" className="home-footer__link">隐私权利</Link>
           </div>
-          <p className="home-footer__copy">© {currentYear} 星链未来 · 保留所有权利</p>
+          <p className="home-footer__copy">© {currentYear} U-Talent 柚汀教育科技 · 保留所有权利</p>
         </div>
       </footer>
 

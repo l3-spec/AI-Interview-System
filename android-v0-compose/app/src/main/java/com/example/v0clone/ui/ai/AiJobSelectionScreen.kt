@@ -327,8 +327,11 @@ private fun TopSection(
         modifier = Modifier
             .fillMaxWidth()
             .background(GradientTop)
-            .padding(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 10.dp)
+            .padding(start = 16.dp, end = 16.dp, bottom = 10.dp)
     ) {
+        // 允许内容从状态栏下方开始绘制（沉浸式），但实际部件通过 padding 避开状态栏
+        Spacer(modifier = Modifier.statusBarsPadding())
+        Spacer(modifier = Modifier.height(10.dp))
         Row(
             verticalAlignment = Alignment.CenterVertically
         ) {

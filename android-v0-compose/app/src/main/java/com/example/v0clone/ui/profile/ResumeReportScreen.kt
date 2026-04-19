@@ -444,7 +444,7 @@ fun generateValidMockResumeReport(item: ResumeReportListItem): ResumeReport {
     val shortDate = java.text.SimpleDateFormat("MM月dd日", java.util.Locale.CHINA).format(java.util.Date())
     
     return ResumeReport(
-        title = "星链未来视频简历报告",
+        title = "U-Talent视频简历报告",
         testedAt = "测试日期 ${item.testedAt?.takeIf { it.isNotBlank() } ?: testedDate}",
         bestMatch = ResumeJobMatch(
             title = item.jobCategory?.takeIf { it.isNotBlank() } ?: "研发类",

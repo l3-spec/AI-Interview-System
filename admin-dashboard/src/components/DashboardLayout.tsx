@@ -247,7 +247,7 @@ const DashboardLayout: React.FC = () => {
         >
           <img
             src={logo}
-            alt="AI面试系统"
+            alt="U-Talent"
             style={{
               width: collapsed ? 32 : 40,
               height: collapsed ? 32 : 40,
@@ -257,9 +257,9 @@ const DashboardLayout: React.FC = () => {
           {!collapsed && (
             <div style={{ textAlign: 'left' }}>
               <Text strong style={{ color: '#2563eb', fontSize: 18 }}>
-                AI面试系统
+                U-Talent
               </Text>
-              <div style={{ fontSize: 12, color: '#8c8c8c' }}>Enterprise Admin</div>
+              <div style={{ fontSize: 12, color: '#8c8c8c' }}>柚汀教育科技</div>
             </div>
           )}
         </div>

@@ -327,7 +327,7 @@ const CompanyProfile: React.FC = () => {
             </Col>
             <Col xs={24} md={12}>
               <Form.Item label="业务聚焦领域" name="focusArea">
-                <Input placeholder="例如：智能招聘、AI面试" />
+                <Input placeholder="例如：智能招聘、AI面试、U-Talent" />
               </Form.Item>
             </Col>
           </Row>

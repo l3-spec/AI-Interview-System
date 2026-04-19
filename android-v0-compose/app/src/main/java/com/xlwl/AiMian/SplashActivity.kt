@@ -91,7 +91,7 @@ fun SplashScreen(
             // ===== Logo 图标 =====
             Image(
                 painter = painterResource(id = R.drawable.ic_splash_logo_new_png),
-                contentDescription = "STARLINK FUTURE Logo",
+                contentDescription = "U-Talent 柚汀教育科技 Logo",
                 modifier = Modifier
                     .size(195.dp, 143.dp)
                     .alpha(alphaAnim),

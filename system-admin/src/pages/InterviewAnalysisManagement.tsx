@@ -699,7 +699,7 @@ const InterviewAnalysisManagement: React.FC = () => {
 
     return (
         <div style={{ padding: 24 }}>
-            <Card title="AI面试/简历分析管理">
+            <Card title="面试/简历分析管理">
                 <Tabs activeKey={activeTab} onChange={setActiveTab}>
                     <Tabs.TabPane tab="面试会话" key="sessions">
                         <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>

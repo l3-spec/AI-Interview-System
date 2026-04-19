@@ -16,7 +16,7 @@
 {
   "success": true,
   "data": {
-    "title": "星链未来视频简历报告",
+    "title": "柚汀教育科技视频简历报告",
     "testedAt": "测试日期 10月17日 22:58",
     "bestMatch": {
       "title": "研发类",
@@ -89,7 +89,7 @@
 
 | 字段映射 | 类型 | 说明 |
 | :--- | :--- | :--- |
-| `title` | String | 报告大标题，如 `星链未来视频简历报告` |
+| `title` | String | 报告大标题，如 `柚汀教育科技视频简历报告` |
 | `testedAt` | String | 顶部测评日期时间展示，如 `测试日期 10月17日 22:58` |
 | `bestMatch.title` | String | 匹配岗位分类大写，如 `研发类` |
 | `bestMatch.description` | String | 解释为什么推荐该类别的评语 |
