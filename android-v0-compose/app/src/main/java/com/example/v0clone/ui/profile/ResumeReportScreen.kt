@@ -519,15 +519,6 @@ fun ResumeReportScreen(
       contentPadding = PaddingValues(top = headerHeightMax + 12.dp, bottom = 32.dp)
     ) {
       item {
-        ReportSummaryCard(
-          title = report.title,
-          testedAt = report.testedAt
-        )
-      }
-      item {
-        BestMatchCard(report.bestMatch)
-      }
-      item {
         CompetencyRadarCard(report.competencies)
       }
       item {
@@ -737,12 +728,18 @@ private fun CompetencyRadarCard(competencies: List<ResumeCompetency>) {
         )
         
         // Centered Overall Score as seen in Screenshot 2
+        val overallScore = remember(competencies) {
+          if (competencies.isEmpty()) 0f 
+          else competencies.map { it.score }.average().toFloat()
+        }
+        val scoreFormatted = String.format(java.util.Locale.CHINA, "%.1f", overallScore)
+        
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
           Text(text = "综合评分", fontSize = 12.sp, color = Color.Gray)
           Text(
             text = buildAnnotatedString {
               withStyle(SpanStyle(fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFA000))) {
-                append("7.0")
+                append(scoreFormatted)
               }
               withStyle(SpanStyle(fontSize = 14.sp, color = Color.Gray)) {
                 append(" /10")

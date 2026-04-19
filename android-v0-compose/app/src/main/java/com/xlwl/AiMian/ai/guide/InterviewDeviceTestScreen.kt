@@ -28,6 +28,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.delay
+import android.media.*
+import android.media.audiofx.*
+import android.content.Context
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlin.math.PI
+import kotlin.math.sin
 
 private val GuideBgWhite = Color(0xFFFFFFFF)
 private val GuideTextPrimary = Color(0xFF1A1A1A)
@@ -68,6 +75,125 @@ fun InterviewDeviceTestScreen(
 
     var isSpeakerTest by remember { mutableStateOf(true) }
     var isPlaying by remember { mutableStateOf(true) }
+
+    // --- 音频测试逻辑 ---
+    val sampleRate = 44100
+    
+    // 扬声器测试音频生成与播放
+    LaunchedEffect(isSpeakerTest, isPlaying) {
+        if (isSpeakerTest && isPlaying) {
+            val bufferSize = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
+            val audioTrack = AudioTrack(
+                AudioManager.STREAM_MUSIC,
+                sampleRate,
+                AudioFormat.CHANNEL_OUT_MONO,
+                AudioFormat.ENCODING_PCM_16BIT,
+                bufferSize,
+                AudioTrack.MODE_STREAM
+            )
+            
+            val frequency = 440.0 // 440Hz 柔和音
+            val buffer = ShortArray(bufferSize)
+            var phase = 0.0
+            
+            audioTrack.play()
+            
+            withContext(Dispatchers.Default) {
+                while (isSpeakerTest && isPlaying) {
+                    for (i in buffer.indices) {
+                        // 生成正弦波，并添加简单的包络以使其听起来更柔和
+                        val envelope = if (isPlaying) 0.3f else 0f
+                        buffer[i] = (sin(phase) * Short.MAX_VALUE * envelope).toInt().toShort()
+                        phase += 2.0 * PI * frequency / sampleRate
+                    }
+                    audioTrack.write(buffer, 0, buffer.size)
+                }
+            }
+            audioTrack.stop()
+            audioTrack.release()
+        }
+    }
+
+    // 麦克风回环测试（Loopback）
+    LaunchedEffect(isSpeakerTest, isPlaying, hasAudioPermission) {
+        if (!isSpeakerTest && isPlaying && hasAudioPermission) {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val minBufferSize = AudioRecord.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+            val outBufferSize = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
+            val bufferSize = maxOf(minBufferSize, outBufferSize)
+            
+            // 使用 VOICE_COMMUNICATION 以获得系统级回声消除
+            val audioRecord = AudioRecord(
+                MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+                sampleRate,
+                AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT,
+                bufferSize
+            )
+            
+            // 使用 STREAM_VOICE_CALL 以配合 AEC
+            val audioTrack = AudioTrack(
+                AudioManager.STREAM_VOICE_CALL,
+                sampleRate,
+                AudioFormat.CHANNEL_OUT_MONO,
+                AudioFormat.ENCODING_PCM_16BIT,
+                bufferSize,
+                AudioTrack.MODE_STREAM
+            )
+            
+            // 显式开启回声消除、噪声抑制和自动增益控制（如果支持）
+            val sessionId = audioRecord.audioSessionId
+            var aec: AcousticEchoCanceler? = null
+            var ns: NoiseSuppressor? = null
+            var agc: AutomaticGainControl? = null
+            
+            if (AcousticEchoCanceler.isAvailable()) {
+                aec = AcousticEchoCanceler.create(sessionId)?.apply { enabled = true }
+            }
+            if (NoiseSuppressor.isAvailable()) {
+                ns = NoiseSuppressor.create(sessionId)?.apply { enabled = true }
+            }
+            if (AutomaticGainControl.isAvailable()) {
+                agc = AutomaticGainControl.create(sessionId)?.apply { enabled = true }
+            }
+
+            val buffer = ShortArray(bufferSize)
+            val originalMode = audioManager.mode
+            
+            try {
+                // 设置为通话模式以充分利用系统音频处理能力
+                audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+                audioRecord.startRecording()
+                audioTrack.play()
+                
+                withContext(Dispatchers.Default) {
+                    while (!isSpeakerTest && isPlaying) {
+                        val readCount = audioRecord.read(buffer, 0, bufferSize)
+                        if (readCount > 0) {
+                            // 稍微降低增益以防反馈回路激增产生啸叫 (0.6倍缩放)
+                            for (i in 0 until readCount) {
+                                buffer[i] = (buffer[i] * 0.6f).toInt().toShort()
+                            }
+                            audioTrack.write(buffer, 0, readCount)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                runCatching {
+                    audioManager.mode = originalMode
+                    aec?.release()
+                    ns?.release()
+                    agc?.release()
+                    audioRecord.stop()
+                    audioRecord.release()
+                    audioTrack.stop()
+                    audioTrack.release()
+                }
+            }
+        }
+    }
 
     Scaffold(
         containerColor = GuideBgWhite,
@@ -155,7 +281,7 @@ fun InterviewDeviceTestScreen(
                     )
                 ) {
                     Text(
-                        text = if (isSpeakerTest) "确定音量合适" else "前去面试",
+                        text = if (isSpeakerTest) "确定音量合适" else "开始面试",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Medium
                     )

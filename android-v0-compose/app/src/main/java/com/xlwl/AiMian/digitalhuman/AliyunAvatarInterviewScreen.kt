@@ -82,7 +82,7 @@ fun AliyunAvatarInterviewScreen(
     onBack: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val activity = context as? Activity
+    val activity = remember(context) { context.findActivity() }
     val lifecycleOwner = LocalLifecycleOwner.current
 
     // Set FullScreen Immersive
@@ -117,9 +117,13 @@ fun AliyunAvatarInterviewScreen(
 
     var messages by remember { mutableStateOf(listOf<ChatMessage>()) }
 
-    val avatarController = remember {
+    val avatarController = remember(activity) {
+        if (activity == null) {
+            Log.e("AliyunAvatarScreen", "无法获取 Activity，控制器初始化失败")
+            return@remember null
+        }
         AliyunAvatarController(
-            activity = activity!!,
+            activity = activity,
             projectId = projectId,
             onSessionReady = {
                 Log.d("AliyunAvatarScreen", "Session ready")
@@ -134,11 +138,11 @@ fun AliyunAvatarInterviewScreen(
         )
     }
 
-    val isReady by avatarController.isReady.collectAsState()
-    val dialogState by avatarController.dialogState.collectAsState()
-    val userVolume by avatarController.userVolume.collectAsState()
-    val avatarVolume by avatarController.avatarVolume.collectAsState()
-    val latencyMetrics by avatarController.latencyMetrics.collectAsState()
+    val isReady = avatarController?.isReady?.collectAsState()?.value ?: false
+    val dialogState = avatarController?.dialogState?.collectAsState()?.value ?: ConvConstants.DialogState.DIALOG_IDLE
+    val userVolume = avatarController?.userVolume?.collectAsState()?.value ?: 0f
+    val avatarVolume = avatarController?.avatarVolume?.collectAsState()?.value ?: 0f
+    val latencyMetrics = avatarController?.latencyMetrics?.collectAsState()?.value ?: emptyMap()
 
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -178,26 +182,29 @@ fun AliyunAvatarInterviewScreen(
     // When initData arrives, start session
     LaunchedEffect(uiState) {
         if (uiState is AliyunAvatarUiState.Success) {
-            avatarController.startSession((uiState as AliyunAvatarUiState.Success).initData)
+            avatarController?.startSession((uiState as AliyunAvatarUiState.Success).initData)
         }
     }
 
     // Trigger initial question when actually ready
     LaunchedEffect(isReady) {
         if (isReady && !interviewQuestion.isNullOrBlank()) {
-            avatarController.sendInterviewQuestion(interviewQuestion)
+            avatarController?.sendInterviewQuestion(interviewQuestion)
         }
     }
 
     DisposableEffect(lifecycleOwner) {
          val observer = LifecycleEventObserver { _, event ->
              when (event) {
-                 Lifecycle.Event.ON_DESTROY -> avatarController.release()
+                 Lifecycle.Event.ON_DESTROY -> avatarController?.release()
                  else -> {}
              }
          }
          lifecycleOwner.lifecycle.addObserver(observer)
-         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+         onDispose { 
+             lifecycleOwner.lifecycle.removeObserver(observer)
+             avatarController?.release()
+         }
     }
 
     var isCameraMaximized by remember { mutableStateOf(false) }
@@ -223,10 +230,12 @@ fun AliyunAvatarInterviewScreen(
 
         // Remote Avatar Video
         Box(modifier = if (!isCameraMaximized) MAX_MODIFIER else PIP_MODIFIER) {
-            AliyunAvatarView(
-                modifier = Modifier.fillMaxSize(),
-                controller = avatarController
-            )
+            if (avatarController != null) {
+                AliyunAvatarView(
+                    modifier = Modifier.fillMaxSize(),
+                    controller = avatarController
+                )
+            }
             if (isCameraMaximized) {
                 // If it's PIP, we just show a border or something similar
                 Box(modifier = Modifier.fillMaxSize().background(Color.Transparent))
@@ -270,7 +279,7 @@ fun AliyunAvatarInterviewScreen(
         // Top UI (Close button)
         IconButton(
             onClick = {
-                avatarController.release()
+                avatarController?.release()
                 onBack()
             },
             modifier = Modifier
@@ -327,7 +336,7 @@ fun AliyunAvatarInterviewScreen(
                     modifier = Modifier
                         .size(80.dp)
                         .background(Color(0xFF00C78A), CircleShape)
-                        .clickable { avatarController.interrupt() },
+                        .clickable { avatarController?.interrupt() },
                     contentAlignment = Alignment.Center
                 ) {
                     // Audio Level Pulse if user is speaking
@@ -1017,16 +1026,21 @@ private fun DimensionDetailItem(dimension: DimensionScore) {
 fun LocalCameraPreview(lifecycleOwner: LifecycleOwner) {
     AndroidView(
         factory = { ctx ->
-            PreviewView(ctx).apply {
+            val previewView = PreviewView(ctx).apply {
                 layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
                 scaleType = PreviewView.ScaleType.FILL_CENTER
+                // 关键修正1：强制使用 TextureView (COMPATIBLE 模式)。
+                // 避免与 Aliyun 数字人的 SurfaceView 发生底层窗口争夺导致的黑屏/覆盖问题
+                implementationMode = PreviewView.ImplementationMode.COMPATIBLE
             }
-        },
-        update = { previewView ->
-            val cameraProviderFuture = ProcessCameraProvider.getInstance(previewView.context)
+            
+            // 关键修正2：将相机绑定逻辑放在 factory 中，只执行一次。
+            // 原先在 update 中，由于界面的音量动画导致每秒重绘数十次，会疯狂触发 unbindAll/bindToLifecycle
+            // 最终导致系统 Binder 通信过载 (Too many transaction errors) 并引发闪退和黑屏
+            val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
             cameraProviderFuture.addListener({
                 val cameraProvider = cameraProviderFuture.get()
                 val preview = Preview.Builder().build().also {
@@ -1044,8 +1058,14 @@ fun LocalCameraPreview(lifecycleOwner: LifecycleOwner) {
                 } catch (exc: Exception) {
                     Log.e("AliyunAvatarInterview", "Use case binding failed", exc)
                 }
-            }, ContextCompat.getMainExecutor(previewView.context))
+            }, ContextCompat.getMainExecutor(ctx))
+            
+            previewView
+        },
+        update = { 
+            // 保持空，避免在重绘时重复触发耗时操作 
         },
         modifier = Modifier.fillMaxSize()
     )
 }
+

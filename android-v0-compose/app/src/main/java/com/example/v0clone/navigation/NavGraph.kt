@@ -432,7 +432,10 @@ fun AppNavHost(navController: NavHostController) {
                         } else {
                             navController.currentBackStackEntry?.savedStateHandle?.set("selected_job_id", jobId)
                         }
-                        navController.navigate(Routes.DIGITAL_INTERVIEW_PRECAUTIONS) {
+                        
+                        // 如果已经上传过自拍，则直接进入设备检测
+                        val destination = if (hasSeenGuide) Routes.DIGITAL_INTERVIEW_DEVICE_TEST else Routes.DIGITAL_INTERVIEW_PRECAUTIONS
+                        navController.navigate(destination) {
                             launchSingleTop = true
                         }
                     }
@@ -463,7 +466,10 @@ fun AppNavHost(navController: NavHostController) {
                         backStackEntry.savedStateHandle.set("selected_position", position.name)
                         backStackEntry.savedStateHandle.set("selected_category", categoryName)
                         backStackEntry.savedStateHandle.set("selected_job_id", position.id)
-                        navController.navigate(Routes.DIGITAL_INTERVIEW_PRECAUTIONS) {
+                        
+                        // 如果已经上传过自拍，则直接进入设备检测
+                        val destination = if (hasSeenGuide) Routes.DIGITAL_INTERVIEW_DEVICE_TEST else Routes.DIGITAL_INTERVIEW_PRECAUTIONS
+                        navController.navigate(destination) {
                             launchSingleTop = true
                         }
                     }
@@ -1033,6 +1039,11 @@ fun AppNavHost(navController: NavHostController) {
                         val cat = sourceEntry?.savedStateHandle?.get<String>("selected_category") ?: backStackEntry.savedStateHandle.get<String>("selected_category")
                         val jId = sourceEntry?.savedStateHandle?.get<String>("selected_job_id") ?: backStackEntry.savedStateHandle.get<String>("selected_job_id")
                         
+                        // 标记已完成引导流程（自拍上传成功）
+                        coroutineScope.launch {
+                            authManager.setInterviewGuideSeen(true)
+                        }
+
                         navController.currentBackStackEntry?.savedStateHandle?.set("selected_position", pos)
                         navController.currentBackStackEntry?.savedStateHandle?.set("selected_category", cat)
                         if (jId != null) {

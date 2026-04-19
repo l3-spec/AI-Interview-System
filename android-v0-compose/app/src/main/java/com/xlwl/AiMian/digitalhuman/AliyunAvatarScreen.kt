@@ -102,7 +102,7 @@ fun AliyunAvatarScreen(
     onBack: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val activity = context as? Activity
+    val activity = remember(context) { context.findActivity() }
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
 
@@ -130,9 +130,13 @@ fun AliyunAvatarScreen(
     }
 
     // 创建控制器
-    val avatarController = remember {
+    val avatarController = remember(activity) {
+        if (activity == null) {
+            Log.e("AliyunAvatarScreen", "无法获取 Activity")
+            return@remember null
+        }
         AliyunAvatarController(
-            activity = activity!!,
+            activity = activity,
             projectId = projectId,
             onSessionReady = { },
             onMessageReceived = { text, isUser ->
@@ -148,14 +152,14 @@ fun AliyunAvatarScreen(
         )
     }
 
-    val isReady by avatarController.isReady.collectAsState()
-    val dialogState by avatarController.dialogState.collectAsState()
-    val statusMessage by avatarController.statusMessage.collectAsState()
+    val isReady = avatarController?.isReady?.collectAsState()?.value ?: false
+    val dialogState = avatarController?.dialogState?.collectAsState()?.value ?: ConvConstants.DialogState.DIALOG_IDLE
+    val statusMessage = avatarController?.statusMessage?.collectAsState()?.value ?: "正在初始化..."
 
     // 数字人就绪后，发送初始面试题目
     LaunchedEffect(isReady, interviewQuestion) {
         if (isReady && !interviewQuestion.isNullOrBlank()) {
-            avatarController.sendInterviewQuestion(interviewQuestion)
+            avatarController?.sendInterviewQuestion(interviewQuestion)
         }
     }
 
@@ -171,14 +175,14 @@ fun AliyunAvatarScreen(
             when (event) {
                 Lifecycle.Event.ON_PAUSE -> { /* 保持会话 */ }
                 Lifecycle.Event.ON_RESUME -> { }
-                Lifecycle.Event.ON_DESTROY -> avatarController.release()
+                Lifecycle.Event.ON_DESTROY -> avatarController?.release()
                 else -> {}
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            avatarController.release()
+            avatarController?.release()
         }
     }
 
@@ -187,7 +191,7 @@ fun AliyunAvatarScreen(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
-            avatarController.startSession()
+            avatarController?.startSession()
         } else {
             Toast.makeText(context, "需要麦克风权限才能进行语音对话", Toast.LENGTH_LONG).show()
         }
@@ -197,7 +201,7 @@ fun AliyunAvatarScreen(
     LaunchedEffect(Unit) {
         val audioPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
         if (audioPermission == PackageManager.PERMISSION_GRANTED) {
-            avatarController.startSession()
+            avatarController?.startSession()
         } else {
             permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
@@ -211,17 +215,19 @@ fun AliyunAvatarScreen(
             .navigationBarsPadding()
     ) {
         // 数字人渲染层 (底层)
-        DigitalHumanSurfaceView(
-            modifier = Modifier.fillMaxSize(),
-            controller = avatarController
-        )
+        if (avatarController != null) {
+            AliyunAvatarView(
+                modifier = Modifier.fillMaxSize(),
+                controller = avatarController
+            )
+        }
 
         // 顶部状态栏
         TopBar(
             statusMessage = statusMessage,
             isReady = isReady,
             onBack = {
-                avatarController.release()
+                avatarController?.release()
                 onBack()
             },
             modifier = Modifier
@@ -297,7 +303,7 @@ fun AliyunAvatarScreen(
                                 detectTapGestures(
                                     onTap = {
                                         if (isReady) {
-                                            avatarController.interrupt()
+                                            avatarController?.interrupt()
                                         }
                                     }
                                 )
@@ -305,7 +311,7 @@ fun AliyunAvatarScreen(
                         } else Modifier
                     )
                     .clickable(enabled = isReady && !isListening) {
-                        avatarController.interrupt()
+                        avatarController?.interrupt()
                     },
                 contentAlignment = Alignment.Center
             ) {
@@ -357,7 +363,7 @@ fun AliyunAvatarScreen(
                 // 返回按钮
                 Button(
                     onClick = {
-                        avatarController.release()
+                        avatarController?.release()
                         onBack()
                     },
                     colors = ButtonDefaults.buttonColors(
@@ -457,42 +463,4 @@ private fun ChatBubble(
             )
         }
     }
-}
-
-/**
- * 将 TYVideoChat 的 SurfaceView 嵌入到 Compose UI
- */
-@Composable
-private fun DigitalHumanSurfaceView(
-    modifier: Modifier = Modifier,
-    controller: AliyunAvatarController
-) {
-    val sv by controller.surfaceView.collectAsState()
-
-    AndroidView(
-        factory = { ctx ->
-            FrameLayout(ctx).apply {
-                setBackgroundColor(android.graphics.Color.TRANSPARENT)
-            }
-        },
-        modifier = modifier,
-        update = { container ->
-            val surfaceView = controller.getSurfaceView()
-            if (surfaceView != null && surfaceView.parent != container) {
-                // 移除旧子视图
-                for (i in container.childCount - 1 downTo 0) {
-                    container.removeViewAt(i)
-                }
-                // 添加渲染视图
-                if (surfaceView.parent != null) {
-                    (surfaceView.parent as ViewGroup).removeView(surfaceView)
-                }
-                val params = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-                container.addView(surfaceView, params)
-            }
-        }
-    )
 }

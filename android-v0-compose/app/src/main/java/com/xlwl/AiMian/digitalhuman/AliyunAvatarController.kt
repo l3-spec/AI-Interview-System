@@ -110,61 +110,67 @@ class AliyunAvatarController(
     @SuppressLint("MissingPermission")
     fun startSession(initData: TYAvatarInitData? = null) {
         scope.launch {
-            if (initData == null) {
-                _statusMessage.value = "⚠️ 初始化数据为空"
-                Log.e(TAG, "initData 为 null，无法启动数字人")
-                return@launch
+            try {
+                if (initData == null) {
+                    _statusMessage.value = "⚠️ 初始化数据为空"
+                    Log.e(TAG, "initData 为 null，无法启动数字人")
+                    return@launch
+                }
+
+                Log.d(TAG, "📥 云渲染模式初始化")
+                Log.d(TAG, "   sessionId: ${initData.sessionId}")
+                Log.d(TAG, "   rtcParams: ${initData.rtcParams?.toString()?.take(200) ?: "null"}")
+
+                _statusMessage.value = "正在连接数字人服务..."
+                _isReady.value = false
+
+                // ====== 步骤1: 构建对话配置（对照官方文档 TYDialogConfig）======
+                val dialogConfig = TYDialogConfig().apply {
+                    // renderType: 渲染类型（当前仅支持云渲染）
+                    renderType = TYAvatarRenderType.REMOTE_RENDER_AVATAR
+                    // mode: 对话模式
+                    mode = TYVoiceChatMode.TAP2TALK
+                    // keepAlive: 是否开启心跳保活
+                    keepAlive = true
+                    // keepAlivePeriod: 心跳保活间隔（默认10s）
+                    keepAlivePeriod = 10000
+                    // outboundSampleRate: TTS音频播放采样率（建议 48000）
+                    outboundSampleRate = 48000
+                }
+
+                // ====== 步骤2: 获取 TYVideoChat 单例 ======
+                tyVideoChat = TYVideoChat.getInstance()
+
+                // ====== 步骤3: 配置 RTC 音频参数（可选，对照官方文档扩展接口）======
+                tyVideoChat?.getRtcConfig()?.apply {
+                    // TTS音频增益（默认100，值域[0,400]）
+                    setPlayOutAudioVolume(100)
+                    // VAD唤起前采集音量（默认100）
+                    setRecordAudioVolumeBeforeVAD(100)
+                }
+
+                // ====== 步骤4: 初始化 SDK（对照官方文档 init 方法）======
+                _statusMessage.value = "正在初始化数字人..."
+                Log.d(TAG, "🔧 调用 init(activity, initData, dialogConfig)...")
+
+                val initResult = tyVideoChat?.init(activity, initData, dialogConfig)
+                Log.d(TAG, "   init 返回: $initResult")
+
+                if (initResult == false) {
+                    _statusMessage.value = "❌ SDK 初始化失败"
+                    Log.e(TAG, "init 返回 false，SDK 初始化失败")
+                    onError?.invoke("SDK 初始化失败")
+                    return@launch
+                }
+
+                // ====== 步骤5: 启动对话流程（对照官方文档 start 方法）======
+                Log.d(TAG, "🚀 调用 start(chatCallback)...")
+                tyVideoChat?.start(chatCallback)
+            } catch (e: Exception) {
+                Log.e(TAG, "startSession 发生未捕获异常", e)
+                _statusMessage.value = "❌ 系统异常: ${e.message}"
+                onError?.invoke("启动会话失败: ${e.message}")
             }
-
-            Log.d(TAG, "📥 云渲染模式初始化")
-            Log.d(TAG, "   sessionId: ${initData.sessionId}")
-            Log.d(TAG, "   rtcParams: ${initData.rtcParams?.toString()?.take(200) ?: "null"}")
-
-            _statusMessage.value = "正在连接数字人服务..."
-            _isReady.value = false
-
-            // ====== 步骤1: 构建对话配置（对照官方文档 TYDialogConfig）======
-            val dialogConfig = TYDialogConfig().apply {
-                // renderType: 渲染类型（当前仅支持云渲染）
-                renderType = TYAvatarRenderType.REMOTE_RENDER_AVATAR
-                // mode: 对话模式
-                mode = TYVoiceChatMode.TAP2TALK
-                // keepAlive: 是否开启心跳保活
-                keepAlive = true
-                // keepAlivePeriod: 心跳保活间隔（默认10s）
-                keepAlivePeriod = 10000
-                // outboundSampleRate: TTS音频播放采样率（建议 48000）
-                outboundSampleRate = 48000
-            }
-
-            // ====== 步骤2: 获取 TYVideoChat 单例 ======
-            tyVideoChat = TYVideoChat.getInstance()
-
-            // ====== 步骤3: 配置 RTC 音频参数（可选，对照官方文档扩展接口）======
-            tyVideoChat?.getRtcConfig()?.apply {
-                // TTS音频增益（默认100，值域[0,400]）
-                setPlayOutAudioVolume(100)
-                // VAD唤起前采集音量（默认100）
-                setRecordAudioVolumeBeforeVAD(100)
-            }
-
-            // ====== 步骤4: 初始化 SDK（对照官方文档 init 方法）======
-            _statusMessage.value = "正在初始化数字人..."
-            Log.d(TAG, "🔧 调用 init(activity, initData, dialogConfig)...")
-
-            val initResult = tyVideoChat?.init(activity, initData, dialogConfig)
-            Log.d(TAG, "   init 返回: $initResult")
-
-            if (initResult == false) {
-                _statusMessage.value = "❌ SDK 初始化失败"
-                Log.e(TAG, "init 返回 false，SDK 初始化失败")
-                onError?.invoke("SDK 初始化失败")
-                return@launch
-            }
-
-            // ====== 步骤5: 启动对话流程（对照官方文档 start 方法）======
-            Log.d(TAG, "🚀 调用 start(chatCallback)...")
-            tyVideoChat?.start(chatCallback)
         }
     }
 
@@ -295,10 +301,10 @@ class AliyunAvatarController(
             currentSurfaceView = renderView
             _surfaceView.value = renderView
             try {
-                // 设置为背景层（在窗口之下），但需要主布局透明才能看到
-                // 或者设置为 MediaOverlay 置于窗口之上但其他 UI 之下
-                renderView.setZOrderMediaOverlay(true)
-                renderView.holder.setFormat(android.graphics.PixelFormat.TRANSLUCENT)
+                // 关键修正3：移除 TRANSLUCENT 透明通道强制设置
+                // 之前开启 TRANSLUCENT 导致内置的 TYTransparentSurfaceView 尝试编译带 tex_fg_u 的透明着色器失败，引发底层 OpenGL 崩溃
+                // renderView.setZOrderMediaOverlay(true)
+                // renderView.holder.setFormat(android.graphics.PixelFormat.TRANSLUCENT)
             } catch (e: Exception) {
                 Log.e(TAG, "setFormat error", e)
             }
@@ -348,6 +354,20 @@ class AliyunAvatarController(
     }
 }
 
+/**
+ * 递归查找 Activity
+ */
+fun android.content.Context.findActivity(): android.app.Activity? {
+    var ctx = this
+    while (ctx is android.content.ContextWrapper) {
+        if (ctx is android.app.Activity) {
+            return ctx
+        }
+        ctx = ctx.baseContext
+    }
+    return null
+}
+
 // ///////////////// Composable 入口 /////////////////
 @Composable
 fun AliyunAvatarView(
@@ -378,7 +398,7 @@ fun AliyunAvatarView(
                 Log.d("AliyunAvatarView", "RTC RenderView 就绪，开始挂载到界面: $sv")
                 container.removeAllViews()
                 
-                // 确保是从旧父容器中移除
+                // 关键修正：确保从原父容器移除时使用 safe cast，防止 ClassCastException
                 (sv.parent as? ViewGroup)?.removeView(sv)
                 
                 container.addView(sv, FrameLayout.LayoutParams(
