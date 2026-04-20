@@ -1,6 +1,7 @@
 package com.xlwl.AiMian.ai.guide
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -33,6 +34,8 @@ import android.media.audiofx.*
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.Locale
+import android.speech.tts.TextToSpeech
 import kotlin.math.PI
 import kotlin.math.sin
 
@@ -45,6 +48,7 @@ private val GuideSurface = Color(0xFFF7F8FA)
 private val GuideBlue = Color(0xFF3860F4)
 private val GuideRed = Color(0xFFFF5A5A)
 
+@SuppressLint("MissingPermission")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InterviewDeviceTestScreen(
@@ -75,121 +79,81 @@ fun InterviewDeviceTestScreen(
 
     var isSpeakerTest by remember { mutableStateOf(true) }
     var isPlaying by remember { mutableStateOf(true) }
+    var micLevel by remember { mutableStateOf(0.1f) }
+
+    var tts by remember { mutableStateOf<TextToSpeech?>(null) }
+    
+    DisposableEffect(Unit) {
+        var newTts: TextToSpeech? = null
+        newTts = TextToSpeech(context) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                newTts?.language = Locale.CHINESE
+            }
+        }
+        tts = newTts
+        
+        onDispose {
+            newTts?.stop()
+            newTts?.shutdown()
+        }
+    }
 
     // --- 音频测试逻辑 ---
     val sampleRate = 44100
     
-    // 扬声器测试音频生成与播放
-    LaunchedEffect(isSpeakerTest, isPlaying) {
-        if (isSpeakerTest && isPlaying) {
-            val bufferSize = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
-            val audioTrack = AudioTrack(
-                AudioManager.STREAM_MUSIC,
-                sampleRate,
-                AudioFormat.CHANNEL_OUT_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
-                bufferSize,
-                AudioTrack.MODE_STREAM
-            )
-            
-            val frequency = 440.0 // 440Hz 柔和音
-            val buffer = ShortArray(bufferSize)
-            var phase = 0.0
-            
-            audioTrack.play()
-            
-            withContext(Dispatchers.Default) {
-                while (isSpeakerTest && isPlaying) {
-                    for (i in buffer.indices) {
-                        // 生成正弦波，并添加简单的包络以使其听起来更柔和
-                        val envelope = if (isPlaying) 0.3f else 0f
-                        buffer[i] = (sin(phase) * Short.MAX_VALUE * envelope).toInt().toShort()
-                        phase += 2.0 * PI * frequency / sampleRate
-                    }
-                    audioTrack.write(buffer, 0, buffer.size)
-                }
+    // 扬声器测试音频生成与播放 (TTS)
+    LaunchedEffect(isSpeakerTest, isPlaying, tts) {
+        if (isSpeakerTest && isPlaying && tts != null) {
+            while (isSpeakerTest && isPlaying) {
+                tts?.speak("当前为面试测试音频，你可以一边听，一边将手机的外放音量调整到合适的大小", TextToSpeech.QUEUE_FLUSH, null, "TEST_ID")
+                delay(8000) // 等待语音播放完毕并停顿一下再重复
             }
-            audioTrack.stop()
-            audioTrack.release()
+        } else {
+            tts?.stop()
         }
     }
 
-    // 麦克风回环测试（Loopback）
-    LaunchedEffect(isSpeakerTest, isPlaying, hasAudioPermission) {
-        if (!isSpeakerTest && isPlaying && hasAudioPermission) {
-            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    // 麦克风收音测试 (无回声)
+    LaunchedEffect(isSpeakerTest, hasAudioPermission) {
+        if (!isSpeakerTest && hasAudioPermission) {
             val minBufferSize = AudioRecord.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-            val outBufferSize = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
-            val bufferSize = maxOf(minBufferSize, outBufferSize)
+            val bufferSize = maxOf(minBufferSize, 2048)
             
-            // 使用 VOICE_COMMUNICATION 以获得系统级回声消除
             val audioRecord = AudioRecord(
-                MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+                MediaRecorder.AudioSource.MIC,
                 sampleRate,
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT,
                 bufferSize
             )
             
-            // 使用 STREAM_VOICE_CALL 以配合 AEC
-            val audioTrack = AudioTrack(
-                AudioManager.STREAM_VOICE_CALL,
-                sampleRate,
-                AudioFormat.CHANNEL_OUT_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
-                bufferSize,
-                AudioTrack.MODE_STREAM
-            )
-            
-            // 显式开启回声消除、噪声抑制和自动增益控制（如果支持）
-            val sessionId = audioRecord.audioSessionId
-            var aec: AcousticEchoCanceler? = null
-            var ns: NoiseSuppressor? = null
-            var agc: AutomaticGainControl? = null
-            
-            if (AcousticEchoCanceler.isAvailable()) {
-                aec = AcousticEchoCanceler.create(sessionId)?.apply { enabled = true }
-            }
-            if (NoiseSuppressor.isAvailable()) {
-                ns = NoiseSuppressor.create(sessionId)?.apply { enabled = true }
-            }
-            if (AutomaticGainControl.isAvailable()) {
-                agc = AutomaticGainControl.create(sessionId)?.apply { enabled = true }
-            }
-
             val buffer = ShortArray(bufferSize)
-            val originalMode = audioManager.mode
             
             try {
-                // 设置为通话模式以充分利用系统音频处理能力
-                audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
                 audioRecord.startRecording()
-                audioTrack.play()
                 
                 withContext(Dispatchers.Default) {
-                    while (!isSpeakerTest && isPlaying) {
+                    while (!isSpeakerTest) {
                         val readCount = audioRecord.read(buffer, 0, bufferSize)
                         if (readCount > 0) {
-                            // 稍微降低增益以防反馈回路激增产生啸叫 (0.6倍缩放)
+                            var sum = 0.0
                             for (i in 0 until readCount) {
-                                buffer[i] = (buffer[i] * 0.6f).toInt().toShort()
+                                sum += buffer[i] * buffer[i]
                             }
-                            audioTrack.write(buffer, 0, readCount)
+                            val rms = kotlin.math.sqrt(sum / readCount)
+                            val normalized = (rms / 32767.0).toFloat() * 15f
+                            micLevel = normalized.coerceIn(0.0f, 1.0f)
                         }
+                        delay(50)
                     }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
                 runCatching {
-                    audioManager.mode = originalMode
-                    aec?.release()
-                    ns?.release()
-                    agc?.release()
                     audioRecord.stop()
                     audioRecord.release()
-                    audioTrack.stop()
-                    audioTrack.release()
+                    micLevel = 0.1f
                 }
             }
         }
@@ -263,6 +227,7 @@ fun InterviewDeviceTestScreen(
                     onClick = {
                         if (isSpeakerTest) {
                             isSpeakerTest = false
+                            isPlaying = false // 关闭自动播放声音
                         } else {
                             if (hasAudioPermission) {
                                 onFinish()
@@ -364,25 +329,36 @@ fun InterviewDeviceTestScreen(
                         .size(80.dp)
                         .clip(CircleShape)
                         .background(Color(0xFFE5F7F1))
-                        .clickable { isPlaying = !isPlaying },
+                        .clickable(enabled = isSpeakerTest) { 
+                            if (isSpeakerTest) isPlaying = !isPlaying 
+                        },
                     contentAlignment = Alignment.Center
                 ) {
-                    if (isPlaying) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Box(modifier = Modifier.size(6.dp, 24.dp).background(GuideGreen, RoundedCornerShape(3.dp)))
-                            Box(modifier = Modifier.size(6.dp, 24.dp).background(GuideGreen, RoundedCornerShape(3.dp)))
+                    if (isSpeakerTest) {
+                        if (isPlaying) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Box(modifier = Modifier.size(6.dp, 24.dp).background(GuideGreen, RoundedCornerShape(3.dp)))
+                                Box(modifier = Modifier.size(6.dp, 24.dp).background(GuideGreen, RoundedCornerShape(3.dp)))
+                            }
+                        } else {
+                            // Play icon triangle
+                            androidx.compose.foundation.Canvas(modifier = Modifier.size(24.dp)) {
+                                val path = androidx.compose.ui.graphics.Path().apply {
+                                    moveTo(0f, 0f)
+                                    lineTo(size.width, size.height / 2f)
+                                    lineTo(0f, size.height)
+                                    close()
+                                }
+                                drawPath(path, color = GuideGreen)
+                            }
                         }
                     } else {
-                        // Play icon triangle
-                        androidx.compose.foundation.Canvas(modifier = Modifier.size(24.dp)) {
-                            val path = androidx.compose.ui.graphics.Path().apply {
-                                moveTo(0f, 0f)
-                                lineTo(size.width, size.height / 2f)
-                                lineTo(0f, size.height)
-                                close()
-                            }
-                            drawPath(path, color = GuideGreen)
-                        }
+                        Icon(
+                            imageVector = Icons.Default.Mic,
+                            contentDescription = "麦克风正在收音",
+                            tint = GuideGreen,
+                            modifier = Modifier.size(32.dp)
+                        )
                     }
                 }
 
@@ -390,14 +366,16 @@ fun InterviewDeviceTestScreen(
 
                 Column {
                     Text(
-                        text = if (isSpeakerTest) "测试音频正在播放" else "请对着麦克风说话",
+                        text = if (isSpeakerTest) {
+                            if (isPlaying) "测试音频正在播放" else "测试音频已暂停"
+                        } else "请对着麦克风说话",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = GuideTextPrimary
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = if (isSpeakerTest) "请注意调节音量" else "识别环境噪音中",
+                        text = if (isSpeakerTest) "请注意调节音量" else "试试念：你好面试官",
                         fontSize = 14.sp,
                         color = GuideTextSecondary
                     )
@@ -407,7 +385,7 @@ fun InterviewDeviceTestScreen(
             Spacer(modifier = Modifier.height(48.dp))
 
             // Progress bar
-            AudioVisualizer(isPlaying = isPlaying)
+            AudioVisualizer(isPlaying = isPlaying, isMicTest = !isSpeakerTest, micLevel = micLevel)
 
         }
     }
@@ -454,52 +432,57 @@ private fun DeviceTestCard(
 }
 
 @Composable
-private fun AudioVisualizer(isPlaying: Boolean) {
+private fun AudioVisualizer(isPlaying: Boolean, isMicTest: Boolean, micLevel: Float) {
     val barCount = 30
+    
+    var autoPlayLevel by remember { mutableStateOf(0.1f) }
+    LaunchedEffect(isPlaying, isMicTest) {
+        if (!isMicTest) {
+            if (isPlaying) {
+                while (true) {
+                    autoPlayLevel = (0.3f + Math.random() * 0.7f).toFloat() // 0.3 ~ 1.0 range
+                    delay((200..500).random().toLong())
+                }
+            } else {
+                autoPlayLevel = 0.1f
+            }
+        }
+    }
+
+    // Target volume determines how many bars light up green
+    val targetLevel = if (isMicTest) micLevel else autoPlayLevel
+    
+    val smoothedLevel by animateFloatAsState(
+        targetValue = targetLevel,
+        animationSpec = tween(durationMillis = 150),
+        label = "level"
+    )
+
+    // Pre-calculate static random heights for the bars to look like an audio waveform
+    val heights = remember {
+        List(barCount) { 
+            (12 + Math.random() * 20).toInt().dp 
+        }
+    }
+
+    val greenCount = (smoothedLevel * barCount).toInt().coerceIn(0, barCount)
+
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(32.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         for (i in 0 until barCount) {
-            // Randomly animate volume level if playing
-            val targetLevel = remember(isPlaying) { if (isPlaying) (Math.random() * 0.8 + 0.2).toFloat() else 0.1f }
-            val animatedLevel by animateFloatAsState(
-                targetValue = targetLevel,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(durationMillis = (400..800).random(), easing = FastOutSlowInEasing),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = ""
-            )
+            val isGreen = i < greenCount
             
-            // Re-trigger random target when playing
-            var currentLevel by remember { mutableStateOf(0.1f) }
-            LaunchedEffect(isPlaying) {
-                while(isPlaying) {
-                    currentLevel = (Math.random() * 0.8 + 0.2).toFloat()
-                    delay((200..600).random().toLong())
-                }
-                currentLevel = 0.1f
-            }
-            
-            val explicitAnimatedLevel by animateFloatAsState(
-                targetValue = currentLevel,
-                animationSpec = tween(durationMillis = 300),
-                label = "volume"
-            )
-
-            // Make the first few green, the rest gray just like screenshot
-            val isGreenPart = i < barCount * 0.3f
-            
-            val barHeight = 4.dp + 24.dp * explicitAnimatedLevel
-
             Box(
                 modifier = Modifier
                     .width(3.dp)
-                    .height(barHeight)
+                    .height(heights[i])
                     .background(
-                        color = if (isGreenPart) GuideGreen else Color(0xFFE0E0E0),
+                        color = if (isGreen) GuideGreen else Color(0xFFE0E0E0),
                         shape = RoundedCornerShape(1.5.dp)
                     )
             )
