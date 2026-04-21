@@ -28,6 +28,8 @@ interface TTSSession {
    * 延迟连接：避免客户端建会话后长时间只有「服务端 URL 播放」、无文本上行时触发上游 Idle timeout。
    */
   dashscopeConnected: boolean;
+  /** 并发 append 时共用的上游连接 Promise，避免重复 connect */
+  dashscopeConnectPromise: Promise<boolean> | null;
 }
 
 export interface CreateTTSSessionOptions {
@@ -149,6 +151,7 @@ export class TTSSessionManager {
       audioChunkCount: 0,
       state: 'active',
       dashscopeConnected: false,
+      dashscopeConnectPromise: null,
     };
 
     this.sessions.set(sessionId, session);
@@ -165,20 +168,31 @@ export class TTSSessionManager {
   private async ensureDashScopeConnected(session: TTSSession): Promise<boolean> {
     if (session.dashscopeConnected) return true;
     if (session.state !== 'active') return false;
-    try {
-      await session.ttsClient.connect();
-      session.dashscopeConnected = true;
-      logger.info(`[TTS-Manager] 会话 ${session.sessionId} 已连接 DashScope`);
-      return true;
-    } catch (err: any) {
-      logger.error(`[TTS-Manager] DashScope 连接失败 (${session.sessionId}): ${err.message}`);
-      this.sendToClient(session.sessionId, {
-        type: 'tts.error',
-        sessionId: session.sessionId,
-        error: `建立上游 TTS 失败: ${err.message}`,
-      });
-      return false;
+
+    if (session.dashscopeConnectPromise) {
+      return session.dashscopeConnectPromise;
     }
+
+    session.dashscopeConnectPromise = (async () => {
+      try {
+        await session.ttsClient.connect();
+        session.dashscopeConnected = true;
+        logger.info(`[TTS-Manager] 会话 ${session.sessionId} 已连接 DashScope`);
+        return true;
+      } catch (err: any) {
+        logger.error(`[TTS-Manager] DashScope 连接失败 (${session.sessionId}): ${err.message}`);
+        this.sendToClient(session.sessionId, {
+          type: 'tts.error',
+          sessionId: session.sessionId,
+          error: `建立上游 TTS 失败: ${err.message}`,
+        });
+        return false;
+      } finally {
+        session.dashscopeConnectPromise = null;
+      }
+    })();
+
+    return session.dashscopeConnectPromise;
   }
 
   /**
@@ -192,11 +206,17 @@ export class TTSSessionManager {
       return false;
     }
 
+    const chunk = (text || '').trim();
+    if (!chunk) {
+      logger.debug(`[TTS-Manager] appendText 跳过空文本 - ${sessionId}`);
+      return true;
+    }
+
     const upstreamOk = await this.ensureDashScopeConnected(session);
     if (!upstreamOk) return false;
 
-    session.ttsClient.appendText(text);
-    session.charCount += text.length;
+    session.ttsClient.appendText(chunk);
+    session.charCount += chunk.length;
     return true;
   }
 
@@ -211,6 +231,7 @@ export class TTSSessionManager {
     }
     const upstreamOk = await this.ensureDashScopeConnected(session);
     if (!upstreamOk) return false;
+
     session.ttsClient.commitText();
     return true;
   }

@@ -1,24 +1,24 @@
--- 添加 report_url 列（若表或列已存在则跳过）
+-- Ensure assessments.guidelines exists after assessments table is created (idempotent)
 SET @schema := DATABASE();
 
 SET @tableExists := (
   SELECT COUNT(*)
   FROM information_schema.TABLES
   WHERE TABLE_SCHEMA = @schema
-    AND TABLE_NAME = 'ai_interview_analysis_reports'
+    AND TABLE_NAME = 'assessments'
 );
 
 SET @colExists := (
   SELECT COUNT(*)
   FROM information_schema.COLUMNS
   WHERE TABLE_SCHEMA = @schema
-    AND TABLE_NAME = 'ai_interview_analysis_reports'
-    AND COLUMN_NAME = 'report_url'
+    AND TABLE_NAME = 'assessments'
+    AND COLUMN_NAME = 'guidelines'
 );
 
 SET @stmt := IF(
   @tableExists = 1 AND @colExists = 0,
-  'ALTER TABLE `ai_interview_analysis_reports` ADD COLUMN `report_url` VARCHAR(191) NULL',
+  'ALTER TABLE `assessments` ADD COLUMN `guidelines` TEXT NULL',
   'SELECT 1'
 );
 

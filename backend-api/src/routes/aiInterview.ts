@@ -1116,7 +1116,7 @@ router.post('/test-tts',
         audioUrl: result.audioUrl,
         duration: result.duration,
         fileSize: result.fileSize,
-        provider: process.env.TTS_PROVIDER || 'mock',
+        provider: process.env.TTS_PROVIDER || 'aliyun',
       });
 
     } catch (error) {

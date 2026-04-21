@@ -15,7 +15,9 @@ export class RedisEventBus {
   private publisher: Redis | null = null;
   private subscriber: Redis | null = null;
   private isConnected = false;
-  private commandHandler: ((cmd: any) => void) | null = null;
+  private commandHandler: ((cmd: any) => void | Promise<void>) | null = null;
+  /** 串行处理 Redis 指令，避免 synthesize 与 commit 并发导致 commit 先于 append 到达 DashScope */
+  private commandChain: Promise<void> = Promise.resolve();
 
   constructor() {
     const redisUrl = process.env.REDIS_URL;
@@ -61,7 +63,7 @@ export class RedisEventBus {
     }
   }
 
-  onCommand(handler: (cmd: any) => void): void {
+  onCommand(handler: (cmd: any) => void | Promise<void>): void {
     this.commandHandler = handler;
   }
 
@@ -90,7 +92,12 @@ export class RedisEventBus {
       logger.debug(`[Redis] 收到指令: ${cmd.command} for session ${cmd.sessionId}`);
 
       if (this.commandHandler) {
-        this.commandHandler(cmd);
+        const handler = this.commandHandler;
+        this.commandChain = this.commandChain
+          .then(() => Promise.resolve(handler(cmd)))
+          .catch((err: any) => {
+            logger.error(`[Redis] 指令执行失败 (${cmd.command}): ${err?.message || err}`);
+          });
       }
     } catch (err: any) {
       logger.error(`[Redis] 处理指令失败: ${err.message}`);

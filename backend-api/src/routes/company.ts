@@ -5,6 +5,10 @@ import {
   uploadCompanyLogo,
   getCompanyStats
 } from '../controllers/companyController';
+import {
+  listCompanyAiInterviewSessions,
+  getCompanyAiInterviewSessionDetail,
+} from '../controllers/companyAiInterviewController';
 import { authenticateToken } from '../middleware/auth';
 import { upload } from '../middleware/upload';
 import { Router } from 'express';
@@ -273,6 +277,14 @@ router.put('/profile', checkAuth, async (req: AuthRequest, res) => {
     res.status(500).json({ message: '更新失败，请稍后重试' });
   }
 });
+
+// AI 面试沟通记录（限本企业发布的职位下的会话）
+router.get('/ai-interview-sessions', authenticateToken, listCompanyAiInterviewSessions);
+router.get(
+  '/ai-interview-sessions/:sessionId',
+  authenticateToken,
+  getCompanyAiInterviewSessionDetail
+);
 
 // 检查企业权限
 router.get('/check-permissions', checkAuth, async (req: AuthRequest, res) => {

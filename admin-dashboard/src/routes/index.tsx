@@ -7,6 +7,7 @@ import RegisterPage from '../pages/RegisterPage';
 import DashboardLayout from '../components/DashboardLayout';
 import Dashboard from '../pages/Dashboard';
 import InterviewList from '../pages/InterviewList';
+import AiInterviewCommunication from '../pages/AiInterviewCommunication';
 import JobManagement from '../pages/JobManagement';
 import CandidateManagement from '../pages/CandidateManagement';
 import CandidateDetail from '../pages/candidates/CandidateDetail';
@@ -68,6 +69,7 @@ export const AppRoutes: React.FC = () => {
         <Route path="candidates" element={<CandidateManagement />} />
         <Route path="candidates/:id" element={<CandidateDetail />} />
         <Route path="interviews" element={<InterviewList />} />
+        <Route path="ai-interview-communication" element={<AiInterviewCommunication />} />
         <Route path="company/profile" element={<CompanyProfile />} />
         <Route path="company/verification" element={<CompanyVerification />} />
         <Route path="users" element={<UserManagement />} />

@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import kotlinx.coroutines.launch
+import com.xlwl.AiMian.config.AppConfig
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -203,9 +204,9 @@ fun DuixAvatarInterviewScreen(
     // Connect to websocket when Duix session is ready
     LaunchedEffect(isReady) {
         if (isReady && connectionState == ConnectionState.DISCONNECTED) {
-            val serverUrl = BuildConfig.API_BASE_URL.replace("http", "ws").replace("api/", "")
-            // Start WS connection. RealtimeVoiceManager expects sessionId.
-            // We use a mock session or real session
+            val serverUrl = AppConfig.realtimeVoiceWsUrl
+            Log.i("DuixAvatarScreen", "📡 Initiating WebSocket connection to: $serverUrl")
+            
             scope.launch {
                 realtimeVoiceManager.initialize(
                     serverUrl = serverUrl,

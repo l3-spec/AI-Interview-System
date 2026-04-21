@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import { PrismaClient } from '@prisma/client';
 import * as crypto from 'crypto';
 import { volcengineTtsService } from './volcengine';
+import { ossService } from './ossService';
 
 const prisma = new PrismaClient();
 
@@ -99,6 +100,22 @@ export class TTSService {
   }
 
   /**
+   * 将音频文件上传到 OSS 并返回 URL
+   */
+  private async uploadAudioToOSS(filePath: string, fileName: string): Promise<string> {
+    try {
+      const objectKey = `temp/tts/${fileName}`;
+      console.log(`正在上传音频到OSS: ${objectKey}`);
+      const result = await ossService.uploadLocalFile(filePath, objectKey);
+      console.log(`✅ 上传到OSS成功: ${result.url}`);
+      return result.url;
+    } catch (error) {
+      console.error('上传音频到OSS失败，回退到本地URL:', error);
+      return `/uploads/audio/${fileName}`;
+    }
+  }
+
+  /**
    * 文本转语音 - 主方法
    */
   async textToSpeech(params: {
@@ -135,7 +152,14 @@ export class TTSService {
             throw new Error(`不支持的TTS提供商: ${this.provider}`);
         }
       } else {
-        result = await this.simulateTTS(text);
+        const hint =
+          this.mode === 'client'
+            ? 'TTS_PROVIDER 为 client 模式，服务端不合成语音'
+            : '请配置 TTS_PROVIDER 及对应密钥（如 ALIYUN_TTS_ACCESS_KEY_ID / ALIYUN_TTS_ACCESS_KEY_SECRET）';
+        result = {
+          success: false,
+          error: `服务端 TTS 未启用：${hint}`,
+        };
       }
 
       // 记录使用情况
@@ -173,19 +197,38 @@ export class TTSService {
       const sampleRate = process.env.ALIYUN_TTS_SAMPLE_RATE || '16000';
 
       if (!accessKeyId || !accessKeySecret) {
-        console.log('阿里云TTS配置缺失，使用模拟模式');
-        return await this.simulateTTS(text);
+        return {
+          success: false,
+          error: '阿里云 TTS 未配置：请设置 ALIYUN_TTS_ACCESS_KEY_ID 与 ALIYUN_TTS_ACCESS_KEY_SECRET',
+        };
       }
 
-      // 生成文件名和路径
       const fileName = `tts_${uuidv4()}.${format}`;
       const filePath = path.join(this.uploadDir, fileName);
 
       try {
-        // 调用阿里云TTS API
-        const audioData = await this.callAliyunTTSAPI(text, voiceName, format, sampleRate, accessKeyId, accessKeySecret, region);
-        
-        // 保存音频文件
+        const outcome = await this.callAliyunTTSAPI(
+          text,
+          voiceName,
+          format,
+          sampleRate,
+          accessKeyId,
+          accessKeySecret,
+          region
+        );
+
+        if ('remoteUrl' in outcome && outcome.remoteUrl) {
+          const duration = this.estimateAudioDuration(text);
+          console.log(`✅ 阿里云TTS返回直链，跳过本地文件: ${outcome.remoteUrl}`);
+          return {
+            success: true,
+            audioUrl: outcome.remoteUrl,
+            duration,
+            fileSize: 0,
+          };
+        }
+
+        const audioData = outcome as Buffer;
         fs.writeFileSync(filePath, audioData);
 
         const stats = fs.statSync(filePath);
@@ -193,29 +236,27 @@ export class TTSService {
 
         console.log(`✅ 阿里云TTS转换成功: ${filePath}, 大小: ${Math.round(stats.size / 1024)}KB`);
 
+        const audioUrl = await this.uploadAudioToOSS(filePath, fileName);
+
         return {
           success: true,
           audioPath: filePath,
-          audioUrl: `/uploads/audio/${fileName}`,
+          audioUrl: audioUrl,
           duration: duration,
           fileSize: stats.size,
         };
-
       } catch (apiError) {
-        console.log('阿里云TTS API调用失败，使用模拟模式:', apiError);
-        
-        // API调用失败时降级到模拟模式
-        await this.generatePlayableAudio(filePath, text);
-
-        const stats = fs.statSync(filePath);
-        const duration = this.estimateAudioDuration(text);
-
+        console.error('阿里云TTS API调用失败:', apiError);
+        if (fs.existsSync(filePath)) {
+          try {
+            fs.unlinkSync(filePath);
+          } catch {
+            // ignore
+          }
+        }
         return {
-          success: true,
-          audioPath: filePath,
-          audioUrl: `/uploads/audio/${fileName}`,
-          duration: duration,
-          fileSize: stats.size,
+          success: false,
+          error: apiError instanceof Error ? apiError.message : '阿里云 TTS 调用失败',
         };
       }
 
@@ -231,6 +272,9 @@ export class TTSService {
   /**
    * 调用阿里云TTS API
    */
+  /**
+   * 阿里云语音合成。常规 NLS 返回二进制音频；若接口以 JSON 返回可下载临时 URL，则直接使用该 URL（不再经 OSS）。
+   */
   private async callAliyunTTSAPI(
     text: string, 
     voice: string, 
@@ -239,7 +283,7 @@ export class TTSService {
     accessKeyId: string,
     accessKeySecret: string,
     region: string
-  ): Promise<Buffer> {
+  ): Promise<Buffer | { remoteUrl: string }> {
     const endpoint = `https://nls-meta.${region}.aliyuncs.com`;
     const action = 'SynthesizeSpeech';
     const version = '2019-02-28';
@@ -286,11 +330,19 @@ export class TTSService {
       throw new Error(`阿里云TTS API请求失败: ${response.status}`);
     }
 
-    // 检查是否返回的是错误信息（JSON格式）
     const contentType = response.headers['content-type'] || '';
     if (contentType.includes('application/json')) {
-      const errorInfo = JSON.parse(Buffer.from(response.data).toString());
-      throw new Error(`阿里云TTS API错误: ${errorInfo.Message || errorInfo.message || '未知错误'}`);
+      const json = JSON.parse(Buffer.from(response.data).toString()) as Record<string, unknown>;
+      const errMsg = (json.Message || json.message || json.Code) as string | undefined;
+      if (errMsg && !json.Url && !json.url && !json.AudioUrl && !json.audioUrl) {
+        throw new Error(`阿里云TTS API错误: ${errMsg}`);
+      }
+      const rawUrl =
+        (json.Url || json.url || json.AudioUrl || json.audioUrl || json.Data) as string | undefined;
+      if (typeof rawUrl === 'string' && /^https?:\/\//i.test(rawUrl.trim())) {
+        return { remoteUrl: rawUrl.trim() };
+      }
+      throw new Error(`阿里云TTS API错误: ${errMsg || '未知错误'}`);
     }
 
     return Buffer.from(response.data);
@@ -392,7 +444,7 @@ export class TTSService {
       return {
         success: true,
         audioPath: filePath,
-        audioUrl: `/uploads/audio/${fileName}`,
+        audioUrl: await this.uploadAudioToOSS(filePath, fileName),
         duration: duration,
         fileSize: stats.size,
       };
@@ -414,8 +466,10 @@ export class TTSService {
     const apiKey = (process.env.INDEX_TTS2_API_KEY || '').trim();
 
     if (!apiUrl || !apiKey) {
-      console.warn('IndexTTS2 配置缺失，降级为模拟音频');
-      return this.simulateTTS(text);
+      return {
+        success: false,
+        error: 'IndexTTS2 未配置：请设置 INDEX_TTS2_API_URL 与 INDEX_TTS2_API_KEY',
+      };
     }
 
     const endpoint = apiUrl.replace(/\/$/, '');
@@ -463,10 +517,13 @@ export class TTSService {
       const stats = fs.statSync(filePath);
       const duration = this.estimateAudioDuration(text);
 
+      // 上传到 OSS
+      const audioUrl = await this.uploadAudioToOSS(filePath, fileName);
+
       return {
         success: true,
         audioPath: filePath,
-        audioUrl: `/uploads/audio/${fileName}`,
+        audioUrl: audioUrl,
         duration,
         fileSize: stats.size,
       };
@@ -479,7 +536,10 @@ export class TTSService {
           // ignore
         }
       }
-      return this.simulateTTS(text);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'IndexTTS2 合成失败',
+      };
     }
   }
 
@@ -542,7 +602,7 @@ export class TTSService {
       return {
         success: true,
         audioPath: filePath,
-        audioUrl: `/uploads/audio/${fileName}`,
+        audioUrl: await this.uploadAudioToOSS(filePath, fileName),
         duration: duration,
         fileSize: stats.size,
       };
@@ -557,38 +617,6 @@ export class TTSService {
   }
 
   /**
-   * 模拟TTS
-   */
-  private async simulateTTS(text: string): Promise<TTSResult> {
-    console.log('使用模拟模式生成音频文件...');
-    
-    try {
-      const fileName = `tts_mock_${uuidv4()}.mp3`;
-      const filePath = path.join(this.uploadDir, fileName);
-
-      // 生成可播放的模拟音频文件
-      await this.generatePlayableAudio(filePath, text);
-
-      const stats = fs.statSync(filePath);
-      const duration = this.estimateAudioDuration(text);
-
-      return {
-        success: true,
-        audioPath: filePath,
-        audioUrl: `/uploads/audio/${fileName}`,
-        duration: duration,
-        fileSize: stats.size,
-      };
-    } catch (error) {
-      console.error('模拟TTS失败:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Mock TTS error',
-      };
-    }
-  }
-
-  /**
    * 估算音频时长（基于文本长度）
    */
   private estimateAudioDuration(text: string): number {
@@ -597,80 +625,6 @@ export class TTSService {
     const textLength = text.length;
     const durationMinutes = textLength / wordsPerMinute;
     return Math.max(1, Math.round(durationMinutes * 60)); // 返回秒数，最少1秒
-  }
-
-  /**
-   * 生成可播放的模拟音频文件
-   */
-  private async generatePlayableAudio(filePath: string, text: string): Promise<void> {
-    // ID3v2.4 标签头
-    const id3Header = Buffer.from([
-      // ID3v2.4 标签标识符
-      0x49, 0x44, 0x33, 0x04, 0x00, 
-      // 标志位
-      0x00,
-      // 标签大小 (不包括头部10字节)
-      0x00, 0x00, 0x00, 0x17,
-      // TIT2 帧 (标题)
-      0x54, 0x49, 0x54, 0x32,
-      // 帧大小
-      0x00, 0x00, 0x00, 0x0D,
-      // 帧标志
-      0x00, 0x00,
-      // 文本编码 (UTF-8)
-      0x03,
-      // 标题内容
-      0x41, 0x49, 0x20, 0x41, 0x75, 0x64, 0x69, 0x6F, // "AI Audio"
-      0x20, 0x54, 0x65, 0x73, 0x74 // " Test"
-    ]);
-
-    // 生成包含静音的MP3帧
-    // 每帧对应约26毫秒的音频 (44.1kHz, 128kbps)
-    const estimatedDuration = this.estimateAudioDuration(text); // 秒数
-    const framesNeeded = Math.ceil(estimatedDuration / 0.026); // 约每秒38帧
-    const audioFrames: Buffer[] = [];
-
-    // 标准MP3帧头 (MPEG-1 Layer III, 128kbps, 44.1kHz, 单声道)
-    const frameHeader = Buffer.from([
-      0xFF, 0xFB, 0x90, 0x00  // 同步字 + 头信息
-    ]);
-
-    // 生成静音MP3帧
-    for (let i = 0; i < framesNeeded; i++) {
-      // 创建一个包含静音数据的MP3帧
-      const frameData = Buffer.alloc(417); // 128kbps单声道帧大小约417字节
-      
-      // 设置帧头
-      frameHeader.copy(frameData, 0);
-      
-      // 填充静音数据模式 (MP3静音帧的特殊模式)
-      // 这是一个简化的静音帧，实际MP3编码会更复杂
-      for (let j = 4; j < frameData.length; j++) {
-        if (j < 20) {
-          // 边信息区域
-          frameData[j] = 0x00;
-        } else if (j < 50) {
-          // 比例因子区域
-          frameData[j] = 0x00;
-        } else {
-          // 主数据区域 - 静音模式
-          frameData[j] = (j % 2 === 0) ? 0x00 : 0x01;
-        }
-      }
-      
-      audioFrames.push(frameData);
-    }
-
-    // 组合完整的MP3文件
-    const completeAudioFile = Buffer.concat([
-      id3Header,
-      ...audioFrames
-    ]);
-
-    // 写入文件
-    fs.writeFileSync(filePath, completeAudioFile);
-    
-    console.log(`生成可播放的模拟音频文件: ${filePath}, 大小: ${Math.round(completeAudioFile.length / 1024)}KB, 预估时长: ${estimatedDuration}秒, 帧数: ${framesNeeded}`);
   }
 
   /**
@@ -729,21 +683,32 @@ export class TTSService {
       });
 
       if (!result.success) {
-        console.log('火山引擎TTS失败，降级到模拟模式');
-        return await this.simulateTTS(text);
+        return {
+          success: false,
+          error: result.error || '火山引擎 TTS 合成失败',
+        };
       }
+
+      // 上传到 OSS
+      if (!result.audioPath) {
+        throw new Error('火山引擎TTS合成成功但未返回音频路径');
+      }
+      const fileName = path.basename(result.audioPath);
+      const audioUrl = await this.uploadAudioToOSS(result.audioPath, fileName);
 
       return {
         success: true,
         audioPath: result.audioPath,
-        audioUrl: result.audioUrl,
+        audioUrl: audioUrl,
         duration: result.duration,
         fileSize: result.fileSize,
       };
     } catch (error) {
       console.error('火山引擎TTS转换失败:', error);
-      console.log('降级到模拟模式');
-      return await this.simulateTTS(text);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '火山引擎 TTS 异常',
+      };
     }
   }
 

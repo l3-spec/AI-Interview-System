@@ -50,7 +50,7 @@ export class VolcengineTtsService {
     this.ensureUploadDir();
 
     if (!this.isEnabled) {
-      console.warn('⚠️ 火山引擎TTS未配置，将使用模拟模式');
+      console.warn('⚠️ 火山引擎TTS未配置（VOLCENGINE_API_KEY 等），合成将返回失败');
     } else {
       console.log(`✅ 火山引擎TTS服务已配置，音色: ${this.config.voiceType}`);
     }
@@ -79,7 +79,10 @@ export class VolcengineTtsService {
     const { text, voice, emotion, sessionId, saveToFile = true } = params;
 
     if (!this.isEnabled) {
-      return this.mockSynthesize(text, saveToFile);
+      return {
+        success: false,
+        error: '火山引擎 TTS 未配置，请设置 VOLCENGINE_API_KEY（或 VOLCENGINE_TTS_API_KEY）',
+      };
     }
 
     try {
@@ -101,8 +104,10 @@ export class VolcengineTtsService {
       return result;
     } catch (error: any) {
       console.error('火山引擎TTS合成失败:', error.message);
-      console.log('降级到模拟模式');
-      return this.mockSynthesize(text, saveToFile);
+      return {
+        success: false,
+        error: error?.message || '火山引擎 TTS 合成失败',
+      };
     }
   }
 
@@ -170,65 +175,6 @@ export class VolcengineTtsService {
       audioPath: filePath,
       audioUrl: `/uploads/audio/${fileName}`,
     };
-  }
-
-  /**
-   * 模拟TTS合成
-   */
-  private mockSynthesize(text: string, saveToFile: boolean): TtsResult {
-    console.log('[模拟] 火山引擎TTS合成:', text.substring(0, 30));
-
-    // 生成一个简单的静音音频文件
-    const duration = this.estimateDuration(text);
-    const audioBuffer = this.generateSilentAudio(duration);
-
-    let result: TtsResult = {
-      success: true,
-      audioBuffer,
-      duration,
-      fileSize: audioBuffer.length,
-    };
-
-    if (saveToFile) {
-      const fileResult = this.saveAudioToFile(audioBuffer);
-      result = { ...result, ...fileResult };
-    }
-
-    return result;
-  }
-
-  /**
-   * 生成静音音频
-   */
-  private generateSilentAudio(durationSeconds: number): Buffer {
-    const sampleRate = this.config.sampleRate;
-    const numSamples = sampleRate * durationSeconds;
-    const bytesPerSample = 2; // 16-bit
-    const bufferSize = numSamples * bytesPerSample + 44; // WAV header
-
-    const buffer = Buffer.alloc(bufferSize);
-
-    // WAV header
-    buffer.write('RIFF', 0);
-    buffer.writeUInt32LE(bufferSize - 8, 4);
-    buffer.write('WAVE', 8);
-    buffer.write('fmt ', 12);
-    buffer.writeUInt32LE(16, 16); // fmt chunk size
-    buffer.writeUInt16LE(1, 20); // PCM format
-    buffer.writeUInt16LE(1, 22); // mono
-    buffer.writeUInt32LE(sampleRate, 24);
-    buffer.writeUInt32LE(sampleRate * 2, 28); // byte rate
-    buffer.writeUInt16LE(2, 32); // block align
-    buffer.writeUInt16LE(16, 34); // bits per sample
-    buffer.write('data', 36);
-    buffer.writeUInt32LE(numSamples * 2, 40);
-
-    // 静音数据（全0）
-    for (let i = 44; i < bufferSize; i++) {
-      buffer[i] = 0;
-    }
-
-    return buffer;
   }
 
   /**

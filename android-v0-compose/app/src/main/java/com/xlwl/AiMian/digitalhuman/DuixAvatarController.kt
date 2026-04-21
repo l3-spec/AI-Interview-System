@@ -301,7 +301,7 @@ class DuixAvatarController(
     override fun resetMouth() {}
     override fun onTtsPlayback(audioPath: String?, text: String?) {
         if (audioPath == null) return
-        Log.i(TAG, "onTtsPlayback: Driving digital human with audio -> $audioPath")
+        Log.i(TAG, "onTtsPlayback: Driving digital human with audio file -> $audioPath")
         duixEngine?.playAudio(audioPath)
     }
 
@@ -324,7 +324,10 @@ class DuixAvatarController(
     }
 
     override fun pushPcm(buffer: ByteArray) {
-        duixEngine?.pushPcm(buffer)
+        if (buffer.isNotEmpty()) {
+            // Log.v(TAG, "pushPcm: ${buffer.size} bytes") // Use Verbose for high frequency data
+            duixEngine?.pushPcm(buffer)
+        }
     }
 
     override fun stopPush() {

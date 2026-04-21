@@ -121,7 +121,10 @@ export const getInterviewSessionAnalysis = async (req: Request, res: Response) =
                 questions: {
                     orderBy: { questionIndex: 'asc' }
                 },
-                analysisReport: true
+                analysisReport: true,
+                conversationTurns: {
+                    orderBy: { sequence: 'asc' },
+                },
             }
         });
 
@@ -158,6 +161,15 @@ export const getInterviewSessionAnalysis = async (req: Request, res: Response) =
                     videoUrl: toMediaUrl(q.answerVideoUrl) ?? q.answerVideoUrl,
                     duration: q.answerDuration
                 })),
+                conversationTurns: session.conversationTurns?.map((t: any) => ({
+                    sequence: t.sequence,
+                    speaker: t.speaker,
+                    avatarText: t.avatarText,
+                    candidateText: t.candidateText,
+                    candidateVideoUrl: toMediaUrl(t.candidateVideoUrl) ?? t.candidateVideoUrl,
+                    questionIndex: t.questionIndex,
+                    createdAt: t.createdAt,
+                })) ?? [],
                 report: session.analysisReport ? (() => {
                     const insights = session.analysisReport.videoInsights
                         ? JSON.parse(session.analysisReport.videoInsights)

@@ -354,12 +354,39 @@ model AIInterviewSession {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // 关联关系
-  questions      AIInterviewQuestion[]
-  audioFiles     AIInterviewAudio[]
-  analysisReport AIInterviewAnalysisReport?
-  analysisTasks  AIInterviewAnalysisTask[]
+  questions          AIInterviewQuestion[]
+  audioFiles         AIInterviewAudio[]
+  analysisReport     AIInterviewAnalysisReport?
+  analysisTasks      AIInterviewAnalysisTask[]
+  conversationTurns  AIInterviewConversationTurn[]
 
+  // 复合索引供按 userId+jobId 查询；删除会导致 MySQL 无法去掉支撑 userId 外键所需的索引
+  @@index([userId, jobId], map: "idx_ai_interview_sessions_user_job")
   @@map("ai_interview_sessions")
+}
+
+/// 面试实时沟通上下文：数字人侧存完整文本（可含情绪标注），候选人侧存答题视频 URL 等
+model AIInterviewConversationTurn {
+  id                String   @id @default(uuid())
+  sessionId         String
+  /// 会话内顺序，从 0 递增
+  sequence          Int
+  /// AVATAR | CANDIDATE
+  speaker           String
+  /// 面试官/数字人播报全文（保留 [emotion:...] 等标注）
+  avatarText        String?  @db.Text
+  /// 候选人答题视频 OSS URL
+  candidateVideoUrl String?  @db.Text
+  /// 候选人文字（如文本作答或 ASR）
+  candidateText     String?  @db.Text
+  /// 关联题号（可选）
+  questionIndex     Int?
+  createdAt         DateTime @default(now())
+
+  session AIInterviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, sequence], map: "idx_ai_conv_session_seq")
+  @@map("ai_interview_conversation_turns")
 }
 
 // AI面试问题表

@@ -672,6 +672,16 @@ export const companyApi = {
   },
 };
 
+/** 本企业职位关联的 AI 面试沟通记录 */
+export const companyAiInterviewApi = {
+  listSessions: async (params?: { page?: number; pageSize?: number; status?: string; search?: string }) => {
+    return apiClient.get<ApiResponse<any>>('/company/ai-interview-sessions', { params }) as unknown as ApiResponse<any>;
+  },
+  getSessionDetail: async (sessionId: string) => {
+    return apiClient.get<ApiResponse<any>>(`/company/ai-interview-sessions/${sessionId}`) as unknown as ApiResponse<any>;
+  },
+};
+
 // 职岗管理API
 export const jobApi = {
   // 获取职岗列表

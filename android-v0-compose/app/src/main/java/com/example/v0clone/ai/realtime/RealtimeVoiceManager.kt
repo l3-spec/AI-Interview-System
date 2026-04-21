@@ -434,22 +434,23 @@ class RealtimeVoiceManager(private val context: Context) {
 
             val newSocket = IO.socket(serverUrl, options)
             newSocket.on(Socket.EVENT_CONNECT) {
-                Log.d(TAG, "WebSocket连接成功: $serverUrl")
+                Log.i(TAG, "✅ WebSocket连接成功: $serverUrl, SocketID: ${newSocket.id()}")
                 _connectionState.value = ConnectionState.CONNECTED
                 joinSession(sessionId, userId, jobPosition, background)
                 showToast("AI面试官已上线")
             }
             newSocket.on(Socket.EVENT_DISCONNECT) {
-                Log.d(TAG, "WebSocket连接断开")
+                Log.w(TAG, "❌ WebSocket连接断开: $serverUrl")
                 _connectionState.value = ConnectionState.DISCONNECTED
                 socket = null
             }
             newSocket.on(Socket.EVENT_CONNECT_ERROR) { args ->
-                Log.e(TAG, "WebSocket连接错误: ${args.getOrNull(0)}")
+                val err = args.getOrNull(0)
+                Log.e(TAG, "❌ WebSocket连接错误: $err, URL: $serverUrl")
                 _connectionState.value = ConnectionState.DISCONNECTED
                 socket = null
                 showToast("连接服务器失败，请检查网络")
-                args.getOrNull(0)?.toString()?.let { _errors.tryEmit(it) }
+                err?.toString()?.let { _errors.tryEmit(it) }
             }
             newSocket.on("text_chunk") { args ->
                 safeHandleEvent("text_chunk", args) { handleTextChunk(it) }
@@ -1180,8 +1181,12 @@ class RealtimeVoiceManager(private val context: Context) {
                     playClientSideTts(text, textHash)
                 }
             } else if (!audioUrl.isNullOrBlank()) {
-                Log.i(TAG, "使用服务器端TTS音频 - url=$audioUrl, textHash=$textHash")
-                playAudioFromPath(audioUrl, textHash, text)
+                val fullUrl = if (audioUrl.startsWith("http")) audioUrl else {
+                    val baseUrl = AppConfig.apiBaseUrl.removeSuffix("/api/").removeSuffix("/api")
+                    if (audioUrl.startsWith("/")) "$baseUrl$audioUrl" else "$baseUrl/$audioUrl"
+                }
+                Log.i(TAG, "使用服务器端TTS音频 - url=$fullUrl, textHash=$textHash")
+                playAudioFromUrl(fullUrl, textHash, text)
             } else {
                 Log.w(TAG, "未提供可播放的音频数据")
                 _isDigitalHumanSpeaking.value = false
@@ -1762,8 +1767,26 @@ class RealtimeVoiceManager(private val context: Context) {
 
     private fun handleAudioChunk(data: JSONObject) {
         try {
-            val audioData = data.opt("data") as? ByteArray ?: return
+            // 支持多种格式：直接二进制 (ByteArray) 或 Base64 (String)
+            val rawData = data.opt("data") ?: data.opt("audio")
+            val audioData = when (rawData) {
+                is ByteArray -> rawData
+                is String -> {
+                    try {
+                        android.util.Base64.decode(rawData, android.util.Base64.DEFAULT)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Base64解码音频失败", e)
+                        null
+                    }
+                }
+                else -> {
+                    Log.w(TAG, "收到未知格式的audio_chunk: ${rawData?.javaClass?.name}")
+                    null
+                }
+            } ?: return
             
+            Log.d(TAG, "收到 audio_chunk: size=${audioData.size}, format=${data.optString("format", "unknown")}")
+
             // 初始化或获取 AudioTrack
             if (audioTrack == null || audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
                 val minBufSize = AudioTrack.getMinBufferSize(
@@ -1772,9 +1795,10 @@ class RealtimeVoiceManager(private val context: Context) {
                     AudioFormat.ENCODING_PCM_16BIT
                 )
                 
+                Log.i(TAG, "初始化 AudioTrack - sampleRate=$SAMPLE_RATE, minBufSize=$minBufSize")
                 audioTrack = AudioTrack.Builder()
                     .setAudioAttributes(AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build())
                     .setAudioFormat(AudioFormat.Builder()
@@ -1786,15 +1810,20 @@ class RealtimeVoiceManager(private val context: Context) {
                     .setTransferMode(AudioTrack.MODE_STREAM)
                     .build()
                 
+                audioTrack?.setVolume(1.0f)
                 audioTrack?.play()
                 _isDigitalHumanSpeaking.value = true
                 
                 // 设置数字人开始接收流
                 digitalHumanController?.startPush()
+                Log.i(TAG, "AudioTrack 已启动并开始推送 PCM 给数字人")
             }
 
             // 1. 播放声音
-            audioTrack?.write(audioData, 0, audioData.size)
+            val writeResult = audioTrack?.write(audioData, 0, audioData.size)
+            if (writeResult != null && writeResult < 0) {
+                Log.e(TAG, "AudioTrack.write 错误: $writeResult")
+            }
             
             // 2.驱动数字人嘴型
             // 将 PCM 直接喂给数字人引擎

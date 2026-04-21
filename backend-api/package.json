@@ -18,6 +18,9 @@
     "format": "prettier --write src/**/*.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "prisma:migrate:reset": "prisma migrate reset --force",
+    "prisma:fresh": "prisma migrate reset --force --skip-seed && npm run seed && prisma migrate status",
     "prisma:studio": "prisma studio",
     "seed": "ts-node prisma/seed.ts",
     "worker": "ts-node src/workers/videoGenerationWorker.ts"

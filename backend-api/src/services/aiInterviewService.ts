@@ -863,6 +863,13 @@ class AIInterviewService {
         };
       }
 
+      void this.recordConversationTurn(sessionId, {
+        speaker: 'CANDIDATE',
+        candidateVideoUrl: normalized.videoUrl,
+        candidateText: answerText || undefined,
+        questionIndex,
+      }).catch(() => undefined);
+
       const refreshedSession = await prisma.aIInterviewSession.findUnique({
         where: { id: sessionId },
         include: {
@@ -958,6 +965,13 @@ class AIInterviewService {
         data: { updatedAt: new Date() },
       });
 
+      const videoForTurn = normalized.videoUrl || videoUrl;
+      void this.recordConversationTurn(sessionId, {
+        speaker: 'CANDIDATE',
+        candidateVideoUrl: videoForTurn,
+        questionIndex,
+      }).catch(() => undefined);
+
       return { success: true, message: '已绑定面试视频链接' };
     } catch (error) {
       console.error('绑定面试视频链接失败:', error);
@@ -965,6 +979,57 @@ class AIInterviewService {
         success: false,
         error: error instanceof Error ? error.message : '绑定面试视频链接失败',
       };
+    }
+  }
+
+  /**
+   * 追加一条沟通记录（数字人文本 / 用户视频与文本），按 sequence 有序存储。
+   */
+  async recordConversationTurn(
+    sessionId: string,
+    payload: {
+      speaker: 'AVATAR' | 'CANDIDATE';
+      avatarText?: string;
+      candidateVideoUrl?: string;
+      candidateText?: string;
+      questionIndex?: number;
+    }
+  ): Promise<void> {
+    const hasAvatar = payload.speaker === 'AVATAR' && (payload.avatarText || '').trim().length > 0;
+    const hasCandidate =
+      payload.speaker === 'CANDIDATE' &&
+      ((payload.candidateVideoUrl || '').trim().length > 0 || (payload.candidateText || '').trim().length > 0);
+    if (!hasAvatar && !hasCandidate) {
+      return;
+    }
+
+    try {
+      const exists = await prisma.aIInterviewSession.count({ where: { id: sessionId } });
+      if (!exists) {
+        return;
+      }
+
+      const agg = await prisma.aIInterviewConversationTurn.aggregate({
+        where: { sessionId },
+        _max: { sequence: true },
+      });
+      const nextSeq = (agg._max.sequence ?? -1) + 1;
+
+      await prisma.aIInterviewConversationTurn.create({
+        data: {
+          sessionId,
+          sequence: nextSeq,
+          speaker: payload.speaker,
+          avatarText: hasAvatar ? (payload.avatarText || '').trim() : null,
+          candidateVideoUrl:
+            payload.speaker === 'CANDIDATE' ? (payload.candidateVideoUrl || '').trim() || null : null,
+          candidateText:
+            payload.speaker === 'CANDIDATE' ? (payload.candidateText || '').trim() || null : null,
+          questionIndex: typeof payload.questionIndex === 'number' ? payload.questionIndex : null,
+        },
+      });
+    } catch (err) {
+      console.warn(`[AIInterview] recordConversationTurn failed session=${sessionId}`, err);
     }
   }
 

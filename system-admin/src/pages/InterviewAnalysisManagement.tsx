@@ -14,7 +14,8 @@ import {
     Input,
     Select,
     Tabs,
-    Collapse
+    Collapse,
+    Timeline
 } from 'antd';
 import { SearchOutlined, EyeOutlined, ReloadOutlined, PlayCircleOutlined, DownloadOutlined, RedoOutlined } from '@ant-design/icons';
 import { aiInterviewApi } from '../services/api';
@@ -60,6 +61,16 @@ interface Question {
     answer?: string;
     videoUrl?: string;
     duration?: number;
+}
+
+interface ConversationTurn {
+    sequence: number;
+    speaker: string;
+    avatarText?: string | null;
+    candidateText?: string | null;
+    candidateVideoUrl?: string | null;
+    questionIndex?: number | null;
+    createdAt: string;
 }
 
 interface AnalysisLog {
@@ -196,6 +207,7 @@ const InterviewAnalysisManagement: React.FC = () => {
     const [analysisActionLoading, setAnalysisActionLoading] = useState(false);
     const [analysisLogs, setAnalysisLogs] = useState<AnalysisLog[]>([]);
     const [analysisLogsLoading, setAnalysisLogsLoading] = useState(false);
+    const [conversationTurns, setConversationTurns] = useState<ConversationTurn[]>([]);
     const [detailActiveTab, setDetailActiveTab] = useState('questions');
     const [videoPlayerVisible, setVideoPlayerVisible] = useState(false);
     const [currentVideoUrl, setCurrentVideoUrl] = useState<string>('');
@@ -376,9 +388,19 @@ const InterviewAnalysisManagement: React.FC = () => {
                         videoUrl: question.videoUrl ? buildAssetUrl(question.videoUrl) : question.videoUrl,
                     }))
                 );
+                const rawTurns = (res.data.conversationTurns || []) as ConversationTurn[];
+                setConversationTurns(
+                    rawTurns.map((t) => ({
+                        ...t,
+                        candidateVideoUrl: t.candidateVideoUrl
+                            ? buildAssetUrl(t.candidateVideoUrl)
+                            : t.candidateVideoUrl,
+                    }))
+                );
             } else {
                 setAnalysisReport(null);
                 setQuestions([]);
+                setConversationTurns([]);
             }
         } catch (error) {
             message.error('获取分析详情失败');
@@ -411,6 +433,7 @@ const InterviewAnalysisManagement: React.FC = () => {
         setDetailActiveTab('questions'); // 默认显示问题标签页
         setVideoPlayerVisible(false); // 关闭视频播放器
         setAnalysisLogs([]);
+        setConversationTurns([]);
         await Promise.all([
             fetchAnalysisDetail(record.id),
             fetchAnalysisLogs(record.id)
@@ -548,9 +571,8 @@ const InterviewAnalysisManagement: React.FC = () => {
                     type="link"
                     icon={<EyeOutlined />}
                     onClick={() => handleViewAnalysis(record)}
-                    disabled={record.status !== 'COMPLETED'}
                 >
-                    查看报告
+                    查看详情
                 </Button>
             )
         }
@@ -776,6 +798,50 @@ const InterviewAnalysisManagement: React.FC = () => {
                     <div style={{ textAlign: 'center', padding: 50 }}>加载中...</div>
                 ) : (
                     <Tabs activeKey={detailActiveTab} onChange={setDetailActiveTab}>
+                        <Tabs.TabPane tab="沟通上下文" key="conversation">
+                            {conversationTurns.length === 0 ? (
+                                <Text type="secondary">暂无实时沟通记录（需客户端经 Socket 与答题上传产生）</Text>
+                            ) : (
+                                <Timeline
+                                    items={conversationTurns.map((t) => ({
+                                        color: t.speaker === 'AVATAR' ? 'blue' : 'green',
+                                        children: (
+                                            <div>
+                                                <Tag>{t.speaker === 'AVATAR' ? '数字人' : '候选人'}</Tag>
+                                                {t.questionIndex != null && <Tag>题{t.questionIndex}</Tag>}
+                                                <div style={{ marginTop: 8 }}>
+                                                    {t.avatarText && (
+                                                        <Paragraph style={{ marginBottom: 8 }} copyable>
+                                                            {t.avatarText}
+                                                        </Paragraph>
+                                                    )}
+                                                    {t.candidateText && (
+                                                        <Paragraph type="secondary" style={{ marginBottom: 8 }} copyable>
+                                                            文本：{t.candidateText}
+                                                        </Paragraph>
+                                                    )}
+                                                    {t.candidateVideoUrl && (
+                                                        <Space>
+                                                            <Button
+                                                                type="link"
+                                                                size="small"
+                                                                icon={<PlayCircleOutlined />}
+                                                                onClick={() => handlePlayVideo(t.candidateVideoUrl!)}
+                                                            >
+                                                                播放答题视频
+                                                            </Button>
+                                                        </Space>
+                                                    )}
+                                                </div>
+                                                <Text type="secondary" style={{ fontSize: 12 }}>
+                                                    {new Date(t.createdAt).toLocaleString()}
+                                                </Text>
+                                            </div>
+                                        ),
+                                    }))}
+                                />
+                            )}
+                        </Tabs.TabPane>
                         <Tabs.TabPane tab="问题与答案" key="questions">
                             <List
                                 dataSource={questions}

@@ -22,7 +22,8 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   SafetyCertificateOutlined,
-  BankOutlined
+  BankOutlined,
+  CommentOutlined
 } from '@ant-design/icons';
 import { useAuth } from '../contexts/AuthContext';
 import logo from '../assets/company-logo.png';
@@ -79,6 +80,12 @@ const DashboardLayout: React.FC = () => {
       icon: <ScheduleOutlined />,
       label: '面试管理',
       path: '/interviews'
+    },
+    {
+      key: 'ai-interview-communication',
+      icon: <CommentOutlined />,
+      label: 'AI面试沟通',
+      path: '/ai-interview-communication'
     },
     {
       key: 'company',
@@ -200,6 +207,8 @@ const DashboardLayout: React.FC = () => {
       breadcrumbItems.push({ title: '候选人' });
     } else if (path.includes('/interviews')) {
       breadcrumbItems.push({ title: '面试管理' });
+    } else if (path.includes('/ai-interview-communication')) {
+      breadcrumbItems.push({ title: 'AI面试沟通' });
     } else if (path.includes('/company')) {
       breadcrumbItems.push({ title: '企业管理' });
       if (path.includes('/profile')) {
