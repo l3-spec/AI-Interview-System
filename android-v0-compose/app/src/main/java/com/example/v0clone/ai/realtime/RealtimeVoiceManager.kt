@@ -528,19 +528,22 @@ class RealtimeVoiceManager(private val context: Context) {
                                 // TTS 开始播放 → 标记数字人正在说话，清除等待标志
                                 awaitingTtsPlayback = false
                                 _isDigitalHumanSpeaking.value = true
+                                Log.d(TAG, "Qwen3 TTS 播放正式开始，关闭录音")
+                                stopRecordingInternal()
                             } else {
-                                // TTS 停止播放：只有在没有等待中的 TTS 时才标记说话结束
-                                // 避免初始 false 值或 TTS 还没开始时就覆盖 handleVoiceResponse 设置的 true
+                                // TTS 停止播放：只有在没有等待中的新响应时才标记说话结束
                                 if (awaitingTtsPlayback) {
-                                    Log.d(TAG, "TTS isSpeaking=false 但仍在等待 TTS 播放开始，跳过状态重置")
+                                    Log.d(TAG, "TTS isSpeaking=false 但仍在等待新响应音频，忽略此处状态重置")
                                     return@collect
                                 }
+                                
                                 _isDigitalHumanSpeaking.value = false
                                 if (!_interviewCompleted.value && vadEnabled) {
-                                    kotlinx.coroutines.delay(300)
+                                    // 延迟 500ms 确保一句话彻底结束，避免回答还没播完就录音
+                                    kotlinx.coroutines.delay(500)
                                     if (!_isDigitalHumanSpeaking.value && !awaitingTtsPlayback) {
-                                        Log.i(TAG, "Qwen3 TTS 播放完成，自动开始录音")
-                                        startRecording()
+                                        Log.i(TAG, "Qwen3 TTS 播报链路释放，准备开启自动监听")
+                                        tryAutoStartRecordingIfIdle()
                                     }
                                 }
                             }
@@ -1069,6 +1072,7 @@ class RealtimeVoiceManager(private val context: Context) {
             val text = data.optString("text", "")
             val ttsMode = data.optString("ttsMode", if (audioUrl.isNullOrBlank()) "client" else "server")
             val userText = data.optString("userText", "")
+            val sessionId = data.optString("sessionId", currentSessionId ?: "")
             val questionIndex = data.optInt("questionIndex", -1)
             val willSpeak = text.isNotBlank() || !audioUrl.isNullOrBlank()
             val isCompletedFlag = data.optBoolean("isCompleted", false) ||
@@ -1136,26 +1140,26 @@ class RealtimeVoiceManager(private val context: Context) {
 
             if (ttsMode.equals("qwen3_streaming", ignoreCase = true)) {
                 // Qwen3 TTS 流式模式：音频通过 TTS WebSocket 直接推送
-                // 后端已将文本发送到 TTS 微服务，客户端通过 WebSocket 接收音频流
-                Log.i(TAG, "Qwen3 TTS 流式模式 - 音频通过 TTS WebSocket 推送, textHash=$textHash")
+                Log.i(TAG, "Qwen3 TTS 流式模式激活 - 独占模式, textHash=$textHash")
                 if (textHash != null) {
                     playedTextHashes.add(textHash)
                     currentPlayingTextHash = null
                 }
-                // _isDigitalHumanSpeaking 和录音由 qwen3Tts.isSpeaking 流控制
-                // awaitingTtsPlayback 保持 true 直到 TTS 真正开始播放
-
-                // 安全网：如果 TTS WebSocket 未连接，回退到客户端合成
+                
+                // 关键修复：在这种模式下，即使 WS 暂时没连上，我们也优先尝试连接而不是直接触发火山兜底
                 if (qwen3Tts.state.value != Qwen3TtsWsClient.State.SESSION_ACTIVE &&
                     qwen3Tts.state.value != Qwen3TtsWsClient.State.CONNECTED) {
-                    Log.w(TAG, "⚠️ TTS WebSocket 未连接，qwen3_streaming 回退为客户端合成")
-                    if (useQwen3Tts && text.isNotBlank()) {
-                        qwen3Tts.speak(text)
-                    } else if (text.isNotBlank()) {
-                        awaitingTtsPlayback = false
+                    Log.w(TAG, "⚠️ TTS WebSocket 尚未就绪，尝试建立连接并等待数据...")
+                    initQwen3Services(sessionId)
+                    
+                    // 只有在彻底失败（如 URL 为空）时才考虑本地降级
+                    if (!useQwen3Tts) {
+                        Log.e(TAG, "Qwen3 TTS 未启用，回退到本地合成")
                         playClientSideTts(text, textHash)
                     }
                 }
+                // 流程交给 qwen3Tts 内部解决，不要再往下跑
+                return
             } else if (ttsMode.equals("client", ignoreCase = true)) {
                 if (useQwen3Tts && text.isNotBlank()) {
                     Log.i(TAG, "使用 Qwen3 TTS 播放 - textHash=$textHash")

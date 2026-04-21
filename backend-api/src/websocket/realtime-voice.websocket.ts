@@ -153,8 +153,12 @@ export class RealtimeVoiceWebSocketServer {
         if (!ttsHealth || ttsHealth.status !== 'ok') return 'client';
         
         const segments = interviewConductor['parseEmotionSegments'](responseText, scene);
+        console.log(`🎙️ [Qwen3-TTS] 开始合成文本流 (Session: ${ttsSessionId}): "${responseText.substring(0, 50)}${responseText.length > 50 ? '...' : ''}"`);
         for (const segment of segments) {
-          qwen3TTSClient.synthesize(ttsSessionId, segment.text, false);
+          if (segment.text.trim()) {
+            console.log(`   - 推送分段 [${segment.emotion || 'neutral'}]: "${segment.text}"`);
+            qwen3TTSClient.synthesize(ttsSessionId, segment.text, false);
+          }
         }
         qwen3TTSClient.commitText(ttsSessionId);
         return 'qwen3_streaming';
@@ -167,6 +171,13 @@ export class RealtimeVoiceWebSocketServer {
     try {
       const result = await interviewFlowService.processUserResponse(sessionId, text);
       
+      // 如果发现面试还没进入 READY 状态（可能异步还没生成完），尝试拉起
+      if (!result.nextRound && !result.isCompleted) {
+        console.log(`⏳ [Coordinator] 会话 ${sessionId} 题目正在生成或未找到当前轮次，尝试拉起第一题...`);
+        const phaseResult = await interviewFlowService.startInterviewPhase(sessionId);
+        result.nextRound = phaseResult.firstRound || null;
+      }
+
       if (result.isCompleted) {
         const ttsMode = await sendToQwen3TTS(completionClosingText, 'closing');
         this.io.to(sessionId).emit('voice_response', {
@@ -181,11 +192,15 @@ export class RealtimeVoiceWebSocketServer {
         let ttsMode: string = 'client';
         if (result.nextRound.audioUrl) {
           ttsMode = 'server';
+          console.log(`🔊 [VoiceResponse] 生成语音包 URL (下一步问题): ${result.nextRound.audioUrl}`);
         } else {
           const scene = interviewConductor.inferScene(result.nextRound.question, {
             isFollowUp: (result.nextRound.followupCount || 0) > 0,
           });
           ttsMode = await sendToQwen3TTS(result.nextRound.question, scene);
+          if (ttsMode === 'qwen3_streaming') {
+            console.log(`🎤 [VoiceResponse] 使用 Qwen3-TTS 流式播报 (Session: ${ttsSessionId || sessionId})`);
+          }
         }
 
         this.io.to(sessionId).emit('voice_response', {
@@ -208,6 +223,11 @@ export class RealtimeVoiceWebSocketServer {
         context: { jobPosition }
       });
       const ttsMode = await sendToQwen3TTS(conductorResult.text);
+      
+      if (ttsMode === 'qwen3_streaming') {
+        console.log(`🎤 [VoiceResponse] 容错模式: 使用 Qwen3-TTS 流式播报`);
+      }
+
       this.io.to(sessionId).emit('voice_response', {
         text: conductorResult.text,
         sessionId,
@@ -640,6 +660,15 @@ export class RealtimeVoiceWebSocketServer {
           this.recordWelcome(sessionId, welcomeHash);
           this.markWelcomeAsSent(socket.id, sessionId);
 
+          // 【总控逻辑】发送完欢迎语后，异步初始化面试回合生成
+          // 这样用户在自我介绍时，题目已经生成好，可以无缝衔接
+          console.log(`🚀 [Coordinator] 正在为会话 ${sessionId} 异步准备面试回合...`);
+          interviewFlowService.startInterviewPhase(sessionId).then(res => {
+            console.log(`✅ [Coordinator] 面试回合准备就绪: 共 ${res.totalRounds} 题`);
+          }).catch(err => {
+            console.warn(`⚠️ [Coordinator] 异步生成题目失败 (用户回复时将实时补生成): ${err.message}`);
+          });
+
         } catch (error: any) {
           console.error('加入会话失败:', error);
           socket.emit('error', { message: error.message });
@@ -808,10 +837,13 @@ export class RealtimeVoiceWebSocketServer {
     if (!sessionId) {
       return;
     }
-    const sessionState = this.sessionStates.get(sessionId);
-    if (sessionState) {
-      sessionState.welcomeSent = true;
-      sessionState.lastActivity = Date.now();
+    const upstreamOk = await this.ensureDashScopeConnected(session);
+    if (!upstreamOk) return false;
+
+    logger.info(`[TTS-Manager] 会话 ${sessionId} 收到合成请求: "${chunk.substring(0, 30)}${chunk.length > 30 ? '...' : ''}" (${chunk.length} chars)`);
+    session.ttsClient.appendText(chunk);
+    session.charCount += chunk.length;
+    return true;
     }
   }
 

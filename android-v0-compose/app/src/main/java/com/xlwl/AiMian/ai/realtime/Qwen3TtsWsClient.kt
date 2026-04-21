@@ -46,7 +46,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class Qwen3TtsWsClient(
     private val cacheDir: File,
-    private val sampleRate: Int = 16000,
+    private val sampleRate: Int = 24000, // 对齐 Qwen3-TTS 默认采样率
     private val voice: String = "Cherry",
     private val instructions: String = "语气专业沉稳，公正严肃但不失礼貌，像一位经验丰富的面试官。"
 ) {
@@ -427,20 +427,22 @@ class Qwen3TtsWsClient(
                 Log.e(TAG, "DUIX pushPcm 失败: ${e.message}")
             }
 
-            // 写入 AudioTrack 实时播放
-            audioTrack?.let { track ->
-                if (track.playState != AudioTrack.PLAYSTATE_PLAYING) {
-                    Log.i(TAG, "AudioTrack 开始播放流式音频")
-                    track.play()
-                    isPlaying.set(true)
-                    _isSpeaking.value = true
-                    startPlaybackPoll()
-                }
-                val result = track.write(pcmData, 0, pcmData.size)
-                if (result < 0) {
-                    Log.e(TAG, "AudioTrack.write 错误: $result")
-                }
-            }
+             // 写入 AudioTrack 实时播放
+             audioTrack?.let { track ->
+                 if (track.playState != AudioTrack.PLAYSTATE_PLAYING) {
+                     Log.i(TAG, "AudioTrack 开始播放流式音频 ($sampleRate Hz)")
+                     track.play()
+                     isPlaying.set(true)
+                     _isSpeaking.value = true
+                     startPlaybackPoll()
+                 }
+                 val result = track.write(pcmData, 0, pcmData.size)
+                 if (result < 0) {
+                     Log.e(TAG, "AudioTrack.write 错误: $result")
+                 } else if (audioChunkCount % 10 == 0) {
+                     Log.v(TAG, "AudioTrack 写入成功: $result bytes (chunk $audioChunkCount)")
+                 }
+             }
 
             // 缓存 PCM 到文件（生成 WAV 给 DUIX）
             if (pcmOutputStream == null) {

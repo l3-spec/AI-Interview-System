@@ -179,7 +179,7 @@ export class InterviewFlowService {
 
     return {
       totalRounds: interviewRounds.length,
-      firstQuestion: interviewRounds[0]?.question
+      firstRound: interviewRounds[0]
     };
   }
 

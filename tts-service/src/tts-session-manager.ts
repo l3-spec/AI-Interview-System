@@ -107,6 +107,10 @@ export class TTSSessionManager {
           responseId,
           timestamp: Date.now(),
         });
+        
+        if (session.audioChunkCount % 20 === 0) {
+          logger.info(`[TTS-Session] 会话 ${sessionId} 推送音频分片: count=${session.audioChunkCount}, bytes=${Math.round(audioBase64.length * 0.75)}`);
+        }
 
         // 同时通过 Redis 发布（backend-api 可订阅用于数字人唇形同步等）
         this.publishEvent(sessionId, 'audio_chunk', {
@@ -215,6 +219,7 @@ export class TTSSessionManager {
     const upstreamOk = await this.ensureDashScopeConnected(session);
     if (!upstreamOk) return false;
 
+    logger.info(`[TTS-Manager] 会话 ${sessionId} 收到合成请求: "${chunk.substring(0, 30)}${chunk.length > 30 ? '...' : ''}" (${chunk.length} chars)`);
     session.ttsClient.appendText(chunk);
     session.charCount += chunk.length;
     return true;
