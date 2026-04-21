@@ -2,6 +2,7 @@ package com.xlwl.AiMian.ai.realtime
 
 import android.media.AudioAttributes
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioTrack
 import android.util.Base64
 import android.util.Log
@@ -40,7 +41,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  *   1. 连接成功后发送 session.create（含 voice / sampleRate / instructions 等配置）
  *   2. 收到 session.created → 就绪
  *   3. 后端通过 Redis 或客户端直接发送 text.append + text.commit
- *   4. 收到 tts.audio_chunk（Base64 PCM）→ 写入 AudioTrack 或保存 WAV
+ *   4. 收到 tts.audio_chunk（Base64 PCM）→ 数字人流式时仅 pushPcm；否则写入 AudioTrack；可同时缓存 WAV
  *   5. 收到 tts.response_done → 单次合成完成
  *   6. 发送 session.finish 关闭会话
  */
@@ -275,6 +276,52 @@ class Qwen3TtsWsClient(
         playbackPollJob = null
     }
 
+    private fun writeToAudioTrack(pcmData: ByteArray) {
+        // 核心加固：如果已经绑定了数字人回调，严禁操作任何本地 AudioTrack，确保护航单路输出
+        if (onDuixPcmChunk != null) {
+            if (audioTrack != null) {
+                try {
+                    audioTrack?.stop()
+                    audioTrack?.release()
+                } catch (_: Exception) {
+                }
+                audioTrack = null
+                stopPlaybackPoll()
+            }
+            return
+        }
+
+        if (audioTrack == null) {
+            try {
+                val bufferSize = AudioTrack.getMinBufferSize(
+                    sampleRate,
+                    AudioFormat.CHANNEL_OUT_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT
+                )
+                audioTrack = AudioTrack(
+                    AudioManager.STREAM_MUSIC,
+                    sampleRate,
+                    AudioFormat.CHANNEL_OUT_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT,
+                    bufferSize.coerceAtLeast(pcmData.size * 2),
+                    AudioTrack.MODE_STREAM
+                ).apply {
+                    play()
+                }
+                startPlaybackPoll()
+                Log.i(TAG, "本地播放器已初始化 (AudioTrack)")
+            } catch (e: Exception) {
+                Log.e(TAG, "初始化 AudioTrack 失败: ${e.message}")
+                return
+            }
+        }
+        try {
+            audioTrack?.write(pcmData, 0, pcmData.size)
+        } catch (e: Exception) {
+            Log.e(TAG, "写入 AudioTrack 失败: ${e.message}")
+        }
+    }
+
     private fun startPlaybackPoll() {
         stopPlaybackPoll()
         playbackPollJob = scope.launch {
@@ -361,7 +408,12 @@ class Qwen3TtsWsClient(
                     _sessionId.value = sid
                     _state.value = State.SESSION_ACTIVE
                     Log.i(TAG, "TTS 会话已创建: sessionId=$sid")
-                    initAudioTrack()
+                    // 数字人流式 PCM 与本地扬声器二选一，避免同一路 TTS 听感「双重播放」
+                    if (onDuixPcmChunk == null) {
+                        initAudioTrack()
+                    } else {
+                        Log.i(TAG, "已连接数字人流式 PCM，跳过 AudioTrack（仅 DUIX 出声）")
+                    }
                     flushPendingTexts()
                 }
 
@@ -409,9 +461,8 @@ class Qwen3TtsWsClient(
 
     /**
      * 处理收到的 PCM 音频块
-     * 1. 写入 AudioTrack 实时播放
-     * 2. 缓存 PCM 数据用于生成 WAV（DUIX 需要）
-     * 3. 计算 RMS 驱动嘴型
+     * - 若已绑定 [onDuixPcmChunk]：只推数字人，不写 AudioTrack（避免扬声器+数字人双路重音）
+     * - 否则：写入 AudioTrack；并缓存 PCM / RMS 供 DUIX 整段 WAV 等逻辑使用
      */
     private fun processAudioChunk(audioBase64: String) {
         try {
@@ -421,6 +472,21 @@ class Qwen3TtsWsClient(
             val pcmData = Base64.decode(audioBase64, Base64.DEFAULT)
             audioChunkCount++
 
+            // 核心修复：只要设置了数字人回调（onDuixPcmChunk），就绝不使用本地 AudioTrack 播音
+            // 防止 AudioTrack + DUiX 双重播报
+            if (onDuixPcmChunk != null) {
+                if (audioTrack != null) {
+                    try {
+                        audioTrack?.stop()
+                        audioTrack?.release()
+                    } catch (_: Exception) {
+                    }
+                    audioTrack = null
+                    stopPlaybackPoll()
+                    Log.i(TAG, "DETECTED DH SINK: Disabling local AudioTrack playback to prevent double-voice.")
+                }
+            }
+
             ensureDuixStreamStarted()
             try {
                 onDuixPcmChunk?.invoke(pcmData)
@@ -428,22 +494,32 @@ class Qwen3TtsWsClient(
                 Log.e(TAG, "DUIX pushPcm 失败: ${e.message}")
             }
 
-             // 写入 AudioTrack 实时播放
-             audioTrack?.let { track ->
-                 if (track.playState != AudioTrack.PLAYSTATE_PLAYING) {
-                     Log.i(TAG, "AudioTrack 开始播放流式音频 ($sampleRate Hz)")
-                     track.play()
-                     isPlaying.set(true)
-                     _isSpeaking.value = true
-                     startPlaybackPoll()
-                 }
-                 val result = track.write(pcmData, 0, pcmData.size)
-                 if (result < 0) {
-                     Log.e(TAG, "AudioTrack.write 错误: $result")
-                 } else if (audioChunkCount % 10 == 0) {
-                     Log.v(TAG, "AudioTrack 写入成功: $result bytes (chunk $audioChunkCount)")
-                 }
-             }
+            // 如果没有设置数字人回调，则走本地 AudioTrack 播放
+            if (onDuixPcmChunk == null) {
+                writeToAudioTrack(pcmData)
+            }
+            
+            if (onDuixPcmChunk != null) {
+                if (audioChunkCount == 1) {
+                    _isSpeaking.value = true
+                }
+            } else {
+                audioTrack?.let { track ->
+                    if (track.playState != AudioTrack.PLAYSTATE_PLAYING) {
+                        Log.i(TAG, "AudioTrack 开始播放流式音频 ($sampleRate Hz)")
+                        track.play()
+                        isPlaying.set(true)
+                        _isSpeaking.value = true
+                        startPlaybackPoll()
+                    }
+                    val result = track.write(pcmData, 0, pcmData.size)
+                    if (result < 0) {
+                        Log.e(TAG, "AudioTrack.write 错误: $result")
+                    } else if (audioChunkCount % 10 == 0) {
+                        Log.v(TAG, "AudioTrack 写入成功: $result bytes (chunk $audioChunkCount)")
+                    }
+                }
+            }
 
             // 缓存 PCM 到文件（生成 WAV 给 DUIX）
             if (pcmOutputStream == null) {

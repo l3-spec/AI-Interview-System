@@ -65,6 +65,30 @@ type JobDictionarySeed = {
 };
 
 const companies: CompanySeed[] = [
+  // 与 admin-dashboard 登录页「测试账号」一致，便于本地演示
+  {
+    email: 'admin@test.com',
+    password: '123456',
+    name: 'U-Talent 演示企业',
+    description: '用于企业管理后台本地演示与联调的测试企业。',
+    industry: '互联网/企业服务',
+    scale: '50-150人',
+    address: '上海市徐汇区',
+    website: 'https://u-talent.example.com',
+    logo: 'https://images.unsplash.com/photo-1560179707-f14e90ef3623?w=200&h=200&fit=crop&q=80',
+    contact: '400-000-0000',
+    tagline: '智能招聘 · 精准匹配',
+    focusArea: 'AI 面试与人才评估',
+    themeColors: ['#667eea', '#764ba2'],
+    stats: [
+      { label: '在招职位', value: '12', accent: '#667eea' },
+      { label: '本月面试', value: '186', accent: '#764ba2' },
+      { label: '候选人库', value: '2.4k', accent: '#F97316' },
+    ],
+    highlights: ['AI 数字人面试', '全流程招聘管理', '数据驱动决策'],
+    culture: ['扁平协作', '结果导向', '持续学习'],
+    locations: ['上海'],
+  },
   {
     email: 'company@aiinterview.com',
     password: 'company123456',
@@ -999,12 +1023,225 @@ async function seedAdminsAndUser() {
   });
 }
 
+/** 社区帖子假数据：封面 + 多图 + 互动数，供 App 圈子 / system-admin 帖子管理展示 */
+async function seedUserCommunityPosts() {
+  const mainUser = await prisma.user.findUnique({ where: { email: 'user@aiinterview.com' } });
+  const extraPwd = await bcrypt.hash('user123456', 12);
+  const circleAuthor = await prisma.user.upsert({
+    where: { email: 'circle.demo@aiinterview.com' },
+    update: {
+      name: '职场观察员',
+      isActive: true,
+      isVerified: true,
+    },
+    create: {
+      email: 'circle.demo@aiinterview.com',
+      password: extraPwd,
+      name: '职场观察员',
+      phone: '13900001002',
+      gender: 'FEMALE',
+      age: 28,
+      education: '硕士',
+      experience: 'HR 科技 / 内容运营',
+      skills: JSON.stringify(['招聘', '职场成长', '面试技巧']),
+      isActive: true,
+      isVerified: true,
+    },
+  });
+
+  type PostSeed = {
+    id: string;
+    userId: string | null;
+    title: string;
+    content: string;
+    coverImage: string;
+    images: string[];
+    tags: string[];
+    viewCount: number;
+    likeCount: number;
+    commentCount: number;
+    shareCount: number;
+    isHot: boolean;
+  };
+
+  const img = (path: string) => `https://images.unsplash.com/${path}?auto=format&fit=crop&w=1200&q=82`;
+
+  const postSeeds: PostSeed[] = [
+    {
+      id: 'seed-userpost-001',
+      userId: mainUser?.id ?? null,
+      title: '秋招复盘：AI 面试里我最意外的 3 个得分点',
+      content:
+        '今年投了 40+ 岗位，AI 面做了十几场。总结下来：表达结构、STAR 举例、以及「追问时的临场反应」比背模板更重要。下面是我整理的 checklist，欢迎补充～',
+      coverImage: img('photo-1522071820081-009f0129c71c'),
+      images: [
+        img('photo-1522071820081-009f0129c71c'),
+        img('photo-1552664730-d307ca884978'),
+        img('photo-1517245386807-bb43f82c33c4'),
+      ],
+      tags: ['秋招', 'AI面试', '求职干货'],
+      viewCount: 4280,
+      likeCount: 312,
+      commentCount: 56,
+      shareCount: 41,
+      isHot: true,
+    },
+    {
+      id: 'seed-userpost-002',
+      userId: circleAuthor.id,
+      title: '从简历到 Offer：我用一张表管理所有投递进度',
+      content:
+        '用飞书/Notion 做了一张「岗位-状态-下一轮时间-联系人」表，配合提醒，基本没漏过笔试。附字段模板，直接抄作业。',
+      coverImage: img('photo-1454165804606-c3d57bc86b40'),
+      images: [img('photo-1454165804606-c3d57bc86b40'), img('photo-1504384308090-c54be3855833')],
+      tags: ['简历', '效率工具', '校招'],
+      viewCount: 3156,
+      likeCount: 198,
+      commentCount: 34,
+      shareCount: 22,
+      isHot: true,
+    },
+    {
+      id: 'seed-userpost-003',
+      userId: mainUser?.id ?? null,
+      title: '技术面挂掉不一定是题难，可能是沟通节奏',
+      content:
+        '面试官后来反馈：思路对，但中间停顿太久、没有同步「我在尝试哪种解法」。后来刻意练了 30 秒的「口头白板」，效果明显。',
+      coverImage: img('photo-1517694712202-14dd9538aa97'),
+      images: [img('photo-1517694712202-14dd9538aa97'), img('photo-1498050108023-c5249f4df085')],
+      tags: ['技术面', '沟通', '程序员'],
+      viewCount: 8920,
+      likeCount: 640,
+      commentCount: 120,
+      shareCount: 88,
+      isHot: true,
+    },
+    {
+      id: 'seed-userpost-004',
+      userId: null,
+      title: '匿名｜转行产品第一年，我如何补「业务感」',
+      content:
+        '多跑用户访谈录音、每周写一页「决策假设→验证结果」，半年后和业务方开会终于能跟上节奏了。（匿名求轻喷）',
+      coverImage: img('photo-1553877522-43269d4ea984'),
+      images: [img('photo-1553877522-43269d4ea984')],
+      tags: ['转行', '产品经理', '成长'],
+      viewCount: 2760,
+      likeCount: 189,
+      commentCount: 45,
+      shareCount: 17,
+      isHot: false,
+    },
+    {
+      id: 'seed-userpost-005',
+      userId: circleAuthor.id,
+      title: '会议室灯光 + 摄像头角度 = 视频面印象分？',
+      content:
+        '实测：面部受光均匀、摄像头略俯视、背景简洁，观感会好很多。附一张我家书桌改造前后对比。',
+      coverImage: img('photo-1600880292203-757bb62b4baf'),
+      images: [img('photo-1600880292203-757bb62b4baf'), img('photo-1524758631624-e2822e304c36')],
+      tags: ['视频面试', '形象管理'],
+      viewCount: 1540,
+      likeCount: 96,
+      commentCount: 28,
+      shareCount: 9,
+      isHot: false,
+    },
+    {
+      id: 'seed-userpost-006',
+      userId: mainUser?.id ?? null,
+      title: '分享我整理的「行为面」30 问（含追问逻辑）',
+      content:
+        '按「冲突协作 / 目标拆解 / 失败复盘 / 影响力」四类整理，每题写了面试官想听的信号词。需要的话评论区喊 1。',
+      coverImage: img('photo-1542744173-8e7e53415bb0'),
+      images: [
+        img('photo-1542744173-8e7e53415bb0'),
+        img('photo-1556761175-5973dc0f32e7'),
+        img('photo-1556761175-b413da4baf72'),
+      ],
+      tags: ['行为面', '面经', '干货'],
+      viewCount: 12020,
+      likeCount: 905,
+      commentCount: 210,
+      shareCount: 166,
+      isHot: true,
+    },
+    {
+      id: 'seed-userpost-007',
+      userId: circleAuthor.id,
+      title: '周末去了场线下招聘会，这 5 个展位最吸睛',
+      content:
+        '互动屏 + 即时测评 + 小礼品只是标配了，真正有记忆点的是「岗位故事」和现场 1v1 职业规划。拍了些现场图。',
+      coverImage: img('photo-1540575467063-178a50c2df87'),
+      images: [img('photo-1540575467063-178a50c2df87'), img('photo-1475721027785-f74eccf877e2')],
+      tags: ['招聘会', '线下', '观察'],
+      viewCount: 980,
+      likeCount: 72,
+      commentCount: 15,
+      shareCount: 6,
+      isHot: false,
+    },
+    {
+      id: 'seed-userpost-008',
+      userId: mainUser?.id ?? null,
+      title: '英语口语面：我用的 10 分钟热身稿（非背题）',
+      content:
+        '开场 30 秒自我介绍 + 2 个近期项目关键词 + 1 个反问。保持自然语速比高级词汇重要。',
+      coverImage: img('photo-1434030216411-0b793f4b4173'),
+      images: [img('photo-1434030216411-0b793f4b4173'), img('photo-1523240795612-9a054b0db644')],
+      tags: ['英语面试', '口语', '外企'],
+      viewCount: 5620,
+      likeCount: 410,
+      commentCount: 88,
+      shareCount: 52,
+      isHot: true,
+    },
+  ];
+
+  for (const p of postSeeds) {
+    await prisma.userPost.upsert({
+      where: { id: p.id },
+      update: {
+        userId: p.userId,
+        title: p.title,
+        content: p.content,
+        coverImage: p.coverImage,
+        images: JSON.stringify(p.images),
+        tags: JSON.stringify(p.tags),
+        viewCount: p.viewCount,
+        likeCount: p.likeCount,
+        commentCount: p.commentCount,
+        shareCount: p.shareCount,
+        isHot: p.isHot,
+        status: 'PUBLISHED',
+      },
+      create: {
+        id: p.id,
+        userId: p.userId,
+        title: p.title,
+        content: p.content,
+        coverImage: p.coverImage,
+        images: JSON.stringify(p.images),
+        tags: JSON.stringify(p.tags),
+        viewCount: p.viewCount,
+        likeCount: p.likeCount,
+        commentCount: p.commentCount,
+        shareCount: p.shareCount,
+        isHot: p.isHot,
+        status: 'PUBLISHED',
+      },
+    });
+  }
+}
+
 async function main() {
   console.log('🌱 开始初始化 Prisma 种子数据...');
 
   try {
     await seedAdminsAndUser();
     console.log('✅ 管理员与测试账号已准备');
+
+    await seedUserCommunityPosts();
+    console.log('✅ 社区帖子演示数据已准备');
 
     await seedJobDictionary();
     console.log('✅ 职岗字典数据已准备');

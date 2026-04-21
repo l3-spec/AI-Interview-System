@@ -1068,6 +1068,9 @@ class RealtimeVoiceManager(private val context: Context) {
         Log.d(TAG, "handleVoiceResponse被调用 - data=$data")
         
         try {
+            // 核心修复：处理任何新语音响应前，先切刷掉所有旧音频，防止重叠
+            stopAllAudio()
+
             val audioUrl = data.optString("audioUrl", null)
             val text = data.optString("text", "")
             val ttsMode = data.optString("ttsMode", if (audioUrl.isNullOrBlank()) "client" else "server")
@@ -1081,10 +1084,9 @@ class RealtimeVoiceManager(private val context: Context) {
 
             Log.i(TAG, "收到语音响应 - text=$text, ttsMode=$ttsMode, audioUrl=$audioUrl")
 
-            qwen3Tts.resetPlaybackProgress()
             _ttsPlaybackProgress.value = 0f
 
-            // 生成文本的唯一标识（使用文本内容的hash）
+            // 生成文本的唯一标识
             val textHash = if (text.isNotBlank()) {
                 text.hashCode().toString() + "_" + text.length
             } else if (!audioUrl.isNullOrBlank()) {
@@ -1093,27 +1095,10 @@ class RealtimeVoiceManager(private val context: Context) {
                 null
             }
             
-            // 防重复检查：如果正在播放相同的文本，跳过
-            if (textHash != null) {
-                if (currentPlayingTextHash == textHash) {
-                    Log.w(TAG, "⚠️ 检测到重复的语音响应（正在播放中），跳过 - textHash=$textHash")
-                    return
-                }
-                
-                if (playedTextHashes.contains(textHash)) {
-                    Log.w(TAG, "⚠️ 检测到重复的语音响应（已播放过），跳过 - textHash=$textHash")
-                    return
-                }
-                
-                // 标记为正在播放
-                currentPlayingTextHash = textHash
-            }
-
             if (willSpeak) {
-                // 确保数字人说话期间麦克风关闭，避免自问自答
+                // 确保数字人说话期间麦克风关闭
                 stopRecordingInternal()
                 _isDigitalHumanSpeaking.value = true
-                // 标记正在等待 TTS 播放开始，防止 isSpeaking 收集器初始 false 值覆盖此状态
                 awaitingTtsPlayback = true
             }
 
@@ -1138,8 +1123,8 @@ class RealtimeVoiceManager(private val context: Context) {
                 markInterviewCompleted("voice-response")
             }
 
+            // 严格互斥：优先流式，次之本地合成，再次之音频包
             if (ttsMode.equals("qwen3_streaming", ignoreCase = true)) {
-                // Qwen3 TTS 流式模式：音频通过 TTS WebSocket 直接推送
                 Log.i(TAG, "Qwen3 TTS 流式模式激活 - 独占模式, textHash=$textHash")
                 if (textHash != null) {
                     playedTextHashes.add(textHash)
@@ -1451,6 +1436,44 @@ class RealtimeVoiceManager(private val context: Context) {
             _isDigitalHumanSpeaking.value = false
             tryAutoStartRecordingIfIdle()
         }
+    }
+
+    /**
+     * 强制停止所有正在播报的音频，确保全局唯一性
+     */
+    fun stopAllAudio() {
+        Log.i(TAG, "执行强制停止所有音频播报：MediaPlayer, VolcanoTTS, Qwen3TTS")
+        
+        // 1. 停止 MediaPlayer (处理 server 模式音频包)
+        try {
+            mediaPlayer?.let {
+                if (it.isPlaying) it.stop()
+                it.release()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "停止 MediaPlayer 异常: ${e.message}")
+        }
+        mediaPlayer = null
+        mediaProgressJob?.cancel()
+        mediaProgressJob = null
+        
+        // 2. 停止 Qwen3 TTS 流式播报
+        try {
+            qwen3Tts.clearAndStop()
+        } catch (e: Exception) {
+            Log.w(TAG, "停止 Qwen3 TTS 异常: ${e.message}")
+        }
+        
+        // 3. 重置状态位
+        _isDigitalHumanSpeaking.value = false
+        awaitingTtsPlayback = false
+        activeAudioHash = null
+        currentPlayingTextHash = null
+        
+        // 4. 重置 UI 进度与嘴型
+        _ttsPlaybackProgress.value = 0f
+        digitalHumanController?.resetMouth()
+        releaseVisualizer()
     }
 
     private fun tryAutoStartRecordingIfIdle() {
