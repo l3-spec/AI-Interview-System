@@ -317,4 +317,18 @@ class DuixAvatarController(
         Log.i(TAG, "interrupt()")
         duixEngine?.stopAudio()
     }
+
+    override fun startPush() {
+        Log.d(TAG, "startPush()")
+        duixEngine?.startPush()
+    }
+
+    override fun pushPcm(buffer: ByteArray) {
+        duixEngine?.pushPcm(buffer)
+    }
+
+    override fun stopPush() {
+        Log.d(TAG, "stopPush()")
+        duixEngine?.stopPush()
+    }
 }

@@ -26,4 +26,19 @@ interface DigitalHumanController {
      * @param text optional textual transcript for servers that trust text input
      */
     fun onTtsPlayback(audioPath: String?, text: String?)
+
+    /**
+     * Start pushing audio stream fragments for real-time lip-sync.
+     */
+    fun startPush()
+
+    /**
+     * Push a PCM audio fragment to the digital human engine.
+     */
+    fun pushPcm(buffer: ByteArray)
+
+    /**
+     * Stop pushing audio stream fragments.
+     */
+    fun stopPush()
 }

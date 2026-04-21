@@ -163,26 +163,30 @@ export class TTSSessionManager {
   /**
    * 追加文本到指定会话（双轨 Track 1：文本流式输入）
    * 可从客户端 WebSocket 或 Redis 指令触发
+   * @returns true 如果成功追加，false 如果会话不可用
    */
-  async appendText(sessionId: string, text: string): Promise<void> {
+  async appendText(sessionId: string, text: string): Promise<boolean> {
     const session = this.sessions.get(sessionId);
     if (!session || session.state !== 'active') {
-      throw new Error(`TTS 会话 ${sessionId} 不存在或已关闭`);
+      return false;
     }
 
     session.ttsClient.appendText(text);
     session.charCount += text.length;
+    return true;
   }
 
   /**
    * 手动提交文本缓冲区（commit 模式下使用）
+   * @returns true 如果成功提交，false 如果会话不可用
    */
-  async commitText(sessionId: string): Promise<void> {
+  async commitText(sessionId: string): Promise<boolean> {
     const session = this.sessions.get(sessionId);
     if (!session || session.state !== 'active') {
-      throw new Error(`TTS 会话 ${sessionId} 不存在或已关闭`);
+      return false;
     }
     session.ttsClient.commitText();
+    return true;
   }
 
   /**
@@ -232,12 +236,24 @@ export class TTSSessionManager {
 
   /**
    * 通过 sessionId 查找会话并追加文本（供 Redis 指令调用）
+   * @returns true 如果成功，false 如果会话不存在
    */
-  async handleRedisTextCommand(sessionId: string, text: string, commit?: boolean): Promise<void> {
-    await this.appendText(sessionId, text);
+  async handleRedisTextCommand(sessionId: string, text: string, commit?: boolean): Promise<boolean> {
+    const ok = await this.appendText(sessionId, text);
+    if (!ok) {
+      logger.warn(`[TTS-Manager] Redis 指令: 会话 ${sessionId} 不存在，丢弃文本 (${text.length} chars)`);
+      return false;
+    }
     if (commit) {
       await this.commitText(sessionId);
     }
+    return true;
+  }
+
+  /** 检查会话是否存在且活跃 */
+  hasActiveSession(sessionId: string): boolean {
+    const session = this.sessions.get(sessionId);
+    return !!session && session.state === 'active';
   }
 
   private sendToClient(sessionId: string, data: any): void {

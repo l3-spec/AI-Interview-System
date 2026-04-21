@@ -269,7 +269,9 @@ fun DuixAvatarInterviewScreen(
 
         // Real-time Subtitles Overlay (bottom area)
         val userTranscript by realtimeVoiceManager.partialTranscript.collectAsState()
-        val latestAIMessage = _messages.lastOrNull { it.role == com.xlwl.AiMian.ai.realtime.ConversationRole.DIGITAL_HUMAN }?.text
+        val latestAIStreamingText by realtimeVoiceManager.latestDigitalHumanText.collectAsState()
+        val latestAIHistoryMessage = _messages.lastOrNull { it.role == com.xlwl.AiMian.ai.realtime.ConversationRole.DIGITAL_HUMAN }?.text
+        val displayAIText = latestAIStreamingText ?: latestAIHistoryMessage
         
         if (!isCameraMaximized) {
             Column(
@@ -299,7 +301,7 @@ fun DuixAvatarInterviewScreen(
                 }
                 
                 // Interviewer Subtitle (AI)
-                latestAIMessage?.let { aiText ->
+                displayAIText?.let { aiText ->
                     Text(
                         text = "面试官: $aiText",
                         color = Color.White,

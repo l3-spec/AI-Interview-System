@@ -19,8 +19,8 @@ export class DashScopeService {
   }
 
   /**
-   * Qwen-TTS 流式语音合成 (Qwen2.5-Audio 系列)
-   * 采用双轨架构：文本流持续输入，语音流持续输出
+   * Qwen-TTS 流式语音合成本地处理
+   * 采用双轨架构：将 SSE 流转换为纯音频流输出
    */
   async synthesizeStreaming(text: string, options: {
     voice?: string;
@@ -28,39 +28,60 @@ export class DashScopeService {
     sampleRate?: number;
     emotion?: string;
   } = {}) {
-    // 实际生产中这里通常使用 WebSocket 维持长连接以达到 <300ms 延迟
-    // 此处演示基于 REST API 的模拟实现，实际生产应调用 DashScope WebSocket 接口
     const endpoint = `${this.baseUrl}/services/audio/tts/cosy-voice/synthesis`;
-    
-    // 注意：DashScope CosyVoice 提供了丰富的情感控制
-    // 通过自然语言指令控制情感，例如 "用亲切且略带鼓励的语气"
     const emotionInstruction = options.emotion || '专业且亲切的面试官语气';
 
     try {
       const response = await axios.post(endpoint, {
-        model: 'cosyvoice-v1', // 使用最新的 CosyVoice 系列
-        input: {
-          text: text
-        },
+        model: 'cosyvoice-v1',
+        input: { text: text },
         parameters: {
           voice: options.voice || 'longxiaoxi',
-          format: options.format || 'mp3',
+          format: options.format || 'pcm',
           sample_rate: options.sampleRate || 16000,
-          // 情感指令
-          speech_rate: 1.0,
-          pitch_rate: 1.0,
           instruction: emotionInstruction
         }
       }, {
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
-          'X-DashScope-SSE': 'enable', // 启用 SSE 模式以支持流式返回
+          'X-DashScope-SSE': 'enable',
           'Content-Type': 'application/json'
         },
         responseType: 'stream'
       });
 
-      return response.data;
+      const Readable = require('stream').Readable;
+      const audioEmitter = new Readable({ read() {} });
+
+      response.data.on('data', (chunk: Buffer) => {
+        const lines = chunk.toString().split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data:')) {
+            try {
+              const jsonStr = line.substring(5).trim();
+              if (jsonStr === '[DONE]') continue;
+              
+              // 实际在 CosyVoice SSE 中，音频数据可能直接在流中，也可能在 JSON 的某个字段
+              // 根据 DashScope SSE 标准，有时候它是 binary frame。
+              // 如果是文本 SSE 模式，音频通常在 json.output.audio 中 (Base64)
+              const data = JSON.parse(jsonStr);
+              if (data.output && data.output.audio) {
+                 const audioBuffer = Buffer.from(data.output.audio, 'base64');
+                 audioEmitter.push(audioBuffer);
+              }
+            } catch (e) {
+              // 如果不是 JSON，尝试直接透传（有些分片是纯二进制）
+              // audioEmitter.push(chunk); 
+            }
+          }
+        }
+      });
+
+      response.data.on('end', () => {
+        audioEmitter.push(null);
+      });
+
+      return audioEmitter;
     } catch (error) {
       console.error('DashScope TTS Synthesis failed:', error);
       throw error;

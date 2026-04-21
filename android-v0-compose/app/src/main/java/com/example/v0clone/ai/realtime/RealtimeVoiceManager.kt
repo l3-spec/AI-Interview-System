@@ -10,6 +10,8 @@ import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.media.audiofx.Visualizer
 import android.util.Log
+import android.media.AudioTrack
+import android.media.AudioAttributes
 import com.xlwl.AiMian.ai.realtime.VolcanoTtsService
 import com.xlwl.AiMian.ai.realtime.Qwen3AsrWsClient
 import com.xlwl.AiMian.ai.realtime.Qwen3TtsWsClient
@@ -292,6 +294,7 @@ class RealtimeVoiceManager(private val context: Context) {
     private var mediaPlayer: MediaPlayer? = null
     private var visualizer: Visualizer? = null
     private var digitalHumanController: DigitalHumanController? = null
+    private var audioTrack: AudioTrack? = null
     private var recordingJob: Job? = null
     private var currentSessionId: String? = null
     private var currentUserId: String? = null
@@ -448,6 +451,9 @@ class RealtimeVoiceManager(private val context: Context) {
             }
             newSocket.on("status") { args ->
                 handleStatus(args[0] as JSONObject)
+            }
+            newSocket.on("audio_chunk") { args ->
+                handleAudioChunk(args[0] as JSONObject)
             }
             newSocket.on("error") { args ->
                 handleError(args.getOrNull(0))
@@ -701,6 +707,7 @@ class RealtimeVoiceManager(private val context: Context) {
                 isRecording = true
                 _isRecordingFlow.value = true
                 _partialTranscript.value = if (vadEnabled) "正在聆听，请开始说话..." else ""
+                _latestDigitalHumanText.value = null // 清除旧的AI分片字幕
                 
                 recordingJob = if (vadEnabled) {
                     launch { recordWithVad(recorder, sessionId) }
@@ -1110,7 +1117,25 @@ class RealtimeVoiceManager(private val context: Context) {
             // 出错时清除播放标记
             _isDigitalHumanSpeaking.value = false
             currentPlayingTextHash = null
+            stopStreamingAudio()
             tryAutoStartRecordingIfIdle()
+        }
+    }
+
+    private fun stopStreamingAudio() {
+        try {
+            audioTrack?.let { track ->
+                if (track.state == AudioTrack.STATE_INITIALIZED) {
+                    track.stop()
+                    track.flush()
+                    track.release()
+                }
+            }
+            audioTrack = null
+            digitalHumanController?.stopPush()
+            _isDigitalHumanSpeaking.value = false
+        } catch (e: Exception) {
+            Log.e(TAG, "停止流式音频失败", e)
         }
     }
 
@@ -1592,6 +1617,7 @@ class RealtimeVoiceManager(private val context: Context) {
         Log.i(TAG, "通过WebSocket发送text_message - sessionId=$sessionId, text=$normalized, useQwen3Tts=$useQwen3Tts")
         socket?.emit("text_message", payload)
         _isProcessing.value = true
+        stopStreamingAudio() // 发送新消息前停止之前的流
     }
 
     private fun handleTextChunk(data: JSONObject) {
@@ -1607,6 +1633,51 @@ class RealtimeVoiceManager(private val context: Context) {
         val text = data.optString("text")
         if (text.isNotBlank()) {
             _partialTranscript.value = text
+        }
+    }
+
+    private fun handleAudioChunk(data: JSONObject) {
+        try {
+            val audioData = data.opt("data") as? ByteArray ?: return
+            
+            // 初始化或获取 AudioTrack
+            if (audioTrack == null || audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
+                val minBufSize = AudioTrack.getMinBufferSize(
+                    SAMPLE_RATE,
+                    AudioFormat.CHANNEL_OUT_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT
+                )
+                
+                audioTrack = AudioTrack.Builder()
+                    .setAudioAttributes(AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build())
+                    .setAudioFormat(AudioFormat.Builder()
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setSampleRate(SAMPLE_RATE)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .build())
+                    .setBufferSizeInBytes(minBufSize * 2)
+                    .setTransferMode(AudioTrack.MODE_STREAM)
+                    .build()
+                
+                audioTrack?.play()
+                _isDigitalHumanSpeaking.value = true
+                
+                // 设置数字人开始接收流
+                digitalHumanController?.startPush()
+            }
+
+            // 1. 播放声音
+            audioTrack?.write(audioData, 0, audioData.size)
+            
+            // 2.驱动数字人嘴型
+            // 将 PCM 直接喂给数字人引擎
+            digitalHumanController?.pushPcm(audioData)
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "处理音频分片失败", e)
         }
     }
 

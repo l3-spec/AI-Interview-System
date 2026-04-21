@@ -359,8 +359,62 @@ export class RealtimeVoiceWebSocketServer {
           );
 
           const isResume = sessionState.welcomeSent;
-          // 发送第一个欢迎问题
-          // 构建个性化欢迎语
+
+          // ===== 断点续面：检查是否有进行中的面试流程 =====
+          const existingSession = interviewFlowService.getSession(sessionId);
+          if (isResume && existingSession && existingSession.rounds.length > 0) {
+            // 查找当前正在进行或下一个待回答的题目
+            const currentRound = existingSession.rounds.find(
+              r => r.status === 'in_progress' || r.status === 'pending'
+            );
+
+            if (currentRound) {
+              const resumeRoundNum = currentRound.roundNumber;
+              const totalRounds = existingSession.rounds.length;
+              const completedRounds = existingSession.rounds.filter(r => r.status === 'completed').length;
+
+              console.log(`🔄 断点续面 - sessionId: ${sessionId}, 恢复第 ${resumeRoundNum} 题 (已完成 ${completedRounds}/${totalRounds})`);
+
+              // 确保该回合状态为 in_progress
+              if (currentRound.status === 'pending') {
+                currentRound.status = 'in_progress';
+                existingSession.currentRound = currentRound.roundNumber;
+              }
+
+              const jobPositionText = jobPosition || '这个职位';
+              const resumeText = `欢迎回来，我们继续${jobPositionText}的面试。现在是第${resumeRoundNum}题，请听题：`;
+
+              // 先发送简短的恢复提示
+              socket.emit('voice_response', {
+                audioUrl: null,
+                text: resumeText,
+                sessionId,
+                duration: 0,
+                ttsMode: 'client',
+                isWelcome: true,
+                isResume: true,
+                progress: { current: resumeRoundNum, total: totalRounds, completed: completedRounds },
+              });
+
+              // 然后发送当前题目（优先使用已有 audioUrl，避免重复 TTS）
+              setTimeout(() => {
+                socket.emit('voice_response', {
+                  audioUrl: currentRound.audioUrl || null,
+                  text: currentRound.question,
+                  sessionId,
+                  duration: currentRound.duration || 0,
+                  ttsMode: currentRound.audioUrl ? 'server' : 'client',
+                  questionIndex: currentRound.roundNumber,
+                  isResume: true,
+                });
+              }, 1500);
+
+              this.markWelcomeAsSent(socket.id, sessionId);
+              return;
+            }
+          }
+
+          // ===== 首次进入 或 无进行中面试 =====
           const jobPositionText = jobPosition || '这个职位';
           const welcomeText = isResume
             ? `欢迎回来，我们继续完成${jobPositionText}的面试。请从刚才的思路继续，或补充关键经历。`
@@ -377,11 +431,10 @@ export class RealtimeVoiceWebSocketServer {
           }
 
           try {
-            // 尝试生成语音包 (Server-side TTS)
             const ttsResult = await ttsService.textToSpeech({
               text: welcomeText,
               sessionId: sessionId,
-              voice: undefined // 使用默认语音
+              voice: undefined
             });
 
             if (ttsResult.success && ttsResult.audioUrl) {
@@ -391,7 +444,7 @@ export class RealtimeVoiceWebSocketServer {
                 text: welcomeText,
                 sessionId,
                 duration: ttsResult.duration || 0,
-                ttsMode: 'server', // 使用服务器端语音包
+                ttsMode: 'server',
                 userText: undefined,
                 isWelcome: true,
               });
@@ -399,8 +452,7 @@ export class RealtimeVoiceWebSocketServer {
               throw new Error(ttsResult.error || 'TTS generation failed');
             }
           } catch (ttsError) {
-            console.warn(`⚠️ 后端生成语语音包失败，退回到客户端模式:`, ttsError);
-            // 降级使用客户端TTS模式发送欢迎语
+            console.warn(`⚠️ 后端生成欢迎语语音包失败，退回到客户端模式:`, ttsError);
             socket.emit('voice_response', {
               audioUrl: null,
               text: welcomeText,
@@ -484,13 +536,27 @@ export class RealtimeVoiceWebSocketServer {
           /**
            * 通过情感分段将面试官回复发送到 Qwen3-TTS 进行流式合成
            * 客户端通过 TTS WebSocket 接收音频流，数字人 SDK 播放
+           * @returns 'qwen3_streaming' 如果成功, 'client' 如果需要客户端降级
            */
-          const sendToQwen3TTS = async (responseText: string, scene?: InterviewScene) => {
-            const segments = interviewConductor['parseEmotionSegments'](responseText, scene);
-            for (const segment of segments) {
-              qwen3TTSClient.synthesize(ttsSessionId, segment.text, false);
+          const sendToQwen3TTS = async (responseText: string, scene?: InterviewScene): Promise<'qwen3_streaming' | 'client'> => {
+            try {
+              // 先检查 TTS 微服务是否可用
+              const ttsHealth = await qwen3TTSClient.checkHealth();
+              if (!ttsHealth || ttsHealth.status !== 'ok') {
+                console.warn(`[TTS] Qwen3 TTS 微服务不可用，降级到客户端 TTS`);
+                return 'client';
+              }
+
+              const segments = interviewConductor['parseEmotionSegments'](responseText, scene);
+              for (const segment of segments) {
+                qwen3TTSClient.synthesize(ttsSessionId, segment.text, false);
+              }
+              qwen3TTSClient.commitText(ttsSessionId);
+              return 'qwen3_streaming';
+            } catch (err: any) {
+              console.warn(`[TTS] sendToQwen3TTS 失败: ${err.message}，降级到客户端 TTS`);
+              return 'client';
             }
-            qwen3TTSClient.commitText(ttsSessionId);
           };
 
           // ===== 主链路：通过 interviewFlowService 处理 =====
@@ -501,15 +567,14 @@ export class RealtimeVoiceWebSocketServer {
             if (result.isCompleted) {
               console.log(`🏁 面试已完成 - sessionId: ${data.sessionId}`);
 
-              // 用 Qwen3-TTS 播报结束语（正式总结语气）
-              await sendToQwen3TTS(completionClosingText, 'closing');
+              const closingTtsMode = await sendToQwen3TTS(completionClosingText, 'closing');
 
               socket.emit('voice_response', {
                 audioUrl: null,
                 text: completionClosingText,
                 sessionId: data.sessionId,
                 duration: 0,
-                ttsMode: 'qwen3_streaming',
+                ttsMode: closingTtsMode,
                 ttsSessionId,
                 isCompleted: true,
                 status: 'completed'
@@ -523,32 +588,38 @@ export class RealtimeVoiceWebSocketServer {
             } else if (result.nextRound) {
               console.log(`➡️ 进入下一轮 (${result.nextRound.roundNumber}) - Question: ${result.nextRound.question}`);
 
-              // 推断场景类型，发送到 Qwen3-TTS（如果没有预生成 audioUrl）
-              const scene = interviewConductor.inferScene(result.nextRound.question, {
-                isFollowUp: (result.nextRound.followupCount || 0) > 0,
-              });
-              if (!result.nextRound.audioUrl) {
-                await sendToQwen3TTS(result.nextRound.question, scene);
+              let ttsMode: string = 'client';
+
+              if (result.nextRound.audioUrl) {
+                // 已有预生成音频（或断点续面恢复的已有音频）
+                ttsMode = 'server';
+              } else {
+                // 没有预生成音频，尝试 Qwen3-TTS 流式合成
+                const scene = interviewConductor.inferScene(result.nextRound.question, {
+                  isFollowUp: (result.nextRound.followupCount || 0) > 0,
+                });
+                ttsMode = await sendToQwen3TTS(result.nextRound.question, scene);
               }
 
               socket.emit('voice_response', {
                 audioUrl: result.nextRound.audioUrl || null,
                 text: result.nextRound.question,
                 sessionId: data.sessionId,
-                duration: 0,
-                ttsMode: result.nextRound.audioUrl ? 'server' : 'qwen3_streaming',
+                duration: result.nextRound.duration || 0,
+                ttsMode,
                 ttsSessionId,
                 questionIndex: result.nextRound.roundNumber
               });
 
             } else {
               console.warn(`⚠️ 处理结果既未结束也无下一轮 - sessionId: ${data.sessionId}`);
+              const fallbackMode = await sendToQwen3TTS('收到您的回答，请稍等...');
               socket.emit('voice_response', {
                 audioUrl: null,
                 text: '收到您的回答，请稍等...',
                 sessionId: data.sessionId,
                 duration: 0,
-                ttsMode: 'qwen3_streaming',
+                ttsMode: fallbackMode,
                 ttsSessionId
               });
             }
@@ -558,13 +629,13 @@ export class RealtimeVoiceWebSocketServer {
               console.log(`⚠️ InterviewFlowService 会话不存在，回退到 Conductor 模式 - sessionId: ${data.sessionId}`);
 
               if (hasCompletionIntent) {
-                await sendToQwen3TTS(completionClosingText, 'closing');
+                const closingMode = await sendToQwen3TTS(completionClosingText, 'closing');
                 socket.emit('voice_response', {
                   audioUrl: null,
                   text: completionClosingText,
                   sessionId: data.sessionId,
                   duration: 0,
-                  ttsMode: 'qwen3_streaming',
+                  ttsMode: closingMode,
                   ttsSessionId,
                   isCompleted: true,
                   status: 'completed'
@@ -584,10 +655,7 @@ export class RealtimeVoiceWebSocketServer {
               });
 
               // 将情感分段发送到 TTS 微服务
-              for (const segment of conductorResult.segments) {
-                qwen3TTSClient.synthesize(ttsSessionId, segment.text, false);
-              }
-              qwen3TTSClient.commitText(ttsSessionId);
+              const conductorTtsMode = await sendToQwen3TTS(conductorResult.text);
 
               const llmCompletionHint = /面试.*结束|谢谢.*参加|到此结束/.test(conductorResult.text);
 
@@ -596,7 +664,7 @@ export class RealtimeVoiceWebSocketServer {
                 text: conductorResult.text,
                 sessionId: data.sessionId,
                 duration: 0,
-                ttsMode: 'qwen3_streaming',
+                ttsMode: conductorTtsMode,
                 ttsSessionId,
                 emotionSegments: conductorResult.segments.map(s => ({
                   text: s.text,

@@ -82,44 +82,57 @@ wss.on('connection', (ws, req) => {
       const message = JSON.parse(data.toString());
 
       switch (message.type) {
-        // 创建 TTS 会话
         case 'session.create': {
           const config = message.config || {};
-          sessionId = await sessionManager.createSession(ws, {
-            sessionId: message.sessionId,
-            voice: config.voice,
-            sampleRate: config.sampleRate,
-            responseFormat: config.responseFormat,
-            mode: config.mode,
-            language: config.language,
-            instructions: config.instructions,
-          });
+          try {
+            sessionId = await sessionManager.createSession(ws, {
+              sessionId: message.sessionId,
+              voice: config.voice,
+              sampleRate: config.sampleRate,
+              responseFormat: config.responseFormat,
+              mode: config.mode,
+              language: config.language,
+              instructions: config.instructions,
+            });
 
-          ws.send(JSON.stringify({
-            type: 'session.created',
-            sessionId,
-            message: 'TTS 会话已创建，可以开始发送文本',
-          }));
+            ws.send(JSON.stringify({
+              type: 'session.created',
+              sessionId,
+              message: 'TTS 会话已创建，可以开始发送文本',
+            }));
+          } catch (createErr: any) {
+            sessionId = null;
+            logger.error(`[TTS] 创建会话失败: ${createErr.message}`);
+            ws.send(JSON.stringify({
+              type: 'error',
+              code: 'SESSION_CREATE_FAILED',
+              message: `创建 TTS 会话失败: ${createErr.message}`,
+            }));
+          }
           break;
         }
 
-        // 追加文本（双轨 Track 1：流式文本输入）
         case 'text.append': {
           if (!sessionId) {
-            ws.send(JSON.stringify({ type: 'error', message: '请先创建会话' }));
+            ws.send(JSON.stringify({ type: 'error', code: 'NO_SESSION', message: '请先创建会话' }));
             return;
           }
-          await sessionManager.appendText(sessionId, message.text);
+          const appendOk = await sessionManager.appendText(sessionId, message.text);
+          if (!appendOk) {
+            ws.send(JSON.stringify({ type: 'error', code: 'SESSION_CLOSED', message: 'TTS 会话已关闭，请重新创建' }));
+          }
           break;
         }
 
-        // 提交文本缓冲区（commit 模式）
         case 'text.commit': {
           if (!sessionId) {
-            ws.send(JSON.stringify({ type: 'error', message: '请先创建会话' }));
+            ws.send(JSON.stringify({ type: 'error', code: 'NO_SESSION', message: '请先创建会话' }));
             return;
           }
-          await sessionManager.commitText(sessionId);
+          const commitOk = await sessionManager.commitText(sessionId);
+          if (!commitOk) {
+            ws.send(JSON.stringify({ type: 'error', code: 'SESSION_CLOSED', message: 'TTS 会话已关闭，请重新创建' }));
+          }
           break;
         }
 
@@ -171,9 +184,20 @@ sessionManager.setRedisBus(redisEventBus);
 redisEventBus.onCommand(async (cmd) => {
   try {
     switch (cmd.command) {
-      case 'synthesize':
-        await sessionManager.handleRedisTextCommand(cmd.sessionId, cmd.text, cmd.commit);
+      case 'synthesize': {
+        const ok = await sessionManager.handleRedisTextCommand(cmd.sessionId, cmd.text, cmd.commit);
+        if (!ok) {
+          // 会话不存在，通过 Redis 通知 backend-api 让客户端降级到 client TTS
+          redisEventBus.publish('tts:events', {
+            sessionId: cmd.sessionId,
+            event: 'session_not_found',
+            payload: { text: cmd.text },
+            timestamp: Date.now(),
+            source: 'tts-service',
+          });
+        }
         break;
+      }
       case 'commit':
         await sessionManager.commitText(cmd.sessionId);
         break;
