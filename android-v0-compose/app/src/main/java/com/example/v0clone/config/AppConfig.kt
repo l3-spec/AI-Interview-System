@@ -3,6 +3,8 @@ package com.xlwl.AiMian.config
 import com.xlwl.AiMian.BuildConfig
 
 private const val DEFAULT_API_PORT = 3001
+private const val DEFAULT_ASR_PORT = 3002
+private const val DEFAULT_TTS_PORT = 3003
 private const val DEFAULT_API_PATH = "api/"
 private const val DEFAULT_AIRI_WEB_URL = "http://10.0.2.2:3000/avatar"
 
@@ -64,5 +66,37 @@ object AppConfig {
 
     val duixModelUrl: String by lazy {
         BuildConfig.DUIX_MODEL_URL.trim()
+    }
+
+    // ============================================================
+    // Qwen3 ASR/TTS 微服务配置
+    // ASR: ws://host:3002/ws/asr  — 实时语音识别
+    // TTS: ws://host:3003/ws/tts  — 实时语音合成（双轨流式）
+    // ============================================================
+
+    /** 提取 API host（去除协议、端口和路径） */
+    private val apiHost: String by lazy {
+        apiBaseUrl
+            .removePrefix("https://")
+            .removePrefix("http://")
+            .substringBefore(":")
+            .substringBefore("/")
+            .ifEmpty { "10.0.2.2" }
+    }
+
+    val asrServiceWsUrl: String by lazy {
+        "ws://$apiHost:$DEFAULT_ASR_PORT/ws/asr"
+    }
+
+    val ttsServiceWsUrl: String by lazy {
+        "ws://$apiHost:$DEFAULT_TTS_PORT/ws/tts"
+    }
+
+    val asrServiceHttpUrl: String by lazy {
+        "http://$apiHost:$DEFAULT_ASR_PORT"
+    }
+
+    val ttsServiceHttpUrl: String by lazy {
+        "http://$apiHost:$DEFAULT_TTS_PORT"
     }
 }

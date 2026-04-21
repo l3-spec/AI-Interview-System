@@ -38,6 +38,8 @@ export interface InterviewRound {
   score?: number;
   feedback?: string;
   followupCount?: number;
+  emotionScene?: string;
+  emotionInstruction?: string;
 }
 
 export interface ResponseAnalysis {

@@ -13,6 +13,8 @@ AI面试系统是一个完整的智能面试解决方案，包含用户端Androi
 | Component | Technology | Port | Purpose |
 |-----------|------------|------|---------|
 | **backend-api** | Node.js + Express + TypeScript + Prisma | 3001 | Core API service, business logic, database access |
+| **asr-service** | Node.js + TypeScript + WebSocket | 3002 | Qwen3-ASR 实时语音识别微服务 |
+| **tts-service** | Node.js + TypeScript + WebSocket | 3003 | Qwen3-TTS 双轨混合流式语音合成微服务 |
 | **admin-dashboard** | React + TypeScript + Ant Design + Vite | 5174 | Enterprise management UI for companies |
 | **system-admin** | React + TypeScript + Ant Design + Vite | 5175 | System administration UI |
 | **android-v0-compose** | Kotlin + Jetpack Compose | - | Mobile app for job seekers |
@@ -20,6 +22,8 @@ AI面试系统是一个完整的智能面试解决方案，包含用户端Androi
 ### Key Directories
 
 - `backend-api/` - Backend API service with Prisma ORM
+- `asr-service/` - Qwen3-ASR realtime speech recognition microservice
+- `tts-service/` - Qwen3-TTS dual-track hybrid streaming TTS microservice
 - `admin-dashboard/` - Enterprise management frontend
 - `system-admin/` - System administration frontend  
 - `android-v0-compose/` - Android mobile application
@@ -106,10 +110,11 @@ ALIYUN_OSS_BUCKET="your-bucket-name"
 ## Key Services & Integrations
 
 - **DeepSeek API**: AI question generation and answer analysis
-- **Azure Cognitive Services**: TTS voice synthesis
+- **Qwen3-ASR (DashScope)**: Realtime speech recognition via WebSocket (asr-service)
+- **Qwen3-TTS (DashScope)**: Dual-track hybrid streaming TTS via WebSocket (tts-service)
 - **阿里云OSS**: Video and file storage
-- **火山引擎**: ASR speech recognition
-- **Socket.IO**: Real-time communication for interviews
+- **Redis Pub/Sub**: Cross-service communication between backend-api and ASR/TTS services
+- **Socket.IO**: Real-time communication for interview flow control
 
 ## Development Workflow
 

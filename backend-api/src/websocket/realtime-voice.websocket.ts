@@ -15,6 +15,9 @@ import { volcOpenApiService } from '../services/volc-openapi.service';
 import { aiInterviewService } from '../services/aiInterviewService';
 import { interviewFlowService } from '../services/interviewFlowService';
 import { dashScopeService } from '../services/dashscope.service';
+import { qwen3ASRClient } from '../services/qwen3-asr-service-client';
+import { qwen3TTSClient } from '../services/qwen3-tts-service-client';
+import { interviewConductor, InterviewScene } from '../services/interview-conductor.service';
 
 type SocketSessionInfo = {
   sessionId: string;
@@ -143,24 +146,40 @@ export class RealtimeVoiceWebSocketServer {
         return ['1', 'true', 'yes', 'on'].includes(normalized);
       };
 
-      const aliyunAppKey = (process.env.ALIYUN_NLS_APP_KEY || '').trim();
-      const aliyunAccessKeyId = (
-        process.env.ALIYUN_NLS_ACCESS_KEY_ID ||
-        process.env.ALIYUN_TTS_ACCESS_KEY_ID ||
-        ''
-      ).trim();
-      const aliyunAccessKeySecret = (
-        process.env.ALIYUN_NLS_ACCESS_KEY_SECRET ||
-        process.env.ALIYUN_TTS_ACCESS_KEY_SECRET ||
-        ''
-      ).trim();
+      // 优先检查 Qwen3 ASR/TTS 独立微服务（推荐架构）
+      const asrServiceUrl = process.env.ASR_SERVICE_URL;
+      const ttsServiceUrl = process.env.TTS_SERVICE_URL;
+      if (asrServiceUrl || ttsServiceUrl) {
+        const asrHealth = await qwen3ASRClient.checkHealth();
+        const ttsHealth = await qwen3TTSClient.checkHealth();
+        console.log(`🎙️ Qwen3 ASR 微服务: ${asrHealth?.status === 'ok' ? '✅ 在线' : '❌ 离线'} (${asrServiceUrl || 'http://localhost:3002'})`);
+        console.log(`🔊 Qwen3 TTS 微服务: ${ttsHealth?.status === 'ok' ? '✅ 在线' : '❌ 离线'} (${ttsServiceUrl || 'http://localhost:3003'})`);
 
-      // 优先尝试配置 DashScope (Qwen3) 实时语音服务
+        if (asrHealth?.status === 'ok' || ttsHealth?.status === 'ok') {
+          console.log('✅ Qwen3 独立微服务架构已启用（双轨混合流式）');
+          console.log('   客户端将直连 ASR/TTS 微服务，backend-api 通过 Redis 协调');
+
+          // 监听 ASR 完成事件，自动触发面试流程推进
+          qwen3ASRClient.on('transcription_completed', async (event) => {
+            console.log(`[Qwen3] ASR 识别完成 (session: ${event.sessionId}): "${event.payload.text}"`);
+          });
+
+          // 保留 voicePipeline 以兼容旧的直接 LLM 调用路径
+          this.voicePipeline = new RealtimeVoicePipelineService(
+            dashScopeService as any,
+            ttsService,
+            deepseekService
+          );
+          return;
+        }
+      }
+
+      // 回退：DashScope 内嵌模式（无独立微服务时）
       const dashscopeApiKey = (process.env.DASHSCOPE_API_KEY || '').trim();
       if (dashscopeApiKey) {
-        console.log('✅ 检测到 DASHSCOPE_API_KEY，切换至 Qwen3-ASR/TTS 驱动');
+        console.log('✅ 检测到 DASHSCOPE_API_KEY，切换至 DashScope 内嵌模式（建议部署独立 ASR/TTS 微服务以获得更低延迟）');
         this.voicePipeline = new RealtimeVoicePipelineService(
-          dashScopeService as any, // 适配 DashScope ASR 接口
+          dashScopeService as any,
           ttsService,
           deepseekService
         );
@@ -168,6 +187,10 @@ export class RealtimeVoiceWebSocketServer {
       }
 
       const aliyunAppKey = pickEnv('ALIYUN_NLS_APP_KEY', 'ALIYUN_APP_KEY');
+      const aliyunAccessKeyId = pickEnv('ALIYUN_NLS_ACCESS_KEY_ID', 'ALIYUN_TTS_ACCESS_KEY_ID');
+      const aliyunAccessKeySecret = pickEnv('ALIYUN_NLS_ACCESS_KEY_SECRET', 'ALIYUN_TTS_ACCESS_KEY_SECRET');
+
+      if (aliyunAppKey && aliyunAccessKeyId && aliyunAccessKeySecret) {
         const aliyunService = new AliyunASRService({
           appKey: aliyunAppKey,
           accessKeyId: aliyunAccessKeyId,
@@ -399,11 +422,13 @@ export class RealtimeVoiceWebSocketServer {
       });
 
       // 接收文本消息（不需要ASR）
+      // 核心链路：用户文本 → LLM(带情感标注) → Qwen3-TTS(流式音频) → 客户端数字人播放
       socket.on('text_message', async (data: {
         text: string;
         sessionId: string;
         userId?: string;
         jobPosition?: string;
+        ttsSessionId?: string;
       }) => {
         console.log(`📨 收到text_message事件 - socketId: ${socket.id}, data:`, data);
 
@@ -453,8 +478,22 @@ export class RealtimeVoiceWebSocketServer {
             sessionId: data.sessionId
           });
 
-          // 尝试使用 interviewFlowService 处理（如果会话存在）
-          // 否则回退到直接 LLM 调用以保持向后兼容
+          // TTS 会话 ID：客户端与 TTS 微服务建立的 WebSocket 连接标识
+          const ttsSessionId = data.ttsSessionId || data.sessionId;
+
+          /**
+           * 通过情感分段将面试官回复发送到 Qwen3-TTS 进行流式合成
+           * 客户端通过 TTS WebSocket 接收音频流，数字人 SDK 播放
+           */
+          const sendToQwen3TTS = async (responseText: string, scene?: InterviewScene) => {
+            const segments = interviewConductor['parseEmotionSegments'](responseText, scene);
+            for (const segment of segments) {
+              qwen3TTSClient.synthesize(ttsSessionId, segment.text, false);
+            }
+            qwen3TTSClient.commitText(ttsSessionId);
+          };
+
+          // ===== 主链路：通过 interviewFlowService 处理 =====
           try {
             const { interviewFlowService } = await import('../services/interviewFlowService');
             const result = await interviewFlowService.processUserResponse(data.sessionId, text);
@@ -462,15 +501,16 @@ export class RealtimeVoiceWebSocketServer {
             if (result.isCompleted) {
               console.log(`🏁 面试已完成 - sessionId: ${data.sessionId}`);
 
-              const completionText = completionClosingText;
+              // 用 Qwen3-TTS 播报结束语（正式总结语气）
+              await sendToQwen3TTS(completionClosingText, 'closing');
 
               socket.emit('voice_response', {
                 audioUrl: null,
-                text: completionText,
+                text: completionClosingText,
                 sessionId: data.sessionId,
                 duration: 0,
-                ttsMode: 'client',
-                userText: undefined,
+                ttsMode: 'qwen3_streaming',
+                ttsSessionId,
                 isCompleted: true,
                 status: 'completed'
               });
@@ -483,13 +523,21 @@ export class RealtimeVoiceWebSocketServer {
             } else if (result.nextRound) {
               console.log(`➡️ 进入下一轮 (${result.nextRound.roundNumber}) - Question: ${result.nextRound.question}`);
 
+              // 推断场景类型，发送到 Qwen3-TTS（如果没有预生成 audioUrl）
+              const scene = interviewConductor.inferScene(result.nextRound.question, {
+                isFollowUp: (result.nextRound.followupCount || 0) > 0,
+              });
+              if (!result.nextRound.audioUrl) {
+                await sendToQwen3TTS(result.nextRound.question, scene);
+              }
+
               socket.emit('voice_response', {
                 audioUrl: result.nextRound.audioUrl || null,
                 text: result.nextRound.question,
                 sessionId: data.sessionId,
                 duration: 0,
-                ttsMode: 'client',
-                userText: undefined,
+                ttsMode: result.nextRound.audioUrl ? 'server' : 'qwen3_streaming',
+                ttsSessionId,
                 questionIndex: result.nextRound.roundNumber
               });
 
@@ -497,39 +545,63 @@ export class RealtimeVoiceWebSocketServer {
               console.warn(`⚠️ 处理结果既未结束也无下一轮 - sessionId: ${data.sessionId}`);
               socket.emit('voice_response', {
                 audioUrl: null,
-                text: "收到您的回答，请稍等...",
+                text: '收到您的回答，请稍等...',
                 sessionId: data.sessionId,
                 duration: 0,
-                ttsMode: 'client'
+                ttsMode: 'qwen3_streaming',
+                ttsSessionId
               });
             }
           } catch (flowError: any) {
-            // 回退到直接 LLM 调用（用于未通过 interviewFlowService 创建的会话）
+            // ===== 回退链路：LLM 直接对话（带情感） =====
             if (flowError.message?.includes('Session not found') || flowError.message?.includes('not found')) {
-              console.log(`⚠️ InterviewFlowService 会话不存在，回退到直接LLM模式 - sessionId: ${data.sessionId}`);
+              console.log(`⚠️ InterviewFlowService 会话不存在，回退到 Conductor 模式 - sessionId: ${data.sessionId}`);
 
               if (hasCompletionIntent) {
+                await sendToQwen3TTS(completionClosingText, 'closing');
                 socket.emit('voice_response', {
                   audioUrl: null,
                   text: completionClosingText,
                   sessionId: data.sessionId,
                   duration: 0,
-                  ttsMode: 'client',
-                  userText: undefined,
+                  ttsMode: 'qwen3_streaming',
+                  ttsSessionId,
                   isCompleted: true,
                   status: 'completed'
                 });
-
                 socket.emit('interview_completed', {
                   sessionId: data.sessionId,
-                  summary: completionClosingText
+                  summary: completionClosingText,
                 });
                 return;
               }
 
+              // 使用 InterviewConductor：LLM 生成带情感回复 → Qwen3-TTS 流式合成
+              const conductorResult = await interviewConductor.generateInterviewerResponse({
+                userMessage: text,
+                sessionId: data.sessionId,
+                context: { jobPosition: session.jobPosition },
+              });
+
+              // 将情感分段发送到 TTS 微服务
+              for (const segment of conductorResult.segments) {
+                qwen3TTSClient.synthesize(ttsSessionId, segment.text, false);
+              }
+              qwen3TTSClient.commitText(ttsSessionId);
+
+              const llmCompletionHint = /面试.*结束|谢谢.*参加|到此结束/.test(conductorResult.text);
+
+              socket.emit('voice_response', {
+                audioUrl: null,
+                text: conductorResult.text,
+                sessionId: data.sessionId,
                 duration: 0,
-                ttsMode: 'client',
-                userText: undefined,
+                ttsMode: 'qwen3_streaming',
+                ttsSessionId,
+                emotionSegments: conductorResult.segments.map(s => ({
+                  text: s.text,
+                  emotion: s.emotion,
+                })),
                 isCompleted: llmCompletionHint,
                 status: llmCompletionHint ? 'completed' : undefined
               });
@@ -537,47 +609,22 @@ export class RealtimeVoiceWebSocketServer {
               if (llmCompletionHint) {
                 socket.emit('interview_completed', {
                   sessionId: data.sessionId,
-                  summary: llmResponse
+                  summary: conductorResult.text,
                 });
               } else {
-                // 尝试从数据库获取当前问题索引，以便客户端同步进度
                 try {
                   const dbResult = await aiInterviewService.getInterviewSession(data.sessionId);
                   if (dbResult.success && dbResult.session && dbResult.session.status === 'IN_PROGRESS') {
-                    // 获取当前题目
                     const currentQIndex = dbResult.session.currentQuestion;
-                    const currentQ = dbResult.session.questions.find(q => q.questionIndex === currentQIndex);
-
+                    const currentQ = dbResult.session.questions.find((q: any) => q.questionIndex === currentQIndex);
                     if (currentQ) {
-                      console.log(`🔄 同步进度: index=${currentQ.questionIndex}, text=${currentQ.questionText.substring(0, 10)}...`);
-                      // 重新发送带有正确index的响应
-                      socket.emit('voice_response', {
-                        audioUrl: null,
-                        text: llmResponse,
-                        sessionId: data.sessionId,
-                        duration: 0,
-                        ttsMode: 'client',
-                        userText: undefined,
-                        questionIndex: currentQ.questionIndex + 1 // 客户端通常显示为 1-based
-                      });
-                      return; // 已发送带index的响应，跳过下面的默认发送
+                      console.log(`🔄 同步进度: index=${currentQ.questionIndex}`);
                     }
                   }
                 } catch (dbError) {
                   console.warn(`⚠️ 获取数据库会话失败: ${dbError}`);
                 }
               }
-
-              socket.emit('voice_response', {
-                audioUrl: null,
-                text: llmResponse,
-                sessionId: data.sessionId,
-                duration: 0,
-                ttsMode: 'client',
-                userText: undefined,
-                isCompleted: llmCompletionHint,
-                status: llmCompletionHint ? 'completed' : undefined
-              });
             } else {
               // 其他错误，重新抛出
               throw flowError;
@@ -587,11 +634,57 @@ export class RealtimeVoiceWebSocketServer {
         } catch (error: any) {
           console.error('处理文本消息失败:', error);
 
-          // 尝试回退到简单的对话模式或报错
           socket.emit('error', {
             message: error.message || '处理失败',
             sessionId: data.sessionId,
           });
+        }
+      });
+
+      /**
+       * 获取 Qwen3 ASR/TTS 微服务配置
+       * 客户端通过此事件获取微服务 WebSocket 地址，直接建立长连接
+       * 实现真正的端到端低延迟：
+       *   客户端 ←WebSocket→ ASR Service ←WebSocket→ DashScope Qwen3-ASR
+       *   客户端 ←WebSocket→ TTS Service ←WebSocket→ DashScope Qwen3-TTS
+       */
+      socket.on('get_qwen3_config', async (data: { sessionId?: string }) => {
+        try {
+          const asrWsUrl = qwen3ASRClient.getWebSocketUrl();
+          const ttsWsUrl = qwen3TTSClient.getWebSocketUrl();
+
+          const [asrHealth, ttsHealth] = await Promise.all([
+            qwen3ASRClient.checkHealth(),
+            qwen3TTSClient.checkHealth(),
+          ]);
+
+          socket.emit('qwen3_config', {
+            sessionId: data?.sessionId,
+            asr: {
+              wsUrl: asrWsUrl,
+              available: asrHealth?.status === 'ok',
+              model: process.env.QWEN_ASR_MODEL || 'qwen3-asr-flash-realtime',
+              defaultConfig: {
+                language: 'zh',
+                sampleRate: 16000,
+                inputFormat: 'pcm',
+                vadMode: 'server_vad',
+              },
+            },
+            tts: {
+              wsUrl: ttsWsUrl,
+              available: ttsHealth?.status === 'ok',
+              model: process.env.QWEN_TTS_MODEL || 'qwen3-tts-instruct-flash-realtime',
+              defaultConfig: {
+                voice: process.env.TTS_VOICE || 'Cherry',
+                sampleRate: 24000,
+                responseFormat: 'pcm',
+                mode: 'server_commit',
+              },
+            },
+          });
+        } catch (error: any) {
+          socket.emit('error', { message: `获取 Qwen3 配置失败: ${error.message}` });
         }
       });
 

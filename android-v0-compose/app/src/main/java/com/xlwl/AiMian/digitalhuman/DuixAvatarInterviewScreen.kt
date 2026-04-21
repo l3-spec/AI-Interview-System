@@ -222,15 +222,6 @@ fun DuixAvatarInterviewScreen(
             .fillMaxSize()
             .background(if (isReady) Color.Transparent else Color.Black)
     ) {
-        // ABSOLUTE MASK FOR "duix.com" - Positioned at top-left corner
-        Box(
-            modifier = Modifier
-                .width(150.dp)
-                .height(90.dp)
-                .background(Color.Black)
-                .align(Alignment.TopStart)
-                .zIndex(100f)
-        )
         val PIP_MODIFIER = Modifier
             .padding(top = 60.dp, end = 20.dp)
             .size(110.dp, 160.dp)
@@ -243,10 +234,16 @@ fun DuixAvatarInterviewScreen(
 
         val MAX_MODIFIER = Modifier
             .fillMaxSize()
+            .graphicsLayer(
+                scaleX = 1.0f,
+                scaleY = 1.14f
+            )
             .zIndex(1f)
 
         // Remote Avatar Video
-        Box(modifier = (if (!isCameraMaximized) MAX_MODIFIER else PIP_MODIFIER).offset(y = (-40).dp)) {
+        Box(
+            modifier = if (isCameraMaximized) PIP_MODIFIER else MAX_MODIFIER.offset(y = (-50).dp)
+        ) {
             if (avatarController != null) {
                 DuixAvatarScreen(
                     modifier = Modifier.fillMaxSize(),

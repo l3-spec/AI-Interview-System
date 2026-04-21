@@ -11,6 +11,9 @@ import android.media.MediaRecorder
 import android.media.audiofx.Visualizer
 import android.util.Log
 import com.xlwl.AiMian.ai.realtime.VolcanoTtsService
+import com.xlwl.AiMian.ai.realtime.Qwen3AsrWsClient
+import com.xlwl.AiMian.ai.realtime.Qwen3TtsWsClient
+import com.xlwl.AiMian.config.AppConfig
 import com.xlwl.AiMian.digitalhuman.DigitalHumanController
 import io.socket.client.IO
 import io.socket.client.Socket
@@ -266,6 +269,12 @@ class RealtimeVoiceManager(private val context: Context) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val aliyunSpeechService = AliyunSpeechService(context.applicationContext)
     private val volcanoTtsService = VolcanoTtsService(context.applicationContext)
+
+    // Qwen3 ASR/TTS 微服务客户端（WebSocket 长连接）
+    private val qwen3Asr = Qwen3AsrWsClient()
+    private val qwen3Tts = Qwen3TtsWsClient(cacheDir = context.cacheDir)
+    private var useQwen3Asr = false  // 是否启用 Qwen3 ASR（由服务端配置决定）
+    private var useQwen3Tts = false  // 是否启用 Qwen3 TTS
     
     // VAD检测器
     private val vadDetector = VoiceActivityDetector(
@@ -447,6 +456,10 @@ class RealtimeVoiceManager(private val context: Context) {
             Log.d(TAG, "尝试连接实时语音服务: $serverUrl (session=$sessionId)")
             newSocket.connect()
             socket = newSocket
+
+            // 异步连接 Qwen3 ASR/TTS 微服务
+            initQwen3Services(sessionId)
+
             true
         } catch (e: Exception) {
             Log.e(TAG, "初始化实时语音服务失败", e)
@@ -455,6 +468,100 @@ class RealtimeVoiceManager(private val context: Context) {
             false
         } finally {
             isInitializingSocket = false
+        }
+    }
+
+    /**
+     * 初始化 Qwen3 ASR/TTS 微服务连接
+     * 先做健康检查，可用则建立 WebSocket 长连接
+     */
+    private fun initQwen3Services(sessionId: String) {
+        scope.launch {
+            // 检查 TTS 微服务是否可用
+            try {
+                val ttsHealthUrl = "${AppConfig.ttsServiceHttpUrl}/health"
+                val request = Request.Builder().url(ttsHealthUrl).build()
+                val response = downloadClient.newCall(request).execute()
+                if (response.isSuccessful) {
+                    Log.i(TAG, "Qwen3 TTS 微服务可用，建立 WebSocket 连接")
+                    useQwen3Tts = true
+
+                    // 将 DUIX 音频回调桥接给 Qwen3 TTS
+                    qwen3Tts.duixAudioSink = duixAudioSink
+
+                    qwen3Tts.connect(AppConfig.ttsServiceWsUrl, sessionId)
+
+                    // 监听 TTS 说话状态 → 驱动数字人嘴型
+                    launch {
+                        qwen3Tts.mouthRms.collect { rms ->
+                            digitalHumanController?.updateMouthOpenness(rms)
+                        }
+                    }
+                    // 监听 TTS 说话状态 → 控制录音
+                    launch {
+                        qwen3Tts.isSpeaking.collect { speaking ->
+                            _isDigitalHumanSpeaking.value = speaking
+                            if (!speaking && !_interviewCompleted.value && vadEnabled) {
+                                kotlinx.coroutines.delay(300)
+                                if (!_isDigitalHumanSpeaking.value) {
+                                    Log.i(TAG, "Qwen3 TTS 播放完成，自动开始录音")
+                                    startRecording()
+                                }
+                            }
+                        }
+                    }
+                    launch {
+                        qwen3Tts.responseDone.collect { responseId ->
+                            Log.i(TAG, "Qwen3 TTS 合成完成: responseId=$responseId")
+                        }
+                    }
+                } else {
+                    Log.w(TAG, "Qwen3 TTS 微服务不可用 (code=${response.code})，使用火山引擎 TTS")
+                }
+                response.close()
+            } catch (e: Exception) {
+                Log.w(TAG, "Qwen3 TTS 健康检查失败: ${e.message}，使用火山引擎 TTS")
+            }
+
+            // 检查 ASR 微服务是否可用
+            try {
+                val asrHealthUrl = "${AppConfig.asrServiceHttpUrl}/health"
+                val request = Request.Builder().url(asrHealthUrl).build()
+                val response = downloadClient.newCall(request).execute()
+                if (response.isSuccessful) {
+                    Log.i(TAG, "Qwen3 ASR 微服务可用，建立 WebSocket 连接")
+                    useQwen3Asr = true
+                    qwen3Asr.connect(AppConfig.asrServiceWsUrl, sessionId)
+
+                    // 监听完整识别结果 → 自动提交
+                    launch {
+                        qwen3Asr.transcriptionCompleted.collect { result ->
+                            Log.i(TAG, "Qwen3 ASR 识别完成: ${result.text}")
+                            if (result.text.isNotBlank()) {
+                                withContext(Dispatchers.Main) {
+                                    _partialTranscript.value = result.text
+                                }
+                                submitUserText(result.text)
+                            }
+                        }
+                    }
+                    // 监听部分识别 → 更新字幕
+                    launch {
+                        qwen3Asr.partialResult.collect { partial ->
+                            if (partial.isNotEmpty()) {
+                                _partialTranscript.value = partial
+                            }
+                        }
+                    }
+                } else {
+                    Log.w(TAG, "Qwen3 ASR 微服务不可用 (code=${response.code})，使用阿里云 ASR")
+                }
+                response.close()
+            } catch (e: Exception) {
+                Log.w(TAG, "Qwen3 ASR 健康检查失败: ${e.message}，使用阿里云 ASR")
+            }
+
+            Log.i(TAG, "Qwen3 服务初始化完成 - ASR=${if (useQwen3Asr) "Qwen3" else "Aliyun"}, TTS=${if (useQwen3Tts) "Qwen3" else "Volcano"}")
         }
     }
 
@@ -479,6 +586,8 @@ class RealtimeVoiceManager(private val context: Context) {
     fun setDuixAudioSink(sink: ((String) -> Unit)?) {
         duixAudioSink = sink
         preferExternalAudio = sink != null
+        // 同步给 Qwen3 TTS 客户端
+        qwen3Tts.duixAudioSink = sink
         Log.i(
             TAG,
             if (sink != null) {
@@ -496,7 +605,6 @@ class RealtimeVoiceManager(private val context: Context) {
     fun speak(text: String) {
         if (text.isBlank()) return
         
-        // 避免重复播放相同内容
         val textHash = text.hashCode().toString() + "_" + text.length
         if (playedTextHashes.contains(textHash) || currentPlayingTextHash == textHash) {
             Log.d(TAG, "文本已播放或正在播放，跳过: ${text.take(20)}...")
@@ -505,18 +613,22 @@ class RealtimeVoiceManager(private val context: Context) {
 
         Log.i(TAG, "手动触发说话: ${text.take(20)}...")
         
-        // 停止录音，避免自问自答
         stopRecordingInternal()
         
         _isDigitalHumanSpeaking.value = true
         _latestDigitalHumanText.value = text
         currentPlayingTextHash = textHash
         
-        // 添加到对话历史
         appendMessage(ConversationMessage(role = ConversationRole.DIGITAL_HUMAN, text = text))
         
-        // 使用客户端TTS播放
-        playClientSideTts(text, textHash)
+        if (useQwen3Tts) {
+            // 使用 Qwen3 TTS 流式合成
+            qwen3Tts.speak(text)
+            playedTextHashes.add(textHash)
+            currentPlayingTextHash = null
+        } else {
+            playClientSideTts(text, textHash)
+        }
     }
 
     /**
@@ -635,6 +747,10 @@ class RealtimeVoiceManager(private val context: Context) {
 
     fun interrupt() {
         try {
+            // 清空 Qwen3 TTS 缓冲区并停止播放
+            if (useQwen3Tts) {
+                qwen3Tts.clearAndStop()
+            }
             socket?.emit("interrupt")
         } catch (e: Exception) {
             Log.e(TAG, "发送打断请求失败", e)
@@ -644,6 +760,8 @@ class RealtimeVoiceManager(private val context: Context) {
     fun handleNetworkInterrupted() {
         Log.w(TAG, "检测到网络中断，暂停当前面试链路")
         try {
+            qwen3Asr.disconnect()
+            qwen3Tts.disconnect()
             socket?.off()
             socket?.disconnect()
             socket = null
@@ -703,41 +821,60 @@ class RealtimeVoiceManager(private val context: Context) {
                 val bytesRead = recorder.read(buffer, 0, buffer.size)
                 
                 if (bytesRead > 0) {
-                    // VAD分析
+                    // Qwen3 ASR 模式：实时推流，服务端 VAD + 识别
+                    if (useQwen3Asr) {
+                        qwen3Asr.sendAudio(buffer, 0, bytesRead)
+                        totalBytes += bytesRead
+                        if (!speechDetected) {
+                            speechDetected = true
+                        }
+                        // Qwen3 ASR 使用服务端 VAD，客户端不需要本地 VAD 断句
+                        // 但仍保留超时保护
+                    } else {
+                        // 原有本地 VAD + 阿里云 ASR 模式
+                    }
+
+                    // VAD分析（本地 VAD 模式下有效）
                     val vadResult = vadDetector.analyze(buffer)
-                    
-                    // 根据VAD状态更新UI
+
                     when (vadResult.state) {
                         VoiceActivityDetector.State.IDLE -> {
-                            _partialTranscript.value = "正在聆听，请开始说话..."
+                            if (!useQwen3Asr) {
+                                _partialTranscript.value = "正在聆听，请开始说话..."
+                            }
                         }
-                        
+
                         VoiceActivityDetector.State.SPEECH_START -> {
                             if (!speechDetected) {
                                 speechDetected = true
                                 Log.i(TAG, "检测到说话，开始录音缓冲")
                             }
-                            _partialTranscript.value = "检测到说话，正在录音... (${vadResult.db.toInt()}dB)"
+                            if (!useQwen3Asr) {
+                                _partialTranscript.value = "检测到说话，正在录音... (${vadResult.db.toInt()}dB)"
+                            }
                         }
-                        
+
                         VoiceActivityDetector.State.SPEECH -> {
                             val durationSec = vadResult.speechDuration / 1000
-                            _partialTranscript.value = "正在录音... ${durationSec}秒 (${vadResult.db.toInt()}dB)"
-                            
-                            // 缓冲音频数据
-                            recordedBuffer?.write(buffer, 0, bytesRead)
-                            totalBytes += bytesRead
-                            
+                            if (!useQwen3Asr) {
+                                _partialTranscript.value = "正在录音... ${durationSec}秒 (${vadResult.db.toInt()}dB)"
+                                recordedBuffer?.write(buffer, 0, bytesRead)
+                                totalBytes += bytesRead
+                            }
+
                             if (totalBytes % 32768 == 0) {
                                 Log.d(TAG, "已录音: ${totalBytes / 1024}KB, 时长: ${durationSec}秒")
                             }
                         }
-                        
+
                         VoiceActivityDetector.State.SPEECH_END -> {
-                            Log.i(TAG, "检测到说话结束 - 时长: ${vadResult.speechDuration}ms, 数据: ${totalBytes}字节")
-                            _partialTranscript.value = "说话结束，正在识别..."
-                            isRecording = false
-                            break
+                            if (!useQwen3Asr) {
+                                Log.i(TAG, "检测到说话结束 - 时长: ${vadResult.speechDuration}ms, 数据: ${totalBytes}字节")
+                                _partialTranscript.value = "说话结束，正在识别..."
+                                isRecording = false
+                                break
+                            }
+                            // Qwen3 ASR 模式下不主动断录，让服务端 VAD 控制
                         }
                     }
                     
@@ -771,8 +908,10 @@ class RealtimeVoiceManager(private val context: Context) {
             isRecording = false
             _isRecordingFlow.value = false
             
-            // 只有检测到有效语音才处理
-            if (speechDetected && totalBytes > 0) {
+            // Qwen3 ASR 模式下无需本地处理（服务端自动识别并通过 WebSocket 返回结果）
+            if (useQwen3Asr) {
+                Log.i(TAG, "Qwen3 ASR 录音结束 - 等待服务端返回识别结果")
+            } else if (speechDetected && totalBytes > 0) {
                 processRecordedAudio(true, sessionId)
             } else {
                 Log.w(TAG, "未检测到有效语音，取消处理")
@@ -934,15 +1073,33 @@ class RealtimeVoiceManager(private val context: Context) {
                 markInterviewCompleted("voice-response")
             }
 
-            if (ttsMode.equals("client", ignoreCase = true)) {
-                Log.i(TAG, "使用客户端TTS播放 - textHash=$textHash")
-                playClientSideTts(text, textHash)
+            if (ttsMode.equals("qwen3_streaming", ignoreCase = true)) {
+                // Qwen3 TTS 流式模式：音频通过 TTS WebSocket 直接推送
+                // 后端已将文本发送到 TTS 微服务，客户端通过 WebSocket 接收音频流
+                Log.i(TAG, "Qwen3 TTS 流式模式 - 音频通过 TTS WebSocket 推送, textHash=$textHash")
+                if (textHash != null) {
+                    playedTextHashes.add(textHash)
+                    currentPlayingTextHash = null
+                }
+                // _isDigitalHumanSpeaking 由 qwen3Tts.isSpeaking 流控制
+            } else if (ttsMode.equals("client", ignoreCase = true)) {
+                if (useQwen3Tts && text.isNotBlank()) {
+                    // 优先使用 Qwen3 TTS
+                    Log.i(TAG, "使用 Qwen3 TTS 播放 - textHash=$textHash")
+                    qwen3Tts.speak(text)
+                    if (textHash != null) {
+                        playedTextHashes.add(textHash)
+                        currentPlayingTextHash = null
+                    }
+                } else {
+                    Log.i(TAG, "使用火山引擎TTS播放 - textHash=$textHash")
+                    playClientSideTts(text, textHash)
+                }
             } else if (!audioUrl.isNullOrBlank()) {
                 Log.i(TAG, "使用服务器端TTS音频 - url=$audioUrl, textHash=$textHash")
                 playAudioFromPath(audioUrl, textHash, text)
             } else {
                 Log.w(TAG, "未提供可播放的音频数据")
-                // 如果没有音频数据，清除播放标记
                 _isDigitalHumanSpeaking.value = false
                 currentPlayingTextHash = null
                 tryAutoStartRecordingIfIdle()
@@ -991,7 +1148,11 @@ class RealtimeVoiceManager(private val context: Context) {
             )
         )
         _latestDigitalHumanText.value = farewell
-        playClientSideTts(farewell, farewell.hashCode().toString())
+        if (useQwen3Tts) {
+            qwen3Tts.speak(farewell)
+        } else {
+            playClientSideTts(farewell, farewell.hashCode().toString())
+        }
     }
 
     private fun playClientSideTts(text: String, textHash: String?) {
@@ -1422,9 +1583,13 @@ class RealtimeVoiceManager(private val context: Context) {
             currentUserId?.let { put("userId", it) }
             currentJobPosition?.let { put("jobPosition", it) }
             currentBackground?.let { put("background", it) }
+            // 传递 TTS 会话 ID，后端据此通过 Redis 将音频推送到正确的 TTS 微服务会话
+            if (useQwen3Tts) {
+                qwen3Tts.sessionId.value?.let { put("ttsSessionId", it) }
+            }
         }
         
-        Log.i(TAG, "通过WebSocket发送text_message - sessionId=$sessionId, text=$normalized")
+        Log.i(TAG, "通过WebSocket发送text_message - sessionId=$sessionId, text=$normalized, useQwen3Tts=$useQwen3Tts")
         socket?.emit("text_message", payload)
         _isProcessing.value = true
     }

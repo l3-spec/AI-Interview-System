@@ -733,18 +733,17 @@ export class DeepseekService {
       jobPosition?: string;
       background?: string;
     };
+    systemPromptOverride?: string;
   }): Promise<string> {
-    const { userMessage, sessionId, context } = params;
+    const { userMessage, sessionId, context, systemPromptOverride } = params;
 
     if (!this.isEnabled) {
-      // 模拟模式
       return "感谢您的回答。请继续下一个问题。";
     }
 
     try {
-      // 构建强化的对话提示词 - 防止角色混淆
       const jobPosition = context?.jobPosition || '该职位';
-      const systemPrompt = `你是一位专业且严格的HR面试官，正在面试${jobPosition}的候选人。
+      const systemPrompt = systemPromptOverride || `你是一位专业且严格的HR面试官，正在面试${jobPosition}的候选人。
 
 【角色定位 - 绝对禁止违反】
 1. 你是面试官（提问方），候选人是应聘者（回答方）

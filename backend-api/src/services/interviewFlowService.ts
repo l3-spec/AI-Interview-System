@@ -1,7 +1,8 @@
 import { deepseekService, OpeningResult, ClosingResult } from './deepseekService';
 import { ttsService } from './ttsService';
-import { avatarService } from './avatar.service'; // Import avatarService
-import { InterviewSession, InterviewRound, InterviewState, ResponseAnalysis } from '../models/interviewFlow'; // Import ResponseAnalysis
+import { avatarService } from './avatar.service';
+import { interviewConductor } from './interview-conductor.service';
+import { InterviewSession, InterviewRound, InterviewState, ResponseAnalysis } from '../models/interviewFlow';
 
 /**
  * 面试流程服务
@@ -186,7 +187,7 @@ export class InterviewFlowService {
    * 使用DeepSeek AI生成面试内容
    */
   private async generateInterviewContent(session: InterviewSession) {
-    const prompt = `作为专业的AI面试官，请为以下候选人生成一套完整的面试问题：
+    const prompt = `作为一位专业、公正且严肃的AI面试官（10年资深HR总监形象），请为以下候选人生成一套完整的面试问题：
 
 候选人信息：
 - 姓名：${session.userInfo.name}
@@ -202,13 +203,24 @@ export class InterviewFlowService {
 4. 行为面试问题（2个问题）
 5. 总结和反问环节（1个问题）
 
+【重要】每个问题请用 [emotion:标签] 标记语气，用于 TTS 情感合成：
+- [emotion:opening] — 开场问候
+- [emotion:question] — 正式提问
+- [emotion:challenge] — 压力测试/质疑
+- [emotion:transition] — 话题切换
+- [emotion:closing] — 结束语
+
+示例：
+"[emotion:opening]${session.userInfo.name}您好，欢迎参加今天的面试。我是您的面试官，接下来我们将围绕${session.userInfo.targetJob}这个岗位进行深入交流。"
+"[emotion:question]请您详细描述一下您在上一份工作中最有挑战性的项目。"
+
 每个问题后请提供：
-- 问题文本
+- 问题文本（含情感标注）
 - 预期考察点
 - 建议回答时间
 - 评分标准
 
-请用中文回答，保持专业友好的语气。`;
+请用中文回答，保持专业严肃但不失礼貌的面试官语气。`;
 
     const response = await deepseekService.generateInterview(prompt);
     return response.content;
@@ -219,28 +231,46 @@ export class InterviewFlowService {
    */
   private async createInterviewRounds(sessionId: string, content: string): Promise<InterviewRound[]> {
     const rounds: InterviewRound[] = [];
-
-    // 解析DeepSeek生成的内容
     const questions = this.parseInterviewContent(content);
 
     for (let i = 0; i < questions.length; i++) {
       const question = questions[i];
 
-      // 生成TTS语音
-      const ttsResult = await ttsService.textToSpeech({
-        text: question.text,
-        voice: 'siqi'
+      // 清除情感标注，保留纯文本用于存储
+      const cleanText = question.text.replace(/\[emotion:[^\]]+\]/g, '').trim();
+
+      // 推断该问题的场景类型（用于 Qwen3-TTS 情感指令）
+      const scene = interviewConductor.inferScene(cleanText, {
+        isLast: i === questions.length - 1,
       });
+      const emotionInstruction = interviewConductor.getEmotionInstruction(scene, cleanText);
+
+      // 优先使用旧 ttsService 预生成音频文件（兼容无 TTS 微服务的情况）
+      // 如果 Qwen3 TTS 微服务可用，客户端会通过 WebSocket 直连获取流式音频
+      let audioUrl: string | undefined;
+      let duration = 0;
+      try {
+        const ttsResult = await ttsService.textToSpeech({
+          text: cleanText,
+          voice: 'siqi',
+        });
+        audioUrl = ttsResult.audioUrl;
+        duration = ttsResult.duration || 0;
+      } catch (ttsError: any) {
+        console.warn(`⚠️ 预生成TTS失败(round ${i + 1})，将依赖 Qwen3-TTS 流式播放: ${ttsError.message}`);
+      }
 
       const round: InterviewRound = {
         roundNumber: i + 1,
-        question: question.text,
-        audioUrl: ttsResult.audioUrl,
-        duration: ttsResult.duration || 0, // Provide a default value
+        question: cleanText,
+        audioUrl,
+        duration,
         expectedPoints: question.expectedPoints,
-        suggestedTime: question.suggestedTime, // Corrected typo
+        suggestedTime: question.suggestedTime,
         scoringCriteria: question.scoringCriteria,
-        status: 'pending'
+        status: 'pending',
+        emotionScene: scene,
+        emotionInstruction,
       };
 
       rounds.push(round);
@@ -347,16 +377,19 @@ export class InterviewFlowService {
 
         const followup = await deepseekService.generateFollowup(followupPrompt);
 
-        // 插入新的追问回合
+        // 插入新的追问回合（带情感标注）
+        const followupScene = interviewConductor.inferScene(followup.question, { isFollowUp: true });
         const followupRound: InterviewRound = {
-          roundNumber: currentRound.roundNumber, // 保持同一个大题号
+          roundNumber: currentRound.roundNumber,
           question: followup.question,
           duration: 0,
           expectedPoints: currentRound.expectedPoints,
           suggestedTime: 120,
           scoringCriteria: currentRound.scoringCriteria,
           status: 'pending',
-          followupCount: currentFollowupCount + 1
+          followupCount: currentFollowupCount + 1,
+          emotionScene: followupScene,
+          emotionInstruction: interviewConductor.getEmotionInstruction(followupScene),
         };
 
         // 找到当前回合的索引，插入到后面

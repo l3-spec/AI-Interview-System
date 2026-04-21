@@ -7,6 +7,63 @@ import { ttsService } from '../services/ttsService';
 
 const router = Router();
 
+/**
+ * 获取 Qwen3 ASR/TTS 微服务连接配置
+ * 客户端通过此接口获取 ASR/TTS 微服务的 WebSocket 地址，直接建立长连接
+ */
+router.get('/qwen3-config', async (_req, res) => {
+  const asrServiceUrl = process.env.ASR_SERVICE_URL || 'http://localhost:3002';
+  const ttsServiceUrl = process.env.TTS_SERVICE_URL || 'http://localhost:3003';
+  const asrWsUrl = asrServiceUrl.replace(/^http/, 'ws') + '/ws/asr';
+  const ttsWsUrl = ttsServiceUrl.replace(/^http/, 'ws') + '/ws/tts';
+
+  // 检查微服务健康状态
+  let asrHealth: any = null;
+  let ttsHealth: any = null;
+  try {
+    const asrRes = await fetch(`${asrServiceUrl}/health`);
+    asrHealth = await asrRes.json();
+  } catch { /* ASR 服务不可用 */ }
+
+  try {
+    const ttsRes = await fetch(`${ttsServiceUrl}/health`);
+    ttsHealth = await ttsRes.json();
+  } catch { /* TTS 服务不可用 */ }
+
+  res.json({
+    success: true,
+    data: {
+      provider: 'qwen3',
+      architecture: 'dual-track-hybrid-streaming',
+      asr: {
+        wsUrl: asrWsUrl,
+        model: process.env.QWEN_ASR_MODEL || 'qwen3-asr-flash-realtime',
+        available: asrHealth?.status === 'ok',
+        activeSessions: asrHealth?.activeSessions || 0,
+        defaultConfig: {
+          language: 'zh',
+          sampleRate: 16000,
+          inputFormat: 'pcm',
+          vadMode: 'server_vad',
+        },
+      },
+      tts: {
+        wsUrl: ttsWsUrl,
+        model: process.env.QWEN_TTS_MODEL || 'qwen3-tts-instruct-flash-realtime',
+        available: ttsHealth?.status === 'ok',
+        activeSessions: ttsHealth?.activeSessions || 0,
+        defaultConfig: {
+          voice: process.env.TTS_VOICE || 'Cherry',
+          sampleRate: 24000,
+          responseFormat: 'pcm',
+          mode: 'server_commit',
+          language: 'Auto',
+        },
+      },
+    },
+  });
+});
+
 // 确保无论从哪个工作目录启动，都加载 backend-api/.env
 const envPath = path.resolve(__dirname, '../../.env');
 const loaded = dotenv.config({ path: envPath });
