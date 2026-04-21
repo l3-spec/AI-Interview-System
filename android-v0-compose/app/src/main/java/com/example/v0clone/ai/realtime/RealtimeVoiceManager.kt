@@ -209,6 +209,10 @@ class RealtimeVoiceManager(private val context: Context) {
 
             // 写入WAV头
             raf.seek(0)
+            Log.i(TAG, "写入WAV头: sampleRate=$sampleRate, channels=$channelCount, pcmBytes=$totalPcmBytes")
+            if (sampleRate != 16000) {
+                Log.w(TAG, "⚠️ 调试：当前采样率为 $sampleRate 而非 16000，DUiX 可能会播放异常（建议后端强制输出 16k）")
+            }
             writeWavHeader(raf, sampleRate, channelCount, totalPcmBytes)
             Log.d(TAG, "转码完成: ${outputFile.absolutePath} (pcmBytes=$totalPcmBytes)")
             outputFile.absolutePath
@@ -410,6 +414,7 @@ class RealtimeVoiceManager(private val context: Context) {
                 Log.d(TAG, "WebSocket连接成功: $serverUrl")
                 _connectionState.value = ConnectionState.CONNECTED
                 joinSession(sessionId, userId, jobPosition, background)
+                showToast("AI面试官已上线")
             }
             newSocket.on(Socket.EVENT_DISCONNECT) {
                 Log.d(TAG, "WebSocket连接断开")
@@ -420,7 +425,14 @@ class RealtimeVoiceManager(private val context: Context) {
                 Log.e(TAG, "WebSocket连接错误: ${args.getOrNull(0)}")
                 _connectionState.value = ConnectionState.DISCONNECTED
                 socket = null
+                showToast("连接服务器失败，请检查网络")
                 args.getOrNull(0)?.toString()?.let { _errors.tryEmit(it) }
+            }
+            newSocket.on("text_chunk") { args ->
+                handleTextChunk(args[0] as JSONObject)
+            }
+            newSocket.on("asr_partial") { args ->
+                handleAsrPartial(args[0] as JSONObject)
             }
             newSocket.on("voice_response") { args ->
                 handleVoiceResponse(args[0] as JSONObject)
@@ -1044,7 +1056,9 @@ class RealtimeVoiceManager(private val context: Context) {
 
         // 将可播放路径同步给数字人
         duixAudioSink?.invoke(preparedPath)
-        val muteLocalPlayback = preferExternalAudio && duixAudioSink != null
+        // 关键修复：DUiX 引擎只负责嘴型动画，不负责声音播放，
+        // 所以这里绝对不能静音本地播放器，否则听不到声音。
+        val muteLocalPlayback = false 
 
         try {
             // 如果正在播放相同的文本，且MediaPlayer确实在播放中，才跳过
@@ -1112,7 +1126,7 @@ class RealtimeVoiceManager(private val context: Context) {
                     // VAD模式下自动重新开始录音，实现实时互动
                     if (!_interviewCompleted.value && vadEnabled && _connectionState.value == ConnectionState.CONNECTED) {
                         scope.launch {
-                            delay(500) // 短暂延迟，避免立即开始录音
+                            delay(300) 
                             Log.i(TAG, "TTS播放完成，VAD模式自动重新开始录音")
                             startRecording()
                         }
@@ -1413,5 +1427,38 @@ class RealtimeVoiceManager(private val context: Context) {
         Log.i(TAG, "通过WebSocket发送text_message - sessionId=$sessionId, text=$normalized")
         socket?.emit("text_message", payload)
         _isProcessing.value = true
+    }
+
+    private fun handleTextChunk(data: JSONObject) {
+        val text = data.optString("text")
+        if (text.isNotBlank()) {
+            _latestDigitalHumanText.value = text
+            // 同时更新对话历史中的最后一条面试官消息
+            updateLastAiMessage(text)
+        }
+    }
+
+    private fun handleAsrPartial(data: JSONObject) {
+        val text = data.optString("text")
+        if (text.isNotBlank()) {
+            _partialTranscript.value = text
+        }
+    }
+
+    private fun updateLastAiMessage(text: String) {
+        val currentList = _conversation.value.toMutableList()
+        val lastIdx = currentList.indexOfLast { it.role == ConversationRole.DIGITAL_HUMAN }
+        if (lastIdx != -1) {
+            currentList[lastIdx] = currentList[lastIdx].copy(text = text)
+            _conversation.value = currentList
+        } else {
+            appendMessage(ConversationMessage(role = ConversationRole.DIGITAL_HUMAN, text = text))
+        }
+    }
+
+    private fun showToast(message: String) {
+        scope.launch(kotlinx.coroutines.Dispatchers.Main) {
+            android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
+        }
     }
 }

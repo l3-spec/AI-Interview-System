@@ -8,7 +8,7 @@ import android.widget.Toast
 import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.xlwl.AiMian.digitalhuman.AliyunAvatarInterviewScreen
+import com.xlwl.AiMian.digitalhuman.DuixAvatarInterviewScreen
 import com.xlwl.AiMian.ai.guide.InterviewPrecautionsScreen
 import com.xlwl.AiMian.ai.guide.InterviewCameraTestScreen
 import com.xlwl.AiMian.ai.guide.InterviewDeviceTestScreen
@@ -156,7 +156,6 @@ fun AppNavHost(navController: NavHostController) {
     val apiService = remember(client) { RetrofitClient.createService(ApiService::class.java, client) }
     val jobDictionaryApi = remember(client) { RetrofitClient.createService(JobDictionaryApi::class.java, client) }
     val aiInterviewApi = remember(client) { RetrofitClient.createService(AiInterviewApi::class.java, client) }
-    val aliyunAvatarApi = remember(client) { RetrofitClient.createService(com.xlwl.AiMian.api.AliyunAvatarApi::class.java, client) } // @Deprecated — 保留向后兼容
     val ossApi = remember(client) { RetrofitClient.createService(OssApi::class.java, client) }
     val aiInterviewRepository = remember(aiInterviewApi) { AiInterviewRepository(aiInterviewApi) }
     val ossRepository = remember(ossApi) { OssRepository(ossApi) }
@@ -1188,7 +1187,7 @@ fun AppNavHost(navController: NavHostController) {
                         sessionData != null -> {
                             val data = sessionData!!
                             val firstQuestion = data.questions.minByOrNull { it.questionIndex }
-                            AliyunAvatarInterviewScreen(
+                            DuixAvatarInterviewScreen(
                                 projectId = com.xlwl.AiMian.BuildConfig.ALIYUN_AVATAR_PROJECT_ID,
                                 interviewQuestion = firstQuestion?.questionText ?: "请做一下自我介绍",
                                 onInterviewComplete = { sessionId ->

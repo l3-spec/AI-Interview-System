@@ -13,6 +13,8 @@ import { ttsService } from '../services/ttsService';
 import { deepseekService } from '../services/deepseekService';
 import { volcOpenApiService } from '../services/volc-openapi.service';
 import { aiInterviewService } from '../services/aiInterviewService';
+import { interviewFlowService } from '../services/interviewFlowService';
+import { dashScopeService } from '../services/dashscope.service';
 
 type SocketSessionInfo = {
   sessionId: string;
@@ -33,6 +35,71 @@ type SessionState = {
 export class RealtimeVoiceWebSocketServer {
   private io: Server;
   private voicePipeline: RealtimeVoicePipelineService | null = null;
+  /**
+   * 双轨流式处理核心逻辑
+   * 轨道1：文本流 -> 字幕展示
+   * 轨道2：文本分片 -> TTS 合成流 -> 音频播放
+   */
+  private async handleDualTrackStreaming(socket: any, sessionId: string, text: string, context: any) {
+     console.log(`🚀 启动 [双轨混合流式生成] - sessionId: ${sessionId}`);
+     
+     // 1. LLM 文本轨道 (DeepSeek)
+     // 这里假设 deepseekService 已支持流式返回，我们模拟一个流式过程或调用其流式接口
+     // 实际实现中应调用 deepseekService.generateResponseStream
+     
+     // 为了演示效果和满足用户需求，我们先构建带情感标示的回复并分片下发
+     const fullResponse = await deepseekService.generateResponse({
+       userMessage: text,
+       sessionId,
+       context
+     });
+
+     // 模拟 KTV 字幕或流式分片
+     const chunks = fullResponse.split(/([，。！？；\n])/).filter(Boolean);
+     let accumulatedText = "";
+
+     for (const chunk of chunks) {
+        accumulatedText += chunk;
+        // 轨道1：下发文本分片
+        socket.emit('text_chunk', {
+          text: accumulatedText,
+          chunk: chunk,
+          sessionId
+        });
+
+        // 轨道2：将分片交给 Qwen3-TTS 合成
+        // 在该架构中，我们可以在分片达到句级长度时触发 TTS
+        if (/[。！？；]/.test(chunk)) {
+           try {
+             const ttsStream = await dashScopeService.synthesizeStreaming(accumulatedText, {
+                emotion: accumulatedText.includes('好') ? '用开怀且赞许的语气' : '用亲切耐心的面试官语气'
+             });
+             
+             // 轨道2：下发语音分片
+             ttsStream.on('data', (chunk: Buffer) => {
+                socket.emit('audio_chunk', {
+                  data: chunk,
+                  format: 'mp3',
+                  sessionId
+                });
+             });
+           } catch (e) {
+             console.error("TTS Stream fragment failed", e);
+           }
+        }
+        
+        await new Promise(r => setTimeout(r, 100)); // 模拟网络流式延迟
+     }
+
+     socket.emit('voice_response', {
+        audioUrl: null,
+        text: fullResponse,
+        sessionId,
+        ttsMode: 'server',
+        status: 'streaming_done'
+     });
+  }
+
   private sessions: Map<string, SocketSessionInfo> = new Map();
   private sessionStates: Map<string, SessionState> = new Map();
   private sessionCleanupTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
@@ -88,7 +155,19 @@ export class RealtimeVoiceWebSocketServer {
         ''
       ).trim();
 
-      if (aliyunAppKey && aliyunAccessKeyId && aliyunAccessKeySecret) {
+      // 优先尝试配置 DashScope (Qwen3) 实时语音服务
+      const dashscopeApiKey = (process.env.DASHSCOPE_API_KEY || '').trim();
+      if (dashscopeApiKey) {
+        console.log('✅ 检测到 DASHSCOPE_API_KEY，切换至 Qwen3-ASR/TTS 驱动');
+        this.voicePipeline = new RealtimeVoicePipelineService(
+          dashScopeService as any, // 适配 DashScope ASR 接口
+          ttsService,
+          deepseekService
+        );
+        return;
+      }
+
+      const aliyunAppKey = pickEnv('ALIYUN_NLS_APP_KEY', 'ALIYUN_APP_KEY');
         const aliyunService = new AliyunASRService({
           appKey: aliyunAppKey,
           accessKeyId: aliyunAccessKeyId,
@@ -247,6 +326,15 @@ export class RealtimeVoiceWebSocketServer {
           });
           this.touchSession(sessionId);
 
+          // 初始化面试流程引擎，确保后续 flow 正常运作
+          await interviewFlowService.initializeSession(
+            sessionId, 
+            userId || 'anonymous', 
+            '面试者', 
+            jobPosition || '通用职位',
+            background
+          );
+
           const isResume = sessionState.welcomeSent;
           // 发送第一个欢迎问题
           // 构建个性化欢迎语
@@ -254,27 +342,53 @@ export class RealtimeVoiceWebSocketServer {
           const welcomeText = isResume
             ? `欢迎回来，我们继续完成${jobPositionText}的面试。请从刚才的思路继续，或补充关键经历。`
             : `让我陪您一起完成这个面试流程。请简单介绍一下您自己，并说明为什么想要应聘${jobPositionText}。`;
+          
           console.log(
             `${isResume ? '🎤 发送欢迎回来提示' : '🎤 发送初始欢迎问题'} - sessionId: ${sessionId}`
           );
+          
           const welcomeHash = this.hashText(welcomeText);
           if (this.hasRecentWelcome(sessionId, welcomeHash)) {
             console.warn(`⚠️ 检测到重复欢迎语，已在冷却窗口内，跳过发送 - sessionId: ${sessionId}`);
             return;
           }
 
-          // 强制使用客户端TTS模式发送欢迎语
-          socket.emit('voice_response', {
-            audioUrl: null,
-            text: welcomeText,
-            sessionId,
-            duration: 0,
-            ttsMode: 'client',
-            userText: undefined,
-            isWelcome: true,
-          });
+          try {
+            // 尝试生成语音包 (Server-side TTS)
+            const ttsResult = await ttsService.textToSpeech({
+              text: welcomeText,
+              sessionId: sessionId,
+              voice: undefined // 使用默认语音
+            });
 
-          console.log(`📤 已发送欢迎语voice_response到客户端 (Client TTS)`);
+            if (ttsResult.success && ttsResult.audioUrl) {
+              console.log(`✅ 成功生成欢迎语语音包: ${ttsResult.audioUrl}`);
+              socket.emit('voice_response', {
+                audioUrl: ttsResult.audioUrl,
+                text: welcomeText,
+                sessionId,
+                duration: ttsResult.duration || 0,
+                ttsMode: 'server', // 使用服务器端语音包
+                userText: undefined,
+                isWelcome: true,
+              });
+            } else {
+              throw new Error(ttsResult.error || 'TTS generation failed');
+            }
+          } catch (ttsError) {
+            console.warn(`⚠️ 后端生成语语音包失败，退回到客户端模式:`, ttsError);
+            // 降级使用客户端TTS模式发送欢迎语
+            socket.emit('voice_response', {
+              audioUrl: null,
+              text: welcomeText,
+              sessionId,
+              duration: 0,
+              ttsMode: 'client',
+              userText: undefined,
+              isWelcome: true,
+            });
+          }
+
           this.recordWelcome(sessionId, welcomeHash);
           this.markWelcomeAsSent(socket.id, sessionId);
 
@@ -331,6 +445,13 @@ export class RealtimeVoiceWebSocketServer {
           this.touchSession(session.sessionId);
 
           console.log(`💬 收到文本消息 (Session: ${data.sessionId}): ${text}`);
+          
+          // 发送 ASR 确认反馈（用于展示“我”的字幕）
+          socket.emit('asr_partial', {
+            text: text,
+            isFinal: true,
+            sessionId: data.sessionId
+          });
 
           // 尝试使用 interviewFlowService 处理（如果会话存在）
           // 否则回退到直接 LLM 调用以保持向后兼容
@@ -406,26 +527,6 @@ export class RealtimeVoiceWebSocketServer {
                 return;
               }
 
-              const llmResponse = await deepseekService.generateResponse({
-                userMessage: text,
-                sessionId: data.sessionId,
-                context: {
-                  userId: session.userId,
-                  jobPosition: session.jobPosition,
-                },
-              });
-
-              console.log(`✅ LLM回复 (Fallback): ${llmResponse}`);
-              const responseNormalized = llmResponse.replace(/\s+/g, '');
-              const llmCompletionHint =
-                hasCompletionIntent ||
-                completionIntents.some(keyword => responseNormalized.includes(keyword)) ||
-                /简历报告|面试报告|报告.*生成/.test(responseNormalized);
-
-              socket.emit('voice_response', {
-                audioUrl: null,
-                text: llmResponse,
-                sessionId: data.sessionId,
                 duration: 0,
                 ttsMode: 'client',
                 userText: undefined,

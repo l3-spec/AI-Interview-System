@@ -4,11 +4,11 @@ project(gjmywrt)
 #set(CMAKE_CXX_COMPILER g++)
 #set(CMAKE_C_COMPILER gcc)
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -fPIC  -funwind-tables -fno-omit-frame-pointer")
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC ")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -fPIC -funwind-tables -fno-omit-frame-pointer")
+add_definitions(-DORT_NO_EXCEPTIONS)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_BUILD_TYPE "Debug")
-set(ORT_NO_EXCEPTIONS FALSE)
+set(ORT_NO_EXCEPTIONS TRUE)
 
 #set(DEVAUD false)
 option(DEVARM "shared library support" TRUE)
@@ -58,9 +58,11 @@ if(DEVARM)
     dhmfcc
     aes
     android
+    dhunet
+    ${OpenCV_INCLUDE_DIRS}
+    third/ncnn-20231027-android-shared/${ANDROID_ABI}/include/ncnn
     third/arm/include
     third/arm/include/onnx
-    third/arm/include/ncnn
     third/arm/include/turbojpeg
   )
 else()

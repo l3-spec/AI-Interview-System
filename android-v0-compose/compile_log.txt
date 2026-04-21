@@ -1,0 +1,495 @@
+Initialized native services in: /Users/linxiong/.gradle/native
+Initialized jansi services in: /Users/linxiong/.gradle/native
+Found daemon DaemonInfo{pid=2025, address=[054e535b-7006-4213-8c9f-8c412d5925ef port:49677, addresses:[/127.0.0.1]], state=Idle, lastBusy=1776696402817, context=DefaultDaemonContext[uid=33a0cc1b-aae9-4e2a-badf-c81d63cc4565,javaHome=/Users/linxiong/.cursor/extensions/redhat.java-1.54.0-darwin-arm64/jre/21.0.10-macosx-aarch64,javaVersion=21,javaVendor=Eclipse Adoptium,daemonRegistryDir=/Users/linxiong/.gradle/daemon,pid=2025,idleTimeout=10800000,priority=NORMAL,applyInstrumentationAgent=true,nativeServicesMode=ENABLED,daemonOpts=-Xmx4g,-Dfile.encoding=UTF-8,-Duser.country=CN,-Duser.language=zh,-Duser.variant]} however its context does not match the desired criteria.
+JVM is incompatible.
+Wanted: DaemonRequestContext{jvmCriteria=/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home (no JDK specified, using current Java home), daemonOpts=[-Xmx4g, -Dfile.encoding=UTF-8, -Duser.country=CN, -Duser.language=zh, -Duser.variant], applyInstrumentationAgent=true, nativeServicesMode=ENABLED, priority=NORMAL}
+Actual: DefaultDaemonContext[uid=33a0cc1b-aae9-4e2a-badf-c81d63cc4565,javaHome=/Users/linxiong/.cursor/extensions/redhat.java-1.54.0-darwin-arm64/jre/21.0.10-macosx-aarch64,javaVersion=21,javaVendor=Eclipse Adoptium,daemonRegistryDir=/Users/linxiong/.gradle/daemon,pid=2025,idleTimeout=10800000,priority=NORMAL,applyInstrumentationAgent=true,nativeServicesMode=ENABLED,daemonOpts=-Xmx4g,-Dfile.encoding=UTF-8,-Duser.country=CN,-Duser.language=zh,-Duser.variant]
+
+  Looking for a different daemon...
+Found daemon DaemonInfo{pid=5277, address=[4d9450fe-095d-4113-831c-259e62f3ede3 port:54759, addresses:[/127.0.0.1]], state=Idle, lastBusy=1776691384925, context=DefaultDaemonContext[uid=b800079e-3e7b-4dc2-b3f8-852a0f65b1cd,javaHome=/Applications/Android Studio.app/Contents/jbr/Contents/Home,javaVersion=21,javaVendor=JetBrains s.r.o.,daemonRegistryDir=/Users/linxiong/.gradle/daemon,pid=5277,idleTimeout=10800000,priority=NORMAL,applyInstrumentationAgent=true,nativeServicesMode=ENABLED,daemonOpts=-Xmx4g,-Dfile.encoding=UTF-8,-Duser.country=CN,-Duser.language=zh,-Duser.variant]} however its context does not match the desired criteria.
+JVM is incompatible.
+Wanted: DaemonRequestContext{jvmCriteria=/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home (no JDK specified, using current Java home), daemonOpts=[-Xmx4g, -Dfile.encoding=UTF-8, -Duser.country=CN, -Duser.language=zh, -Duser.variant], applyInstrumentationAgent=true, nativeServicesMode=ENABLED, priority=NORMAL}
+Actual: DefaultDaemonContext[uid=b800079e-3e7b-4dc2-b3f8-852a0f65b1cd,javaHome=/Applications/Android Studio.app/Contents/jbr/Contents/Home,javaVersion=21,javaVendor=JetBrains s.r.o.,daemonRegistryDir=/Users/linxiong/.gradle/daemon,pid=5277,idleTimeout=10800000,priority=NORMAL,applyInstrumentationAgent=true,nativeServicesMode=ENABLED,daemonOpts=-Xmx4g,-Dfile.encoding=UTF-8,-Duser.country=CN,-Duser.language=zh,-Duser.variant]
+
+  Looking for a different daemon...
+Found daemon DaemonInfo{pid=6183, address=[38dca960-4329-4ff7-b7bd-1aadb5f30cd3 port:55547, addresses:[/127.0.0.1]], state=Idle, lastBusy=1776696402782, context=DefaultDaemonContext[uid=fa175373-bdac-43ca-a2d7-645149a99a66,javaHome=/Users/linxiong/.antigravity/extensions/redhat.java-1.54.0-darwin-arm64/jre/21.0.10-macosx-aarch64,javaVersion=21,javaVendor=Eclipse Adoptium,daemonRegistryDir=/Users/linxiong/.gradle/daemon,pid=6183,idleTimeout=10800000,priority=NORMAL,applyInstrumentationAgent=true,nativeServicesMode=ENABLED,daemonOpts=-Xmx4g,-Dfile.encoding=UTF-8,-Duser.country=CN,-Duser.language=zh,-Duser.variant]} however its context does not match the desired criteria.
+JVM is incompatible.
+Wanted: DaemonRequestContext{jvmCriteria=/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home (no JDK specified, using current Java home), daemonOpts=[-Xmx4g, -Dfile.encoding=UTF-8, -Duser.country=CN, -Duser.language=zh, -Duser.variant], applyInstrumentationAgent=true, nativeServicesMode=ENABLED, priority=NORMAL}
+Actual: DefaultDaemonContext[uid=fa175373-bdac-43ca-a2d7-645149a99a66,javaHome=/Users/linxiong/.antigravity/extensions/redhat.java-1.54.0-darwin-arm64/jre/21.0.10-macosx-aarch64,javaVersion=21,javaVendor=Eclipse Adoptium,daemonRegistryDir=/Users/linxiong/.gradle/daemon,pid=6183,idleTimeout=10800000,priority=NORMAL,applyInstrumentationAgent=true,nativeServicesMode=ENABLED,daemonOpts=-Xmx4g,-Dfile.encoding=UTF-8,-Duser.country=CN,-Duser.language=zh,-Duser.variant]
+
+  Looking for a different daemon...
+The client will now receive all logging from the daemon (pid: 1956). The daemon log file: /Users/linxiong/.gradle/daemon/9.0-milestone-1/daemon-1956.out.log
+Starting 9th build in daemon [uptime: 2 hrs 5 mins 27.741 secs, performance: 98%, GC rate: 0.00/s, heap usage: 0% of 4 GiB]
+Using 10 worker leases.
+Now considering [/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose] as hierarchies to watch
+Watching the file system is configured to be enabled if available
+File system watching is active
+Starting Build
+Settings evaluated using settings file '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/settings.gradle.kts'.
+Projects loaded. Root project using build file '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/build.gradle.kts'.
+Included projects: [root project 'android-v0-compose', project ':app', project ':duix-sdk']
+
+> Configure project :
+Evaluating root project 'android-v0-compose' using build file '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/build.gradle.kts'.
+Resolved plugin [id: 'com.android.application', version: '8.13.2', apply: false]
+Resolved plugin [id: 'org.jetbrains.kotlin.android', version: '2.0.20', apply: false]
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.compose', version: '2.0.20', apply: false]
+
+> Configure project :app
+Evaluating project ':app' using build file '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/build.gradle.kts'.
+Resolved plugin [id: 'com.android.application']
+Resolved plugin [id: 'org.jetbrains.kotlin.android']
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.compose']
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.parcelize']
+Using default execution profile
+Using Kotlin Gradle Plugin gradle85 variant
+Detected Android Gradle Plugin compose compiler configuration
+Detected Android Gradle Plugin compose compiler configuration
+Detected Android Gradle Plugin compose compiler configuration
+Detected Android Gradle Plugin compose compiler configuration
+Detected Android Gradle Plugin compose compiler configuration
+
+> Configure project :duix-sdk
+Evaluating project ':duix-sdk' using build file '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/build.gradle'.
+Resolved plugin [id: 'com.android.library']
+Using default execution profile
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is /Volumes/Leo/Tools/android-sdk-macosx
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is /Volumes/Leo/Tools/android-sdk-macosx
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is /Volumes/Leo/Tools/android-sdk-macosx
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is /Volumes/Leo/Tools/android-sdk-macosx
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is /Volumes/Leo/Tools/android-sdk-macosx
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is /Volumes/Leo/Tools/android-sdk-macosx
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is /Volumes/Leo/Tools/android-sdk-macosx
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is /Volumes/Leo/Tools/android-sdk-macosx
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is /Volumes/Leo/Tools/android-sdk-macosx
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is /Volumes/Leo/Tools/android-sdk-macosx
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is /Volumes/Leo/Tools/android-sdk-macosx
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is /Volumes/Leo/Tools/android-sdk-macosx
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is /Volumes/Leo/Tools/android-sdk-macosx
+All projects evaluated.
+Task path ':app:compileDebugKotlin' matched project ':app'
+Task name matched 'compileDebugKotlin'
+Adding -Xuse-inline-scopes-numbers Kotlin compiler flag for task :app:compileDebugKotlin
+Selected primary task 'compileDebugKotlin' from project :app
+Tasks to be executed: [task ':app:checkKotlinGradlePluginConfigurationErrors', task ':app:preBuild', task ':app:preDebugBuild', task ':app:generateDebugBuildConfig', task ':duix-sdk:preBuild', task ':duix-sdk:preDebugBuild', task ':duix-sdk:writeDebugAarMetadata', task ':app:checkDebugAarMetadata', task ':duix-sdk:processDebugNavigationResources', task ':app:processDebugNavigationResources', task ':app:compileDebugNavigationResources', task ':app:generateDebugResValues', task ':duix-sdk:generateDebugResValues', task ':duix-sdk:generateDebugResources', task ':duix-sdk:packageDebugResources', task ':app:mapDebugSourceSetPaths', task ':app:generateDebugResources', task ':app:mergeDebugResources', task ':app:packageDebugResources', task ':app:parseDebugLocalResources', task ':app:createDebugCompatibleScreenManifests', task ':app:extractDeepLinksDebug', task ':duix-sdk:extractDeepLinksDebug', task ':duix-sdk:processDebugManifest', task ':app:processDebugMainManifest', task ':app:processDebugManifest', task ':app:processDebugManifestForPackage', task ':duix-sdk:compileDebugLibraryResources', task ':duix-sdk:parseDebugLocalResources', task ':duix-sdk:generateDebugRFile', task ':app:processDebugResources', task ':duix-sdk:generateDebugBuildConfig', task ':duix-sdk:javaPreCompileDebug', task ':duix-sdk:compileDebugJavaWithJavac', task ':duix-sdk:bundleLibCompileToJarDebug', task ':app:compileDebugKotlin']
+Tasks that were excluded: []
+Resolve mutations for :app:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker,5,main]) started.
+:app:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker,5,main]) started.
+
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':app:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :app:preBuild (Thread[Execution worker,5,main]) started.
+:app:preBuild (Thread[Execution worker,5,main]) started.
+
+> Task :app:preBuild UP-TO-DATE
+Skipping task ':app:preBuild' as it has no actions.
+Resolve mutations for :app:preDebugBuild (Thread[Execution worker,5,main]) started.
+:app:preDebugBuild (Thread[included builds,5,main]) started.
+
+> Task :app:preDebugBuild UP-TO-DATE
+Skipping task ':app:preDebugBuild' as it has no actions.
+Resolve mutations for :app:generateDebugBuildConfig (Thread[included builds,5,main]) started.
+:app:generateDebugBuildConfig (Thread[included builds,5,main]) started.
+
+> Task :app:generateDebugBuildConfig UP-TO-DATE
+Caching disabled for task ':app:generateDebugBuildConfig' because:
+  Build cache is disabled
+Skipping task ':app:generateDebugBuildConfig' as it is up-to-date.
+Resolve mutations for :duix-sdk:preBuild (Thread[included builds,5,main]) started.
+:duix-sdk:preBuild (Thread[included builds,5,main]) started.
+
+> Task :duix-sdk:preBuild UP-TO-DATE
+Skipping task ':duix-sdk:preBuild' as it has no actions.
+Resolve mutations for :duix-sdk:preDebugBuild (Thread[included builds,5,main]) started.
+:duix-sdk:preDebugBuild (Thread[included builds,5,main]) started.
+
+> Task :duix-sdk:preDebugBuild UP-TO-DATE
+Skipping task ':duix-sdk:preDebugBuild' as it has no actions.
+Resolve mutations for :duix-sdk:writeDebugAarMetadata (Thread[included builds,5,main]) started.
+:duix-sdk:writeDebugAarMetadata (Thread[included builds,5,main]) started.
+
+> Task :duix-sdk:writeDebugAarMetadata UP-TO-DATE
+Caching disabled for task ':duix-sdk:writeDebugAarMetadata' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':duix-sdk:writeDebugAarMetadata' as it is up-to-date.
+work action resolve aar-metadata.properties (project :duix-sdk) (Thread[included builds,5,main]) started.
+Resolve mutations for :app:checkDebugAarMetadata (Thread[included builds,5,main]) started.
+:app:checkDebugAarMetadata (Thread[included builds,5,main]) started.
+
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+Caching disabled for task ':app:checkDebugAarMetadata' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':app:checkDebugAarMetadata' as it is up-to-date.
+Resolve mutations for :duix-sdk:processDebugNavigationResources (Thread[included builds,5,main]) started.
+:duix-sdk:processDebugNavigationResources (Thread[included builds,5,main]) started.
+
+> Task :duix-sdk:processDebugNavigationResources UP-TO-DATE
+Caching disabled for task ':duix-sdk:processDebugNavigationResources' because:
+  Build cache is disabled
+Skipping task ':duix-sdk:processDebugNavigationResources' as it is up-to-date.
+work action resolve debug (project :duix-sdk) (Thread[included builds,5,main]) started.
+Resolve mutations for :app:processDebugNavigationResources (Thread[included builds,5,main]) started.
+:app:processDebugNavigationResources (Thread[included builds,5,main]) started.
+
+> Task :app:processDebugNavigationResources UP-TO-DATE
+Caching disabled for task ':app:processDebugNavigationResources' because:
+  Build cache is disabled
+Skipping task ':app:processDebugNavigationResources' as it is up-to-date.
+Resolve mutations for :app:compileDebugNavigationResources (Thread[included builds,5,main]) started.
+:app:compileDebugNavigationResources (Thread[included builds,5,main]) started.
+
+> Task :app:compileDebugNavigationResources UP-TO-DATE
+Caching disabled for task ':app:compileDebugNavigationResources' because:
+  Build cache is disabled
+Skipping task ':app:compileDebugNavigationResources' as it is up-to-date.
+Resolve mutations for :app:generateDebugResValues (Thread[included builds,5,main]) started.
+:app:generateDebugResValues (Thread[included builds,5,main]) started.
+
+> Task :app:generateDebugResValues UP-TO-DATE
+Caching disabled for task ':app:generateDebugResValues' because:
+  Build cache is disabled
+Skipping task ':app:generateDebugResValues' as it is up-to-date.
+Resolve mutations for :duix-sdk:generateDebugResValues (Thread[included builds,5,main]) started.
+:duix-sdk:generateDebugResValues (Thread[included builds,5,main]) started.
+
+> Task :duix-sdk:generateDebugResValues UP-TO-DATE
+Caching disabled for task ':duix-sdk:generateDebugResValues' because:
+  Build cache is disabled
+Skipping task ':duix-sdk:generateDebugResValues' as it is up-to-date.
+Resolve mutations for :duix-sdk:generateDebugResources (Thread[included builds,5,main]) started.
+:duix-sdk:generateDebugResources (Thread[included builds,5,main]) started.
+
+> Task :duix-sdk:generateDebugResources UP-TO-DATE
+Caching disabled for task ':duix-sdk:generateDebugResources' because:
+  Build cache is disabled
+Skipping task ':duix-sdk:generateDebugResources' as it is up-to-date.
+Resolve mutations for :duix-sdk:packageDebugResources (Thread[included builds,5,main]) started.
+:duix-sdk:packageDebugResources (Thread[included builds,5,main]) started.
+
+> Task :duix-sdk:packageDebugResources UP-TO-DATE
+Caching disabled for task ':duix-sdk:packageDebugResources' because:
+  Build cache is disabled
+Skipping task ':duix-sdk:packageDebugResources' as it is up-to-date.
+work action resolve packageDebugResources (project :duix-sdk) (Thread[included builds,5,main]) started.
+Resolve mutations for :app:mapDebugSourceSetPaths (Thread[included builds,5,main]) started.
+:app:mapDebugSourceSetPaths (Thread[included builds,5,main]) started.
+
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+Caching disabled for task ':app:mapDebugSourceSetPaths' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':app:mapDebugSourceSetPaths' as it is up-to-date.
+Resolve mutations for :app:generateDebugResources (Thread[included builds,5,main]) started.
+:app:generateDebugResources (Thread[included builds,5,main]) started.
+
+> Task :app:generateDebugResources UP-TO-DATE
+Caching disabled for task ':app:generateDebugResources' because:
+  Build cache is disabled
+Skipping task ':app:generateDebugResources' as it is up-to-date.
+Resolve mutations for :app:mergeDebugResources (Thread[included builds,5,main]) started.
+:app:mergeDebugResources (Thread[included builds,5,main]) started.
+
+> Task :app:mergeDebugResources UP-TO-DATE
+Caching disabled for task ':app:mergeDebugResources' because:
+  Build cache is disabled
+Skipping task ':app:mergeDebugResources' as it is up-to-date.
+Resolve mutations for :app:packageDebugResources (Thread[included builds,5,main]) started.
+:app:packageDebugResources (Thread[included builds,5,main]) started.
+
+> Task :app:packageDebugResources UP-TO-DATE
+Caching disabled for task ':app:packageDebugResources' because:
+  Build cache is disabled
+Skipping task ':app:packageDebugResources' as it is up-to-date.
+Resolve mutations for :app:parseDebugLocalResources (Thread[included builds,5,main]) started.
+:app:parseDebugLocalResources (Thread[included builds,5,main]) started.
+
+> Task :app:parseDebugLocalResources UP-TO-DATE
+Caching disabled for task ':app:parseDebugLocalResources' because:
+  Build cache is disabled
+Skipping task ':app:parseDebugLocalResources' as it is up-to-date.
+Resolve mutations for :app:createDebugCompatibleScreenManifests (Thread[included builds,5,main]) started.
+:app:createDebugCompatibleScreenManifests (Thread[included builds,5,main]) started.
+
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+Caching disabled for task ':app:createDebugCompatibleScreenManifests' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':app:createDebugCompatibleScreenManifests' as it is up-to-date.
+Resolve mutations for :app:extractDeepLinksDebug (Thread[included builds,5,main]) started.
+:app:extractDeepLinksDebug (Thread[included builds,5,main]) started.
+
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+Caching disabled for task ':app:extractDeepLinksDebug' because:
+  Build cache is disabled
+Skipping task ':app:extractDeepLinksDebug' as it is up-to-date.
+Resolve mutations for :duix-sdk:extractDeepLinksDebug (Thread[included builds,5,main]) started.
+:duix-sdk:extractDeepLinksDebug (Thread[included builds,5,main]) started.
+
+> Task :duix-sdk:extractDeepLinksDebug UP-TO-DATE
+Caching disabled for task ':duix-sdk:extractDeepLinksDebug' because:
+  Build cache is disabled
+Skipping task ':duix-sdk:extractDeepLinksDebug' as it is up-to-date.
+work action resolve navigation.json (project :duix-sdk) (Thread[included builds,5,main]) started.
+Resolve mutations for :duix-sdk:processDebugManifest (Thread[included builds,5,main]) started.
+:duix-sdk:processDebugManifest (Thread[included builds,5,main]) started.
+
+> Task :duix-sdk:processDebugManifest UP-TO-DATE
+Caching disabled for task ':duix-sdk:processDebugManifest' because:
+  Build cache is disabled
+Skipping task ':duix-sdk:processDebugManifest' as it is up-to-date.
+work action resolve AndroidManifest.xml (project :duix-sdk) (Thread[included builds,5,main]) started.
+Resolve mutations for :app:processDebugMainManifest (Thread[Execution worker Thread 9,5,main]) started.
+:app:processDebugMainManifest (Thread[Execution worker Thread 9,5,main]) started.
+
+> Task :app:processDebugMainManifest UP-TO-DATE
+Caching disabled for task ':app:processDebugMainManifest' because:
+  Build cache is disabled
+Skipping task ':app:processDebugMainManifest' as it is up-to-date.
+Resolve mutations for :app:processDebugManifest (Thread[Execution worker Thread 9,5,main]) started.
+:app:processDebugManifest (Thread[Execution worker Thread 9,5,main]) started.
+
+> Task :app:processDebugManifest UP-TO-DATE
+Caching disabled for task ':app:processDebugManifest' because:
+  Build cache is disabled
+Skipping task ':app:processDebugManifest' as it is up-to-date.
+Resolve mutations for :app:processDebugManifestForPackage (Thread[Execution worker Thread 9,5,main]) started.
+:app:processDebugManifestForPackage (Thread[Execution worker Thread 9,5,main]) started.
+
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+Custom actions are attached to task ':app:processDebugManifestForPackage'.
+Caching disabled for task ':app:processDebugManifestForPackage' because:
+  Build cache is disabled
+Skipping task ':app:processDebugManifestForPackage' as it is up-to-date.
+Resolve mutations for :duix-sdk:compileDebugLibraryResources (Thread[Execution worker Thread 9,5,main]) started.
+:duix-sdk:compileDebugLibraryResources (Thread[Execution worker Thread 9,5,main]) started.
+
+> Task :duix-sdk:compileDebugLibraryResources UP-TO-DATE
+Caching disabled for task ':duix-sdk:compileDebugLibraryResources' because:
+  Build cache is disabled
+Skipping task ':duix-sdk:compileDebugLibraryResources' as it is up-to-date.
+work action resolve out (project :duix-sdk) (Thread[Execution worker Thread 9,5,main]) started.
+Resolve mutations for :duix-sdk:parseDebugLocalResources (Thread[Execution worker Thread 9,5,main]) started.
+:duix-sdk:parseDebugLocalResources (Thread[Execution worker Thread 9,5,main]) started.
+
+> Task :duix-sdk:parseDebugLocalResources UP-TO-DATE
+Caching disabled for task ':duix-sdk:parseDebugLocalResources' because:
+  Build cache is disabled
+Skipping task ':duix-sdk:parseDebugLocalResources' as it is up-to-date.
+Resolve mutations for :duix-sdk:generateDebugRFile (Thread[Execution worker Thread 9,5,main]) started.
+:duix-sdk:generateDebugRFile (Thread[Execution worker Thread 9,5,main]) started.
+
+> Task :duix-sdk:generateDebugRFile UP-TO-DATE
+Caching disabled for task ':duix-sdk:generateDebugRFile' because:
+  Build cache is disabled
+Skipping task ':duix-sdk:generateDebugRFile' as it is up-to-date.
+work action resolve package-aware-r.txt (project :duix-sdk) (Thread[Execution worker Thread 9,5,main]) started.
+Resolve mutations for :app:processDebugResources (Thread[Execution worker Thread 9,5,main]) started.
+:app:processDebugResources (Thread[Execution worker Thread 9,5,main]) started.
+
+> Task :app:processDebugResources UP-TO-DATE
+Caching disabled for task ':app:processDebugResources' because:
+  Build cache is disabled
+Skipping task ':app:processDebugResources' as it is up-to-date.
+Resolve mutations for :duix-sdk:generateDebugBuildConfig (Thread[Execution worker Thread 9,5,main]) started.
+:duix-sdk:generateDebugBuildConfig (Thread[Execution worker Thread 9,5,main]) started.
+
+> Task :duix-sdk:generateDebugBuildConfig UP-TO-DATE
+Caching disabled for task ':duix-sdk:generateDebugBuildConfig' because:
+  Build cache is disabled
+Skipping task ':duix-sdk:generateDebugBuildConfig' as it is up-to-date.
+Resolve mutations for :duix-sdk:javaPreCompileDebug (Thread[Execution worker Thread 9,5,main]) started.
+:duix-sdk:javaPreCompileDebug (Thread[Execution worker Thread 9,5,main]) started.
+
+> Task :duix-sdk:javaPreCompileDebug UP-TO-DATE
+Caching disabled for task ':duix-sdk:javaPreCompileDebug' because:
+  Build cache is disabled
+Skipping task ':duix-sdk:javaPreCompileDebug' as it is up-to-date.
+Resolve mutations for :duix-sdk:compileDebugJavaWithJavac (Thread[Execution worker Thread 9,5,main]) started.
+:duix-sdk:compileDebugJavaWithJavac (Thread[Execution worker Thread 9,5,main]) started.
+
+> Task :duix-sdk:compileDebugJavaWithJavac UP-TO-DATE
+Custom actions are attached to task ':duix-sdk:compileDebugJavaWithJavac'.
+Caching disabled for task ':duix-sdk:compileDebugJavaWithJavac' because:
+  Build cache is disabled
+Skipping task ':duix-sdk:compileDebugJavaWithJavac' as it is up-to-date.
+No compile result for :duix-sdk:compileDebugJavaWithJavac
+Resolve mutations for :duix-sdk:bundleLibCompileToJarDebug (Thread[Execution worker Thread 9,5,main]) started.
+:duix-sdk:bundleLibCompileToJarDebug (Thread[Execution worker Thread 9,5,main]) started.
+
+> Task :duix-sdk:bundleLibCompileToJarDebug UP-TO-DATE
+Caching disabled for task ':duix-sdk:bundleLibCompileToJarDebug' because:
+  Build cache is disabled
+  Simple merging task
+Skipping task ':duix-sdk:bundleLibCompileToJarDebug' as it is up-to-date.
+work action resolve classes.jar (project :duix-sdk) (Thread[Execution worker Thread 9,5,main]) started.
+Resolve mutations for :app:compileDebugKotlin (Thread[Execution worker Thread 9,5,main]) started.
+:app:compileDebugKotlin (Thread[Execution worker Thread 9,5,main]) started.
+
+> Task :app:compileDebugKotlin
+Adding -Xuse-inline-scopes-numbers Kotlin compiler flag for task :app:compileDebugAndroidTestKotlin
+Caching disabled for task ':app:compileDebugKotlin' because:
+  Build cache is disabled
+Task ':app:compileDebugKotlin' is not up-to-date because:
+  Task has failed previously.
+The input changes require a full rebuild for incremental task ':app:compileDebugKotlin'.
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/java', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/java', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/java', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/java', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/java', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/java', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/java', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/java', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/java', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/java', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/java', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/java', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/java', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/java', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/java', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/java', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/java', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/java', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/kotlin', not found
+file or directory '/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/debug/java', not found
+Kotlin source files: /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/ui/theme/Color.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/ui/theme/Theme.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/ui/theme/Typography.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/DuixAvatarInterviewActivity.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/ai/guide/InterviewCameraTestScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/ai/guide/InterviewDeviceTestScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/ai/guide/InterviewPrecautionsScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/ai/video/InterviewVideoRecorder.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/ai/realtime/VolcanoTtsService.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/ai/realtime/LipSyncDriver.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/DigitalHumanController.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/AliyunAvatarViewModel.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/DuixAvatarInterviewScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/AliyunAvatarScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/DuixAvatarController.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/AliyunSignatureUtils.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/AliyunAvatarModels.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/AliyunAvatarController.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/AliyunAvatarInterviewScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/AliyunLingmouService.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/DuixAvatarScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/api/AliyunAvatarApi.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/data/repository/OssRepository.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/data/model/OssModels.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/data/api/OssApi.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/SplashActivity.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/home/HomeViewModel.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/home/HomeScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/design/FigmaDesignTokens.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/messages/MessageScreens.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/auth/AuthFigmaComponents.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/auth/CodeLoginScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/auth/LoginMainScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/auth/LoginScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/auth/NumericKeyboard.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/auth/LoginFlowScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/auth/RegisterScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/assessment/InterviewEndScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/assessment/AssessmentScreens.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/components/AppleComponents.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/components/CompactTopBar.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/profile/VerificationViewModel.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/profile/ResumeReportViewModel.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/profile/ProfileSettingsScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/profile/ContactUsScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/profile/ResumeReportScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/profile/MyPostsScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/profile/ProfileExtras.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/profile/ProfileScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/profile/VerificationScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/ai/AiJobSelectionScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/circle/CircleViewModel.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/circle/TopicAggregationScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/circle/CreatePostViewModel.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/circle/CircleScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/circle/PostDetailScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/circle/CreatePostScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/jobs/JobSelectionScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/jobs/CompanyDetailScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/jobs/CompanyDetailViewModel.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/jobs/JobDetailScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/jobs/JobsScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/jobs/JobDetailViewModel.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/jobs/EditIntentionJobScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/jobs/JobUiModels.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/jobs/JobUiMapper.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ui/jobs/JobsViewModel.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/App.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/MainActivity.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/config/AppConfig.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ContentSections.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/navigation/Routes.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/navigation/NavGraph.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/AIScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/HeroBanner.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/Theme.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ai/DigitalHumanEffects.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ai/prep/PrepRoute.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ai/EducationOverlay.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ai/RealtimeAudioCapture.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ai/AiInterviewPage.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ai/realtime/VoiceActivityDetector.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ai/realtime/AliyunSpeechService.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ai/realtime/RealtimeVoiceManager.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ai/CameraManager.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ai/InterviewCompleteScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ai/session/VideoSubmissionScreen.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/ai/session/InterviewSessionRoute.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/model/InterviewModels.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/repository/ContentRepository.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/repository/JobDictionaryRepository.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/repository/JobRepository.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/repository/VerificationRepository.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/repository/AuthRepository.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/repository/AppUpdateRepository.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/repository/JobPreferenceRepository.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/repository/AiInterviewRepository.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/repository/MessageRepository.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/auth/AuthManager.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/model/AuthModels.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/model/JobDictionaryModels.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/model/AiInterviewModels.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/model/JobsApiModels.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/model/MessageModels.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/model/AppVersionInfo.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/model/VerificationModels.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/model/JobPreferenceModels.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/model/ContentModels.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/model/AssessmentModels.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/api/AuthApi.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/api/RetrofitClient.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/api/PagedData.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/api/AiInterviewApi.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/api/ApiService.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/api/ApiResponse.kt, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/example/v0clone/data/api/JobDictionaryApi.kt
+Java source files: /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/build/generated/source/buildConfig/debug/com/xlwl/AiMian/BuildConfig.java
+Script source files: 
+Script file extensions: 
+Using Kotlin/JVM incremental compilation
+[KOTLIN] Kotlin compilation 'jdkHome' argument: null
+Options for KOTLIN DAEMON: IncrementalCompilationOptions(super=CompilationOptions(compilerMode=INCREMENTAL_COMPILER, targetPlatform=JVM, reportCategories=[0, 3], reportSeverity=2, requestedCompilationResults=[0], kotlinScriptExtensions=[]), areFileChangesKnown=false, modifiedFiles=null, deletedFiles=null, classpathChanges=NotAvailableForNonIncrementalRun, workingDir=/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/build/kotlin/compileDebugKotlin/cacheable, multiModuleICSettings=MultiModuleICSettings(buildHistoryFile=/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/build/kotlin/compileDebugKotlin/local-state/build-history.bin, useModuleDetection=true), usePreciseJavaTracking=true, icFeatures=IncrementalCompilationFeatures(withAbiSnapshot=false, preciseCompilationResultsBackup=true, keepIncrementalCompilationCachesInMemory=true, enableUnsafeIncrementalCompilationForMultiplatform=false), outputFiles=[/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/build/tmp/kotlin-classes/debug, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/build/kotlin/compileDebugKotlin/cacheable, /Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/build/kotlin/compileDebugKotlin/local-state])
+e: file:///Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/AliyunAvatarInterviewScreen.kt:248:17 Overload resolution ambiguity between candidates:
+fun LocalCameraPreview(lifecycleOwner: LifecycleOwner): Unit
+fun LocalCameraPreview(lifecycleOwner: LifecycleOwner): Unit
+e: file:///Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/AliyunAvatarInterviewScreen.kt:450:1 Conflicting overloads:
+fun InterviewResultScreen(report: InterviewReport, onBack: () -> Unit, onRetest: () -> Unit): Unit
+e: file:///Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/AliyunAvatarInterviewScreen.kt:1025:1 Conflicting overloads:
+fun LocalCameraPreview(lifecycleOwner: LifecycleOwner): Unit
+e: file:///Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/DuixAvatarController.kt:94:63 Argument type mismatch: actual type is 'ai.guiji.duix.sdk.client.render.DUIXTextureView', but 'ai.guiji.duix.sdk.client.render.RenderSink!' was expected.
+e: file:///Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/DuixAvatarController.kt:94:69 Class '<anonymous>' is not abstract and does not implement abstract member 'onEvent'.
+e: file:///Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/DuixAvatarController.kt:95:21 'onEvent' overrides nothing.
+e: file:///Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/DuixAvatarController.kt:97:29 Incompatible types 'kotlin.Int' and 'kotlin.String'.
+e: file:///Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/DuixAvatarController.kt:112:29 Incompatible types 'kotlin.Int' and 'kotlin.String'.
+e: file:///Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/DuixAvatarController.kt:119:29 Incompatible types 'kotlin.Int' and 'kotlin.String'.
+e: file:///Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/DuixAvatarController.kt:122:29 Incompatible types 'kotlin.Int' and 'kotlin.String'.
+e: file:///Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/DuixAvatarInterviewScreen.kt:184:41 Unresolved reference 'WS_SERVER_URL'.
+e: file:///Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/DuixAvatarInterviewScreen.kt:187:19 Unresolved reference 'launch'.
+e: file:///Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/DuixAvatarInterviewScreen.kt:188:38 Suspension functions can only be called within coroutine body.
+e: file:///Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/DuixAvatarInterviewScreen.kt:255:17 Overload resolution ambiguity between candidates:
+fun LocalCameraPreview(lifecycleOwner: LifecycleOwner): Unit
+fun LocalCameraPreview(lifecycleOwner: LifecycleOwner): Unit
+e: file:///Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/DuixAvatarInterviewScreen.kt:346:56 Unresolved reference 'interrupt'.
+e: file:///Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/DuixAvatarInterviewScreen.kt:431:1 Conflicting overloads:
+fun InterviewResultScreen(report: InterviewReport, onBack: () -> Unit, onRetest: () -> Unit): Unit
+e: file:///Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/app/src/main/java/com/xlwl/AiMian/digitalhuman/DuixAvatarInterviewScreen.kt:1006:1 Conflicting overloads:
+fun LocalCameraPreview(lifecycleOwner: LifecycleOwner): Unit
+Finished executing kotlin compiler using DAEMON strategy
+
+> Task :app:compileDebugKotlin FAILED
+
+[Incubating] Problems report is available at: file:///Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:compileDebugKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/9.0-milestone-1/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 3s
+31 actionable tasks: 1 executed, 30 up-to-date
+Watched directory hierarchies: [/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose]

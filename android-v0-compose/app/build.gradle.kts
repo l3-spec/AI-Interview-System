@@ -29,8 +29,8 @@ plugins {
 //val defaultApiHost = "10.0.1.61"
 //val defaultApiHost = "10.0.1.77"
 //val defaultApiHost = "192.168.10.62"
-val defaultApiHost = "10.0.1.33"
-//val defaultApiHost = "192.168.124.56"
+//val defaultApiHost = "10.0.1.33"
+val defaultApiHost = "192.168.124.56"
 //val defaultApiHost = "192.168.10.84"
 val defaultApiPort = 3001
 val defaultApiPath = "api"
@@ -248,10 +248,8 @@ dependencies {
     // WebView-based Live2D renderer (Plan D)
     implementation("androidx.webkit:webkit:1.8.0")
 
-    // 阿里云数字人 SDK (视频通话数字人)
-    implementation(files("libs/video_chat_sdk-release.aar"))
-    // AliRTC ARTC SDK（阿里云实时音视频，video_chat_sdk 的核心依赖）
-    implementation("com.aliyun.aio:AliVCSDK_ARTC:7.3.0")
+    // Aliyun dependencies removed to avoid conflicts with DUiX
+
     // OKHttp required by video_chat_sdk
     implementation("com.squareup.okhttp3:okhttp:4.10.0")
     implementation("com.squareup.okio:okio:3.0.0")
@@ -279,9 +277,8 @@ dependencies {
     implementation("androidx.camera:camera-view:$cameraXVersion")
     implementation("androidx.camera:camera-video:$cameraXVersion")
     implementation("com.infobip:google-webrtc:1.0.45036")
-    // implementation(project(":duix-sdk"))
+    implementation(project(":duix-sdk"))
     implementation("com.aliyun.dpa:oss-android-sdk:2.9.13")
-
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 

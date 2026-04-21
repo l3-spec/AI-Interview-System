@@ -11,6 +11,33 @@ import { InterviewSession, InterviewRound, InterviewState, ResponseAnalysis } fr
  */
 export class InterviewFlowService {
   private sessions = new Map<string, InterviewSession>();
+  
+  /**
+   * 初始化会话（由外部提供sessionId）
+   */
+  async initializeSession(sessionId: string, userId: string, userName: string, targetJob: string, background?: string) {
+    if (this.sessions.has(sessionId)) return this.sessions.get(sessionId)!;
+
+    const session: InterviewSession = {
+      sessionId,
+      userId,
+      userName,
+      state: InterviewState.INTRODUCTION,
+      startTime: new Date(),
+      rounds: [],
+      userInfo: {
+        name: userName,
+        targetJob: targetJob || '未指定职位',
+        background: background || '',
+        experience: '',
+        skills: []
+      }
+    };
+
+    this.sessions.set(sessionId, session);
+    console.log(`✅ InterviewFlowService: 成功为会话 ${sessionId} 初始化职位 [${targetJob}]`);
+    return session;
+  }
 
   /**
    * 第一阶段：收集用户信息并介绍流程

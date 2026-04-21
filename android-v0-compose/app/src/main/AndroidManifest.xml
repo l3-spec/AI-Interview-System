@@ -52,7 +52,7 @@
 
         <!-- 阿里云数字人面试 Activity（替代 Live2D 方案） -->
         <activity
-            android:name=".AliyunAvatarInterviewActivity"
+            android:name=".DuixAvatarInterviewActivity"
             android:exported="false"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.DigitalInterview" />
