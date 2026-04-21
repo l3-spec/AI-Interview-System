@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -80,6 +81,24 @@ class Qwen3TtsWsClient(
     private val _mouthRms = MutableStateFlow(0f)
     val mouthRms: StateFlow<Float> = _mouthRms.asStateFlow()
 
+    /** 当前句 TTS 播放进度 0~1，供两行字幕随朗读滚动 */
+    private val _playbackProgress = MutableStateFlow(0f)
+    val playbackProgress: StateFlow<Float> = _playbackProgress.asStateFlow()
+
+    private var playbackPollJob: Job? = null
+    private var finalUtterancePcmBytes = 0
+
+    /**
+     * 为 true 时：PCM 块通过 [onDuixPcmChunk] 推给 DUIX（pushPcm），
+     * 合成结束不再调用 [duixAudioSink] 整段 WAV（避免口型滞后、双路音频）。
+     */
+    var preferStreamPcmForDuix: Boolean = false
+
+    var onDuixPcmStreamStart: (() -> Unit)? = null
+    var onDuixPcmChunk: ((ByteArray) -> Unit)? = null
+    var onDuixPcmStreamEnd: (() -> Unit)? = null
+    private var duixStreamSessionActive = false
+
     private var webSocket: WebSocket? = null
     private var audioTrack: AudioTrack? = null
     private val isPlaying = AtomicBoolean(false)
@@ -89,6 +108,9 @@ class Qwen3TtsWsClient(
     private var currentWavFile: File? = null
     private var pcmOutputStream: FileOutputStream? = null
     private var totalPcmBytes = 0
+
+    // 会话未就绪时缓存待合成文本，SESSION_ACTIVE 后自动发送
+    private val pendingTexts = mutableListOf<String>()
 
     /** DUIX 音频回调 — 合成完成后将 WAV 路径回调给 DUIX 引擎驱动唇形 */
     var duixAudioSink: ((String) -> Unit)? = null
@@ -163,10 +185,14 @@ class Qwen3TtsWsClient(
 
     /**
      * 发送文本到 TTS 微服务（追加模式）
+     * 会话未就绪时自动缓存，就绪后自动发送
      */
     fun appendText(text: String) {
         if (_state.value != State.SESSION_ACTIVE) {
-            Log.w(TAG, "TTS 会话未就绪，暂存文本: ${text.take(20)}")
+            Log.w(TAG, "TTS 会话未就绪，缓存待发送文本: ${text.take(30)}")
+            synchronized(pendingTexts) {
+                pendingTexts.add(text)
+            }
             return
         }
         val msg = JSONObject().apply {
@@ -178,9 +204,17 @@ class Qwen3TtsWsClient(
 
     /**
      * 提交文本缓冲区，触发合成
+     * 会话未就绪时标记待提交，就绪后自动触发
      */
     fun commitText() {
-        if (_state.value != State.SESSION_ACTIVE) return
+        if (_state.value != State.SESSION_ACTIVE) {
+            synchronized(pendingTexts) {
+                if (pendingTexts.isNotEmpty()) {
+                    Log.d(TAG, "TTS 会话未就绪，标记缓存需要提交")
+                }
+            }
+            return
+        }
         send(JSONObject().apply { put("type", "text.commit") })
     }
 
@@ -189,6 +223,7 @@ class Qwen3TtsWsClient(
      */
     fun clearAndStop() {
         send(JSONObject().apply { put("type", "text.clear") })
+        endDuixStream()
         stopAudioPlayback()
     }
 
@@ -226,7 +261,87 @@ class Qwen3TtsWsClient(
         scope.cancel()
     }
 
+    fun resetPlaybackProgress() {
+        _playbackProgress.value = 0f
+        finalUtterancePcmBytes = 0
+        stopPlaybackPoll()
+    }
+
     // ===================== 内部实现 =====================
+
+    private fun stopPlaybackPoll() {
+        playbackPollJob?.cancel()
+        playbackPollJob = null
+    }
+
+    private fun startPlaybackPoll() {
+        stopPlaybackPoll()
+        playbackPollJob = scope.launch {
+            while (isActive) {
+                kotlinx.coroutines.delay(80)
+                val track = audioTrack ?: break
+                if (track.state != AudioTrack.STATE_INITIALIZED) break
+
+                if (track.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                    val headFrames = track.playbackHeadPosition.toLong() and 0xFFFFFFFFL
+                    val playedBytes = headFrames * 2L
+                    val denom = (if (finalUtterancePcmBytes > 0) finalUtterancePcmBytes else totalPcmBytes)
+                        .coerceAtLeast(1)
+                        .toLong()
+                    _playbackProgress.value = (playedBytes.toFloat() / denom).coerceIn(0f, 0.999f)
+                }
+            }
+        }
+    }
+
+    private fun ensureDuixStreamStarted() {
+        if (!duixStreamSessionActive && preferStreamPcmForDuix && onDuixPcmChunk != null) {
+            duixStreamSessionActive = true
+            try {
+                onDuixPcmStreamStart?.invoke()
+            } catch (e: Exception) {
+                Log.e(TAG, "DUIX startPush 失败: ${e.message}")
+            }
+        }
+    }
+
+    private fun endDuixStream() {
+        if (!duixStreamSessionActive) return
+        duixStreamSessionActive = false
+        try {
+            onDuixPcmStreamEnd?.invoke()
+        } catch (e: Exception) {
+            Log.e(TAG, "DUIX stopPush 失败: ${e.message}")
+        }
+    }
+
+    private fun resetUtterancePlaybackState() {
+        _playbackProgress.value = 0f
+        finalUtterancePcmBytes = 0
+        stopPlaybackPoll()
+    }
+
+    /**
+     * 会话就绪后，将缓存的待合成文本全部发送并提交
+     */
+    private fun flushPendingTexts() {
+        val textsToSend: List<String>
+        synchronized(pendingTexts) {
+            textsToSend = pendingTexts.toList()
+            pendingTexts.clear()
+        }
+        if (textsToSend.isEmpty()) return
+
+        Log.i(TAG, "会话就绪，刷送 ${textsToSend.size} 条缓存文本")
+        for (text in textsToSend) {
+            val msg = JSONObject().apply {
+                put("type", "text.append")
+                put("text", text)
+            }
+            send(msg)
+        }
+        send(JSONObject().apply { put("type", "text.commit") })
+    }
 
     private fun send(json: JSONObject) {
         try {
@@ -246,6 +361,7 @@ class Qwen3TtsWsClient(
                     _state.value = State.SESSION_ACTIVE
                     Log.i(TAG, "TTS 会话已创建: sessionId=$sid")
                     initAudioTrack()
+                    flushPendingTexts()
                 }
 
                 "tts.audio_chunk" -> {
@@ -269,6 +385,14 @@ class Qwen3TtsWsClient(
                     _state.value = State.CONNECTED
                 }
 
+                // tts-service 在 DashScope session.created 时转发（与本地 session.created 成对出现）
+                "tts.session_created" -> {
+                    Log.i(
+                        TAG,
+                        "上游 TTS 会话已创建: dashscopeSessionId=${json.optString("dashscopeSessionId")}"
+                    )
+                }
+
                 "tts.error", "error" -> {
                     val error = json.optString("error", json.optString("message", "未知TTS错误"))
                     Log.e(TAG, "TTS 错误: $error")
@@ -290,8 +414,18 @@ class Qwen3TtsWsClient(
      */
     private fun processAudioChunk(audioBase64: String) {
         try {
+            if (audioChunkCount == 0) {
+                resetUtterancePlaybackState()
+            }
             val pcmData = Base64.decode(audioBase64, Base64.DEFAULT)
             audioChunkCount++
+
+            ensureDuixStreamStarted()
+            try {
+                onDuixPcmChunk?.invoke(pcmData)
+            } catch (e: Exception) {
+                Log.e(TAG, "DUIX pushPcm 失败: ${e.message}")
+            }
 
             // 写入 AudioTrack 实时播放
             audioTrack?.let { track ->
@@ -299,6 +433,7 @@ class Qwen3TtsWsClient(
                     track.play()
                     isPlaying.set(true)
                     _isSpeaking.value = true
+                    startPlaybackPoll()
                 }
                 track.write(pcmData, 0, pcmData.size)
             }
@@ -347,6 +482,7 @@ class Qwen3TtsWsClient(
                 .setBufferSizeInBytes(minBufferSize * 2)
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
+            audioTrack?.setVolume(1f)
             Log.i(TAG, "AudioTrack 初始化成功: sampleRate=$sampleRate, bufferSize=${minBufferSize * 2}")
         } catch (e: Exception) {
             Log.e(TAG, "AudioTrack 初始化失败: ${e.message}")
@@ -370,36 +506,46 @@ class Qwen3TtsWsClient(
      */
     private fun finishWavFile() {
         try {
+            finalUtterancePcmBytes = totalPcmBytes
+
             pcmOutputStream?.flush()
             pcmOutputStream?.close()
             pcmOutputStream = null
 
-            val wavFile = currentWavFile ?: return
-            if (totalPcmBytes <= 0) {
-                wavFile.delete()
+            val wavFile = currentWavFile
+            currentWavFile = null
+            val pcmLen = totalPcmBytes
+            totalPcmBytes = 0
+
+            if (wavFile == null || pcmLen <= 0) {
+                wavFile?.delete()
+                endDuixStream()
+                stopPlaybackPoll()
+                _playbackProgress.value = 1f
                 return
             }
 
-            // 回填 WAV 头
             RandomAccessFile(wavFile, "rw").use { raf ->
-                writeWavHeader(raf, sampleRate, 1, totalPcmBytes)
+                writeWavHeader(raf, sampleRate, 1, pcmLen)
             }
 
-            Log.i(TAG, "WAV 文件已生成: ${wavFile.absolutePath} (${totalPcmBytes} bytes PCM)")
+            Log.i(TAG, "WAV 文件已生成: ${wavFile.absolutePath} ($pcmLen bytes PCM)")
 
-            // 通知 DUIX 引擎播放（唇形同步）
-            duixAudioSink?.invoke(wavFile.absolutePath)
+            val useWavForDuix = !preferStreamPcmForDuix || onDuixPcmChunk == null
+            if (useWavForDuix) {
+                duixAudioSink?.invoke(wavFile.absolutePath)
+            } else {
+                endDuixStream()
+            }
 
-            // 等待播放完成后标记说话结束
             scope.launch {
-                val durationMs = (totalPcmBytes.toLong() * 1000) / (sampleRate * 2)
+                val durationMs = (pcmLen.toLong() * 1000) / (sampleRate * 2)
                 kotlinx.coroutines.delay(durationMs + 200)
+                stopPlaybackPoll()
+                _playbackProgress.value = 1f
                 _isSpeaking.value = false
                 _mouthRms.value = 0f
             }
-
-            currentWavFile = null
-            totalPcmBytes = 0
         } catch (e: Exception) {
             Log.e(TAG, "完成 WAV 文件失败: ${e.message}")
         }
@@ -461,6 +607,8 @@ class Qwen3TtsWsClient(
 
     private fun stopAudioPlayback() {
         try {
+            stopPlaybackPoll()
+            endDuixStream()
             audioTrack?.pause()
             audioTrack?.flush()
             isPlaying.set(false)
@@ -473,6 +621,8 @@ class Qwen3TtsWsClient(
 
     private fun cleanup() {
         try {
+            stopPlaybackPoll()
+            endDuixStream()
             audioTrack?.release()
             audioTrack = null
             pcmOutputStream?.close()
@@ -480,6 +630,7 @@ class Qwen3TtsWsClient(
             isPlaying.set(false)
             _isSpeaking.value = false
             _mouthRms.value = 0f
+            _playbackProgress.value = 0f
         } catch (e: Exception) {
             Log.w(TAG, "清理资源异常: ${e.message}")
         }

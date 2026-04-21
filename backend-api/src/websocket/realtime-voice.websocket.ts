@@ -35,6 +35,13 @@ type SessionState = {
   connectedSockets: Set<string>;
 };
 
+/** join_session 的 jobPosition 可能是「岗位名」，也可能是客户端误传的整段题干；欢迎语只应嵌入短标签 */
+function welcomeJobLabel(raw: string | undefined): string {
+  const s = (raw || '这个职位').trim();
+  if (s.length <= 40) return s;
+  return '本岗位';
+}
+
 export class RealtimeVoiceWebSocketServer {
   private io: Server;
   private voicePipeline: RealtimeVoicePipelineService | null = null;
@@ -415,10 +422,10 @@ export class RealtimeVoiceWebSocketServer {
           }
 
           // ===== 首次进入 或 无进行中面试 =====
-          const jobPositionText = jobPosition || '这个职位';
+          const jobPositionText = welcomeJobLabel(jobPosition);
           const welcomeText = isResume
             ? `欢迎回来，我们继续完成${jobPositionText}的面试。请从刚才的思路继续，或补充关键经历。`
-            : `让我陪您一起完成这个面试流程。请简单介绍一下您自己，并说明为什么想要应聘${jobPositionText}。`;
+            : `让我陪您一起完成这个面试流程。请简单介绍一下您自己，并说明为什么想要应聘「${jobPositionText}」。`;
           
           console.log(
             `${isResume ? '🎤 发送欢迎回来提示' : '🎤 发送初始欢迎问题'} - sessionId: ${sessionId}`

@@ -44,6 +44,7 @@ class DuixAvatarInterviewActivity : ComponentActivity() {
                 // 使用本地 DUiX SDK 直连处理
                 DuixAvatarInterviewScreen(
                     projectId = BuildConfig.ALIYUN_AVATAR_PROJECT_ID,
+                    jobPositionLabel = position,
                     interviewQuestion = questionText,
                     onInterviewComplete = { completedSessionId ->
                         // TODO: 调用后端标记面试完成

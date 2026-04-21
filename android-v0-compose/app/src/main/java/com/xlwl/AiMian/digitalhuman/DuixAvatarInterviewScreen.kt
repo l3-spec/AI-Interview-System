@@ -41,6 +41,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -74,6 +75,7 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 
 
@@ -81,6 +83,8 @@ import kotlin.math.min
 @Composable
 fun DuixAvatarInterviewScreen(
     projectId: String,
+    /** 传给后端的岗位短标签（应与题干分开，勿传整段题目） */
+    jobPositionLabel: String? = null,
     interviewQuestion: String? = null,
     onInterviewComplete: (sessionId: String) -> Unit = {},
     onBack: () -> Unit = {}
@@ -126,6 +130,8 @@ fun DuixAvatarInterviewScreen(
     val partialTranscript by realtimeVoiceManager.partialTranscript.collectAsState()
     val _messages by realtimeVoiceManager.conversation.collectAsState()
     val interviewCompleted by realtimeVoiceManager.interviewCompleted.collectAsState()
+    val ttsProgress by realtimeVoiceManager.ttsPlaybackProgress.collectAsState()
+    val isDhSpeaking by realtimeVoiceManager.isDigitalHumanSpeaking.collectAsState()
 
     val avatarController = remember(activity, realtimeVoiceManager) {
         if (activity == null) {
@@ -145,13 +151,26 @@ fun DuixAvatarInterviewScreen(
         )
     }
 
+    val isReady = avatarController?.isReady?.collectAsState()?.value ?: false
+
+    DisposableEffect(Unit) {
+        onDispose {
+            realtimeVoiceManager.setDigitalHumanController(null)
+        }
+    }
+
+    LaunchedEffect(avatarController, isReady) {
+        val c = avatarController
+        if (c != null && isReady) {
+            realtimeVoiceManager.setDigitalHumanController(c)
+        }
+    }
+
     LaunchedEffect(interviewCompleted) {
         if (interviewCompleted) {
             onInterviewComplete("some_session_id")
         }
     }
-
-    val isReady = avatarController?.isReady?.collectAsState()?.value ?: false
     val dialogState = avatarController?.dialogState?.collectAsState()?.value ?: 0
     val userVolume = avatarController?.userVolume?.collectAsState()?.value ?: 0f
     val avatarVolume = avatarController?.avatarVolume?.collectAsState()?.value ?: 0f
@@ -191,7 +210,9 @@ fun DuixAvatarInterviewScreen(
                 realtimeVoiceManager.initialize(
                     serverUrl = serverUrl,
                     sessionId = java.util.UUID.randomUUID().toString(),
-                    jobPosition = interviewQuestion ?: "AI面试官", // Use the provided question context as job position for flow
+                    jobPosition = jobPositionLabel?.takeIf { it.isNotBlank() }
+                        ?: interviewQuestion?.takeIf { it.length <= 40 }
+                        ?: "AI面试官",
                     userId = "user_${System.currentTimeMillis()}"
                 )
             }
@@ -278,6 +299,7 @@ fun DuixAvatarInterviewScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
+                    .zIndex(5f)
                     .padding(bottom = 100.dp)
                     .background(
                         Brush.verticalGradient(
@@ -294,21 +316,20 @@ fun DuixAvatarInterviewScreen(
                         color = Color(0xFF00C78A), // Greenish for user
                         fontSize = 16.sp,
                         lineHeight = 22.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.Center,
                         fontWeight = FontWeight.Normal,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
                 }
                 
-                // Interviewer Subtitle (AI)
+                // Interviewer Subtitle (AI) — 固定两行，随 TTS 进度滚动窗口
                 displayAIText?.let { aiText ->
-                    Text(
-                        text = "面试官: $aiText",
-                        color = Color.White,
-                        fontSize = 19.sp,
-                        lineHeight = 26.sp,
-                        textAlign = TextAlign.Center,
-                        fontWeight = FontWeight.Bold,
+                    InterviewerTwoLineSubtitle(
+                        fullText = aiText,
+                        progress = ttsProgress,
+                        isSpeaking = isDhSpeaking,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -1030,6 +1051,45 @@ fun LocalCameraPreview(lifecycleOwner: LifecycleOwner) {
         },
         modifier = Modifier.fillMaxSize()
     )
+}
+
+/**
+ * 面试官字幕：最多两行，按 [progress] 与当前朗读位置滑动文本窗口。
+ */
+@Composable
+private fun InterviewerTwoLineSubtitle(
+    fullText: String,
+    progress: Float,
+    isSpeaking: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val p = if (isSpeaking) progress.coerceIn(0f, 1f) else 1f
+    val windowed = remember(fullText, p) { subtitleWindowForProgress(fullText, p) }
+    Text(
+        text = "面试官: $windowed",
+        color = Color.White,
+        fontSize = 17.sp,
+        lineHeight = 24.sp,
+        maxLines = 2,
+        overflow = TextOverflow.Clip,
+        textAlign = TextAlign.Center,
+        fontWeight = FontWeight.Bold,
+        modifier = modifier
+    )
+}
+
+/** 约两行汉字容量（Compose 未测量前用字符数近似） */
+private fun subtitleWindowForProgress(full: String, progress: Float, maxChars: Int = 44): String {
+    if (full.isEmpty()) return full
+    val p = progress.coerceIn(0f, 1f)
+    if (full.length <= maxChars) return full
+    val readIdx = ((full.length - 1) * p).roundToInt().coerceIn(0, full.lastIndex)
+    val half = maxChars / 2
+    var end = (readIdx + half).coerceAtMost(full.length)
+    var start = (readIdx - half).coerceAtLeast(0)
+    if (end - start < maxChars) start = (end - maxChars).coerceAtLeast(0)
+    if (end - start < maxChars) end = (start + maxChars).coerceAtMost(full.length)
+    return full.substring(start, end)
 }
 
 private fun Context.findActivity(): Activity? {

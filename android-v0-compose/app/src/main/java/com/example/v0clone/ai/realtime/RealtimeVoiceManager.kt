@@ -25,6 +25,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -309,6 +310,10 @@ class RealtimeVoiceManager(private val context: Context) {
     private val playedTextHashes = mutableSetOf<String>()
     private var currentPlayingTextHash: String? = null
 
+    // 标记是否有正在等待 TTS 播放的响应，防止 isSpeaking 收集器过早将 _isDigitalHumanSpeaking 置为 false
+    @Volatile
+    private var awaitingTtsPlayback = false
+
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
@@ -338,6 +343,12 @@ class RealtimeVoiceManager(private val context: Context) {
 
     private val _errors = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val errors: SharedFlow<String> = _errors.asSharedFlow()
+
+    /** TTS 朗读进度 0~1，用于两行字幕滚动（Qwen3 流式 + MediaPlayer） */
+    private val _ttsPlaybackProgress = MutableStateFlow(0f)
+    val ttsPlaybackProgress: StateFlow<Float> = _ttsPlaybackProgress.asStateFlow()
+
+    private var mediaProgressJob: Job? = null
 
     private val completionKeywords = listOf(
         "面试结束",
@@ -441,19 +452,19 @@ class RealtimeVoiceManager(private val context: Context) {
                 args.getOrNull(0)?.toString()?.let { _errors.tryEmit(it) }
             }
             newSocket.on("text_chunk") { args ->
-                handleTextChunk(args[0] as JSONObject)
+                safeHandleEvent("text_chunk", args) { handleTextChunk(it) }
             }
             newSocket.on("asr_partial") { args ->
-                handleAsrPartial(args[0] as JSONObject)
+                safeHandleEvent("asr_partial", args) { handleAsrPartial(it) }
             }
             newSocket.on("voice_response") { args ->
-                handleVoiceResponse(args[0] as JSONObject)
+                safeHandleEvent("voice_response", args) { handleVoiceResponse(it) }
             }
             newSocket.on("status") { args ->
-                handleStatus(args[0] as JSONObject)
+                safeHandleEvent("status", args) { handleStatus(it) }
             }
             newSocket.on("audio_chunk") { args ->
-                handleAudioChunk(args[0] as JSONObject)
+                safeHandleEvent("audio_chunk", args) { handleAudioChunk(it) }
             }
             newSocket.on("error") { args ->
                 handleError(args.getOrNull(0))
@@ -497,6 +508,12 @@ class RealtimeVoiceManager(private val context: Context) {
 
                     qwen3Tts.connect(AppConfig.ttsServiceWsUrl, sessionId)
 
+                    launch {
+                        qwen3Tts.playbackProgress.collect { p ->
+                            _ttsPlaybackProgress.value = p
+                        }
+                    }
+
                     // 监听 TTS 说话状态 → 驱动数字人嘴型
                     launch {
                         qwen3Tts.mouthRms.collect { rms ->
@@ -506,12 +523,24 @@ class RealtimeVoiceManager(private val context: Context) {
                     // 监听 TTS 说话状态 → 控制录音
                     launch {
                         qwen3Tts.isSpeaking.collect { speaking ->
-                            _isDigitalHumanSpeaking.value = speaking
-                            if (!speaking && !_interviewCompleted.value && vadEnabled) {
-                                kotlinx.coroutines.delay(300)
-                                if (!_isDigitalHumanSpeaking.value) {
-                                    Log.i(TAG, "Qwen3 TTS 播放完成，自动开始录音")
-                                    startRecording()
+                            if (speaking) {
+                                // TTS 开始播放 → 标记数字人正在说话，清除等待标志
+                                awaitingTtsPlayback = false
+                                _isDigitalHumanSpeaking.value = true
+                            } else {
+                                // TTS 停止播放：只有在没有等待中的 TTS 时才标记说话结束
+                                // 避免初始 false 值或 TTS 还没开始时就覆盖 handleVoiceResponse 设置的 true
+                                if (awaitingTtsPlayback) {
+                                    Log.d(TAG, "TTS isSpeaking=false 但仍在等待 TTS 播放开始，跳过状态重置")
+                                    return@collect
+                                }
+                                _isDigitalHumanSpeaking.value = false
+                                if (!_interviewCompleted.value && vadEnabled) {
+                                    kotlinx.coroutines.delay(300)
+                                    if (!_isDigitalHumanSpeaking.value && !awaitingTtsPlayback) {
+                                        Log.i(TAG, "Qwen3 TTS 播放完成，自动开始录音")
+                                        startRecording()
+                                    }
                                 }
                             }
                         }
@@ -573,20 +602,28 @@ class RealtimeVoiceManager(private val context: Context) {
 
     fun setDigitalHumanController(controller: DigitalHumanController?) {
         digitalHumanController = controller
-        Log.i(TAG, "DigitalHumanController已设置: ${if (controller != null) "成功" else "null"}")
-
-        controller?.resetMouth()
+        val preferStream = controller != null
+        qwen3Tts.preferStreamPcmForDuix = preferStream
         if (controller != null) {
-            scope.launch {
-                delay(500)
-                Log.d(TAG, "测试数字人嘴型：设置为0.5")
-                controller.updateMouthOpenness(0.5f)
-                delay(500)
-                Log.d(TAG, "测试数字人嘴型：重置为0")
-                controller.updateMouthOpenness(0f)
-                Log.i(TAG, "✅ 数字人嘴型测试完成")
+            qwen3Tts.onDuixPcmStreamStart = {
+                runCatching { controller.startPush() }
+                    .onFailure { e -> Log.e(TAG, "DUIX startPush: ${e.message}") }
             }
+            qwen3Tts.onDuixPcmChunk = { pcm ->
+                runCatching { controller.pushPcm(pcm) }
+                    .onFailure { e -> Log.e(TAG, "DUIX pushPcm: ${e.message}") }
+            }
+            qwen3Tts.onDuixPcmStreamEnd = {
+                runCatching { controller.stopPush() }
+                    .onFailure { e -> Log.e(TAG, "DUIX stopPush: ${e.message}") }
+            }
+        } else {
+            qwen3Tts.onDuixPcmStreamStart = null
+            qwen3Tts.onDuixPcmChunk = null
+            qwen3Tts.onDuixPcmStreamEnd = null
         }
+        Log.i(TAG, "DigitalHumanController已设置: ${if (controller != null) "成功（流式PCM→DUIX）" else "null"}")
+        controller?.resetMouth()
     }
 
     fun setDuixAudioSink(sink: ((String) -> Unit)?) {
@@ -622,13 +659,13 @@ class RealtimeVoiceManager(private val context: Context) {
         stopRecordingInternal()
         
         _isDigitalHumanSpeaking.value = true
+        awaitingTtsPlayback = true
         _latestDigitalHumanText.value = text
         currentPlayingTextHash = textHash
         
         appendMessage(ConversationMessage(role = ConversationRole.DIGITAL_HUMAN, text = text))
         
         if (useQwen3Tts) {
-            // 使用 Qwen3 TTS 流式合成
             qwen3Tts.speak(text)
             playedTextHashes.add(textHash)
             currentPlayingTextHash = null
@@ -707,7 +744,8 @@ class RealtimeVoiceManager(private val context: Context) {
                 isRecording = true
                 _isRecordingFlow.value = true
                 _partialTranscript.value = if (vadEnabled) "正在聆听，请开始说话..." else ""
-                _latestDigitalHumanText.value = null // 清除旧的AI分片字幕
+                // 不再清除 AI 字幕，让面试官最后一句话保持显示，
+                // 直到下一次 voice_response 到来时自然更新
                 
                 recordingJob = if (vadEnabled) {
                     launch { recordWithVad(recorder, sessionId) }
@@ -787,6 +825,10 @@ class RealtimeVoiceManager(private val context: Context) {
         _connectionState.value = ConnectionState.DISCONNECTED
         _isProcessing.value = false
         _partialTranscript.value = ""
+        awaitingTtsPlayback = false
+        mediaProgressJob?.cancel()
+        mediaProgressJob = null
+        _ttsPlaybackProgress.value = 0f
     }
 
     fun cleanup() {
@@ -799,13 +841,19 @@ class RealtimeVoiceManager(private val context: Context) {
         recordingJob = null
         stopRecordingInternal()
         releaseVisualizer()
+        mediaProgressJob?.cancel()
+        mediaProgressJob = null
         mediaPlayer?.release()
         mediaPlayer = null
         digitalHumanController = null
+        qwen3Tts.onDuixPcmStreamStart = null
+        qwen3Tts.onDuixPcmChunk = null
+        qwen3Tts.onDuixPcmStreamEnd = null
+        qwen3Tts.preferStreamPcmForDuix = false
         
-        // 清理防重复播放标记
         playedTextHashes.clear()
         currentPlayingTextHash = null
+        awaitingTtsPlayback = false
         _interviewCompleted.value = false
 
         scope.cancel()
@@ -1028,6 +1076,9 @@ class RealtimeVoiceManager(private val context: Context) {
 
             Log.i(TAG, "收到语音响应 - text=$text, ttsMode=$ttsMode, audioUrl=$audioUrl")
 
+            qwen3Tts.resetPlaybackProgress()
+            _ttsPlaybackProgress.value = 0f
+
             // 生成文本的唯一标识（使用文本内容的hash）
             val textHash = if (text.isNotBlank()) {
                 text.hashCode().toString() + "_" + text.length
@@ -1057,6 +1108,8 @@ class RealtimeVoiceManager(private val context: Context) {
                 // 确保数字人说话期间麦克风关闭，避免自问自答
                 stopRecordingInternal()
                 _isDigitalHumanSpeaking.value = true
+                // 标记正在等待 TTS 播放开始，防止 isSpeaking 收集器初始 false 值覆盖此状态
+                awaitingTtsPlayback = true
             }
 
             _partialTranscript.value = ""
@@ -1088,15 +1141,39 @@ class RealtimeVoiceManager(private val context: Context) {
                     playedTextHashes.add(textHash)
                     currentPlayingTextHash = null
                 }
-                // _isDigitalHumanSpeaking 由 qwen3Tts.isSpeaking 流控制
+                // _isDigitalHumanSpeaking 和录音由 qwen3Tts.isSpeaking 流控制
+                // awaitingTtsPlayback 保持 true 直到 TTS 真正开始播放
+
+                // 安全网：如果 TTS WebSocket 未连接，回退到客户端合成
+                if (qwen3Tts.state.value != Qwen3TtsWsClient.State.SESSION_ACTIVE &&
+                    qwen3Tts.state.value != Qwen3TtsWsClient.State.CONNECTED) {
+                    Log.w(TAG, "⚠️ TTS WebSocket 未连接，qwen3_streaming 回退为客户端合成")
+                    if (useQwen3Tts && text.isNotBlank()) {
+                        qwen3Tts.speak(text)
+                    } else if (text.isNotBlank()) {
+                        awaitingTtsPlayback = false
+                        playClientSideTts(text, textHash)
+                    }
+                }
             } else if (ttsMode.equals("client", ignoreCase = true)) {
                 if (useQwen3Tts && text.isNotBlank()) {
-                    // 优先使用 Qwen3 TTS
                     Log.i(TAG, "使用 Qwen3 TTS 播放 - textHash=$textHash")
                     qwen3Tts.speak(text)
                     if (textHash != null) {
                         playedTextHashes.add(textHash)
                         currentPlayingTextHash = null
+                    }
+                    // awaitingTtsPlayback 保持 true，由 isSpeaking 收集器在 TTS 开始播放时清除
+                    // 超时保护：若 TTS 长时间未开始播放，允许恢复录音
+                    scope.launch {
+                        delay(10_000)
+                        if (awaitingTtsPlayback) {
+                            Log.w(TAG, "⚠️ TTS 播放超时（10s），强制恢复空闲状态")
+                            awaitingTtsPlayback = false
+                            if (!_isDigitalHumanSpeaking.value) {
+                                tryAutoStartRecordingIfIdle()
+                            }
+                        }
                     }
                 } else {
                     Log.i(TAG, "使用火山引擎TTS播放 - textHash=$textHash")
@@ -1108,14 +1185,15 @@ class RealtimeVoiceManager(private val context: Context) {
             } else {
                 Log.w(TAG, "未提供可播放的音频数据")
                 _isDigitalHumanSpeaking.value = false
+                awaitingTtsPlayback = false
                 currentPlayingTextHash = null
                 tryAutoStartRecordingIfIdle()
             }
         } catch (e: Exception) {
             Log.e(TAG, "处理语音响应失败", e)
             _errors.tryEmit(e.message ?: "处理语音响应失败")
-            // 出错时清除播放标记
             _isDigitalHumanSpeaking.value = false
+            awaitingTtsPlayback = false
             currentPlayingTextHash = null
             stopStreamingAudio()
             tryAutoStartRecordingIfIdle()
@@ -1163,6 +1241,8 @@ class RealtimeVoiceManager(private val context: Context) {
     private fun markInterviewCompleted(reason: String? = null) {
         if (_interviewCompleted.value) return
         Log.i(TAG, "标记面试已完成${reason?.let { "：$it" } ?: ""}")
+        qwen3Tts.resetPlaybackProgress()
+        _ttsPlaybackProgress.value = 0f
         _interviewCompleted.value = true
         stopRecordingInternal()
         val farewell = "您太棒了，感谢完成这次愉快的面聊，我们会尽快完成后续的评测工作，报告会在“我的”“简历报告”里展示，请稍晚些查看该报告。"
@@ -1228,6 +1308,19 @@ class RealtimeVoiceManager(private val context: Context) {
 
     private var activeAudioHash: String? = null // 记录MediaPlayer当前实际正在播放的文本Hash
 
+    private fun startMediaProgressTicker(mp: MediaPlayer) {
+        mediaProgressJob?.cancel()
+        mediaProgressJob = scope.launch {
+            while (isActive && mp.isPlaying) {
+                val d = mp.duration
+                if (d > 0) {
+                    _ttsPlaybackProgress.value = (mp.currentPosition.toFloat() / d).coerceIn(0f, 0.999f)
+                }
+                delay(100)
+            }
+        }
+    }
+
     private suspend fun playPreparedAudio(path: String, textHash: String?, digitalHumanText: String?) {
         val preparedPath = preparePlayableAudio(path)
         if (preparedPath == null) {
@@ -1278,7 +1371,9 @@ class RealtimeVoiceManager(private val context: Context) {
                             if (muteLocalPlayback) "（已静音，避免与数字人双重播放）" else ""
                     )
                     this@RealtimeVoiceManager._isDigitalHumanSpeaking.value = true
-                    this@RealtimeVoiceManager.activeAudioHash = textHash // 标记当前正在播放的Hash
+                    this@RealtimeVoiceManager.awaitingTtsPlayback = false
+                    this@RealtimeVoiceManager.activeAudioHash = textHash
+                    this@RealtimeVoiceManager.startMediaProgressTicker(this)
                     digitalHumanController?.onTtsPlayback(preparedPath, digitalHumanText)
                     
                     // 延迟一小段时间确保播放真正开始后再初始化Visualizer
@@ -1296,8 +1391,12 @@ class RealtimeVoiceManager(private val context: Context) {
                 
                 setOnCompletionListener {
                     Log.i(TAG, "MediaPlayer播放完成 - textHash=$textHash")
+                    this@RealtimeVoiceManager.mediaProgressJob?.cancel()
+                    this@RealtimeVoiceManager.mediaProgressJob = null
+                    this@RealtimeVoiceManager._ttsPlaybackProgress.value = 1f
                     this@RealtimeVoiceManager._isDigitalHumanSpeaking.value = false
-                    this@RealtimeVoiceManager.activeAudioHash = null // 清除播放标记
+                    this@RealtimeVoiceManager.awaitingTtsPlayback = false
+                    this@RealtimeVoiceManager.activeAudioHash = null
                     releaseVisualizer()
                     // 重置数字人嘴型
                     digitalHumanController?.updateMouthOpenness(0f)
@@ -1323,8 +1422,11 @@ class RealtimeVoiceManager(private val context: Context) {
                 
                 setOnErrorListener { mp, what, extra ->
                     Log.e(TAG, "MediaPlayer错误 - what=$what, extra=$extra, textHash=$textHash")
+                    this@RealtimeVoiceManager.mediaProgressJob?.cancel()
+                    this@RealtimeVoiceManager.mediaProgressJob = null
                     this@RealtimeVoiceManager._isDigitalHumanSpeaking.value = false
-                    this@RealtimeVoiceManager.activeAudioHash = null // 清除播放标记
+                    this@RealtimeVoiceManager.awaitingTtsPlayback = false
+                    this@RealtimeVoiceManager.activeAudioHash = null
                     releaseVisualizer()
                     // 出错时清除播放标记
                     currentPlayingTextHash = null
@@ -1349,6 +1451,7 @@ class RealtimeVoiceManager(private val context: Context) {
         if (_isRecordingFlow.value) return
         if (_isProcessing.value) return
         if (_isDigitalHumanSpeaking.value) return
+        if (awaitingTtsPlayback) return
 
         Log.i(TAG, "尝试在空闲状态下自动重启录音")
         startRecording()
@@ -1618,6 +1721,27 @@ class RealtimeVoiceManager(private val context: Context) {
         socket?.emit("text_message", payload)
         _isProcessing.value = true
         stopStreamingAudio() // 发送新消息前停止之前的流
+    }
+
+    /**
+     * 安全地解析 Socket.IO 事件数据为 JSONObject 并执行处理。
+     * 兼容 JSONObject 和 String 两种数据格式，防止 ClassCastException 导致事件丢失。
+     */
+    private fun safeHandleEvent(eventName: String, args: Array<Any>, handler: (JSONObject) -> Unit) {
+        try {
+            val data = args.getOrNull(0)
+            val json = when (data) {
+                is JSONObject -> data
+                is String -> JSONObject(data)
+                else -> {
+                    Log.w(TAG, "⚠️ Socket事件 '$eventName' 数据格式不支持: ${data?.javaClass?.name}")
+                    return
+                }
+            }
+            handler(json)
+        } catch (e: Exception) {
+            Log.e(TAG, "处理Socket事件 '$eventName' 异常", e)
+        }
     }
 
     private fun handleTextChunk(data: JSONObject) {

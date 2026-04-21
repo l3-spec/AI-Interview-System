@@ -1189,6 +1189,7 @@ fun AppNavHost(navController: NavHostController) {
                             val firstQuestion = data.questions.minByOrNull { it.questionIndex }
                             DuixAvatarInterviewScreen(
                                 projectId = com.xlwl.AiMian.BuildConfig.ALIYUN_AVATAR_PROJECT_ID,
+                                jobPositionLabel = selectedPosition,
                                 interviewQuestion = firstQuestion?.questionText ?: "请做一下自我介绍",
                                 onInterviewComplete = { sessionId ->
                                     coroutineScope.launch {
