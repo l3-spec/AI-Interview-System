@@ -114,6 +114,12 @@ export class Qwen3TTSClient {
 
       logger.info(`[Qwen3-TTS] 正在连接 DashScope: ${url}`);
       logger.info(`[Qwen3-TTS] model=${modelName}, apiKey=${this.apiKey ? 'sk-***' + this.apiKey.slice(-4) : '未设置'}`);
+      if (this.apiKey) {
+        const intl = this.apiKey.startsWith('sk-intl');
+        logger.info(
+          `[Qwen3-TTS] Key 区域提示: ${intl ? '国际区 sk-intl-（WebSocket 需与国际区文档一致）' : '国内区（常见 sk- 非 intl）'}`,
+        );
+      }
       this.connectTime = Date.now();
 
       /** 标记 connect Promise 是否已 settled，避免 close 事件重复触发 */
@@ -152,14 +158,33 @@ export class Qwen3TTSClient {
         this.isConnected = false;
         this.ws = null;
 
-        // Access denied → 如果 connect 还未 settle，reject 让外层 fallback 处理
-        if (code === 1007 || reasonStr.toLowerCase().includes('access denied')) {
-          logger.error(`[Qwen3-TTS] DashScope 拒绝访问 (model=${modelName})，请检查账号状态和 API Key 权限`);
+        // DashScope 对 WebSocket 的 code=1007 既可能是鉴权失败，也可能是策略类关闭（idle、参数错误等），勿混为一谈
+        const authLike =
+          /access\s*denied|unauthorized|invalid\s*api|api\s*key|forbidden|authentication\s*failed/i.test(
+            reasonStr,
+          );
+        if (code === 1007 && authLike) {
+          logger.error(
+            `[Qwen3-TTS] DashScope 鉴权/访问被拒 (model=${modelName}): ${reasonStr}`,
+          );
           if (!settled) {
             settled = true;
-            reject(new Error(`DashScope 拒绝访问 (code=${code}): ${reasonStr}`));
+            reject(new Error(`DashScope 鉴权失败 (code=${code}): ${reasonStr}`));
           } else {
-            this.callbacks.onError(`DashScope 拒绝访问 (code=${code}): ${reasonStr}`);
+            this.callbacks.onError(`DashScope 鉴权失败 (code=${code}): ${reasonStr}`);
+            this.callbacks.onSessionFinished();
+          }
+          return;
+        }
+        if (code === 1007) {
+          logger.error(
+            `[Qwen3-TTS] DashScope 关闭连接 code=1007（以 reason 为准，不一定是 Key 问题）: ${reasonStr}`,
+          );
+          if (!settled) {
+            settled = true;
+            reject(new Error(`DashScope 关闭连接 (code=1007): ${reasonStr}`));
+          } else {
+            this.callbacks.onError(`DashScope: ${reasonStr}`);
             this.callbacks.onSessionFinished();
           }
           return;
@@ -204,9 +229,19 @@ export class Qwen3TTSClient {
    * 发送 session.update 配置 TTS 参数
    */
   private sendSessionUpdate(): void {
+    // 强制安全性检查：对于 Qwen3-TTS-Instruct-Flash 模型，目前在多数公有云区域仅 cherry 是合法的基础音色。
+    // 如果外部配置（数据库、环境变量）传入了已确认不合法的 bill, George, Neil 等，在这里强制回退到 cherry，
+    // 以防止后端连接报错中断。音色特征通过 instructions 情感指令来弥补。
+    let safeVoice = this.config.voice;
+    const invalidVoices = ['bill', 'george', 'neil', 'ben', 'steven'];
+    if (invalidVoices.includes(safeVoice.toLowerCase())) {
+      logger.warn(`[Qwen3-TTS] 检测到不合规或未授权的音色: "${safeVoice}"，强制回退到官方标准音色 "cherry" 以确保连接通畅。`);
+      safeVoice = 'cherry';
+    }
+
     const sessionConfig: any = {
       mode: this.config.mode,
-      voice: this.config.voice,
+      voice: safeVoice,
       response_format: this.config.responseFormat,
       sample_rate: this.config.sampleRate,
       language_type: this.config.language,
@@ -225,7 +260,9 @@ export class Qwen3TTSClient {
     };
 
     this.send(event);
-    logger.debug(`[Qwen3-TTS] 已发送 session.update, voice=${this.config.voice}, mode=${this.config.mode}`);
+    logger.info(
+      `[Qwen3-TTS] session.update 已发送: voice="${this.config.voice}", language_type="${this.config.language}", mode=${this.config.mode}`,
+    );
   }
 
   /**
@@ -283,9 +320,16 @@ export class Qwen3TTSClient {
           break;
 
         case 'error':
-          const errMsg = data.error?.message || JSON.stringify(data);
-          logger.error(`[Qwen3-TTS] DashScope 错误: ${errMsg}`);
-          this.callbacks.onError(errMsg);
+          // 完整打印服务端返回，便于与阿里云文档/工单对照（含 error.code / type 等）
+          logger.error(`[Qwen3-TTS] DashScope error 事件(原始JSON): ${JSON.stringify(data)}`);
+          {
+            const errMsg =
+              data.error?.message ||
+              data.message ||
+              (typeof data.error === 'string' ? data.error : JSON.stringify(data.error ?? data));
+            logger.error(`[Qwen3-TTS] DashScope 错误(可读): ${errMsg}`);
+            this.callbacks.onError(errMsg);
+          }
           break;
 
         default:

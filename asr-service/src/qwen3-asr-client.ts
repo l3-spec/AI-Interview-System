@@ -66,6 +66,12 @@ export class Qwen3ASRClient {
 
       logger.info(`[Qwen3-ASR] 正在连接 DashScope: ${url}`);
       logger.info(`[Qwen3-ASR] model=${this.model}, apiKey=${this.apiKey ? 'sk-***' + this.apiKey.slice(-4) : '未设置'}`);
+      if (this.apiKey) {
+        const intl = this.apiKey.startsWith('sk-intl');
+        logger.info(
+          `[Qwen3-ASR] Key 区域提示: ${intl ? '国际区 sk-intl-（WebSocket 需与国际区文档一致）' : '国内区（常见 sk- 非 intl）'}`,
+        );
+      }
 
       let settled = false;
 
@@ -106,13 +112,30 @@ export class Qwen3ASRClient {
         this.isConnected = false;
         this.ws = null;
 
-        if (code === 1007 || reasonStr.toLowerCase().includes('access denied')) {
-          logger.error(`[Qwen3-ASR] DashScope 拒绝访问，请检查账号状态和 API Key 权限`);
+        const authLike =
+          /access\s*denied|unauthorized|invalid\s*api|api\s*key|forbidden|authentication\s*failed/i.test(
+            reasonStr,
+          );
+        if (code === 1007 && authLike) {
+          logger.error(`[Qwen3-ASR] DashScope 鉴权/访问被拒: ${reasonStr}`);
           if (!settled) {
             settled = true;
-            reject(new Error(`DashScope 拒绝访问 (code=${code}): ${reasonStr}`));
+            reject(new Error(`DashScope 鉴权失败 (code=${code}): ${reasonStr}`));
           } else {
-            this.callbacks.onError(`DashScope 拒绝访问 (code=${code}): ${reasonStr}`);
+            this.callbacks.onError(`DashScope 鉴权失败 (code=${code}): ${reasonStr}`);
+            this.callbacks.onSessionFinished();
+          }
+          return;
+        }
+        if (code === 1007) {
+          logger.error(
+            `[Qwen3-ASR] DashScope 关闭连接 code=1007（以 reason 为准，不一定是 Key 问题）: ${reasonStr}`,
+          );
+          if (!settled) {
+            settled = true;
+            reject(new Error(`DashScope 关闭连接 (code=1007): ${reasonStr}`));
+          } else {
+            this.callbacks.onError(`DashScope: ${reasonStr}`);
             this.callbacks.onSessionFinished();
           }
           return;
@@ -225,9 +248,15 @@ export class Qwen3ASRClient {
           break;
 
         case 'error':
-          const errMsg = data.error?.message || JSON.stringify(data);
-          logger.error(`[Qwen3-ASR] DashScope 错误: ${errMsg}`);
-          this.callbacks.onError(errMsg);
+          logger.error(`[Qwen3-ASR] DashScope error 事件(原始JSON): ${JSON.stringify(data)}`);
+          {
+            const errMsg =
+              data.error?.message ||
+              data.message ||
+              (typeof data.error === 'string' ? data.error : JSON.stringify(data.error ?? data));
+            logger.error(`[Qwen3-ASR] DashScope 错误(可读): ${errMsg}`);
+            this.callbacks.onError(errMsg);
+          }
           break;
 
         default:

@@ -77,14 +77,21 @@ export class TTSSessionManager {
       await this.destroySession(sessionId);
     }
 
+    const resolvedVoice = (options.voice || process.env.TTS_VOICE || 'Cherry').trim();
+    const resolvedLang = (options.language || process.env.TTS_LANGUAGE || 'Chinese').trim();
+
     const ttsConfig: Qwen3TTSConfig = {
-      voice: options.voice || process.env.TTS_VOICE || 'Cherry',
+      voice: resolvedVoice,
       sampleRate: options.sampleRate || parseInt(process.env.TTS_SAMPLE_RATE || '24000', 10),
       responseFormat: options.responseFormat || process.env.TTS_RESPONSE_FORMAT || 'pcm',
       mode: (options.mode as 'server_commit' | 'commit') || (process.env.TTS_MODE as any) || 'server_commit',
-      language: options.language || process.env.TTS_LANGUAGE || 'Auto',
+      language: resolvedLang,
       instructions: options.instructions || process.env.TTS_INSTRUCTIONS || undefined,
     };
+
+    logger.info(
+      `[TTS-Manager] createSession: sessionId=${sessionId} voice(客户端)=${options.voice ?? '未传'} TTS_VOICE(env)=${process.env.TTS_VOICE ?? '未设'} → 实际 voice="${ttsConfig.voice}" language_type="${ttsConfig.language}"`,
+    );
 
     const ttsClient = new Qwen3TTSClient(ttsConfig, {
       onSessionCreated: (sessionInfo) => {

@@ -51,8 +51,12 @@ export class RedisEventBus {
       await this.subscriber?.connect();
       this.isConnected = true;
 
-      await this.subscriber?.subscribe('tts:commands');
+      await this.subscriber?.subscribe('tts:commands', 'platform:ai_settings');
       this.subscriber?.on('message', (channel, message) => {
+        if (channel === 'platform:ai_settings') {
+          this.applyPlatformAiSettings(message);
+          return;
+        }
         this.handleCommand(channel, message);
       });
 
@@ -60,6 +64,29 @@ export class RedisEventBus {
     } catch (err: any) {
       logger.warn(`[Redis] 连接失败: ${err.message}，TTS 服务将在无 Redis 模式运行`);
       this.isConnected = false;
+    }
+  }
+
+  /** 管理台保存平台 AI 配置后，同步到本进程环境变量（新 DashScope 连接生效） */
+  private applyPlatformAiSettings(message: string): void {
+    try {
+      const patch = JSON.parse(message) as Record<string, string>;
+      const keys = [
+        'DASHSCOPE_API_KEY',
+        'DASHSCOPE_WS_URL',
+        'QWEN_TTS_MODEL',
+        'QWEN_ASR_MODEL',
+        'TTS_VOICE',
+        'TTS_LANGUAGE',
+      ];
+      for (const k of keys) {
+        if (patch[k] != null && String(patch[k]).length > 0) {
+          process.env[k] = String(patch[k]);
+        }
+      }
+      logger.info('[Redis] 已应用 platform:ai_settings → 环境变量（TTS）');
+    } catch (err: any) {
+      logger.error(`[Redis] platform:ai_settings 解析失败: ${err.message}`);
     }
   }
 

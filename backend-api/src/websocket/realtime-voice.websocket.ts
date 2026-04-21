@@ -18,6 +18,7 @@ import { dashScopeService } from '../services/dashscope.service';
 import { qwen3ASRClient } from '../services/qwen3-asr-service-client';
 import { qwen3TTSClient } from '../services/qwen3-tts-service-client';
 import { interviewConductor, InterviewScene } from '../services/interview-conductor.service';
+import { getMergedPlatformAiConfig } from '../services/platformAiSettings.service';
 
 type SocketSessionInfo = {
   sessionId: string;
@@ -713,6 +714,7 @@ export class RealtimeVoiceWebSocketServer {
         try {
           const asrWsUrl = qwen3ASRClient.getWebSocketUrl();
           const ttsWsUrl = qwen3TTSClient.getWebSocketUrl();
+          const ai = await getMergedPlatformAiConfig();
 
           const [asrHealth, ttsHealth] = await Promise.all([
             qwen3ASRClient.checkHealth(),
@@ -724,7 +726,7 @@ export class RealtimeVoiceWebSocketServer {
             asr: {
               wsUrl: asrWsUrl,
               available: asrHealth?.status === 'ok',
-              model: process.env.QWEN_ASR_MODEL || 'qwen3-asr-flash-realtime',
+              model: ai.qwenAsrModel,
               defaultConfig: {
                 language: 'zh',
                 sampleRate: 16000,
@@ -735,12 +737,13 @@ export class RealtimeVoiceWebSocketServer {
             tts: {
               wsUrl: ttsWsUrl,
               available: ttsHealth?.status === 'ok',
-              model: process.env.QWEN_TTS_MODEL || 'qwen3-tts-instruct-flash-realtime',
+              model: ai.qwenTtsModel,
               defaultConfig: {
-                voice: process.env.TTS_VOICE || 'Cherry',
+                voice: ai.ttsVoice,
                 sampleRate: 24000,
                 responseFormat: 'pcm',
                 mode: 'server_commit',
+                language: ai.ttsLanguage,
               },
             },
           });
@@ -837,13 +840,9 @@ export class RealtimeVoiceWebSocketServer {
     if (!sessionId) {
       return;
     }
-    const upstreamOk = await this.ensureDashScopeConnected(session);
-    if (!upstreamOk) return false;
-
-    logger.info(`[TTS-Manager] 会话 ${sessionId} 收到合成请求: "${chunk.substring(0, 30)}${chunk.length > 30 ? '...' : ''}" (${chunk.length} chars)`);
-    session.ttsClient.appendText(chunk);
-    session.charCount += chunk.length;
-    return true;
+    const state = this.sessionStates.get(sessionId);
+    if (state) {
+      state.welcomeSent = true;
     }
   }
 

@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { volcOpenApiService } from '../services/volc-openapi.service';
 import { aliyunTokenService } from '../services/aliyun-token.service';
 import { ttsService } from '../services/ttsService';
+import { getMergedPlatformAiConfig } from '../services/platformAiSettings.service';
 
 const router = Router();
 
@@ -16,6 +17,7 @@ router.get('/qwen3-config', async (_req, res) => {
   const ttsServiceUrl = process.env.TTS_SERVICE_URL || 'http://localhost:3003';
   const asrWsUrl = asrServiceUrl.replace(/^http/, 'ws') + '/ws/asr';
   const ttsWsUrl = ttsServiceUrl.replace(/^http/, 'ws') + '/ws/tts';
+  const ai = await getMergedPlatformAiConfig();
 
   // 检查微服务健康状态
   let asrHealth: any = null;
@@ -37,7 +39,7 @@ router.get('/qwen3-config', async (_req, res) => {
       architecture: 'dual-track-hybrid-streaming',
       asr: {
         wsUrl: asrWsUrl,
-        model: process.env.QWEN_ASR_MODEL || 'qwen3-asr-flash-realtime',
+        model: ai.qwenAsrModel,
         available: asrHealth?.status === 'ok',
         activeSessions: asrHealth?.activeSessions || 0,
         defaultConfig: {
@@ -49,15 +51,15 @@ router.get('/qwen3-config', async (_req, res) => {
       },
       tts: {
         wsUrl: ttsWsUrl,
-        model: process.env.QWEN_TTS_MODEL || 'qwen3-tts-instruct-flash-realtime',
+        model: ai.qwenTtsModel,
         available: ttsHealth?.status === 'ok',
         activeSessions: ttsHealth?.activeSessions || 0,
         defaultConfig: {
-          voice: process.env.TTS_VOICE || 'Cherry',
+          voice: ai.ttsVoice,
           sampleRate: 24000,
           responseFormat: 'pcm',
           mode: 'server_commit',
-          language: 'Auto',
+          language: ai.ttsLanguage,
         },
       },
     },

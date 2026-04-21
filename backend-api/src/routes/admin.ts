@@ -90,6 +90,10 @@ import {
   getMessageDetailAdmin,
   replyMessageAdmin,
 } from '../controllers/messageAdminController';
+import {
+  getPlatformAiSettings,
+  putPlatformAiSettings,
+} from '../controllers/platformAiSettingsController';
 
 const router = express.Router();
 
@@ -102,6 +106,22 @@ router.post('/login', [
 
 // 所有路由都需要管理员认证
 router.use(adminAuth);
+
+// 平台 AI 配置（百炼 / DeepSeek / 音色等）— 仅超级管理员
+router.get('/platform-ai-settings', [requireRole(['SUPER_ADMIN'])], getPlatformAiSettings);
+router.put('/platform-ai-settings', [
+  requireRole(['SUPER_ADMIN']),
+  body('dashscopeApiKey').optional().isString(),
+  body('dashscopeWsUrl').optional().isString(),
+  body('qwenAsrModel').optional().isString(),
+  body('qwenTtsModel').optional().isString(),
+  body('ttsVoice').optional().isString(),
+  body('ttsLanguage').optional().isString(),
+  body('deepseekApiKey').optional().isString(),
+  body('deepseekModel').optional().isString(),
+  body('deepseekApiUrl').optional().isString(),
+  validate,
+], putPlatformAiSettings);
 
 // Dashboard 统计数据
 router.get('/dashboard/stats', [

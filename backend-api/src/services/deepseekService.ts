@@ -101,6 +101,29 @@ export class DeepseekService {
   }
 
   /**
+   * 系统管理端更新平台配置后刷新 DeepSeek/LLM 连接参数（非 volcengine 路径）
+   */
+  refreshFromPlatformConfig(config: {
+    deepseekApiKey?: string;
+    deepseekModel?: string;
+    deepseekApiUrl?: string;
+  }): void {
+    if (this.providerName === 'volcengine') {
+      return;
+    }
+    const k = (config.deepseekApiKey || '').trim();
+    if (k) {
+      this.apiKey = k;
+      this.isEnabled = true;
+      console.log('✅ DeepSeek API Key 已从平台配置刷新');
+    }
+    const m = (config.deepseekModel || '').trim();
+    if (m) this.model = m;
+    const u = (config.deepseekApiUrl || '').trim();
+    if (u) this.apiUrl = u;
+  }
+
+  /**
    * 获取职位模板
    */
   async getJobTemplate(jobTarget: string): Promise<JobTemplate | null> {

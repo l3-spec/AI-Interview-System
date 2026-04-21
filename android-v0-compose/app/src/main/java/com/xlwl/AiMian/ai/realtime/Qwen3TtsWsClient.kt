@@ -46,9 +46,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class Qwen3TtsWsClient(
     private val cacheDir: File,
-    private val sampleRate: Int = 24000, // 对齐 Qwen3-TTS 默认采样率
-    private val voice: String = "Cherry",
-    private val instructions: String = "语气专业沉稳，公正严肃但不失礼貌，像一位经验丰富的面试官。"
+    private val sampleRate: Int = 24000, 
+    // 百炼实时 TTS 官方示例普遍使用 Cherry；勿使用 CosyVoice 名（如 siqi）作 voice
+    private val voice: String = "cherry",
+    private val instructions: String = "你是一位资深、严谨的男性面试官。请以沉稳、厚重、专业且略带严厉的男声语调进行对话，语气要正式、公正、节奏平稳。"
 ) {
     companion object {
         private const val TAG = "Qwen3TtsWsClient"
@@ -176,7 +177,7 @@ class Qwen3TtsWsClient(
                 put("sampleRate", sampleRate)
                 put("responseFormat", "pcm")
                 put("mode", "server_commit")
-                put("language", "Auto")
+                put("language", "Chinese")
                 put("instructions", instructions)
             })
         }

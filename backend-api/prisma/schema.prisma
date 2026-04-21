@@ -928,3 +928,14 @@ model AppVersion {
   @@index([versionCode], map: "idx_app_versions_version_code")
   @@map("app_versions")
 }
+
+// ==================== 平台 AI 配置（系统管理端可编辑，覆盖 .env） ====================
+
+model PlatformAiSettings {
+  id        String   @id @default("global")
+  /// JSON: { dashscopeApiKey, ttsVoice, qwenTtsModel, ... }
+  settings  Json     @default("{}")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("platform_ai_settings")
+}

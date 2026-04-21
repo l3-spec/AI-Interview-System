@@ -113,7 +113,7 @@ class DuixAvatarController(
                                 // 接管语音播放
                                 realtimeVoiceManager.setDuixAudioSink { wavPath ->
                                     Log.d(TAG, "Sink received audio: $wavPath")
-                                    duixEngine?.playAudio(wavPath)
+                                    // duixEngine?.playAudio(wavPath)
                                 }
                                 
                                 activity.runOnUiThread {

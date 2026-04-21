@@ -18,6 +18,15 @@ export class DashScopeService {
     }
   }
 
+  /** 系统管理端更新平台配置后刷新内存中的 Key */
+  refreshFromPlatformConfig(config: { dashscopeApiKey?: string }): void {
+    const k = (config.dashscopeApiKey || '').trim();
+    if (k) {
+      this.apiKey = k;
+      console.log('✅ DashScope API Key 已从平台配置刷新');
+    }
+  }
+
   /**
    * Qwen-TTS 流式语音合成本地处理
    * 采用双轨架构：将 SSE 流转换为纯音频流输出

@@ -121,7 +121,7 @@ export class InterviewFlowController {
           sessionId,
           state: 'ready',
           totalRounds: result.totalRounds,
-          firstQuestion: result.firstQuestion,
+          firstQuestion: result.firstRound,
           message: '面试内容已生成，准备开始',
           nextAction: 'start_first_round'
         }

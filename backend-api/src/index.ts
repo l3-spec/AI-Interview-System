@@ -85,6 +85,7 @@ const httpServer = createServer(app);
 import { Server } from 'socket.io';
 import { FayWebSocketServer } from './websocket/fay.websocket';
 import { RealtimeVoiceWebSocketServer } from './websocket/realtime-voice.websocket';
+import { warmPlatformAiConfigRuntime } from './services/platformAiSettings.service';
 
 // 配置Socket.IO
 const defaultOrigins = [
@@ -200,13 +201,18 @@ app.use('*', (req, res) => {
 
 // 启动服务器
 const PORT = config.port;
-httpServer.listen(PORT, () => {
+httpServer.listen(PORT, async () => {
   console.log(`🚀 U-Talent后端服务已启动`);
   console.log(`📍 服务地址: http://localhost:${PORT}`);
   console.log(`📚 API文档: http://localhost:${PORT}/api/docs`);
   console.log(`🌟 环境: ${config.nodeEnv}`);
   console.log(`🎭 Fay WebSocket服务: ws://localhost:${PORT}`);
   console.log(`🎤 实时语音WebSocket服务: ws://localhost:${PORT}`);
+  try {
+    await warmPlatformAiConfigRuntime();
+  } catch (e: any) {
+    console.warn('平台 AI 配置预热跳过:', e?.message || e);
+  }
 });
 
 export default httpServer;

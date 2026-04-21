@@ -48,9 +48,12 @@ export class RedisEventBus {
       await this.subscriber?.connect();
       this.isConnected = true;
 
-      // 订阅来自 backend-api 的控制指令
-      await this.subscriber?.subscribe('asr:commands');
+      await this.subscriber?.subscribe('asr:commands', 'platform:ai_settings');
       this.subscriber?.on('message', (channel, message) => {
+        if (channel === 'platform:ai_settings') {
+          this.applyPlatformAiSettings(message);
+          return;
+        }
         this.handleCommand(channel, message);
       });
 
@@ -71,6 +74,28 @@ export class RedisEventBus {
       this.publisher.publish(channel, JSON.stringify(data));
     } catch (err: any) {
       logger.error(`[Redis] 发布事件失败: ${err.message}`);
+    }
+  }
+
+  private applyPlatformAiSettings(message: string): void {
+    try {
+      const patch = JSON.parse(message) as Record<string, string>;
+      const keys = [
+        'DASHSCOPE_API_KEY',
+        'DASHSCOPE_WS_URL',
+        'QWEN_ASR_MODEL',
+        'QWEN_TTS_MODEL',
+        'TTS_VOICE',
+        'TTS_LANGUAGE',
+      ];
+      for (const k of keys) {
+        if (patch[k] != null && String(patch[k]).length > 0) {
+          process.env[k] = String(patch[k]);
+        }
+      }
+      logger.info('[Redis] 已应用 platform:ai_settings → 环境变量（ASR）');
+    } catch (err: any) {
+      logger.error(`[Redis] platform:ai_settings 解析失败: ${err.message}`);
     }
   }
 

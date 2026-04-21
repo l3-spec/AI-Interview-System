@@ -1044,4 +1044,42 @@ export const messageAdminApi = {
   },
 };
 
+/** 平台 AI 配置（百炼 / DeepSeek），仅 SUPER_ADMIN */
+export interface PlatformAiSettingsDTO {
+  dashscopeWsUrl: string;
+  qwenAsrModel: string;
+  qwenTtsModel: string;
+  ttsVoice: string;
+  ttsLanguage: string;
+  deepseekModel: string;
+  deepseekApiUrl: string;
+  dashscopeApiKeyMasked: string;
+  deepseekApiKeyMasked: string;
+}
+
+export type PlatformAiSettingsUpdate = Partial<{
+  dashscopeApiKey: string;
+  dashscopeWsUrl: string;
+  qwenAsrModel: string;
+  qwenTtsModel: string;
+  ttsVoice: string;
+  ttsLanguage: string;
+  deepseekApiKey: string;
+  deepseekModel: string;
+  deepseekApiUrl: string;
+}>;
+
+export const platformAiSettingsApi = {
+  get: async (): Promise<ApiResponse<PlatformAiSettingsDTO>> => {
+    return (await apiClient.get('/admin/platform-ai-settings')) as ApiResponse<PlatformAiSettingsDTO>;
+  },
+  update: async (
+    payload: PlatformAiSettingsUpdate
+  ): Promise<ApiResponse<PlatformAiSettingsDTO> & { message?: string }> => {
+    return (await apiClient.put('/admin/platform-ai-settings', payload)) as ApiResponse<PlatformAiSettingsDTO> & {
+      message?: string;
+    };
+  },
+};
+
 export default apiClient;
