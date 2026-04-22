@@ -279,8 +279,10 @@ export class DeepseekService {
         };
       }
 
-      // 调用 Deepseek API
-      const response = await this.callDeepseekAPI(builtPrompt);
+      // 调用 Deepseek API（整卷题目生成耗时常 >30s，必须用长超时，勿受 DEEPSEEK_TIMEOUT_MS=15s 等过短配置影响）
+      const response = await this.callDeepseekAPI(builtPrompt, {
+        timeoutMs: this.longGenerationTimeoutMs,
+      });
 
       // 解析返回的问题
       const questions = this.parseQuestionsFromResponse(response.choices[0].message.content);
@@ -1004,7 +1006,13 @@ ${candidateLastAnswer.slice(0, 1200)}
    */
   async chatCompletion(
     messages: Array<{ role: string; content: string }>,
-    options?: { temperature?: number; maxTokens?: number; response_format?: any }
+    options?: {
+      temperature?: number;
+      maxTokens?: number;
+      response_format?: any;
+      /** 覆盖默认 DeepSeek 模型，例如 QA 评估专用 model */
+      model?: string;
+    }
   ): Promise<string> {
     if (!this.isEnabled) {
       return '{}';
@@ -1014,7 +1022,7 @@ ${candidateLastAnswer.slice(0, 1200)}
       const response = await axios.post(
         this.apiUrl,
         {
-          model: this.model,
+          model: options?.model || this.model,
           messages,
           max_tokens: options?.maxTokens || 2000,
           temperature: options?.temperature ?? 0.7,

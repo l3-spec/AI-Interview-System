@@ -9,6 +9,7 @@ import android.media.MediaFormat
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.media.audiofx.Visualizer
+import android.os.SystemClock
 import android.util.Log
 import android.media.AudioTrack
 import android.media.AudioAttributes
@@ -74,6 +75,12 @@ class RealtimeVoiceManager(private val context: Context) {
         private const val MAX_RECORDING_DURATION_MS = 60000  // 最长录音60秒
         private const val VISUALIZER_MAX_RETRY = 5
         private const val VISUALIZER_RETRY_DELAY_MS = 150L
+        /** 外放时喇叭声进入麦克风的缓冲时间；过短易把刚播完的题干送进 ASR（服务端还可能延迟出字） */
+        private const val SPEAKER_TO_MIC_COOLDOWN_MS = 4200L
+        private const val ASR_RECONNECT_GAP_MS = 220L
+        private const val ASR_POST_CONNECT_WAIT_MS = 400L
+        /** 抢话用 VAD：阈值略高减轻外放回声误触，时长略短以更快打断 */
+        private const val BARGE_IN_SPEECH_MIN_MS = 350L
     }
 
     private suspend fun preparePlayableAudio(sourcePath: String): String? = withContext(Dispatchers.IO) {
@@ -295,6 +302,15 @@ class RealtimeVoiceManager(private val context: Context) {
         speechMinDurationMs = 500,       // 至少说0.5秒
         maxSpeechDurationMs = MAX_RECORDING_DURATION_MS.toLong()
     )
+
+    /** 仅在「不向 ASR 推流」时运行，用于用户抢话打断播音 */
+    private val bargeInVadDetector = VoiceActivityDetector(
+        sampleRate = SAMPLE_RATE,
+        silenceThresholdDb = -32f,
+        silenceDurationMs = 2000,
+        speechMinDurationMs = BARGE_IN_SPEECH_MIN_MS,
+        maxSpeechDurationMs = MAX_RECORDING_DURATION_MS.toLong()
+    )
     
     private var vadEnabled = true  // VAD是否启用
 
@@ -321,6 +337,16 @@ class RealtimeVoiceManager(private val context: Context) {
     // 标记是否有正在等待 TTS 播放的响应，防止 isSpeaking 收集器过早将 _isDigitalHumanSpeaking 置为 false
     @Volatile
     private var awaitingTtsPlayback = false
+
+    /**
+     * 在此时间戳（[SystemClock.elapsedRealtime]）之前不向 ASR 推流、不采纳 ASR 最终结果，用于外放回声与 ASR 侧缓冲尾包。
+     * 播报开始前设为 [Long.MAX_VALUE]；播报结束后再设为 now + [SPEAKER_TO_MIC_COOLDOWN_MS]。
+     */
+    @Volatile
+    private var micToAsrAllowedAfterElapsedRealtime: Long = 0L
+
+    @Volatile
+    private var bargeInLastHandledElapsedRealtime: Long = 0L
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
@@ -556,9 +582,16 @@ class RealtimeVoiceManager(private val context: Context) {
                             if (speaking) {
                                 // TTS 开始播放 → 标记数字人正在说话，清除等待标志
                                 awaitingTtsPlayback = false
+                                micToAsrAllowedAfterElapsedRealtime = Long.MAX_VALUE
                                 _isDigitalHumanSpeaking.value = true
-                                Log.i(TAG, "🎙️ [FLOW] Qwen3 TTS 播放正式开始 -> 关闭录音")
-                                stopRecordingInternal()
+                                if (useQwen3Asr) {
+                                    bargeInVadDetector.reset()
+                                    Log.i(TAG, "🎙️ [FLOW] Qwen3 TTS 播放正式开始 -> 保持采麦以支持 VAD 抢话")
+                                    ensureRecordingForBargeIn()
+                                } else {
+                                    Log.i(TAG, "🎙️ [FLOW] Qwen3 TTS 播放正式开始 -> 关闭录音（非 Qwen3 ASR 无抢话通路的回声风险）")
+                                    stopRecordingInternal()
+                                }
                             } else {
                                 // TTS 停止播放：只有在没有等待中的新响应时才标记说话结束
                                 if (awaitingTtsPlayback) {
@@ -569,12 +602,7 @@ class RealtimeVoiceManager(private val context: Context) {
                                 Log.i(TAG, "🎙️ [FLOW] Qwen3 TTS 播报结束")
                                 _isDigitalHumanSpeaking.value = false
                                 if (!_interviewCompleted.value && vadEnabled) {
-                                    // 延迟 500ms 确保一句话彻底结束，避免回答还没播完就录音
-                                    kotlinx.coroutines.delay(500)
-                                    if (!_isDigitalHumanSpeaking.value && !awaitingTtsPlayback) {
-                                        Log.i(TAG, "🎙️ [FLOW] Qwen3 TTS 链路释放 -> 开启自动监听")
-                                        tryAutoStartRecordingIfIdle()
-                                    }
+                                    scheduleResumeListeningAfterSpeakerPlayback()
                                 }
                             }
                         }
@@ -606,12 +634,20 @@ class RealtimeVoiceManager(private val context: Context) {
                     launch {
                         qwen3Asr.transcriptionCompleted.collect { result ->
                             Log.i(TAG, "Qwen3 ASR 识别完成: ${result.text}")
-                            if (result.text.isNotBlank()) {
-                                withContext(Dispatchers.Main) {
-                                    _partialTranscript.value = result.text
-                                }
-                                submitUserText(result.text)
+                            if (result.text.isBlank()) return@collect
+                            val nowRt = SystemClock.elapsedRealtime()
+                            if (nowRt < micToAsrAllowedAfterElapsedRealtime) {
+                                Log.w(TAG, "丢弃 ASR（仍在扬声器/缓冲冷却内）: ${result.text}")
+                                return@collect
                             }
+                            if (looksLikeAcousticEchoOfLastAvatar(result.text)) {
+                                Log.w(TAG, "丢弃 ASR（与最近面试官字幕高度相似，疑外放回声）: ${result.text}")
+                                return@collect
+                            }
+                            withContext(Dispatchers.Main) {
+                                _partialTranscript.value = result.text
+                            }
+                            submitUserText(result.text)
                         }
                     }
                     // 监听部分识别 → 更新字幕
@@ -689,8 +725,12 @@ class RealtimeVoiceManager(private val context: Context) {
         }
 
         Log.i(TAG, "手动触发说话: ${text.take(20)}...")
-        
-        stopRecordingInternal()
+        if (useQwen3Asr) {
+            bargeInVadDetector.reset()
+            ensureRecordingForBargeIn()
+        } else {
+            stopRecordingInternal()
+        }
         
         _isDigitalHumanSpeaking.value = true
         awaitingTtsPlayback = true
@@ -770,6 +810,7 @@ class RealtimeVoiceManager(private val context: Context) {
                 // 重置VAD
                 if (vadEnabled) {
                     vadDetector.reset()
+                    bargeInVadDetector.reset()
                 }
                 
                 recordedBuffer = ByteArrayOutputStream()
@@ -860,6 +901,7 @@ class RealtimeVoiceManager(private val context: Context) {
         _isProcessing.value = false
         _partialTranscript.value = ""
         awaitingTtsPlayback = false
+        micToAsrAllowedAfterElapsedRealtime = 0L
         mediaProgressJob?.cancel()
         mediaProgressJob = null
         _ttsPlaybackProgress.value = 0f
@@ -888,6 +930,7 @@ class RealtimeVoiceManager(private val context: Context) {
         playedTextHashes.clear()
         currentPlayingTextHash = null
         awaitingTtsPlayback = false
+        micToAsrAllowedAfterElapsedRealtime = 0L
         _interviewCompleted.value = false
 
         scope.cancel()
@@ -912,10 +955,18 @@ class RealtimeVoiceManager(private val context: Context) {
                 if (bytesRead > 0) {
                     // Qwen3 ASR 模式：实时推流，服务端 VAD + 识别
                     if (useQwen3Asr) {
-                        qwen3Asr.sendAudio(buffer, 0, bytesRead)
-                        totalBytes += bytesRead
-                        if (!speechDetected) {
-                            speechDetected = true
+                        // 仅在允许时向 ASR 送流；阻塞期间仍分析麦克风流，用独立 VAD 做抢话检测
+                        if (shouldStreamMicToQwen3Asr()) {
+                            qwen3Asr.sendAudio(buffer, 0, bytesRead)
+                            totalBytes += bytesRead
+                            if (!speechDetected) {
+                                speechDetected = true
+                            }
+                        } else if (vadEnabled) {
+                            val barge = bargeInVadDetector.analyze(buffer)
+                            if (barge.state == VoiceActivityDetector.State.SPEECH) {
+                                handleUserSpeechBargeIn()
+                            }
                         }
                         // Qwen3 ASR 使用服务端 VAD，客户端不需要本地 VAD 断句
                         // 但仍保留超时保护
@@ -1161,8 +1212,14 @@ class RealtimeVoiceManager(private val context: Context) {
             }
             
             if (willSpeak) {
-                // 确保数字人说话期间麦克风关闭
-                stopRecordingInternal()
+                micToAsrAllowedAfterElapsedRealtime = Long.MAX_VALUE
+                if (useQwen3Asr) {
+                    // 不向 ASR 推流以防外放回声，但保持采麦 + 独立 VAD 抢话
+                    bargeInVadDetector.reset()
+                    ensureRecordingForBargeIn()
+                } else {
+                    stopRecordingInternal()
+                }
                 _isDigitalHumanSpeaking.value = true
                 awaitingTtsPlayback = true
             }
@@ -1467,13 +1524,9 @@ class RealtimeVoiceManager(private val context: Context) {
                         Log.d(TAG, "文本播放完成，已标记为已播放 - textHash=$textHash, 已播放总数=${playedTextHashes.size}")
                     }
                     
-                    // VAD模式下自动重新开始录音，实现实时互动
+                    // 外放场景：与 Qwen3 流式相同，冷却 + 必要时重连 ASR 再监听
                     if (!_interviewCompleted.value && vadEnabled && _connectionState.value == ConnectionState.CONNECTED) {
-                        scope.launch {
-                            delay(300) 
-                            Log.i(TAG, "TTS播放完成，VAD模式自动重新开始录音")
-                            startRecording()
-                        }
+                        scheduleResumeListeningAfterSpeakerPlayback()
                     } else {
                         tryAutoStartRecordingIfIdle()
                     }
@@ -1529,9 +1582,10 @@ class RealtimeVoiceManager(private val context: Context) {
             Log.w(TAG, "停止 Qwen3 TTS 异常: ${e.message}")
         }
         
-        // 3. 重置状态位
+        // 3. 重置状态位（随后若继续播新语音，handleVoiceResponse 会再置为阻断 ASR）
         _isDigitalHumanSpeaking.value = false
         awaitingTtsPlayback = false
+        micToAsrAllowedAfterElapsedRealtime = 0L
         activeAudioHash = null
         currentPlayingTextHash = null
         
@@ -1539,6 +1593,104 @@ class RealtimeVoiceManager(private val context: Context) {
         _ttsPlaybackProgress.value = 0f
         digitalHumanController?.resetMouth()
         releaseVisualizer()
+    }
+
+    /**
+     * 播音或即将播音时仍保持 AudioRecord，用于本地 VAD 抢话；若之前被停掉则拉起一路监听。
+     */
+    private fun ensureRecordingForBargeIn() {
+        if (!vadEnabled || _interviewCompleted.value) return
+        if (_connectionState.value != ConnectionState.CONNECTED) return
+        if (isRecording) return
+        Log.d(TAG, "ensureRecordingForBargeIn: 拉起采麦用于抢话检测")
+        startRecording()
+    }
+
+    /**
+     * 本地 VAD 认定用户正在持续说话且当前不应向 ASR 推流时：打断播音 / 跳过后冷却，并刷新 ASR 会话。
+     */
+    private fun handleUserSpeechBargeIn() {
+        val nowRt = SystemClock.elapsedRealtime()
+        if (nowRt - bargeInLastHandledElapsedRealtime < 350L) return
+        val inCooldown = nowRt < micToAsrAllowedAfterElapsedRealtime
+        val aiPlaying = _isDigitalHumanSpeaking.value || awaitingTtsPlayback
+        if (!inCooldown && !aiPlaying) return
+        bargeInLastHandledElapsedRealtime = nowRt
+
+        if (aiPlaying) {
+            Log.i(TAG, "🎙️ [BARGE-IN] 检测到用户语音，打断数字人播音并通知后端")
+            stopAllAudio()
+            runCatching { digitalHumanController?.interruptPlayback() }
+            runCatching { socket?.emit("interrupt") }
+        } else {
+            Log.i(TAG, "🎙️ [BARGE-IN] 播音后冷却中检测到用户开口，提前恢复 ASR")
+        }
+        bargeInVadDetector.reset()
+        scope.launch {
+            if (useQwen3Asr && currentSessionId != null) {
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        qwen3Asr.disconnect()
+                        delay(ASR_RECONNECT_GAP_MS)
+                        qwen3Asr.connect(AppConfig.asrServiceWsUrl, currentSessionId!!)
+                    }.onFailure { e -> Log.e(TAG, "抢话后重连 ASR 失败: ${e.message}") }
+                }
+                delay(ASR_POST_CONNECT_WAIT_MS)
+            }
+            micToAsrAllowedAfterElapsedRealtime = 0L
+        }
+    }
+
+    /**
+     * 是否允许把麦克风 PCM 推给 Qwen3 ASR。
+     * 数字人/TTS 播音时扬声器声会被 mic 拾取，易被识别成「用户在说话」——不是服务端把 TTS 文本转给 ASR，而是声学回声。
+     */
+    private fun shouldStreamMicToQwen3Asr(): Boolean {
+        if (_isDigitalHumanSpeaking.value || awaitingTtsPlayback) return false
+        if (SystemClock.elapsedRealtime() < micToAsrAllowedAfterElapsedRealtime) return false
+        return true
+    }
+
+    private fun normalizeForEchoCompare(s: String) =
+        s.replace(Regex("\\s+"), "").lowercase(Locale.ROOT)
+
+    /** 外放回声：识别结果与最近面试官字幕高度重合则丢弃（避免迟滞 ASR 尾包误提交） */
+    private fun looksLikeAcousticEchoOfLastAvatar(asr: String): Boolean {
+        val av = normalizeForEchoCompare(_latestDigitalHumanText.value ?: return false)
+        val u = normalizeForEchoCompare(asr)
+        if (u.length < 12 || av.length < 12) return false
+        if (av.contains(u) || u.contains(av)) return true
+        val win = 16
+        if (u.length >= win) {
+            for (i in 0..u.length - win) {
+                if (av.contains(u.substring(i, i + win))) return true
+            }
+        }
+        return false
+    }
+
+    /**
+     * 数字人播报结束后：等待 [SPEAKER_TO_MIC_COOLDOWN_MS]，必要时断开并重连 Qwen3 ASR 以丢弃服务端缓冲音频，再自动开麦。
+     */
+    private fun scheduleResumeListeningAfterSpeakerPlayback() {
+        if (_interviewCompleted.value || !vadEnabled) return
+        if (_connectionState.value != ConnectionState.CONNECTED) return
+        micToAsrAllowedAfterElapsedRealtime = SystemClock.elapsedRealtime() + SPEAKER_TO_MIC_COOLDOWN_MS
+        scope.launch {
+            delay(SPEAKER_TO_MIC_COOLDOWN_MS)
+            if (_interviewCompleted.value) return@launch
+            if (useQwen3Asr && currentSessionId != null) {
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        qwen3Asr.disconnect()
+                        delay(ASR_RECONNECT_GAP_MS)
+                        qwen3Asr.connect(AppConfig.asrServiceWsUrl, currentSessionId!!)
+                    }.onFailure { Log.e(TAG, "重启 Qwen3 ASR 失败: ${it.message}") }
+                }
+                delay(ASR_POST_CONNECT_WAIT_MS)
+            }
+            tryAutoStartRecordingIfIdle()
+        }
     }
 
     private fun tryAutoStartRecordingIfIdle() {
@@ -1549,6 +1701,7 @@ class RealtimeVoiceManager(private val context: Context) {
         if (_isProcessing.value) return
         if (_isDigitalHumanSpeaking.value) return
         if (awaitingTtsPlayback) return
+        if (SystemClock.elapsedRealtime() < micToAsrAllowedAfterElapsedRealtime) return
 
         Log.i(TAG, "尝试在空闲状态下自动重启录音")
         startRecording()

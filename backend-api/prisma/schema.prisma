@@ -115,10 +115,11 @@ model Job {
   company              Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   // 关联关系
-  interviews   Interview[]
-  applications JobApplication[]
-  sections     JobSectionItem[]
-  promotedJobs PromotedJob[]
+  interviews          Interview[]
+  applications        JobApplication[]
+  sections            JobSectionItem[]
+  promotedJobs        PromotedJob[]
+  aiInterviewSessions AIInterviewSession[]
 
   @@index([dictionaryPositionId], map: "idx_jobs_dictionary_position")
   @@map("jobs")
@@ -370,7 +371,8 @@ model AIInterviewSession {
   updatedAt       DateTime  @updatedAt
 
   // 外键
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job   Job?  @relation(fields: [jobId], references: [id], onDelete: SetNull)
 
   // 关联关系
   questions          AIInterviewQuestion[]

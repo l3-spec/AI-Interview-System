@@ -710,8 +710,13 @@ export class QAEvaluationService {
       completenessScore: 0,
       professionalAccuracyScore: 0,
       logicalCoherenceScore: 0,
+      dimensionContentScore: 0,
+      dimensionMultimodalScore: 0,
+      dimensionOverallScore: 0,
       overallScore: 0,
       feedback: '未作答，无法评估',
+      keywordMatchRate: 0,
+      quantifiableMetricsFound: [],
       relevanceDetails: {
         embeddingSimilarity: 0,
         keywordOverlap: 0,

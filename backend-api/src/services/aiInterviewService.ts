@@ -228,6 +228,25 @@ class AIInterviewService {
     }
   }
 
+  /**
+   * 仅当 id 在 jobs 表存在时返回，用于写入 AIInterviewSession.jobId，避免 P2003 外键错误。
+   * 客户端可能传入字典位 id、过期 id 等非法 jobId，此时不关联岗位，仅依赖 jobTarget 等文字字段。
+   */
+  private async resolveJobIdForSession(jobId?: string): Promise<string | undefined> {
+    if (typeof jobId !== 'string' || jobId.trim().length === 0) {
+      return undefined;
+    }
+    const id = jobId.trim();
+    const row = await prisma.job.findUnique({ where: { id }, select: { id: true } });
+    if (!row) {
+      console.warn(
+        `[AIInterviewService] jobId 在 jobs 表中不存在，将不写入会话的 job 外键: ${id}`
+      );
+      return undefined;
+    }
+    return id;
+  }
+
   private hasQuestionAnswer(question: {
     answerText?: string | null;
     answerVideoUrl?: string | null;
@@ -293,7 +312,8 @@ class AIInterviewService {
 
     const normalizedJobId =
       typeof jobId === 'string' && jobId.trim().length > 0 ? jobId.trim() : undefined;
-    const normalizedCompanyTarget = await this.resolveCompanyTargetInput(normalizedJobId, companyTarget);
+    const resolvedJobId = await this.resolveJobIdForSession(normalizedJobId);
+    const normalizedCompanyTarget = await this.resolveCompanyTargetInput(resolvedJobId, companyTarget);
     const totalDurationTargetMinutes = 15;
     const minutesPerQuestion = 2.5;
     const normalizedJobCategory =
@@ -326,13 +346,13 @@ class AIInterviewService {
       const logCategory = normalizedJobCategory ?? '通用面试';
       const logSubCategory = normalizedJobSubCategory ?? jobTarget;
       console.log(
-        `开始创建AI面试会话: 用户${userId}, 岗位ID:${normalizedJobId ?? '无'}, 职位${jobTarget}, 大类${logCategory}, 小类${logSubCategory}`
+        `开始创建AI面试会话: 用户${userId}, 岗位ID(请求):${normalizedJobId ?? '无'}, 关联有效:${resolvedJobId ?? '无'}, 职位${jobTarget}, 大类${logCategory}, 小类${logSubCategory}`
       );
 
       const existingSession = await prisma.aIInterviewSession.findFirst({
         where: {
           userId,
-          ...(normalizedJobId ? { jobId: normalizedJobId } : { jobTarget }),
+          ...(resolvedJobId ? { jobId: resolvedJobId } : { jobTarget }),
           status: {
             in: ['PREPARING', 'IN_PROGRESS'],
           },
@@ -368,7 +388,7 @@ class AIInterviewService {
 
         return {
           success: true,
-          jobId: existingSession.jobId || normalizedJobId,
+          jobId: existingSession.jobId || resolvedJobId,
           sessionId: existingSession.id,
           message: '发现未完成的面试会话，继续为您恢复进度',
           questions: existingQuestions,
@@ -385,7 +405,7 @@ class AIInterviewService {
       const reusableSession = await prisma.aIInterviewSession.findFirst({
         where: {
           userId,
-          ...(normalizedJobId ? { jobId: normalizedJobId } : { jobTarget }),
+          ...(resolvedJobId ? { jobId: resolvedJobId } : { jobTarget }),
           jobCategory: normalizedJobCategory ?? null,
           jobSubCategory: normalizedJobSubCategory ?? null,
           status: {
@@ -420,7 +440,7 @@ class AIInterviewService {
           data: {
             id: sessionId,
             userId,
-            jobId: normalizedJobId,
+            jobId: resolvedJobId,
             jobTarget,
             jobCategory: normalizedJobCategory,
             jobSubCategory: normalizedJobSubCategory,
@@ -468,7 +488,7 @@ class AIInterviewService {
 
         return {
           success: true,
-          jobId: normalizedJobId,
+          jobId: resolvedJobId,
           sessionId,
           message: '已为您复用历史面试题',
           questions: sessionQuestions,
@@ -524,7 +544,7 @@ class AIInterviewService {
         data: {
           id: sessionId,
           userId,
-          jobId: normalizedJobId,
+          jobId: resolvedJobId,
           jobTarget,
           jobCategory: normalizedJobCategory,
           jobSubCategory: normalizedJobSubCategory,
@@ -567,7 +587,7 @@ class AIInterviewService {
 
       return {
         success: true,
-        jobId: normalizedJobId,
+        jobId: resolvedJobId,
         sessionId,
         message: '面试会话创建成功',
         questions: sessionQuestions,

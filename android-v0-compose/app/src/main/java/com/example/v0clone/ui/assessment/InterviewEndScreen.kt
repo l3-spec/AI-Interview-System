@@ -37,219 +37,52 @@ fun InterviewEndScreen(
     onNavigateHome: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val primaryText = Color(0xFF1E1E1E)
-    val secondaryText = Color(0xFF4A4A4A)
-    val accentTeal = Color(0xFF0DB3C9)
-    val accentOrange = Color(0xFFFFA247)
-    val highlightOrange = Color(0xFFF57C00)
-    val borderGray = Color(0xFFB8BDC5)
-    val countdown = remember { mutableIntStateOf(3) }
-
-    LaunchedEffect(countdown.intValue) {
-        if (countdown.intValue > 0) {
-            delay(1000)
-            countdown.intValue -= 1
-        } else {
-            onNavigateHome()
-        }
-    }
+    // 🎨 Figma 颜色规范
+    val backgroundStart = Color(0xFF0C1220) // 深蓝底色 (App 统一风格)
+    val backgroundEnd = Color(0xFF05101E)   // 更深的底部
+    val accentOrange = Color(0xFFF57C00)
+    val starLinkWhite = Color(0xFFFFFFFF)
+    val secondaryText = Color(0xFFB8BDC5)
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(backgroundStart, backgroundEnd)
+                )
+            )
             .statusBarsPadding()
             .navigationBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 12.dp)
+            .padding(horizontal = 24.dp)
     ) {
-        IconButton(
-            onClick = onNavigateHome,
-            modifier = Modifier.align(Alignment.TopStart)
-        ) {
-            Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-        }
-
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = 32.dp, bottom = 12.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f, fill = true),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Illustration(accentTeal = accentTeal, accentOrange = accentOrange)
-
-                Spacer(modifier = Modifier.height(32.dp))
-
-                Text(
-                    text = "恭喜完成面试！",
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = primaryText,
-                    textAlign = TextAlign.Center
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Text(
-                    text = buildAnnotatedString {
-                        append("评估完成后，详细的面试报告将会出现在\n【我的】频道的【")
-                        withStyle(
-                            androidx.compose.ui.text.SpanStyle(
-                                color = highlightOrange,
-                                fontWeight = FontWeight.Medium
-                            )
-                        ) {
-                            append("简历报告")
-                        }
-                        append("】中")
-                    },
-                    fontSize = 14.sp,
-                    color = secondaryText,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 20.sp
-                )
-            }
-
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Button(
-                    onClick = onNavigateHome,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.White,
-                        contentColor = primaryText
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .border(
-                            width = 1.dp,
-                            color = borderGray,
-                            shape = RoundedCornerShape(10.dp)
-                        )
-                ) {
-                    Text(
-                        text = "返回主页",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = "${countdown.intValue}s",
-                    color = Color(0xFF8A8A8A),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Normal
-                )
-            }
-        }
-    }
-}
-
-/**
- * 面试结束页面插图
- * 包含：笔记本电脑屏幕（显示橙色圆圈和白色对勾）、右侧人物、底部波浪和植物元素
- */
-@Composable
-private fun Illustration(
-    accentTeal: Color,
-    accentOrange: Color
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(280.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        // 背景波浪形状
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val width = size.width
-            val height = size.height
-
-            // 底部波浪形状
-            val wavePath = Path().apply {
-                moveTo(0f, height * 0.75f)
-                // 第一个波浪
-                quadraticTo(width * 0.15f, height * 0.65f, width * 0.3f, height * 0.7f)
-                quadraticTo(width * 0.45f, height * 0.75f, width * 0.6f, height * 0.7f)
-                quadraticTo(width * 0.75f, height * 0.65f, width * 0.9f, height * 0.7f)
-                quadraticTo(width * 0.95f, height * 0.72f, width, height * 0.7f)
-                lineTo(width, height)
-                lineTo(0f, height)
-                close()
-            }
-            drawPath(wavePath, color = accentTeal.copy(alpha = 0.2f))
-
-            // 植物元素（简化为小圆形）
-            drawCircle(
-                color = accentOrange.copy(alpha = 0.3f),
-                radius = 8.dp.toPx(),
-                center = Offset(width * 0.25f, height * 0.85f)
-            )
-            drawCircle(
-                color = accentOrange.copy(alpha = 0.25f),
-                radius = 6.dp.toPx(),
-                center = Offset(width * 0.35f, height * 0.88f)
-            )
-            drawCircle(
-                color = accentOrange.copy(alpha = 0.3f),
-                radius = 7.dp.toPx(),
-                center = Offset(width * 0.7f, height * 0.86f)
-            )
-        }
-
-        // 主要内容区域
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // 左侧：笔记本电脑屏幕
+            // ── 核心插画：发光对勾 ──
             Box(
                 modifier = Modifier
-                    .width(180.dp)
-                    .height(140.dp)
-                    .padding(end = 16.dp),
+                    .size(120.dp)
+                    .background(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                Color(0xFF4A9EFF).copy(alpha = 0.2f),
+                                Color.Transparent
+                            )
+                        ),
+                        shape = CircleShape
+                    ),
                 contentAlignment = Alignment.Center
             ) {
-                // 笔记本电脑屏幕背景
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            brush = Brush.verticalGradient(
-                                listOf(
-                                    accentTeal.copy(alpha = 0.25f),
-                                    accentTeal.copy(alpha = 0.15f)
-                                )
-                            ),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        .border(
-                            width = 2.dp,
-                            color = accentTeal.copy(alpha = 0.3f),
-                            shape = RoundedCornerShape(12.dp)
-                        ),
-                    contentAlignment = Alignment.Center
+                Surface(
+                    modifier = Modifier.size(72.dp),
+                    shape = CircleShape,
+                    color = Color(0xFF4A9EFF),
+                    shadowElevation = 8.dp
                 ) {
-                    // 橙色圆圈和白色对勾
-                    Box(
-                        modifier = Modifier
-                            .size(80.dp)
-                            .background(accentOrange, shape = CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Filled.Check,
                             contentDescription = "完成",
@@ -260,47 +93,61 @@ private fun Illustration(
                 }
             }
 
-            // 右侧：人物形象（简化为圆形头像和身体）
-            Column(
+            Spacer(modifier = Modifier.height(40.dp))
+
+            // ── 标题 ──
+            Text(
+                text = "面试已完成",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = starLinkWhite,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ── 说明文本 ──
+            Text(
+                text = buildAnnotatedString {
+                    append("评估完成后，详细的面试报告将会出现在\n【我的】频道的【")
+                    withStyle(
+                        androidx.compose.ui.text.SpanStyle(
+                            color = accentOrange,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    ) {
+                        append("简历报告")
+                    }
+                    append("】中")
+                },
+                fontSize = 15.sp,
+                color = secondaryText,
+                textAlign = TextAlign.Center,
+                lineHeight = 24.sp
+            )
+
+            Spacer(modifier = Modifier.height(80.dp))
+
+            // ── 底部操作按钮 ──
+            Button(
+                onClick = onNavigateHome,
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFEC7C38), // 统一品牌橙
+                    contentColor = Color.White
+                ),
                 modifier = Modifier
-                    .width(100.dp)
-                    .height(180.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .padding(horizontal = 24.dp)
             ) {
-                // 头部
-                Box(
-                    modifier = Modifier
-                        .size(50.dp)
-                        .background(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    accentTeal.copy(alpha = 0.4f),
-                                    accentTeal.copy(alpha = 0.2f)
-                                )
-                            ),
-                            shape = CircleShape
-                        )
-                )
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                // 身体（简化为矩形）
-                Box(
-                    modifier = Modifier
-                        .width(60.dp)
-                        .height(80.dp)
-                        .background(
-                            brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    accentTeal.copy(alpha = 0.3f),
-                                    accentTeal.copy(alpha = 0.2f)
-                                )
-                            ),
-                            shape = RoundedCornerShape(8.dp)
-                        )
+                Text(
+                    text = "确认",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
         }
     }
 }
+

@@ -318,6 +318,10 @@ class DuixAvatarController(
         duixEngine?.stopAudio()
     }
 
+    override fun interruptPlayback() {
+        interrupt()
+    }
+
     override fun startPush() {
         Log.d(TAG, "startPush()")
         duixEngine?.startPush()

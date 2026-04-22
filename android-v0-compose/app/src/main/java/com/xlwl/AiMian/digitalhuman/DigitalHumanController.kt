@@ -41,4 +41,9 @@ interface DigitalHumanController {
      * Stop pushing audio stream fragments.
      */
     fun stopPush()
+
+    /**
+     * 用户抢话（barge-in）时立即打断正在播放的客户端/数字人音频；无播放时可为空实现。
+     */
+    fun interruptPlayback() {}
 }

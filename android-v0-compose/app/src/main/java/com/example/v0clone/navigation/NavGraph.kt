@@ -47,6 +47,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import com.google.gson.Gson
+import java.io.IOException
+import java.net.SocketTimeoutException
 
 import com.xlwl.AiMian.data.api.AiInterviewApi
 import com.xlwl.AiMian.data.api.ApiService
@@ -94,7 +96,6 @@ import com.xlwl.AiMian.ui.jobs.CompanyDetailRoute
 import com.xlwl.AiMian.ui.jobs.EditIntentionJobScreen
 import com.xlwl.AiMian.ui.jobs.JobDetailRoute
 import com.xlwl.AiMian.ui.jobs.JobSelectionScreen
-import com.xlwl.AiMian.ai.InterviewCompleteScreen
 import com.xlwl.AiMian.ui.assessment.InterviewEndScreen
 import com.xlwl.AiMian.ui.jobs.JobsScreen
 import com.xlwl.AiMian.ui.assessment.AssessmentCategoryRoute
@@ -1137,7 +1138,7 @@ fun AppNavHost(navController: NavHostController) {
                     result.onSuccess { data ->
                         sessionData = data
                     }.onFailure { throwable ->
-                        errorMessage = throwable.message ?: "生成数字人面试会话失败，请稍后重试"
+                        errorMessage = humanizeDigitalInterviewStartError(throwable)
                     }
                     isLoading = false
                 }
@@ -1213,7 +1214,7 @@ fun AppNavHost(navController: NavHostController) {
                                             Log.w("DigitalInterview", "标记面试完成失败", error)
                                         }
                                     }
-                                    navController.navigate("${Routes.SESSION}/$sessionId") {
+                                    navController.navigate(Routes.INTERVIEW_COMPLETE) {
                                         popUpTo(Routes.DIGITAL_INTERVIEW) { inclusive = true }
                                     }
                                 },
@@ -1297,6 +1298,19 @@ private fun ForceUpdateDialog(
             }
         }
     )
+}
+
+/**
+ * 创建会话会同步调用 LLM 生成多道题，常需 15–40 秒；中间层/弱网易出现英文 "timeout" raw message。
+ */
+private fun humanizeDigitalInterviewStartError(t: Throwable): String {
+  val raw = t.message?.lowercase().orEmpty()
+  return when {
+    t is SocketTimeoutException -> "连接超时。生成面试题目需等待数十秒，请换稳定网络或在 Wi‑Fi 下重试。"
+    t is IOException && ("timeout" in raw || "timed out" in raw) -> "请求超时。题目生成较慢，请稍后再试或检查是否走了仅允许短时长的代理/网关。"
+    "timeout" in raw || "timed out" in raw -> "请求超时。题目生成较慢，请检查网络后重试。"
+    else -> t.message?.takeIf { it.isNotBlank() } ?: "生成数字人面试会话失败，请稍后重试"
+  }
 }
 
 @Composable
