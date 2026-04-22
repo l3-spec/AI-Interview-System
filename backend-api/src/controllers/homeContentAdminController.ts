@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
+import { normalizeBannerImageUrl } from '../utils/validation';
 
 const parseBoolean = (value: any) => {
   if (value === undefined || value === null || value === '') {
@@ -94,7 +95,7 @@ export const createHomeBanner = async (req: Request, res: Response) => {
         title,
         subtitle,
         description: description ?? null,
-        imageUrl,
+        imageUrl: normalizeBannerImageUrl(String(imageUrl)),
         linkType: linkType ?? null,
         linkId: linkId ?? null,
         sortOrder: parseNumber(sortOrder, 0),
@@ -128,7 +129,9 @@ export const updateHomeBanner = async (req: Request, res: Response) => {
     if (title !== undefined) data.title = title;
     if (subtitle !== undefined) data.subtitle = subtitle;
     if (description !== undefined) data.description = description;
-    if (imageUrl !== undefined) data.imageUrl = imageUrl;
+    if (imageUrl !== undefined) {
+      data.imageUrl = String(imageUrl).trim() === '' ? '' : normalizeBannerImageUrl(String(imageUrl));
+    }
     if (linkType !== undefined) data.linkType = linkType || null;
     if (linkId !== undefined) data.linkId = linkId || null;
     if (sortOrder !== undefined) data.sortOrder = parseNumber(sortOrder, 0);

@@ -72,7 +72,8 @@ import kotlinx.coroutines.launch
 fun LoginMainScreen(
     repo: AuthRepository,
     onLoginSuccess: (String, String) -> Unit,
-    onRequestCodeLogin: (String?) -> Unit
+    onRequestCodeLogin: (String?) -> Unit,
+    onNavigatePrivacy: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -81,7 +82,7 @@ fun LoginMainScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var info by remember { mutableStateOf<String?>(null) }
     var pendingAutoLogin by remember { mutableStateOf(false) }
-    var agreed by remember { mutableStateOf(true) } // 默认已同意
+    var agreed by remember { mutableStateOf(false) } // 默认不勾选
 
     val requiredPermissions = remember {
         val permissions = mutableListOf(Manifest.permission.READ_PHONE_STATE)
@@ -169,6 +170,10 @@ fun LoginMainScreen(
                 Button(
                     onClick = {
                         if (loading) return@Button
+                        if (!agreed) {
+                            error = "请阅读并同意用户协议和隐私条款"
+                            return@Button
+                        }
                         error = null
                         info = null
                         val missingPermissions = requiredPermissions.filter {
@@ -233,7 +238,10 @@ fun LoginMainScreen(
                         checked = agreed,
                         onCheckedChange = { agreed = it }
                     )
-                    FigmaAgreementText()
+                    FigmaAgreementText(
+                        onPrivacyClick = onNavigatePrivacy,
+                        onAgreementClick = onNavigatePrivacy // For now, both point to privacy
+                    )
                 }
 
                 if (error != null) {

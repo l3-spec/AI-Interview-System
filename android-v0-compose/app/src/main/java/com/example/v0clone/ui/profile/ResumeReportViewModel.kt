@@ -51,8 +51,6 @@ class ResumeReportViewModel(
           val reports = sessions
             .filter { hasCompletedInterview(it) }
             .mapNotNull { it.toReportItem() }
-          val ready = reports.filter { it.isReady }
-          val selected = if (ready.size == 1) ready.first() else null
           val currentSelection = _uiState.value.selectedReport
           val matchedSelection = currentSelection?.let { current ->
             reports.find { candidate -> candidate.sessionId == current.sessionId }
@@ -62,7 +60,7 @@ class ResumeReportViewModel(
               isLoading = false,
               error = null,
               reports = reports,
-              selectedReport = selected ?: matchedSelection
+              selectedReport = matchedSelection
             )
           }
         }

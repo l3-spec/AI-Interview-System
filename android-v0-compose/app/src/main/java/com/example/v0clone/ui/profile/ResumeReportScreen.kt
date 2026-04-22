@@ -2,6 +2,7 @@ package com.xlwl.AiMian.ui.profile
 
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -133,12 +134,19 @@ fun ResumeReportRoute(
 ) {
   val viewModel: ResumeReportViewModel = viewModel(factory = ResumeReportViewModel.provideFactory(repository))
   val state by viewModel.uiState.collectAsStateWithLifecycle()
+  val context = LocalContext.current
 
   ResumeReportHome(
     state = state,
     onBack = onBack,
     onRefresh = { viewModel.loadReports() },
-    onSelectReport = { viewModel.selectReport(it) },
+    onSelectReport = { report ->
+      if (report.isReady) {
+        viewModel.selectReport(report)
+      } else {
+        Toast.makeText(context, "报告还在生成中，请稍后再试", Toast.LENGTH_SHORT).show()
+      }
+    },
     onExitDetail = { viewModel.clearSelection() }
   )
 }

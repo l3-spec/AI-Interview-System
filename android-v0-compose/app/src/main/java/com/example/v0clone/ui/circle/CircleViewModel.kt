@@ -14,11 +14,14 @@ import java.time.format.DateTimeParseException
 import java.util.LinkedHashMap
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.xlwl.AiMian.data.model.Banner
+import com.xlwl.AiMian.ui.components.BannerData
 
 private const val PAGE_SIZE = 20
 
@@ -36,6 +39,8 @@ data class CircleCard(
 )
 
 data class CircleUiState(
+    val banners: List<BannerData> = emptyList(),
+    val currentBannerIndex: Int = 0,
     val cards: List<CircleCard> = emptyList(),
     val isLoading: Boolean = false,
     val isAppending: Boolean = false,
@@ -55,6 +60,21 @@ class CircleViewModel(private val repository: ContentRepository) : ViewModel() {
 
     init {
         refresh()
+        startBannerAutoScroll()
+    }
+
+    private fun startBannerAutoScroll() {
+        viewModelScope.launch {
+            while (true) {
+                delay(5000)
+                val bannerCount = _uiState.value.banners.size
+                if (bannerCount > 1) {
+                    _uiState.update { it.copy(
+                        currentBannerIndex = (it.currentBannerIndex + 1) % (bannerCount * 100)
+                    )}
+                }
+            }
+        }
     }
 
     fun refresh() {
@@ -64,15 +84,25 @@ class CircleViewModel(private val repository: ContentRepository) : ViewModel() {
         expertHasMore = true
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, isAppending = false, error = null) }
-            val result = loadPages(userPage = 1, expertPage = 1, replace = true)
+            
+            val bannersDeferred = async { repository.getCircleBanners() }
+            val feedJob = async { loadPages(userPage = 1, expertPage = 1, replace = true) }
+            
+            val bannersResult = bannersDeferred.await()
+            val result = feedJob.await()
+
+            val banners = bannersResult.getOrNull()?.map { it.toBannerData() }.orEmpty()
+
             if (result.cards.isNotEmpty()) {
-                _uiState.value = CircleUiState(
+                _uiState.value = _uiState.value.copy(
+                    banners = banners,
                     cards = result.cards,
                     isLoading = false,
                     error = result.errorMessage
                 )
             } else {
-                _uiState.value = CircleUiState(
+                _uiState.value = _uiState.value.copy(
+                    banners = banners,
                     cards = emptyList(),
                     isLoading = false,
                     error = result.errorMessage ?: "加载帖子失败"
@@ -177,6 +207,16 @@ class CircleViewModel(private val repository: ContentRepository) : ViewModel() {
 
         return LoadResult(merged, message)
     }
+
+    private fun Banner.toBannerData() = BannerData(
+        id = id,
+        imageUrl = imageUrl,
+        label = subtitle,
+        title = title,
+        subtitle = description,
+        linkType = linkType,
+        linkId = linkId
+    )
 
     private fun mergeCards(
         existing: List<CircleCard>,

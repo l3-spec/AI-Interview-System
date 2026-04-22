@@ -61,7 +61,13 @@ import com.xlwl.AiMian.data.repository.AuthRepository
 import com.xlwl.AiMian.navigation.Routes
 import com.xlwl.AiMian.ui.auth.LoginFlowScreen
 import com.google.gson.Gson
+import com.xlwl.AiMian.data.repository.UserRepository
+import com.xlwl.AiMian.data.repository.OssRepository
+import com.xlwl.AiMian.data.repository.ContentRepository
+import com.xlwl.AiMian.ui.components.BannerCarousel
+import com.xlwl.AiMian.ui.components.BannerData
 import kotlinx.coroutines.launch
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 private val ProfilePageGradient = Brush.verticalGradient(
     colors = listOf(
@@ -72,11 +78,25 @@ private val ProfilePageGradient = Brush.verticalGradient(
 )
 
 @Composable
-fun ProfileScreen(navController: NavController) {
-    val context = LocalContext.current
-    val authManager = remember { AuthManager(context) }
+fun ProfileScreen(
+    navController: NavController,
+    userRepository: UserRepository,
+    authRepository: AuthRepository,
+    ossRepository: OssRepository,
+    contentRepository: ContentRepository,
+    authManager: AuthManager,
+    onBannerClick: (BannerData) -> Unit = {}
+) {
+    val viewModel: ProfileViewModel = viewModel(factory = ProfileViewModel.provideFactory(
+        userRepository,
+        authRepository,
+        ossRepository,
+        contentRepository,
+        authManager
+    ))
+    val uiState by viewModel.uiState.collectAsState()
     val token by authManager.tokenFlow.collectAsState(initial = null)
-    val user by authManager.userFlow.collectAsState(initial = null)
+    val user = uiState.user
     val scope = rememberCoroutineScope()
     val loginClient = remember {
         RetrofitClient.createOkHttpClient(
@@ -99,21 +119,24 @@ fun ProfileScreen(navController: NavController) {
         )
     } else {
         LoggedInProfileContent(
-            user = user,
+            uiState = uiState,
             onNavigate = { route ->
                 navController.navigate(route) {
                     launchSingleTop = true
                 }
-            }
+            },
+            onBannerClick = onBannerClick
         )
     }
 }
 
 @Composable
 private fun LoggedInProfileContent(
-    user: User?,
-    onNavigate: (String) -> Unit
+    uiState: ProfileUiState,
+    onNavigate: (String) -> Unit,
+    onBannerClick: (BannerData) -> Unit
 ) {
+    val user = uiState.user
     val context = LocalContext.current
     val showComingSoon = remember(context) {
         { label: String ->
@@ -237,6 +260,21 @@ private fun LoggedInProfileContent(
                     onStatClick = handleStat
                 )
             }
+
+            if (uiState.banners.isNotEmpty()) {
+                item(key = "banner-carousel") {
+                    BannerCarousel(
+                        banners = uiState.banners,
+                        currentIndex = uiState.currentBannerIndex,
+                        onBannerClick = onBannerClick,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp)
+                            .padding(bottom = 4.dp)
+                    )
+                }
+            }
+
             item {
                 MyCommunityCard(
                     shortcuts = communityShortcuts,

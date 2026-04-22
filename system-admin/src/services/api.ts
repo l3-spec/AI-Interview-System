@@ -751,7 +751,8 @@ export const jobDictionaryApi = {
   },
 
   getPublicDictionary: async (): Promise<ApiResponse<JobDictionaryCategory[]>> => {
-    return response as ApiResponse<JobDictionaryCategory[]>;
+    const res = (await apiClient.get('/job-dictionary')) as ApiResponse<JobDictionaryCategory[]>;
+    return res;
   },
 };
 
@@ -776,10 +777,13 @@ export const regionDictionaryApi = {
 // 文件上传相关 API
 export const uploadApi = {
   // 上传文件（支持图片）
-  uploadFile: async (file: File, type: 'logo' | 'license' | 'resume' | 'avatar' | 'banner' = 'banner'): Promise<ApiResponse<{ url: string; filename: string }>> => {
+  uploadFile: async (
+    file: File,
+    type: 'logo' | 'license' | 'resume' | 'avatar' | 'banner' = 'banner'
+  ): Promise<ApiResponse<{ url: string; filename: string; objectKey?: string }>> => {
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('type', type === 'banner' ? 'logo' : type); // 使用 logo 类型作为 banner 的临时方案
+    formData.append('type', type);
 
     // 创建临时 axios 实例用于文件上传（不使用 JSON Content-Type）
     const uploadClient = axios.create({
@@ -802,15 +806,23 @@ export const uploadApi = {
     try {
       const response = await uploadClient.post('/upload', formData);
       if (response.data?.success && response.data?.data?.url) {
-        // 确保返回完整的 URL
-        const url = response.data.data.url.startsWith('http')
-          ? response.data.data.url
-          : `${config.API_BASE_URL}${response.data.data.url}`;
+        const raw = response.data.data.url as string;
+        // 后端 toPublicUrl 已返回以 / 开头的站点路径（如 /api/oss/proxy?...），不可再拼 API_BASE_URL，否则会出现 /api/api/...
+        let url: string;
+        if (/^https?:\/\//i.test(raw)) {
+          url = raw;
+        } else if (raw.startsWith('/')) {
+          url = raw;
+        } else {
+          const base = String(config.API_BASE_URL || '/api').replace(/\/$/, '');
+          url = `${base}/${raw.replace(/^\/+/, '')}`;
+        }
         return {
           success: true,
           data: {
             url,
-            filename: response.data.data.filename
+            filename: response.data.data.filename,
+            objectKey: response.data.data.objectKey as string | undefined
           }
         };
       }

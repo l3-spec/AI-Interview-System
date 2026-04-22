@@ -10,6 +10,7 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import com.xlwl.AiMian.data.api.ApiResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -611,18 +612,36 @@ class ContentRepository(private val apiService: ApiService) {
     /**
      * 获取首页Banner
      */
-    suspend fun getHomeBanners(): Result<List<Banner>> = withContext(Dispatchers.IO) {
-        try {
-            val response = apiService.getHomeBanners()
-            if (response.success && response.data != null) {
-                Result.success(response.data)
-            } else {
-                Result.failure(Exception(response.message ?: "获取Banner失败"))
+    suspend fun getHomeBanners(): Result<List<Banner>> = getBanners { apiService.getHomeBanners() }
+
+    /**
+     * 获取职圈Banner
+     */
+    suspend fun getCircleBanners(): Result<List<Banner>> = getBanners { apiService.getCircleBanners() }
+
+    /**
+     * 获取岗位Banner
+     */
+    suspend fun getJobsBanners(): Result<List<Banner>> = getBanners { apiService.getJobsBanners() }
+
+    /**
+     * 获取我的Banner
+     */
+    suspend fun getProfileBanners(): Result<List<Banner>> = getBanners { apiService.getProfileBanners() }
+
+    private suspend fun getBanners(call: suspend () -> ApiResponse<List<Banner>>): Result<List<Banner>> = 
+        withContext(Dispatchers.IO) {
+            try {
+                val response = call()
+                if (response.success && response.data != null) {
+                    Result.success(response.data)
+                } else {
+                    Result.failure(Exception(response.message ?: "获取Banner失败"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
             }
-        } catch (e: Exception) {
-            Result.failure(e)
         }
-    }
 
     /**
      * 获取首页精选内容

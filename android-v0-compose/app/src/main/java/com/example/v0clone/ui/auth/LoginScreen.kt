@@ -45,7 +45,8 @@ import com.google.gson.Gson
 fun LoginScreen(
     repo: AuthRepository,
     onLoginSuccess: (String, String) -> Unit, // token, userJson
-    onGoRegister: () -> Unit
+    onGoRegister: () -> Unit,
+    onNavigatePrivacy: () -> Unit = {}
 ) {
     var phone by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
@@ -55,6 +56,7 @@ fun LoginScreen(
     var info by remember { mutableStateOf<String?>(null) }
     var countdown by remember { mutableStateOf(0) }
     var timerJob by remember { mutableStateOf<Job?>(null) }
+    var isAgreed by remember { mutableStateOf(false) } // 默认不勾选
     val scope = rememberCoroutineScope()
     val navPadding = WindowInsets.navigationBars.asPaddingValues()
 
@@ -245,6 +247,10 @@ fun LoginScreen(
                     // 登录按钮
                     Button(
                         onClick = {
+                            if (!isAgreed) {
+                                error = "请阅读并同意隐私政策"
+                                return@Button
+                            }
                             if (!phoneValid) {
                                 error = "请输入11位手机号"
                                 return@Button
@@ -277,15 +283,26 @@ fun LoginScreen(
                                 modifier = Modifier.size(20.dp),
                                 color = Color.White
                             )
-                        } else {
-                            Text(
-                                "登录",
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color.White
-                                )
-                            )
                         }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    // 隐私政策勾选
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        FigmaAgreementCheckbox(
+                            checked = isAgreed,
+                            onCheckedChange = { isAgreed = it }
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        FigmaAgreementText(
+                            onPrivacyClick = onNavigatePrivacy,
+                            onAgreementClick = onNavigatePrivacy
+                        )
                     }
 
                     Spacer(Modifier.height(16.dp))

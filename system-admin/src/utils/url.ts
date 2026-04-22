@@ -1,4 +1,6 @@
-const KNOWN_LOCAL_PREFIXES = ['/api/', '/uploads/', '/videos/', '/avatar/', '/models/'];
+// 注意：不要包含 /uploads/。Banner 等上传文件在 OSS，只能走 /api/oss/proxy；拼到 Vite 端口的
+// /uploads/... 在开发环境会 404 导致管理后台图片裂图。videos/avatar/models 等仍可能走同源静态时保留。
+const KNOWN_LOCAL_PREFIXES = ['/api/', '/videos/', '/avatar/', '/models/'];
 const KNOWN_UPLOAD_FOLDERS = new Set([
   'logos',
   'licenses',

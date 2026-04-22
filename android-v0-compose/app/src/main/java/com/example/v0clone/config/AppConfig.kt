@@ -44,6 +44,15 @@ object AppConfig {
     val isVolcanoEnabled: Boolean
         get() = volcanoAppId.isNotBlank() && volcanoApiKey.isNotBlank()
 
+    val volcanoTtsHost: String
+        get() = nonBlank(clientRuntime?.volcanoTtsHost) ?: "openspeech.bytedance.com"
+
+    val volcanoTtsPath: String
+        get() = nonBlank(clientRuntime?.volcanoTtsPath) ?: "/api/v1/tts"
+
+    val ttsVoice: String
+        get() = nonBlank(clientRuntime?.ttsVoice) ?: "BV700_V2_streaming"
+
     val apiBaseUrl: String
         get() = resolveUrl(nonBlank(clientRuntime?.apiBaseUrl), resolveUrl(BuildConfig.API_BASE_URL, defaultApiBaseUrl, ensureTrailingSlash = true), ensureTrailingSlash = true)
 
@@ -93,6 +102,15 @@ object AppConfig {
 
     val aliyunAccessKeySecret: String
         get() = nonBlank(clientRuntime?.aliyunAccessKeySecret) ?: BuildConfig.ALIYUN_ACCESS_KEY_SECRET
+
+    val vadThreshold: Float
+        get() = clientRuntime?.vadThreshold ?: -40f
+
+    val bargeInVadThreshold: Float
+        get() = clientRuntime?.bargeInVadThreshold ?: -32f
+
+    val speechCooldownMs: Long
+        get() = clientRuntime?.speechCooldownMs ?: 4200L
 
     /** Qwen3 TTS session.create 的 instructions，由服务端 TTS_INSTRUCTIONS 统一下发 */
     val qwen3TtsInstructions: String

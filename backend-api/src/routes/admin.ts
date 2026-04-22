@@ -21,7 +21,7 @@ import {
 } from '../controllers/adminController';
 import { adminAuth, requireRole, requirePermission } from '../middleware/adminAuth';
 import { body, query, param } from 'express-validator';
-import { validate } from '../utils/validation';
+import { validate, isValidBannerImageUrl } from '../utils/validation';
 import {
   listHomeBanners,
   createHomeBanner,
@@ -419,7 +419,15 @@ router.post('/home/banners', [
   requirePermission('content:write'),
   body('title').isLength({ min: 1, max: 100 }).withMessage('标题不能为空且不超过100字符'),
   body('subtitle').isLength({ min: 1, max: 150 }).withMessage('副标题不能为空且不超过150字符'),
-  body('imageUrl').isURL().withMessage('请提供有效的图片链接'),
+  body('imageUrl').custom((value) => {
+    if (value === undefined || value === null || String(value).trim() === '') {
+      throw new Error('请提供图片链接');
+    }
+    if (!isValidBannerImageUrl(String(value))) {
+      throw new Error('请提供有效的图片链接（https、以 / 开头、或 uploads/ 资源路径）');
+    }
+    return true;
+  }),
   body('sortOrder').optional().isInt({ min: 0, max: 1000 }).withMessage('排序值必须在0-1000之间'),
   body('isActive').optional().isBoolean().withMessage('状态参数必须是布尔值'),
   validate
@@ -433,7 +441,15 @@ router.put('/home/banners/:id', [
     .matches(/^[a-zA-Z0-9-_]+$/).withMessage('Banner ID 格式错误'),
   body('title').optional().isLength({ min: 1, max: 100 }).withMessage('标题不超过100字符'),
   body('subtitle').optional().isLength({ min: 1, max: 150 }).withMessage('副标题不超过150字符'),
-  body('imageUrl').optional().isURL().withMessage('请提供有效的图片链接'),
+  body('imageUrl').custom((value) => {
+    if (value === undefined || value === null || String(value).trim() === '') {
+      return true;
+    }
+    if (!isValidBannerImageUrl(String(value))) {
+      throw new Error('请提供有效的图片链接（https、以 / 开头、或 uploads/ 资源路径）');
+    }
+    return true;
+  }),
   body('sortOrder').optional().isInt({ min: 0, max: 1000 }).withMessage('排序值必须在0-1000之间'),
   body('isActive').optional().isBoolean().withMessage('状态参数必须是布尔值'),
   validate

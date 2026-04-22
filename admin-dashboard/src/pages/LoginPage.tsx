@@ -1,8 +1,12 @@
-import React, { useState } from 'react';
-import { Form, Input, Button, Card, Typography, Alert, Space, message } from 'antd';
+import React, { useState, useEffect } from 'react';
+import { Form, Input, Button, Card, Typography, Alert, Space, message, Checkbox } from 'antd';
 import { UserOutlined, LockOutlined, BuildOutlined } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import FirstLaunchPrivacyModal, {
+  hasPrivacyFirstLaunchConsent,
+  setPrivacyFirstLaunchConsent
+} from '../components/FirstLaunchPrivacyModal';
 
 const { Title, Text } = Typography;
 
@@ -13,10 +17,22 @@ interface LoginPageProps {
 const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
+  const [showPrivacyGateModal, setShowPrivacyGateModal] = useState(false);
+  const [agreedPolicies, setAgreedPolicies] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
+  useEffect(() => {
+    if (!hasPrivacyFirstLaunchConsent()) {
+      setShowPrivacyGateModal(true);
+    }
+  }, []);
+
   const handleSubmit = async (values: { email: string; password: string }) => {
+    if (!agreedPolicies) {
+      message.warning('请先阅读并勾选同意《用户服务协议》和《隐私政策》');
+      return;
+    }
     setLoading(true);
     setError('');
 
@@ -123,6 +139,21 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
             />
           </Form.Item>
 
+          <Form.Item style={{ marginBottom: 8 }}>
+            <Checkbox checked={agreedPolicies} onChange={(e) => setAgreedPolicies(e.target.checked)}>
+              <span style={{ fontSize: 13, color: '#595959' }}>
+                我已阅读并同意
+                <Link to="/user-agreement" target="_blank" rel="noopener noreferrer" style={{ color: '#0091ff' }}>
+                  《用户服务协议》
+                </Link>
+                和
+                <Link to="/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ color: '#0091ff' }}>
+                  《隐私政策》
+                </Link>
+              </span>
+            </Checkbox>
+          </Form.Item>
+
           <Form.Item style={{ marginBottom: '16px' }}>
             <Button
               type="primary"
@@ -181,6 +212,15 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
           </div>
         </div>
       </Card>
+
+      <FirstLaunchPrivacyModal
+        open={showPrivacyGateModal}
+        onAgree={() => {
+          setPrivacyFirstLaunchConsent();
+          setShowPrivacyGateModal(false);
+        }}
+        onDisagree={() => setShowPrivacyGateModal(false)}
+      />
     </div>
   );
 };

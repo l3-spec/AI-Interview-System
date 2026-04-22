@@ -116,6 +116,7 @@ import com.xlwl.AiMian.ui.profile.PostFavoritesRoute
 import com.xlwl.AiMian.ui.profile.DeliveryListRoute
 import com.xlwl.AiMian.ui.profile.PersonalInfoRoute
 import com.xlwl.AiMian.ui.profile.PrivacyPermissionsRoute
+import com.xlwl.AiMian.ui.profile.PrivacyPolicyScreen
 import kotlinx.coroutines.launch
 import java.net.URLDecoder
 import java.net.URLEncoder
@@ -215,75 +216,64 @@ fun AppNavHost(navController: NavHostController) {
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        NavHost(navController = navController, startDestination = Routes.HOME) {
-        // 首页 - 使用优化版HomeScreen（瀑布流+固定顶栏+加载更多）
-        composable(Routes.HOME) {
-            HomeScreen(
-                repository = contentRepo,
-                onCardClick = { card ->
-                    requireLogin {
-                        when (card.targetType) {
-                            HomeFeedTargetType.POST -> {
-                                navController.currentBackStackEntry?.savedStateHandle?.set("selected_card", card)
-                                navController.navigate("content/${URLEncoder.encode(card.targetId, "UTF-8")}")
-                            }
-                            HomeFeedTargetType.COMPANY -> {
-                                navController.navigate(
-                                    "${Routes.COMPANY}/${URLEncoder.encode(card.targetId, "UTF-8")}",
-                                ) {
-                                    launchSingleTop = true
-                                }
-                            }
-                            HomeFeedTargetType.JOB -> {
-                                navController.navigate(
-                                    "${Routes.JOB_DETAIL}/${URLEncoder.encode(card.targetId, "UTF-8")}",
-                                ) {
-                                    launchSingleTop = true
-                                }
-                            }
-                        }
+    val handleBannerClick: (com.xlwl.AiMian.ui.components.BannerData) -> Unit = { banner ->
+        requireLogin {
+            when (banner.linkType) {
+                "post" -> {
+                    banner.linkId?.let { id ->
+                        navController.navigate("content/${URLEncoder.encode(id, "UTF-8")}")
                     }
-                },
-                onSearchClick = {
-                    requireLogin {
-                        navController.navigate(Routes.JOBS)
+                }
+                "company" -> {
+                    banner.linkId?.let { id ->
+                        navController.navigate("${Routes.COMPANY}/${URLEncoder.encode(id, "UTF-8")}")
                     }
-                },
-                onBannerClick = { banner ->
-                    requireLogin {
-                        when (banner.linkType) {
-                            "post" -> {
-                                banner.linkId?.let { id ->
-                                    navController.navigate("content/${URLEncoder.encode(id, "UTF-8")}")
-                                }
-                            }
-                            "company" -> {
-                                banner.linkId?.let { id ->
-                                    navController.navigate("${Routes.COMPANY}/${URLEncoder.encode(id, "UTF-8")}")
-                                }
-                            }
-                            "assessment" -> {
-                                banner.linkId?.let { id ->
-                                    navController.navigate("${Routes.PROFILE_ASSESSMENT_TAKE}/${URLEncoder.encode(id, "UTF-8")}") {
-                                        launchSingleTop = true
-                                    }
-                                }
-                            }
-                            "webview", "third_party" -> {
-                                banner.linkId?.let { url ->
-                                    if (url.isNotBlank()) {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        runCatching { context.startActivity(intent) }
-                                            .onFailure { Toast.makeText(context, "无法打开链接", Toast.LENGTH_SHORT).show() }
-                                    }
-                                }
-                            }
+                }
+                "assessment" -> {
+                    banner.linkId?.let { id ->
+                        navController.navigate("${Routes.PROFILE_ASSESSMENT_TAKE}/${URLEncoder.encode(id, "UTF-8")}") {
+                            launchSingleTop = true
                         }
                     }
                 }
-            )
+                "webview", "third_party" -> {
+                    banner.linkId?.let { url ->
+                        if (url.isNotBlank()) {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            runCatching { context.startActivity(intent) }
+                                .onFailure { Toast.makeText(context, "无法打开链接", Toast.LENGTH_SHORT).show() }
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        NavHost(navController = navController, startDestination = Routes.HOME) {
+            // 首页
+            composable(Routes.HOME) {
+                HomeScreen(
+                    repository = contentRepo,
+                    onCardClick = { card ->
+                        when (card.targetType) {
+                            HomeFeedTargetType.JOB -> {
+                                navController.navigate("${Routes.JOB_DETAIL}/${URLEncoder.encode(card.id, "UTF-8")}")
+                            }
+                            HomeFeedTargetType.COMPANY -> {
+                                navController.navigate("${Routes.COMPANY}/${URLEncoder.encode(card.id, "UTF-8")}")
+                            }
+                            else -> {
+                                // 帖子或其他
+                            }
+                        }
+                    },
+                    onSearchClick = {
+                        navController.navigate(Routes.JOBS)
+                    },
+                    onBannerClick = handleBannerClick
+                )
+            }
 
         // 职岗页面
         composable(Routes.JOBS) { backStackEntry ->
@@ -298,6 +288,7 @@ fun AppNavHost(navController: NavHostController) {
             JobsScreen(
                 repository = jobRepo,
                 preferenceRepository = jobPreferenceRepo,
+                // ... other props ...
                 preferenceRefreshSignal = preferenceRefreshSignal,
                 preferencePayload = preferencePayload,
                 onPreferenceRefreshConsumed = {
@@ -511,7 +502,8 @@ fun AppNavHost(navController: NavHostController) {
                             launchSingleTop = true
                         }
                     }
-                }
+                },
+                onBannerClick = handleBannerClick
             )
         }
 
@@ -539,8 +531,16 @@ fun AppNavHost(navController: NavHostController) {
         }
 
         // 我的页面
-        composable(Routes.PROFILE) { 
-            ProfileScreen(navController = navController) 
+        composable(Routes.PROFILE) {
+            ProfileScreen(
+                navController = navController,
+                userRepository = userRepo,
+                authRepository = authRepo,
+                ossRepository = ossRepository,
+                contentRepository = contentRepo,
+                authManager = authManager,
+                onBannerClick = handleBannerClick
+            )
         }
 
         composable(Routes.PROFILE_VERIFICATION) {
@@ -579,7 +579,7 @@ fun AppNavHost(navController: NavHostController) {
 
         composable(Routes.PROFILE_PERSONAL_INFO) {
             val profileViewModel: ProfileViewModel = viewModel(
-                factory = ProfileViewModel.provideFactory(userRepo, authRepo, ossRepository, authManager)
+                factory = ProfileViewModel.provideFactory(userRepo, authRepo, ossRepository, contentRepo, authManager)
             )
             if (token.isNullOrEmpty()) {
                 LaunchedEffect(Unit) {
@@ -984,7 +984,8 @@ fun AppNavHost(navController: NavHostController) {
                     navController.popBackStack()
                     navController.navigate(Routes.PROFILE)
                 },
-                onGoRegister = { navController.navigate(Routes.REGISTER) }
+                onGoRegister = { navController.navigate(Routes.REGISTER) },
+                onNavigatePrivacy = { navController.navigate(Routes.PRIVACY_POLICY) }
             )
         }
 
@@ -1000,7 +1001,8 @@ fun AppNavHost(navController: NavHostController) {
                     navController.popBackStack()
                     navController.navigate(Routes.PROFILE)
                 },
-                onGoLogin = { navController.popBackStack(); navController.navigate(Routes.LOGIN) }
+                onGoLogin = { navController.popBackStack(); navController.navigate(Routes.LOGIN) },
+                onNavigatePrivacy = { navController.navigate(Routes.PRIVACY_POLICY) }
             )
         }
 
@@ -1243,6 +1245,10 @@ fun AppNavHost(navController: NavHostController) {
                     }
                 }
             )
+        }
+
+        composable(Routes.PRIVACY_POLICY) {
+            PrivacyPolicyScreen(onBack = { navController.popBackStack() })
         }
         }
 

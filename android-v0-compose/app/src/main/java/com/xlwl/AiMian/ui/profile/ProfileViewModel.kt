@@ -10,43 +10,85 @@ import com.xlwl.AiMian.data.model.RegionDictionaryItem
 import com.xlwl.AiMian.data.model.UpdateProfileRequest
 import com.xlwl.AiMian.data.model.User
 import com.xlwl.AiMian.data.model.SendCodeRequest
+import com.xlwl.AiMian.data.model.Banner
 import com.xlwl.AiMian.data.repository.AuthRepository
+import com.xlwl.AiMian.data.repository.ContentRepository
 import com.xlwl.AiMian.data.repository.OssRepository
 import com.xlwl.AiMian.data.repository.UserRepository
+import com.xlwl.AiMian.ui.components.BannerData
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
 
+data class ProfileUiState(
+    val user: User? = null,
+    val regions: List<RegionDictionaryItem> = emptyList(),
+    val banners: List<BannerData> = emptyList(),
+    val currentBannerIndex: Int = 0,
+    val isUpdating: Boolean = false,
+    val isLoading: Boolean = false,
+    val error: String? = null
+)
+
 class ProfileViewModel(
     private val userRepository: UserRepository,
     private val authRepository: AuthRepository,
     private val ossRepository: OssRepository,
+    private val contentRepository: ContentRepository,
     private val authManager: AuthManager
 ) : ViewModel() {
 
-    private val _user = MutableStateFlow<User?>(null)
-    val user: StateFlow<User?> = _user
-
-    private val _regions = MutableStateFlow<List<RegionDictionaryItem>>(emptyList())
-    val regions: StateFlow<List<RegionDictionaryItem>> = _regions
-
-    private val _isUpdating = MutableStateFlow(false)
-    val isUpdating: StateFlow<Boolean> = _isUpdating
+    private val _uiState = MutableStateFlow(ProfileUiState())
+    val uiState: StateFlow<ProfileUiState> = _uiState.asStateFlow()
 
     init {
         viewModelScope.launch {
-            authManager.userFlow.collect {
-                _user.value = it
+            authManager.userFlow.collect { user ->
+                _uiState.update { it.copy(user = user) }
             }
         }
         loadRegions()
+        refreshBanners()
+        startBannerAutoScroll()
     }
 
     private fun loadRegions() {
         viewModelScope.launch {
-            userRepository.getRegionTree().onSuccess {
-                _regions.value = it
+            userRepository.getRegionTree().onSuccess { regions ->
+                _uiState.update { it.copy(regions = regions) }
+            }
+        }
+    }
+
+    fun refreshBanners() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            contentRepository.getProfileBanners().onSuccess { banners ->
+                _uiState.update { it.copy(
+                    banners = banners.map { b -> b.toBannerData() },
+                    isLoading = false
+                )}
+            }.onFailure { error ->
+                _uiState.update { it.copy(
+                    isLoading = false,
+                    error = error.message ?: "加载Banner失败"
+                )}
+            }
+        }
+    }
+
+    private fun startBannerAutoScroll() {
+        viewModelScope.launch {
+            while (true) {
+                delay(5000)
+                val bannerCount = _uiState.value.banners.size
+                if (bannerCount > 1) {
+                    _uiState.update { it.copy(
+                        currentBannerIndex = (it.currentBannerIndex + 1) % (bannerCount * 100)
+                    )}
+                }
             }
         }
     }
@@ -62,7 +104,7 @@ class ProfileViewModel(
         autoPublish: Boolean? = null
     ) {
         viewModelScope.launch {
-            _isUpdating.value = true
+            _uiState.update { it.copy(isUpdating = true) }
             val request = UpdateProfileRequest(
                 name = name,
                 avatar = avatar,
@@ -75,16 +117,16 @@ class ProfileViewModel(
             )
             userRepository.updateProfile(request).onSuccess { updatedUser ->
                 authManager.updateUser(updatedUser)
-                _user.value = updatedUser
+                _uiState.update { it.copy(user = updatedUser) }
             }
-            _isUpdating.value = false
+            _uiState.update { it.copy(isUpdating = false) }
         }
     }
 
     fun uploadAvatar(context: Context, uri: Uri) {
         viewModelScope.launch {
             val file = uriToFile(context, uri) ?: return@launch
-            val userId = _user.value?.id ?: "unknown"
+            val userId = _uiState.value.user?.id ?: "unknown"
             ossRepository.uploadImage(file, "users/$userId/avatar_${System.currentTimeMillis()}.jpg")
                 .onSuccess { result ->
                     result.url?.let { url ->
@@ -115,16 +157,33 @@ class ProfileViewModel(
         }
     }
 
+    private fun Banner.toBannerData() = BannerData(
+        id = id,
+        imageUrl = imageUrl,
+        label = subtitle,
+        title = title,
+        subtitle = description,
+        linkType = linkType,
+        linkId = linkId
+    )
+
     companion object {
         fun provideFactory(
             userRepository: UserRepository,
             authRepository: AuthRepository,
             ossRepository: OssRepository,
+            contentRepository: ContentRepository,
             authManager: AuthManager
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return ProfileViewModel(userRepository, authRepository, ossRepository, authManager) as T
+                return ProfileViewModel(
+                    userRepository,
+                    authRepository,
+                    ossRepository,
+                    contentRepository,
+                    authManager
+                ) as T
             }
         }
     }

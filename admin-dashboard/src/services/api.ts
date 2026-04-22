@@ -568,7 +568,15 @@ apiClient.interceptors.response.use(
       if (!isAuthRequest) {
         clearStoredAuth();
 
-        const publicPaths = ['/', '/login', '/register', '/privacy-policy', '/privacy-rights'];
+        const publicPaths = [
+          '/',
+          '/login',
+          '/register',
+          '/privacy-policy',
+          '/privacy-rights',
+          '/user-agreement',
+          '/privacy-statement'
+        ];
         if (!publicPaths.includes(window.location.pathname)) {
           window.location.replace('/login');
         }

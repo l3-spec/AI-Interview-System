@@ -162,6 +162,7 @@ fun DuixAvatarInterviewScreen(
     DisposableEffect(Unit) {
         onDispose {
             realtimeVoiceManager.setDigitalHumanController(null)
+            realtimeVoiceManager.release()
         }
     }
 
@@ -174,6 +175,7 @@ fun DuixAvatarInterviewScreen(
 
     LaunchedEffect(interviewCompleted, interviewSessionId) {
         if (interviewCompleted) {
+            realtimeVoiceManager.release()
             onInterviewComplete(interviewSessionId.orEmpty())
         }
     }

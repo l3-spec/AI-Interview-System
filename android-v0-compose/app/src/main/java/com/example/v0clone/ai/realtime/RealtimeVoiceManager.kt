@@ -75,8 +75,6 @@ class RealtimeVoiceManager(private val context: Context) {
         private const val MAX_RECORDING_DURATION_MS = 60000  // 最长录音60秒
         private const val VISUALIZER_MAX_RETRY = 5
         private const val VISUALIZER_RETRY_DELAY_MS = 150L
-        /** 外放时喇叭声进入麦克风的缓冲时间；过短易把刚播完的题干送进 ASR（服务端还可能延迟出字） */
-        private const val SPEAKER_TO_MIC_COOLDOWN_MS = 4200L
         private const val ASR_RECONNECT_GAP_MS = 220L
         private const val ASR_POST_CONNECT_WAIT_MS = 400L
         /** 抢话用 VAD：阈值略高减轻外放回声误触，时长略短以更快打断 */
@@ -297,7 +295,7 @@ class RealtimeVoiceManager(private val context: Context) {
     // VAD检测器
     private val vadDetector = VoiceActivityDetector(
         sampleRate = SAMPLE_RATE,
-        silenceThresholdDb = -40f,      // 可以通过配置调整
+        silenceThresholdDb = AppConfig.vadThreshold,
         silenceDurationMs = 2000,        // 2秒静音后自动结束
         speechMinDurationMs = 500,       // 至少说0.5秒
         maxSpeechDurationMs = MAX_RECORDING_DURATION_MS.toLong()
@@ -306,7 +304,7 @@ class RealtimeVoiceManager(private val context: Context) {
     /** 仅在「不向 ASR 推流」时运行，用于用户抢话打断播音 */
     private val bargeInVadDetector = VoiceActivityDetector(
         sampleRate = SAMPLE_RATE,
-        silenceThresholdDb = -32f,
+        silenceThresholdDb = AppConfig.bargeInVadThreshold,
         silenceDurationMs = 2000,
         speechMinDurationMs = BARGE_IN_SPEECH_MIN_MS,
         maxSpeechDurationMs = MAX_RECORDING_DURATION_MS.toLong()
@@ -340,7 +338,7 @@ class RealtimeVoiceManager(private val context: Context) {
 
     /**
      * 在此时间戳（[SystemClock.elapsedRealtime]）之前不向 ASR 推流、不采纳 ASR 最终结果，用于外放回声与 ASR 侧缓冲尾包。
-     * 播报开始前设为 [Long.MAX_VALUE]；播报结束后再设为 now + [SPEAKER_TO_MIC_COOLDOWN_MS]。
+     * 播报开始前设为 [Long.MAX_VALUE]；播报结束后再设为 now + [AppConfig.speechCooldownMs]。
      */
     @Volatile
     private var micToAsrAllowedAfterElapsedRealtime: Long = 0L
@@ -1360,6 +1358,7 @@ class RealtimeVoiceManager(private val context: Context) {
         qwen3Tts.resetPlaybackProgress()
         _ttsPlaybackProgress.value = 0f
         _interviewCompleted.value = true
+        stopAllAudio()
         stopRecordingInternal()
         val farewell = "您太棒了，感谢完成这次愉快的面聊，我们会尽快完成后续的评测工作，报告会在“我的”“简历报告”里展示，请稍晚些查看该报告。"
         appendMessage(
@@ -1619,9 +1618,8 @@ class RealtimeVoiceManager(private val context: Context) {
 
         if (aiPlaying) {
             Log.i(TAG, "🎙️ [BARGE-IN] 检测到用户语音，打断数字人播音并通知后端")
-            stopAllAudio()
+            interrupt()
             runCatching { digitalHumanController?.interruptPlayback() }
-            runCatching { socket?.emit("interrupt") }
         } else {
             Log.i(TAG, "🎙️ [BARGE-IN] 播音后冷却中检测到用户开口，提前恢复 ASR")
         }
@@ -1670,14 +1668,14 @@ class RealtimeVoiceManager(private val context: Context) {
     }
 
     /**
-     * 数字人播报结束后：等待 [SPEAKER_TO_MIC_COOLDOWN_MS]，必要时断开并重连 Qwen3 ASR 以丢弃服务端缓冲音频，再自动开麦。
+     * 数字人播报结束后：等待 [AppConfig.speechCooldownMs]，必要时断开并重连 Qwen3 ASR 以丢弃服务端缓冲音频，再自动开麦。
      */
     private fun scheduleResumeListeningAfterSpeakerPlayback() {
         if (_interviewCompleted.value || !vadEnabled) return
         if (_connectionState.value != ConnectionState.CONNECTED) return
-        micToAsrAllowedAfterElapsedRealtime = SystemClock.elapsedRealtime() + SPEAKER_TO_MIC_COOLDOWN_MS
+        micToAsrAllowedAfterElapsedRealtime = SystemClock.elapsedRealtime() + AppConfig.speechCooldownMs
         scope.launch {
-            delay(SPEAKER_TO_MIC_COOLDOWN_MS)
+            delay(AppConfig.speechCooldownMs)
             if (_interviewCompleted.value) return@launch
             if (useQwen3Asr && currentSessionId != null) {
                 withContext(Dispatchers.IO) {
@@ -2112,6 +2110,66 @@ class RealtimeVoiceManager(private val context: Context) {
         } else {
             appendMessage(ConversationMessage(role = ConversationRole.DIGITAL_HUMAN, text = text))
         }
+    }
+
+    /**
+     * 释放所有资源并断开所有服务
+     * 到了面试完成页面后，应调用此方法销毁数字人、停止语音、断开 ASR/TTS 服务
+     */
+    fun release() {
+        Log.i(TAG, "♻️ 正在断开所有服务并释放资源...")
+        
+        // 1. 停止所有音频播放 (MediaPlayer, Qwen3)
+        stopAllAudio()
+        
+        // 2. 停止录音 (AudioRecord)
+        stopRecordingInternal()
+        
+        // 3. 断开主 WebSocket (Socket.io)
+        try {
+            socket?.off()
+            socket?.disconnect()
+            socket = null
+        } catch (e: Exception) {
+            Log.e(TAG, "断开主Socket异常", e)
+        }
+        
+        // 4. 释放 Qwen3 ASR & TTS 客户端
+        try {
+            qwen3Asr.release()
+            qwen3Tts.release()
+        } catch (e: Exception) {
+            Log.e(TAG, "释放Qwen3服务异常", e)
+        }
+        
+        // 5. 释放本地播放资源 (AudioTrack, Visualizer)
+        try {
+            audioTrack?.stop()
+            audioTrack?.release()
+            audioTrack = null
+        } catch (_: Exception) {}
+        
+        try {
+            releaseVisualizer()
+        } catch (_: Exception) {}
+
+        // 6. 停止活跃的进度轮询
+        mediaProgressJob?.cancel()
+        mediaProgressJob = null
+
+        // 7. 取消协程作用域（断开所有协程中的网络操作）
+        try {
+            scope.cancel()
+        } catch (e: Exception) {
+            Log.e(TAG, "取消协程作用域异常", e)
+        }
+        
+        _connectionState.value = ConnectionState.DISCONNECTED
+        _isDigitalHumanSpeaking.value = false
+        _isRecordingFlow.value = false
+        _isProcessing.value = false
+        
+        Log.i(TAG, "✅ RealtimeVoiceManager 已完全释放资源")
     }
 
     private fun showToast(message: String) {

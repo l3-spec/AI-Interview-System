@@ -43,4 +43,5 @@ object Routes {
     const val PROFILE_JOB_FAVORITES = "profileJobFavorites"
     const val PROFILE_POST_FAVORITES = "profilePostFavorites"
     const val PROFILE_DELIVERIES = "profileDeliveries"
+    const val PRIVACY_POLICY = "privacyPolicy"
 }

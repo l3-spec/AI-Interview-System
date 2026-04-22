@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import FirstLaunchPrivacyModal, {
+  hasPrivacyFirstLaunchConsent,
+  setPrivacyFirstLaunchConsent
+} from '../components/FirstLaunchPrivacyModal';
 import './LoginPage.css';
 import companyLogo from '../assets/company-logo.png';
 import alibabaLogo from '../assets/alibaba-logo.svg';
@@ -31,6 +35,9 @@ const HomePage: React.FC = () => {
   const [registerError, setRegisterError] = useState('');
   const [registerLoading, setRegisterLoading] = useState(false);
   const [navScrollProgress, setNavScrollProgress] = useState(0);
+  const [showPrivacyGateModal, setShowPrivacyGateModal] = useState(false);
+  const [loginAgreedPolicies, setLoginAgreedPolicies] = useState(false);
+  const [registerAgreedPolicies, setRegisterAgreedPolicies] = useState(false);
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
@@ -70,6 +77,36 @@ const HomePage: React.FC = () => {
   ];
   const currentYear = new Date().getFullYear();
 
+  useEffect(() => {
+    if (!hasPrivacyFirstLaunchConsent()) {
+      setShowPrivacyGateModal(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showLoginModal) setLoginAgreedPolicies(false);
+  }, [showLoginModal]);
+
+  useEffect(() => {
+    if (showRegisterModal) setRegisterAgreedPolicies(false);
+  }, [showRegisterModal]);
+
+  const requestOpenLogin = () => {
+    if (!hasPrivacyFirstLaunchConsent()) {
+      setShowPrivacyGateModal(true);
+      return;
+    }
+    setShowLoginModal(true);
+  };
+
+  const requestOpenRegister = () => {
+    if (!hasPrivacyFirstLaunchConsent()) {
+      setShowPrivacyGateModal(true);
+      return;
+    }
+    setShowRegisterModal(true);
+  };
+
   // 监听滚动事件，控制悬浮按钮的显示
   useEffect(() => {
     const handleScroll = () => {
@@ -104,6 +141,10 @@ const HomePage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!loginAgreedPolicies) {
+      setError('请先阅读并勾选同意《用户服务协议》和《隐私政策》');
+      return;
+    }
     console.log('开始登录，邮箱:', email);
     console.log('阻止默认行为:', e.defaultPrevented);
     console.log('当前URL:', window.location.href);
@@ -149,6 +190,12 @@ const HomePage: React.FC = () => {
     e.preventDefault();
     setRegisterError('');
     setRegisterLoading(true);
+
+    if (!registerAgreedPolicies) {
+      setRegisterError('请先阅读并勾选同意《用户服务协议》和《隐私政策》');
+      setRegisterLoading(false);
+      return;
+    }
 
     // 表单验证
     if (!registerFormData.companyName || !registerFormData.contactName || !registerFormData.contactPhone || !registerFormData.email || !registerFormData.password) {
@@ -236,7 +283,7 @@ const HomePage: React.FC = () => {
             </div>
             <button 
               className="login-btn"
-              onClick={() => setShowLoginModal(true)}
+              onClick={requestOpenLogin}
             >
               企业登录
             </button>
@@ -257,7 +304,7 @@ const HomePage: React.FC = () => {
             <div className="hero-buttons">
               <button 
                 className="cta-primary"
-                onClick={() => setShowRegisterModal(true)}
+                onClick={requestOpenRegister}
                 style={{
                   background: '#1890ff',
                   color: 'white',
@@ -404,7 +451,7 @@ const HomePage: React.FC = () => {
           <p>立即注册，体验U-Talent带来的招聘革命</p>
           <button 
             className="cta-primary large"
-            onClick={() => setShowRegisterModal(true)}
+            onClick={requestOpenRegister}
             style={{
               background: '#1890ff',
               color: 'white',
@@ -426,6 +473,8 @@ const HomePage: React.FC = () => {
       <footer className="home-footer">
         <div className="home-footer__container">
           <div className="home-footer__links">
+            <Link to="/user-agreement" className="home-footer__link">用户服务协议</Link>
+            <span className="home-footer__separator">|</span>
             <Link to="/privacy-policy" className="home-footer__link">隐私政策</Link>
             <span className="home-footer__separator">|</span>
             <Link to="/privacy-rights" className="home-footer__link">隐私权利</Link>
@@ -443,7 +492,7 @@ const HomePage: React.FC = () => {
           zIndex: 1000
         }}>
           <button
-            onClick={() => setShowRegisterModal(true)}
+            onClick={requestOpenRegister}
             style={{
               background: '#1890ff',
               color: 'white',
@@ -516,6 +565,37 @@ const HomePage: React.FC = () => {
                   }}
                 />
               </div>
+
+              <label
+                className="form-item"
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '10px',
+                  fontSize: '13px',
+                  lineHeight: 1.5,
+                  color: '#595959',
+                  cursor: 'pointer',
+                  userSelect: 'none'
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={loginAgreedPolicies}
+                  onChange={(e) => setLoginAgreedPolicies(e.target.checked)}
+                  style={{ marginTop: 3, width: 16, height: 16, flexShrink: 0 }}
+                />
+                <span>
+                  我已阅读并同意
+                  <Link to="/user-agreement" target="_blank" rel="noopener noreferrer" style={{ color: '#0091ff', margin: '0 2px' }}>
+                    《用户服务协议》
+                  </Link>
+                  和
+                  <Link to="/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ color: '#0091ff', margin: '0 2px' }}>
+                    《隐私政策》
+                  </Link>
+                </span>
+              </label>
 
               {error && (
                 <div className="error-message" style={{
@@ -718,6 +798,38 @@ const HomePage: React.FC = () => {
                 </div>
               )}
 
+              <label
+                style={{
+                  gridColumn: '1 / 3',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '10px',
+                  fontSize: '13px',
+                  lineHeight: 1.5,
+                  color: '#595959',
+                  cursor: 'pointer',
+                  userSelect: 'none',
+                  marginTop: '4px'
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={registerAgreedPolicies}
+                  onChange={(e) => setRegisterAgreedPolicies(e.target.checked)}
+                  style={{ marginTop: 3, width: 16, height: 16, flexShrink: 0 }}
+                />
+                <span>
+                  我已阅读并同意
+                  <Link to="/user-agreement" target="_blank" rel="noopener noreferrer" style={{ color: '#0091ff', margin: '0 2px' }}>
+                    《用户服务协议》
+                  </Link>
+                  和
+                  <Link to="/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ color: '#0091ff', margin: '0 2px' }}>
+                    《隐私政策》
+                  </Link>
+                </span>
+              </label>
+
               <div style={{ gridColumn: '1 / 3', display: 'flex', justifyContent: 'center', marginTop: '16px' }}>
                 <button
                   type="submit"
@@ -764,6 +876,15 @@ const HomePage: React.FC = () => {
           </div>
         </div>
       )}
+
+      <FirstLaunchPrivacyModal
+        open={showPrivacyGateModal}
+        onAgree={() => {
+          setPrivacyFirstLaunchConsent();
+          setShowPrivacyGateModal(false);
+        }}
+        onDisagree={() => setShowPrivacyGateModal(false)}
+      />
 
       <style dangerouslySetInnerHTML={{
         __html: `

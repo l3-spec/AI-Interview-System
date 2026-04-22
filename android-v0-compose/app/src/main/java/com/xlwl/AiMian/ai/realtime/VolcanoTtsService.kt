@@ -23,12 +23,7 @@ class VolcanoTtsService(private val context: Context) {
     companion object {
         private const val TAG = "VolcanoTtsService"
 
-        // 火山引擎 TTS API 地址
-        private const val TTS_HOST = "openspeech.bytedance.com"
-        private const val TTS_PATH = "/api/v1/tts"
 
-        // 默认参数
-        private const val DEFAULT_VOICE = "BV700_V2_streaming"
         private const val DEFAULT_FORMAT = "wav"
         private const val DEFAULT_SAMPLE_RATE = 16000
         private const val DEFAULT_SPEED = 1.0f
@@ -45,14 +40,15 @@ class VolcanoTtsService(private val context: Context) {
     // 公开 API
     // =============================================================
 
-    suspend fun synthesizeSpeech(text: String, voice: String = DEFAULT_VOICE): File {
-        return synthesizeWithViseme(text, voice).audioFile
+    suspend fun synthesizeSpeech(text: String, voice: String? = null): File {
+        return synthesizeWithViseme(text, voice ?: AppConfig.ttsVoice).audioFile
     }
 
     suspend fun synthesizeWithViseme(
         text: String,
-        voice: String = DEFAULT_VOICE
+        voice: String? = null
     ): TtsResult = withContext(Dispatchers.IO) {
+        val finalVoice = voice ?: AppConfig.ttsVoice
         val cleanText = text.trim().take(500)
         if (cleanText.isEmpty()) {
             throw IllegalArgumentException("TTS文本不能为空")
@@ -72,7 +68,7 @@ class VolcanoTtsService(private val context: Context) {
         val requestBody = JSONObject().apply {
             put("appid", appId)
             put("text", cleanText)
-            put("voice", voice)
+            put("voice", finalVoice)
             put("format", DEFAULT_FORMAT)
             put("sample_rate", DEFAULT_SAMPLE_RATE)
             put("speed", DEFAULT_SPEED)
@@ -84,7 +80,7 @@ class VolcanoTtsService(private val context: Context) {
 
         // Bearer Token 认证（Token 就是 API Key）
         val authHeader = "Bearer $apiKey"
-        val url = "https://$TTS_HOST$TTS_PATH"
+        val url = "https://${AppConfig.volcanoTtsHost}${AppConfig.volcanoTtsPath}"
 
         Log.d(TAG, "Volcano TTS 请求: $url")
 
@@ -100,7 +96,7 @@ class VolcanoTtsService(private val context: Context) {
         val errorBody = response.body?.string()?.take(200) ?: ""
 
         if (statusCode == 404) {
-            Log.e(TAG, "Volcano TTS 404 — 请确认: 1) TTS服务已开通 2) 集群地址正确(当前: openspeech.bytedance.com) 3) appId正确，当前appId=$appId")
+            Log.e(TAG, "Volcano TTS 404 — 请确认: 1) TTS服务已开通 2) 集群地址正确(当前: ${AppConfig.volcanoTtsHost}) 3) appId正确，当前appId=$appId")
             throw IllegalStateException("Volcano TTS 404: 服务未找到，请确认 TTS 服务已开通并检查 appId")
         }
 

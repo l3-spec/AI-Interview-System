@@ -60,6 +60,8 @@ interface Question {
     text: string;
     answer?: string;
     videoUrl?: string;
+    /** 后端 toObjectKey，与 OSS 控制台 object 路径一致，便于人工查验 */
+    videoOssKey?: string | null;
     duration?: number;
 }
 
@@ -70,6 +72,7 @@ interface ConversationTurn {
     avatarText?: string | null;
     candidateText?: string | null;
     candidateVideoUrl?: string | null;
+    candidateVideoOssKey?: string | null;
     questionIndex?: number | null;
     createdAt: string;
 }
@@ -241,6 +244,13 @@ const InterviewAnalysisManagement: React.FC = () => {
         }
         return <Tag>未知</Tag>;
     };
+
+    /** 候选人条目的视频 OSS objectKey：优先沟通行上的字段，否则从同题号问题答案视频解析 */
+    const resolveCandidateOssKey = (t: ConversationTurn) =>
+        (t.candidateVideoOssKey && t.candidateVideoOssKey.trim()) ||
+        (t.questionIndex != null
+            ? questions.find((q) => q.index === t.questionIndex)?.videoOssKey || undefined
+            : undefined);
 
     const buildFrameMetricsRows = () => {
         const rawVideos = analysisReport?.insights?.video;
@@ -822,6 +832,21 @@ const InterviewAnalysisManagement: React.FC = () => {
                                                             识别/作答文本：{t.candidateText}
                                                         </Paragraph>
                                                     )}
+                                                    {t.speaker === 'CANDIDATE' && (() => {
+                                                        const ossKey = resolveCandidateOssKey(t);
+                                                        if (!ossKey) {
+                                                            return (t.candidateText || t.candidateVideoUrl) ? (
+                                                                <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+                                                                    视频 OSS 路径：未记录（可查看「问题与答案」中该题是否已上传视频）
+                                                                </Text>
+                                                            ) : null;
+                                                        }
+                                                        return (
+                                                            <Paragraph type="secondary" style={{ marginBottom: 8 }} copyable>
+                                                                视频 OSS 路径（objectKey）：{ossKey}
+                                                            </Paragraph>
+                                                        );
+                                                    })()}
                                                     {t.candidateVideoUrl && (
                                                         <Space direction="vertical" style={{ width: '100%' }}>
                                                             <video
@@ -870,6 +895,12 @@ const InterviewAnalysisManagement: React.FC = () => {
                                                 <Text type="secondary">答案: </Text>
                                                 <Text>{q.answer || '未作答'}</Text>
                                             </div>
+
+                                            {q.videoOssKey ? (
+                                                <Paragraph type="secondary" style={{ marginBottom: 0 }} copyable>
+                                                    视频 OSS 路径（objectKey）：{q.videoOssKey}
+                                                </Paragraph>
+                                            ) : null}
 
                                             {q.videoUrl && (
                                                 <Space>

@@ -99,19 +99,27 @@ fun FigmaAgreementCheckbox(
 }
 
 @Composable
-fun FigmaAgreementText(modifier: Modifier = Modifier) {
+fun FigmaAgreementText(
+    modifier: Modifier = Modifier,
+    onPrivacyClick: () -> Unit = {},
+    onAgreementClick: () -> Unit = {}
+) {
     val agreementText = buildAnnotatedString {
         append("我已阅读并同意")
+        pushStringAnnotation(tag = "USER_AGREEMENT", annotation = "agreement")
         withStyle(style = SpanStyle(color = StarLinkLinkBlue)) {
             append("《用户须知》")
         }
+        pop()
         append("和")
+        pushStringAnnotation(tag = "PRIVACY_POLICY", annotation = "privacy")
         withStyle(style = SpanStyle(color = StarLinkLinkBlue)) {
             append("《隐私条款》")
         }
+        pop()
     }
 
-    Text(
+    androidx.compose.foundation.text.ClickableText(
         text = agreementText,
         style = TextStyle(
             color = StarLinkPrimaryText,
@@ -120,6 +128,12 @@ fun FigmaAgreementText(modifier: Modifier = Modifier) {
             lineHeight = 21.sp,
             letterSpacing = (-0.32).sp
         ),
-        modifier = modifier
+        modifier = modifier,
+        onClick = { offset ->
+            agreementText.getStringAnnotations(tag = "USER_AGREEMENT", start = offset, end = offset)
+                .firstOrNull()?.let { onAgreementClick() }
+            agreementText.getStringAnnotations(tag = "PRIVACY_POLICY", start = offset, end = offset)
+                .firstOrNull()?.let { onPrivacyClick() }
+        }
     )
 }

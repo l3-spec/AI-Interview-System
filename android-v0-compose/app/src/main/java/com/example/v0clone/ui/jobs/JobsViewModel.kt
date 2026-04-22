@@ -10,15 +10,20 @@ import com.xlwl.AiMian.data.repository.JobRepository
 import java.time.Instant
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.xlwl.AiMian.data.model.Banner
+import com.xlwl.AiMian.ui.components.BannerData
 
 private const val PAGE_SIZE = 10
 
 data class JobsUiState(
+    val banners: List<BannerData> = emptyList(),
+    val currentBannerIndex: Int = 0,
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
     val isPaginating: Boolean = false,
@@ -85,6 +90,21 @@ class JobsViewModel(
         loadSupplementaryData(force = true)
         viewModelScope.launch {
             loadPreferencesInternal(initial = true)
+        }
+        startBannerAutoScroll()
+    }
+
+    private fun startBannerAutoScroll() {
+        viewModelScope.launch {
+            while (true) {
+                delay(5000)
+                val bannerCount = _uiState.value.banners.size
+                if (bannerCount > 1) {
+                    _uiState.update { it.copy(
+                        currentBannerIndex = (it.currentBannerIndex + 1) % (bannerCount * 100)
+                    )}
+                }
+            }
         }
     }
 
@@ -366,10 +386,19 @@ class JobsViewModel(
         val state = _uiState.value
         val needCompanies = force || state.featuredCompanies.isEmpty()
         val needSections = force || state.sections.isEmpty()
-        if (!needCompanies && !needSections) return
+        val needBanners = force || state.banners.isEmpty()
+        if (!needCompanies && !needSections && !needBanners) return
 
         viewModelScope.launch {
             val now = Instant.now()
+
+            if (needBanners) {
+                val bannersResult = repository.getJobsBanners()
+                if (bannersResult.isSuccess) {
+                    val banners = bannersResult.getOrNull().orEmpty().map { it.toBannerData() }
+                    _uiState.update { it.copy(banners = banners) }
+                }
+            }
 
             if (needCompanies) {
                 val companiesResult = repository.getCompanyShowcases()
@@ -388,6 +417,16 @@ class JobsViewModel(
             }
         }
     }
+
+    private fun Banner.toBannerData() = BannerData(
+        id = id,
+        imageUrl = imageUrl,
+        label = subtitle,
+        title = title,
+        subtitle = description,
+        linkType = linkType,
+        linkId = linkId
+    )
 
     companion object {
         fun provideFactory(

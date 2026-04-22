@@ -206,6 +206,57 @@ export const changePasswordSchema = Joi.object({
   newPassword: password
 });
 
+/**
+ * 去掉粘贴/富文本常见的不可见字符（避免 looks 像 /api/... 但 startsWith('/') 为 false）
+ */
+const stripInvisibleWrapping = (value: string): string =>
+  String(value)
+    .replace(/^\uFEFF/g, '')
+    .replace(/^[\u200B\u200C\u200D\u200E\u200F\u202A-\u202E]+/g, '')
+    .replace(/[\u200B\u200C\u200D\u200E\u200F\u202A-\u202E]+$/g, '')
+    .trim();
+
+/**
+ * 存储前归一化 Banner 图片路径，与 isValidBannerImageUrl 使用同一套规则。
+ */
+export const normalizeBannerImageUrl = (value: string): string => {
+  let v = stripInvisibleWrapping(value);
+  if (!v) {
+    return v;
+  }
+  // 全角斜线误输入
+  v = v.replace(/^／+/, '/');
+  // 省略前导 / 的本站路径（如 api/oss/proxy?...）
+  if (/^api\//i.test(v) && !v.startsWith('/')) {
+    v = `/${v}`;
+  }
+  v = v.replace(/\/api\/api\//g, '/api/');
+  return v;
+};
+
+/**
+ * 首页 Banner 图片地址：支持 https/http 绝对 URL，或本站绝对路径（如 OSS 代理 /api/oss/proxy?...）
+ * 亦接受 uploads/... 形式的 OSS objectKey（部分历史或手填数据）。
+ */
+export const isValidBannerImageUrl = (value: string): boolean => {
+  const v = normalizeBannerImageUrl(value);
+  if (!v) {
+    return false;
+  }
+  if (v.startsWith('/')) {
+    return v.length > 1;
+  }
+  if (/^uploads\//i.test(v)) {
+    return true;
+  }
+  try {
+    const u = new URL(v);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
 // 导出express-validator验证中间件
 export const validate = (req: Request, res: Response, next: NextFunction) => {
   const errors = validationResult(req);

@@ -81,6 +81,8 @@ import coil.compose.AsyncImage
 import com.xlwl.AiMian.data.model.JobPreferenceDto
 import com.xlwl.AiMian.data.repository.JobPreferenceRepository
 import com.xlwl.AiMian.data.repository.JobRepository
+import com.xlwl.AiMian.ui.components.BannerCarousel
+import com.xlwl.AiMian.ui.components.BannerData
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import java.util.Locale
@@ -122,7 +124,8 @@ fun JobsScreen(
     onJobClick: (jobId: String) -> Unit = {},
     onCompanyClick: (companyId: String) -> Unit = {},
     onEditIntentionClick: () -> Unit = {},
-    onJobSelectionClick: () -> Unit = {}
+    onJobSelectionClick: () -> Unit = {},
+    onBannerClick: (BannerData) -> Unit = {}
 ) {
     val viewModel: JobsViewModel =
         viewModel(factory = JobsViewModel.provideFactory(repository, preferenceRepository))
@@ -218,6 +221,20 @@ fun JobsScreen(
         ) {
             item(key = "header-spacer") {
                 Spacer(modifier = Modifier.height(headerPlaceholderHeight))
+            }
+
+            if (uiState.banners.isNotEmpty()) {
+                item(key = "banner-carousel") {
+                    BannerCarousel(
+                        banners = uiState.banners,
+                        currentIndex = uiState.currentBannerIndex,
+                        onBannerClick = onBannerClick,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp)
+                            .padding(bottom = 4.dp)
+                    )
+                }
             }
 
             if (uiState.isLoading && uiState.jobs.isEmpty()) {

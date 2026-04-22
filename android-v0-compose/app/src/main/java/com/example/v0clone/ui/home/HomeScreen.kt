@@ -35,6 +35,8 @@ import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.foundation.shape.CircleShape
 import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
+import com.xlwl.AiMian.ui.components.BannerCarousel
+import com.xlwl.AiMian.ui.components.BannerData
 import java.text.DecimalFormat
 
 /**
@@ -331,117 +333,6 @@ private fun HomeHeader(
     }
 }
 
-/**
- * Banner轮播组件
- */
-@Composable
-private fun BannerCarousel(
-    banners: List<BannerData>,
-    currentIndex: Int,
-    onBannerClick: (BannerData) -> Unit
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        // Banner卡片
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(161.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .clickable { 
-                    if (banners.isNotEmpty()) {
-                        onBannerClick(banners[currentIndex % banners.size])
-                    }
-                }
-        ) {
-            if (banners.isNotEmpty()) {
-                val banner = banners[currentIndex % banners.size]
-                
-                // 背景图片
-                Image(
-                    painter = rememberAsyncImagePainter(banner.imageUrl),
-                    contentDescription = banner.title,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-                
-                // 渐变遮罩
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    Color.Black.copy(alpha = 0.7f)
-                                ),
-                                startY = 100f
-                            )
-                        )
-                )
-                
-                // 文字内容
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(14.dp)
-                ) {
-                    Text(
-                        text = banner.label,
-                        fontSize = 12.sp,
-                        color = Color.White,
-                        fontWeight = FontWeight.Medium
-                    )
-                    
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    Text(
-                        text = banner.title,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        lineHeight = 26.sp
-                    )
-                    
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    Text(
-                        text = banner.subtitle,
-                        fontSize = 13.sp,
-                        color = Color.White.copy(alpha = 0.9f)
-                    )
-                }
-            }
-        }
-        
-        // 轮播指示器 - 减少与下方内容的间距
-        if (banners.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(6.dp))
-            
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center
-            ) {
-                banners.forEachIndexed { index, _ ->
-                    val isActive = index == currentIndex % banners.size
-                    val activeColor = Color(0xFFEC7C38)
-                    Box(
-                        modifier = Modifier
-                            .padding(horizontal = 3.dp)
-                            .width(if (isActive) 12.dp else 4.dp)
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(
-                                if (isActive) activeColor
-                                else Color.White.copy(alpha = 0.2f)
-                            )
-                    )
-                }
-            }
-        }
-    }
-}
 
 /**
  * 内容网格中的单行（最多两张卡片）

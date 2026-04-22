@@ -94,7 +94,8 @@ fun CodeLoginScreen(
     repo: AuthRepository,
     initialPhone: String? = null,
     onLoginSuccess: (String, String) -> Unit,
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    onNavigatePrivacy: () -> Unit = {}
 ) {
     val initialPhoneSanitized = initialPhone?.filter { it.isDigit() }?.take(11).orEmpty()
     var phoneField by rememberSaveable(stateSaver = TextFieldValue.Saver) {
@@ -125,7 +126,7 @@ fun CodeLoginScreen(
     var showKeyboard by remember { mutableStateOf(false) }
     var phoneFocused by remember { mutableStateOf(false) }
     var codeFocused by remember { mutableStateOf(false) }
-    var agreed by remember { mutableStateOf(true) }
+    var agreed by remember { mutableStateOf(false) }
     val phoneFocusRequester = remember { FocusRequester() }
     val codeFocusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
@@ -397,7 +398,10 @@ fun CodeLoginScreen(
                                 checked = agreed,
                                 onCheckedChange = { agreed = it }
                             )
-                            FigmaAgreementText()
+                            FigmaAgreementText(
+                                onPrivacyClick = onNavigatePrivacy,
+                                onAgreementClick = onNavigatePrivacy
+                            )
                         }
                     }
 

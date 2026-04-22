@@ -185,6 +185,25 @@ export class RealtimeVoiceWebSocketServer {
     const hasCompletionIntent = completionIntents.some(keyword => normalizedText.includes(keyword));
     const completionClosingText = '感谢您的配合，我们会尽快生成本次面试报告，请留意通知。';
 
+    if (hasCompletionIntent) {
+       console.log(`🔚 检测到主动结束意图 (Session: ${sessionId}): "${text}"`);
+       try {
+         const summary = await interviewFlowService.endInterview(sessionId);
+         const ttsMode = await this.synthesizeQwen3TtsSegments(ttsSessionId, completionClosingText, 'closing');
+         this.io.to(sessionId).emit('voice_response', {
+           text: completionClosingText,
+           sessionId,
+           ttsMode,
+           isCompleted: true,
+           status: 'completed'
+         });
+         this.persistAvatarVoice(sessionId, completionClosingText);
+         return; // 结束本轮流程
+       } catch (e: any) {
+         console.warn(`⚠️ 结束面试异常 (会话可能已清理): ${e.message}`);
+       }
+    }
+
     // 5. 进入业务逻辑 (InterviewFlowService)
     try {
       const result = await interviewFlowService.processUserResponse(sessionId, text);
@@ -844,11 +863,21 @@ export class RealtimeVoiceWebSocketServer {
       // 打断数字人说话
       socket.on('interrupt', () => {
         try {
+          const session = this.sessions.get(socket.id);
+          const sessionId = session?.sessionId;
+          
+          // 1. 停止旧的语音管道 (阿里云/DashScope 直连)
           if (this.voicePipeline) {
             this.voicePipeline.interrupt();
-            socket.emit('interrupted', { success: true });
-            console.log('🛑 用户打断数字人说话');
           }
+
+          // 2. 停止 Qwen3 TTS 微服务 (独立部署模式)
+          if (sessionId) {
+            qwen3TTSClient.clearSynthesis(sessionId);
+          }
+
+          socket.emit('interrupted', { success: true });
+          console.log(`🛑 用户打断数字人说话 (Session: ${sessionId || 'unknown'})`);
         } catch (error: any) {
           console.error('打断失败:', error);
           socket.emit('error', { message: error.message });

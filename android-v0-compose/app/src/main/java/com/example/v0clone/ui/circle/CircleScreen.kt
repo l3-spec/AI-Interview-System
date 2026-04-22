@@ -63,6 +63,8 @@ import androidx.navigation.NavBackStackEntry
 import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 import com.xlwl.AiMian.data.repository.ContentRepository
+import com.xlwl.AiMian.ui.components.BannerCarousel
+import com.xlwl.AiMian.ui.components.BannerData
 import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.foundation.shape.CircleShape
@@ -106,7 +108,8 @@ fun CircleRoute(
     backStackEntry: NavBackStackEntry,
     onCardClick: (CircleCard) -> Unit,
     onSearchClick: () -> Unit,
-    onCreatePost: () -> Unit
+    onCreatePost: () -> Unit,
+    onBannerClick: (BannerData) -> Unit = {}
 ) {
     val viewModel: CircleViewModel = viewModel(
         factory = CircleViewModel.provideFactory(repository)
@@ -130,7 +133,8 @@ fun CircleRoute(
         onLoadMore = { viewModel.loadMore() },
         onSearchClick = onSearchClick,
         onCardClick = onCardClick,
-        onCreatePost = onCreatePost
+        onCreatePost = onCreatePost,
+        onBannerClick = onBannerClick
     )
 }
 
@@ -141,7 +145,8 @@ private fun CircleScreen(
     onLoadMore: () -> Unit,
     onSearchClick: () -> Unit,
     onCardClick: (CircleCard) -> Unit,
-    onCreatePost: () -> Unit
+    onCreatePost: () -> Unit,
+    onBannerClick: (BannerData) -> Unit
 ) {
     val listState = rememberLazyListState()
     val density = LocalDensity.current
@@ -210,6 +215,19 @@ private fun CircleScreen(
         ) {
             item(key = "header-spacer") {
                 Spacer(modifier = Modifier.height(headerPlaceholderHeight))
+            }
+
+            if (uiState.banners.isNotEmpty()) {
+                item(key = "banner-carousel") {
+                    BannerCarousel(
+                        banners = uiState.banners,
+                        currentIndex = uiState.currentBannerIndex,
+                        onBannerClick = onBannerClick,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 4.dp)
+                    )
+                }
             }
 
             when {

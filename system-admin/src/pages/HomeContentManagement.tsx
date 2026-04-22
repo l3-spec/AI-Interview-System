@@ -35,6 +35,7 @@ import {
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { HomeBanner, PromotedJobRecord, homeContentApi, uploadApi } from '../services/api';
+import { buildAssetUrl } from '../utils/url';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 
@@ -113,6 +114,7 @@ const HomeContentManagement: React.FC = () => {
   const [bannerTotal, setBannerTotal] = useState(0);
   const [bannerFormVisible, setBannerFormVisible] = useState(false);
   const [bannerForm] = Form.useForm<BannerFormState>();
+  const bannerImageUrlWatch = Form.useWatch('imageUrl', bannerForm);
   const [editingBannerId, setEditingBannerId] = useState<string | null>(null);
   const [selectedBannerIds, setSelectedBannerIds] = useState<string[]>([]);
   const [bannerSearchKeyword, setBannerSearchKeyword] = useState('');
@@ -140,6 +142,93 @@ const HomeContentManagement: React.FC = () => {
     } catch (error) {
       return false;
     }
+  };
+
+  /** Banner 图：https、本站绝对路径、uploads/ 形式的 OSS 路径 */
+  const isValidBannerImageRef = (value?: string | null) => {
+    if (!value?.trim()) {
+      return false;
+    }
+    const v = value.trim();
+    if (isValidHttpUrl(v)) {
+      return true;
+    }
+    if (v.startsWith('/')) {
+      return true;
+    }
+    if (/^uploads\//i.test(v)) {
+      return true;
+    }
+    return false;
+  };
+
+  /** 从 /api/oss/proxy?objectKey= 中解析出 objectKey，存库不存整段代理地址 */
+  const extractObjectKeyFromProxyUrl = (s: string): string | null => {
+    if (!s || !s.includes('objectKey=')) {
+      return null;
+    }
+    try {
+      const u = s.trim().startsWith('http') ? new URL(s) : new URL(s, 'https://local.invalid');
+      return u.searchParams.get('objectKey');
+    } catch {
+      return null;
+    }
+  };
+
+  /**
+   * 与后端 normalizeBannerImageUrl 对齐：去 BOM/LTR 等不可见字符、全角 /、补全前导 /、修正重复 /api/
+   * 避免「看起来像 /api/... 但首字符不是 /」导致保存校验失败
+   */
+  const normalizeBannerImageUrl = (url?: string | null) => {
+    if (url == null) {
+      return '';
+    }
+    let v = String(url)
+      .replace(/^\uFEFF/g, '')
+      .replace(/^[\u200B\u200C\u200D\u200E\u200F\u202A-\u202E]+/g, '')
+      .replace(/[\u200B\u200C\u200D\u200E\u200F\u202A-\u202E]+$/g, '')
+      .trim();
+    if (!v) {
+      return '';
+    }
+    v = v.replace(/^／+/, '/');
+    if (/^api\//i.test(v) && !v.startsWith('/')) {
+      v = `/${v}`;
+    }
+    v = v.replace(/\/api\/api\//g, '/api/');
+    return v;
+  };
+
+  /** 从接口读入的图地址统一为入库存储形态：https 或 ``uploads/...`` objectKey */
+  const dbImageToStorageRef = (stored: string) => {
+    if (!stored?.trim()) {
+      return '';
+    }
+    const s = stored.trim();
+    if (isValidHttpUrl(s)) {
+      return s;
+    }
+    const fromProxy = extractObjectKeyFromProxyUrl(s);
+    if (fromProxy) {
+      return fromProxy;
+    }
+    return s.replace(/^\/+/, '');
+  };
+
+  /** 提交前再次规范，避免表单项中残留代理 URL */
+  const toStorageImageRef = (raw: string) => {
+    const s = normalizeBannerImageUrl(raw);
+    if (!s) {
+      return '';
+    }
+    if (isValidHttpUrl(s)) {
+      return s;
+    }
+    const ok = extractObjectKeyFromProxyUrl(s);
+    if (ok) {
+      return ok;
+    }
+    return s.replace(/^\/+/, '');
   };
 
   const resolveBannerLinkTarget = (banner: HomeBanner): BannerLinkTargetType => {
@@ -259,7 +348,7 @@ const HomeContentManagement: React.FC = () => {
         title: values.title.trim(),
         subtitle: values.subtitle.trim(),
         description: values.description?.trim() || undefined,
-        imageUrl: values.imageUrl.trim(),
+        imageUrl: toStorageImageRef(values.imageUrl),
         linkType: linkType ?? null,
         linkId: linkId ?? null,
         sortOrder: Number(values.sortOrder) || 0,
@@ -292,7 +381,13 @@ const HomeContentManagement: React.FC = () => {
         return;
       }
       console.error('handleBannerSubmit error:', error);
-      message.error('操作失败，请稍后再试');
+      const data = error?.response?.data;
+      const fieldMsgs =
+        Array.isArray(data?.errors) && data.errors.length > 0
+          ? (data.errors as { message?: string }[]).map((e) => e.message).filter(Boolean)
+          : [];
+      const detail = fieldMsgs.length > 0 ? fieldMsgs.join('；') : data?.message;
+      message.error(detail || error?.message || '操作失败，请稍后再试');
     }
   };
 
@@ -307,7 +402,7 @@ const HomeContentManagement: React.FC = () => {
       title: banner.title,
       subtitle: banner.subtitle,
       description: banner.description || '',
-      imageUrl: banner.imageUrl,
+      imageUrl: dbImageToStorageRef(banner.imageUrl),
       linkTargetType,
       appLinkType: linkTargetType === 'app'
         ? (isCustomType ? 'custom' : banner.linkType || defaultBannerForm.appLinkType)
@@ -425,14 +520,22 @@ const HomeContentManagement: React.FC = () => {
     }
   };
 
-  // 图片上传处理
+  // 图片上传：入库保存 objectKey（uploads/...），不存 /api/oss/proxy?... 代理串
   const handleImageUpload = async (file: File): Promise<string> => {
     setUploading(true);
     try {
       const response = await uploadApi.uploadFile(file, 'banner');
       if (response.success && response.data) {
         message.success('图片上传成功');
-        return response.data.url;
+        const { objectKey, url } = response.data;
+        if (objectKey?.trim()) {
+          return objectKey.trim();
+        }
+        const fromProxy = url ? extractObjectKeyFromProxyUrl(url) : null;
+        if (fromProxy) {
+          return fromProxy;
+        }
+        return url;
       }
       throw new Error(response.message || '上传失败');
     } catch (error: any) {
@@ -473,18 +576,21 @@ const HomeContentManagement: React.FC = () => {
       dataIndex: 'imageUrl',
       key: 'imageUrl',
       width: 120,
-      render: (url: string) => (
-        <Image
-          src={url}
-          alt="Banner"
-          width={80}
-          height={50}
-          style={{ objectFit: 'cover', borderRadius: 4 }}
-          preview={{
-            src: url,
-          }}
-        />
-      ),
+      render: (url: string) => {
+        const displaySrc = buildAssetUrl(url) || url;
+        return (
+          <Image
+            src={displaySrc}
+            alt="Banner"
+            width={80}
+            height={50}
+            style={{ objectFit: 'cover', borderRadius: 4 }}
+            preview={{
+              src: displaySrc,
+            }}
+          />
+        );
+      },
     },
     {
       title: '标题信息',
@@ -1027,49 +1133,91 @@ const HomeContentManagement: React.FC = () => {
 
           <Form.Item
             name="imageUrl"
-            label="图片链接"
+            style={{ display: 'none' }}
             rules={[
-              { required: true, message: '请输入图片链接或上传图片' },
-              { type: 'url', message: '请输入有效的URL地址' },
-            ]}
-            extra="支持输入图片URL或点击上传按钮上传图片"
-          >
-            <Input.Group compact>
-              <Input
-                style={{ width: 'calc(100% - 100px)' }}
-                placeholder="https://example.com/banner.png"
-                value={bannerForm.getFieldValue('imageUrl')}
-                onChange={(e) => bannerForm.setFieldsValue({ imageUrl: e.target.value })}
-              />
-              <Upload
-                showUploadList={false}
-                beforeUpload={async (file) => {
-                  try {
-                    const url = await handleImageUpload(file);
-                    bannerForm.setFieldsValue({ imageUrl: url });
-                    return false; // 阻止自动上传
-                  } catch (error) {
-                    return false;
+              { required: true, message: '请上传图片或填写公网 https 地址' },
+              {
+                validator: async (_, value) => {
+                  if (value == null || !String(value).trim()) {
+                    return Promise.reject(new Error('请上传图片或填写公网 https 地址'));
                   }
-                }}
-                accept="image/*"
-              >
-                <Button icon={<UploadOutlined />} loading={uploading}>
-                  上传
-                </Button>
-              </Upload>
-            </Input.Group>
+                  const cleaned = normalizeBannerImageUrl(String(value));
+                  if (!isValidBannerImageRef(cleaned)) {
+                    return Promise.reject(
+                      new Error('请使用公网 http(s) 地址，或上传由系统生成的资源')
+                    );
+                  }
+                  return Promise.resolve();
+                },
+              },
+            ]}
+          >
+            <Input type="hidden" />
           </Form.Item>
 
-          {bannerForm.getFieldValue('imageUrl') && (
+          <Form.Item
+            label="Banner 图"
+            required
+            extra="上传后保存为资源路径；App 将自动拼接访问。也可选填公网 https 图地址（不展示/保存 OSS 代理串）。"
+          >
+            <Space direction="vertical" size="small" style={{ width: '100%' }}>
+              <Space wrap>
+                <Upload
+                  showUploadList={false}
+                  beforeUpload={async (file) => {
+                    try {
+                      const key = await handleImageUpload(file);
+                      bannerForm.setFieldsValue({ imageUrl: key });
+                      return false;
+                    } catch (error) {
+                      return false;
+                    }
+                  }}
+                  accept="image/*"
+                >
+                  <Button icon={<UploadOutlined />} loading={uploading}>
+                    上传图片
+                  </Button>
+                </Upload>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  支持 JPG / PNG，推荐横图
+                </Text>
+              </Space>
+              <Input
+                allowClear={Boolean(
+                  typeof bannerImageUrlWatch === 'string' &&
+                    bannerImageUrlWatch.trim().startsWith('http')
+                )}
+                placeholder="或填写公网 https 图地址（选填，与上传二选一）"
+                value={
+                  typeof bannerImageUrlWatch === 'string' && bannerImageUrlWatch.trim().startsWith('http')
+                    ? bannerImageUrlWatch
+                    : ''
+                }
+                onChange={(e) => {
+                  const t = e.target.value.trim();
+                  if (t) {
+                    bannerForm.setFieldsValue({ imageUrl: t });
+                  } else if (
+                    typeof bannerImageUrlWatch === 'string' &&
+                    bannerImageUrlWatch.trim().startsWith('http')
+                  ) {
+                    bannerForm.setFieldsValue({ imageUrl: '' });
+                  }
+                }}
+              />
+            </Space>
+          </Form.Item>
+
+          {!!bannerImageUrlWatch?.trim() && (
             <Form.Item label="图片预览">
               <Image
-                src={bannerForm.getFieldValue('imageUrl')}
+                src={buildAssetUrl(bannerImageUrlWatch) || bannerImageUrlWatch}
                 alt="Banner预览"
                 width={200}
                 style={{ borderRadius: 4 }}
                 preview={{
-                  src: bannerForm.getFieldValue('imageUrl'),
+                  src: buildAssetUrl(bannerImageUrlWatch) || bannerImageUrlWatch,
                 }}
               />
             </Form.Item>

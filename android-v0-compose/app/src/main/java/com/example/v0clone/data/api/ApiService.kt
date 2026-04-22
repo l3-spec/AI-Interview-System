@@ -329,6 +329,24 @@ interface ApiService {
     suspend fun getHomeBanners(): ApiResponse<List<Banner>>
 
     /**
+     * 获取职圈Banner
+     */
+    @GET("circle/banners")
+    suspend fun getCircleBanners(): ApiResponse<List<Banner>>
+
+    /**
+     * 获取岗位Banner
+     */
+    @GET("jobs/banners")
+    suspend fun getJobsBanners(): ApiResponse<List<Banner>>
+
+    /**
+     * 获取我的Banner
+     */
+    @GET("profile/banners")
+    suspend fun getProfileBanners(): ApiResponse<List<Banner>>
+
+    /**
      * 获取首页精选内容
      */
     @GET("home/featured-articles")

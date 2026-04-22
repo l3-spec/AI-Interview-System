@@ -20,7 +20,7 @@ import JobEdit from '../pages/jobs/JobEdit';
 import JobDetail from '../pages/jobs/JobDetail';
 import PrivacyPolicy from '../pages/PrivacyPolicy';
 import PrivacyRights from '../pages/PrivacyRights';
-import PrivacyStatement from '../pages/PrivacyStatement';
+import UserAgreement from '../pages/UserAgreement';
 
 export const AppRoutes: React.FC = () => {
   const { isAuthenticated, loading } = useAuth();
@@ -51,7 +51,8 @@ export const AppRoutes: React.FC = () => {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/privacy-policy" element={<PrivacyPolicy />} />
         <Route path="/privacy-rights" element={<PrivacyRights />} />
-        <Route path="/privacy-statement" element={<PrivacyStatement />} />
+        <Route path="/user-agreement" element={<UserAgreement />} />
+        <Route path="/privacy-statement" element={<Navigate to="/privacy-policy" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     );
@@ -77,7 +78,8 @@ export const AppRoutes: React.FC = () => {
       </Route>
       <Route path="/privacy-policy" element={<PrivacyPolicy />} />
       <Route path="/privacy-rights" element={<PrivacyRights />} />
-      <Route path="/privacy-statement" element={<PrivacyStatement />} />
+      <Route path="/user-agreement" element={<UserAgreement />} />
+      <Route path="/privacy-statement" element={<Navigate to="/privacy-policy" replace />} />
       <Route path="/login" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

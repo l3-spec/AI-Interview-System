@@ -188,7 +188,7 @@ class AliyunVideoAIService {
                 headPose: avgPose || undefined,
                 frameMetrics,
                 microExpressionScore: microExpressionResult.score,
-                bodyLanguageDetails,
+                bodyLanguageDetails: bodyLanguageDetails ?? undefined,
                 emotionTimeline
             };
 
@@ -1002,7 +1002,7 @@ class AliyunVideoAIService {
             let frameScore = 50;
 
             // 眨眼频率（眼开度变化）
-            if (eyeOpen !== null) {
+            if (eyeOpen != null) {
                 if (eyeOpen < 30) {
                     frameScore -= 10;
                     tags.push('频繁眨眼');

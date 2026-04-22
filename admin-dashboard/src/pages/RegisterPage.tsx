@@ -1,5 +1,9 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import FirstLaunchPrivacyModal, {
+  hasPrivacyFirstLaunchConsent,
+  setPrivacyFirstLaunchConsent
+} from '../components/FirstLaunchPrivacyModal';
 import { AUTH_CONSTANTS } from '../config/constants';
 
 const RegisterPage: React.FC = () => {
@@ -14,6 +18,14 @@ const RegisterPage: React.FC = () => {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [agreedPolicies, setAgreedPolicies] = useState(false);
+  const [showPrivacyGateModal, setShowPrivacyGateModal] = useState(false);
+
+  useEffect(() => {
+    if (!hasPrivacyFirstLaunchConsent()) {
+      setShowPrivacyGateModal(true);
+    }
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -27,6 +39,12 @@ const RegisterPage: React.FC = () => {
     e.preventDefault();
     setError('');
     setLoading(true);
+
+    if (!agreedPolicies) {
+      setError('请先阅读并勾选同意《用户服务协议》和《隐私政策》');
+      setLoading(false);
+      return;
+    }
 
     // 表单验证
     if (!formData.companyName || !formData.contactName || !formData.contactPhone || !formData.email || !formData.password) {
@@ -297,6 +315,37 @@ const RegisterPage: React.FC = () => {
             />
           </div>
 
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '10px',
+              marginBottom: '20px',
+              fontSize: '13px',
+              lineHeight: 1.5,
+              color: '#595959',
+              cursor: 'pointer',
+              userSelect: 'none'
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={agreedPolicies}
+              onChange={(e) => setAgreedPolicies(e.target.checked)}
+              style={{ marginTop: 3, width: 16, height: 16, flexShrink: 0 }}
+            />
+            <span>
+              我已阅读并同意
+              <Link to="/user-agreement" target="_blank" rel="noopener noreferrer" style={{ color: '#0091ff', margin: '0 2px' }}>
+                《用户服务协议》
+              </Link>
+              和
+              <Link to="/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ color: '#0091ff', margin: '0 2px' }}>
+                《隐私政策》
+              </Link>
+            </span>
+          </label>
+
           <button
             type="submit"
             disabled={loading}
@@ -339,18 +388,27 @@ const RegisterPage: React.FC = () => {
         </form>
       </div>
 
-      {/* 底部说明 */}
+      {/* 底部说明：须主动勾选，不得默认同意 */}
       <div style={{
         marginTop: '24px',
         textAlign: 'center',
         color: '#666',
         fontSize: '12px'
       }}>
-        注册即表示同意
-        <a href="/terms" style={{ color: '#1890ff', textDecoration: 'none' }}>服务条款</a>
-        和
-        <a href="/privacy" style={{ color: '#1890ff', textDecoration: 'none' }}>隐私政策</a>
+        注册前请阅读
+        <Link to="/user-agreement" style={{ color: '#0091ff', textDecoration: 'none' }}>《用户服务协议》</Link>
+        与
+        <Link to="/privacy-policy" style={{ color: '#0091ff', textDecoration: 'none' }}>《隐私政策》</Link>
       </div>
+
+      <FirstLaunchPrivacyModal
+        open={showPrivacyGateModal}
+        onAgree={() => {
+          setPrivacyFirstLaunchConsent();
+          setShowPrivacyGateModal(false);
+        }}
+        onDisagree={() => setShowPrivacyGateModal(false)}
+      />
     </div>
   );
 };

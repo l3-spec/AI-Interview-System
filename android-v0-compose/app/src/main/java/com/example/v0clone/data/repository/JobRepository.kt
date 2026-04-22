@@ -7,6 +7,7 @@ import com.xlwl.AiMian.data.model.CompanyShowcaseDto
 import com.xlwl.AiMian.data.model.JobApplicationDto
 import com.xlwl.AiMian.data.model.JobApplicationRequest
 import com.xlwl.AiMian.data.model.JobDetailDto
+import com.xlwl.AiMian.data.model.Banner
 import com.xlwl.AiMian.data.model.JobSectionDto
 import com.xlwl.AiMian.data.model.JobSummaryDto
 import kotlin.math.max
@@ -61,6 +62,22 @@ class JobRepository(private val apiService: ApiService) {
                 )
             } else {
                 Result.failure(Exception(response.message ?: response.error ?: "获取岗位列表失败"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * 获取岗位页 Banner
+     */
+    suspend fun getJobsBanners(): Result<List<Banner>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getJobsBanners()
+            if (response.success && response.data != null) {
+                Result.success(response.data)
+            } else {
+                Result.failure(Exception(response.message ?: "获取岗位Banner失败"))
             }
         } catch (e: Exception) {
             Result.failure(e)

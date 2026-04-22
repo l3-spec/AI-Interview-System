@@ -1,0 +1,104 @@
+.first-privacy-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 16px;
+  box-sizing: border-box;
+}
+
+.first-privacy-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.first-privacy-card {
+  position: relative;
+  width: min(400px, 100%);
+  max-height: min(90vh, 640px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: #fff;
+  border-radius: 12px;
+  padding: 22px 20px 20px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18);
+  text-align: center;
+}
+
+.first-privacy-icon {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.first-privacy-heading {
+  margin: 0 0 12px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+  letter-spacing: -0.02em;
+}
+
+.first-privacy-body {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #374151;
+  text-align: left;
+}
+
+.first-privacy-link {
+  color: #0091ff;
+  font-weight: 600;
+  text-decoration: none;
+  margin: 0 2px;
+}
+
+.first-privacy-link:hover,
+.first-privacy-link:focus-visible {
+  text-decoration: underline;
+}
+
+.first-privacy-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+  justify-content: stretch;
+}
+
+.first-privacy-btn {
+  flex: 1;
+  min-height: 44px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.2s, transform 0.15s;
+}
+
+.first-privacy-btn:active {
+  transform: scale(0.98);
+}
+
+.first-privacy-btn--secondary {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.first-privacy-btn--primary {
+  color: #fff;
+}
+
+@media (max-width: 380px) {
+  .first-privacy-actions {
+    flex-direction: column-reverse;
+  }
+
+  .first-privacy-btn {
+    width: 100%;
+  }
+}

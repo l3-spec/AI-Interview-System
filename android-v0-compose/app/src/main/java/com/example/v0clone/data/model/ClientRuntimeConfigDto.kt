@@ -30,4 +30,9 @@ data class ClientRuntimeConfigDto(
     @SerializedName("aliyunAvatarInstanceId") val aliyunAvatarInstanceId: String? = null,
     @SerializedName("aliyunAccessKeyId") val aliyunAccessKeyId: String? = null,
     @SerializedName("aliyunAccessKeySecret") val aliyunAccessKeySecret: String? = null,
+    @SerializedName("volcanoTtsHost") val volcanoTtsHost: String? = null,
+    @SerializedName("volcanoTtsPath") val volcanoTtsPath: String? = null,
+    @SerializedName("vadThreshold") val vadThreshold: Float? = null,
+    @SerializedName("bargeInVadThreshold") val bargeInVadThreshold: Float? = null,
+    @SerializedName("speechCooldownMs") val speechCooldownMs: Long? = null,
 )

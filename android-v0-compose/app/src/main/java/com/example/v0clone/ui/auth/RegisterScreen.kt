@@ -34,7 +34,8 @@ import com.google.gson.Gson
 fun RegisterScreen(
     repo: AuthRepository,
     onRegisterSuccess: (String, String) -> Unit, // token, userJson
-    onGoLogin: () -> Unit
+    onGoLogin: () -> Unit,
+    onNavigatePrivacy: () -> Unit = {}
 ) {
     var email by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
@@ -43,6 +44,7 @@ fun RegisterScreen(
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var passwordVisible by remember { mutableStateOf(false) }
+    var isAgreed by remember { mutableStateOf(false) } // 默认不勾选
     val scope = rememberCoroutineScope()
     val navPadding = WindowInsets.navigationBars.asPaddingValues()
 
@@ -183,6 +185,10 @@ fun RegisterScreen(
                     // 注册按钮
                     Button(
                         onClick = {
+                            if (!isAgreed) {
+                                error = "请阅读并同意隐私政策"
+                                return@Button
+                            }
                             loading = true
                             error = null
                             scope.launch {
@@ -216,6 +222,25 @@ fun RegisterScreen(
                                 )
                             )
                         }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    // 隐私政策勾选
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        FigmaAgreementCheckbox(
+                            checked = isAgreed,
+                            onCheckedChange = { isAgreed = it }
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        FigmaAgreementText(
+                            onPrivacyClick = onNavigatePrivacy,
+                            onAgreementClick = onNavigatePrivacy
+                        )
                     }
 
                     Spacer(Modifier.height(16.dp))

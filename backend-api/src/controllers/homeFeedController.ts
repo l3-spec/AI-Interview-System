@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { toMediaUrl } from '../utils/ossUtils';
 
 const prisma = new PrismaClient();
 
@@ -549,9 +550,15 @@ export const getHomeBanners = async (req: Request, res: Response) => {
       },
     });
 
+    const withResolvedUrls = banners.map((b) => ({
+      ...b,
+      // DB 中存 objectKey（uploads/...）或历史代理路径，对外统一为 App 可加载的地址
+      imageUrl: toMediaUrl(b.imageUrl) ?? b.imageUrl,
+    }));
+
     res.json({
       success: true,
-      data: banners,
+      data: withResolvedUrls,
     });
   } catch (error: any) {
     console.error('获取Banner失败:', error);

@@ -136,8 +136,9 @@ fun PersonalInfoRoute(
 
     val scrollState = rememberScrollState()
     
-    val user by viewModel.user.collectAsState()
-    val regions by viewModel.regions.collectAsState()
+    val uiState by viewModel.uiState.collectAsState()
+    val user = uiState.user
+    val regions = uiState.regions
     
     var localAvatarUri by remember { mutableStateOf<Uri?>(null) }
 

@@ -14,20 +14,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-
-/**
- * Banner数据模型
- */
-data class BannerData(
-    val id: String,
-    val imageUrl: String,
-    val label: String,
-    val title: String,
-    val subtitle: String,
-    val linkType: String? = null,
-    val linkId: String? = null
-)
+import com.xlwl.AiMian.ui.components.BannerData
 
 /**
  * 内容卡片数据模型

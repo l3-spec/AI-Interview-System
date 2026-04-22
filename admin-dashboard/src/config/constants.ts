@@ -9,6 +9,11 @@ export const AUTH_CONSTANTS = {
   TOKEN_EXPIRY_KEY: 'admin_token_expiry'
 };
 
+/** 本地存储：用户是否已确认《隐私政策》首次提示（与移动端共用同一文案 URL 时，请保持 key 与业务约定一致） */
+export const LEGAL_STORAGE_KEYS = {
+  PRIVACY_FIRST_LAUNCH_CONSENT: 'utalent_privacy_policy_first_launch_v1'
+} as const;
+
 export const API_ENDPOINTS = {
   // 认证相关
   AUTH: {

@@ -11,7 +11,8 @@ import com.xlwl.AiMian.data.repository.AuthRepository
 fun LoginFlowScreen(
     repo: AuthRepository,
     onLoginSuccess: (String, String) -> Unit, // token, userJson
-    onGoRegister: () -> Unit
+    onGoRegister: () -> Unit,
+    onNavigatePrivacy: () -> Unit = {}
 ) {
     var currentScreen by remember { mutableStateOf(LoginScreenType.MAIN) }
     var codeLoginPhone by remember { mutableStateOf<String?>(null) }
@@ -24,7 +25,8 @@ fun LoginFlowScreen(
                 onRequestCodeLogin = { phone ->
                     codeLoginPhone = phone
                     currentScreen = LoginScreenType.CODE_LOGIN
-                }
+                },
+                onNavigatePrivacy = onNavigatePrivacy
             )
         }
         
@@ -36,7 +38,8 @@ fun LoginFlowScreen(
                 onBackClick = {
                     codeLoginPhone = null
                     currentScreen = LoginScreenType.MAIN
-                }
+                },
+                onNavigatePrivacy = onNavigatePrivacy
             )
         }
     }

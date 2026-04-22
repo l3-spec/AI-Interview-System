@@ -47,6 +47,15 @@ const { Text } = Typography;
 const { Option } = Select;
 const { Panel } = Collapse;
 
+/** 题目关联能力维度（与后端/产品约定；用于下拉选项） */
+const ASSESSMENT_DIMENSION_OPTIONS: { value: string; label: string }[] = [
+  { value: 'communication', label: '沟通表达' },
+  { value: 'logic', label: '逻辑思维' },
+  { value: 'professional', label: '专业能力' },
+  { value: 'leadership', label: '协作与领导力' },
+  { value: 'stress', label: '抗压与应变' }
+];
+
 const AssessmentManagement: React.FC = () => {
   // 分类仅用于后端必填字段，前台不展示分类维护
   const [categories, setCategories] = useState<AssessmentCategory[]>([]);
@@ -860,7 +869,7 @@ const AssessmentManagement: React.FC = () => {
                 rules={[{ required: true, message: '请选择题目关联的能力维度' }]}
               >
                 <Select placeholder="请选择维度">
-                  {dimensions.map(dim => (
+                  {ASSESSMENT_DIMENSION_OPTIONS.map((dim) => (
                     <Option key={dim.value} value={dim.value}>
                       {dim.label}
                     </Option>

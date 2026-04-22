@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
-import { toMediaUrl } from '../utils/ossUtils';
+import { toMediaUrl, toObjectKey } from '../utils/ossUtils';
 
 /**
  * 获取AI面试会话列表（管理员）
@@ -159,6 +159,8 @@ export const getInterviewSessionAnalysis = async (req: Request, res: Response) =
                     text: q.questionText,
                     answer: q.answerText,
                     videoUrl: toMediaUrl(q.answerVideoUrl) ?? q.answerVideoUrl,
+                    /** 原始 OSS objectKey，便于在控制台按路径人工查验 */
+                    videoOssKey: toObjectKey(q.answerVideoUrl) ?? null,
                     duration: q.answerDuration
                 })),
                 conversationTurns: session.conversationTurns?.map((t: any) => ({
@@ -168,6 +170,7 @@ export const getInterviewSessionAnalysis = async (req: Request, res: Response) =
                     avatarText: t.avatarText,
                     candidateText: t.candidateText,
                     candidateVideoUrl: toMediaUrl(t.candidateVideoUrl) ?? t.candidateVideoUrl,
+                    candidateVideoOssKey: toObjectKey(t.candidateVideoUrl) ?? null,
                     questionIndex: t.questionIndex,
                     createdAt: t.createdAt,
                 })) ?? [],

@@ -255,6 +255,18 @@
   word-break: break-all;
 }
 
+/* 合规提示色：外链与正文内链与 App 主色一致 */
+.legal-page__link-accent {
+  color: #0091ff;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.legal-page__link-accent:hover,
+.legal-page__link-accent:focus-visible {
+  text-decoration: underline;
+}
+
 .legal-page__table a:hover {
   text-decoration: underline;
 }
