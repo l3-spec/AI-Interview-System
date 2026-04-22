@@ -1132,6 +1132,15 @@ class RealtimeVoiceManager(private val context: Context) {
             val ttsMode = data.optString("ttsMode", if (audioUrl.isNullOrBlank()) "client" else "server")
             val userText = data.optString("userText", "")
             val sessionId = data.optString("sessionId", currentSessionId ?: "")
+            val ttsSessionIdFromServer = data.optString("ttsSessionId", "").takeIf { it.isNotBlank() }
+            if (ttsSessionIdFromServer != null && currentSessionId != null &&
+                ttsSessionIdFromServer != currentSessionId
+            ) {
+                Log.w(
+                    TAG,
+                    "voice_response 中 ttsSessionId=$ttsSessionIdFromServer 与当前 Socket sessionId=$currentSessionId 不一致，TTS 微服务可能收不到与 App 相同的会话键",
+                )
+            }
             val questionIndex = data.optInt("questionIndex", -1)
             val willSpeak = text.isNotBlank() || !audioUrl.isNullOrBlank()
             val isCompletedFlag = data.optBoolean("isCompleted", false) ||

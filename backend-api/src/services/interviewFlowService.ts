@@ -2,7 +2,18 @@ import { deepseekService, OpeningResult, ClosingResult } from './deepseekService
 import { ttsService } from './ttsService';
 import { avatarService } from './avatar.service';
 import { interviewConductor } from './interview-conductor.service';
+import { aiInterviewService } from './aiInterviewService';
 import { InterviewSession, InterviewRound, InterviewState, ResponseAnalysis } from '../models/interviewFlow';
+
+function rehydrateQuestionHasAnswer(q: {
+  answerText?: string | null;
+  answerVideoUrl?: string | null;
+}): boolean {
+  return Boolean(
+    q.answerVideoUrl ||
+    (q.answerText && String(q.answerText).trim().length > 0)
+  );
+}
 
 /**
  * 面试流程服务
@@ -17,7 +28,20 @@ export class InterviewFlowService {
    * 初始化会话（由外部提供sessionId）
    */
   async initializeSession(sessionId: string, userId: string, userName: string, targetJob: string, background?: string) {
-    if (this.sessions.has(sessionId)) return this.sessions.get(sessionId)!;
+    if (this.sessions.has(sessionId)) {
+      const existing = this.sessions.get(sessionId)!;
+      try {
+        await avatarService.ensureActiveSession({
+          userId,
+          sessionId,
+          avatarCode: 'airi_default',
+          voiceCode: 'zh-CN-lisa',
+        });
+      } catch (err: any) {
+        console.warn(`[InterviewFlow] ensureActiveSession(已有会话) 失败（可忽略）: ${err?.message || err}`);
+      }
+      return existing;
+    }
 
     const session: InterviewSession = {
       sessionId,
@@ -35,9 +59,103 @@ export class InterviewFlowService {
       }
     };
 
+    try {
+      await this.tryRehydrateFromPrisma(session, userId);
+    } catch (err: any) {
+      console.warn(`[InterviewFlow] tryRehydrateFromPrisma 跳过: ${err?.message || err}`);
+    }
+
     this.sessions.set(sessionId, session);
     console.log(`✅ InterviewFlowService: 成功为会话 ${sessionId} 初始化职位 [${targetJob}]`);
+
+    // 与 avatar.service 注册同源 sessionId/userId；重启后 Map 为空时 ensureActiveSession 会惰性重建。
+    try {
+      await avatarService.ensureActiveSession({
+        userId,
+        sessionId,
+        avatarCode: 'airi_default',
+        voiceCode: 'zh-CN-lisa',
+      });
+    } catch (err: any) {
+      console.warn(`[InterviewFlow] ensureActiveSession 未建立（可忽略）: ${err?.message || err}`);
+    }
+
     return session;
+  }
+
+  /**
+   * 从 Prisma 恢复题目与进度（backend-api / ASR / TTS 任一重启后，内存 Map 清空仍可续面）。
+   * 依赖 createInterviewSession 已写入的 AIInterviewQuestion；join_session 须传与 DB 一致的 userId。
+   */
+  private async tryRehydrateFromPrisma(session: InterviewSession, userId: string): Promise<void> {
+    if (!userId || userId === 'anonymous') {
+      return;
+    }
+
+    const result = await aiInterviewService.getInterviewSession(session.sessionId, userId);
+    if (!result.success || !result.session) {
+      return;
+    }
+
+    const db = result.session;
+    const questions = db.questions || [];
+    if (questions.length === 0) {
+      return;
+    }
+
+    session.userInfo.targetJob = db.jobTarget || session.userInfo.targetJob;
+    session.userInfo.background = db.background || session.userInfo.background;
+    session.dbMirror = {
+      status: db.status,
+      currentQuestion: db.currentQuestion,
+    };
+
+    const sorted = [...questions].sort((a, b) => a.questionIndex - b.questionIndex);
+    const rounds: InterviewRound[] = [];
+
+    for (let i = 0; i < sorted.length; i++) {
+      const q = sorted[i];
+      const rawText = q.questionText || '';
+      const cleanText = rawText.replace(/\[emotion:[^\]]+\]/g, '').trim() || rawText.trim();
+      const scene = interviewConductor.inferScene(cleanText, { isLast: i === sorted.length - 1 });
+      const emotionInstruction = interviewConductor.getEmotionInstruction(scene, cleanText);
+      const answered = rehydrateQuestionHasAnswer(q);
+
+      let status: InterviewRound['status'];
+      if (answered) {
+        status = 'completed';
+      } else if (q.questionIndex === db.currentQuestion && db.status !== 'COMPLETED') {
+        status = 'in_progress';
+      } else {
+        status = 'pending';
+      }
+
+      rounds.push({
+        roundNumber: i + 1,
+        question: cleanText,
+        audioUrl: q.audioUrl || undefined,
+        duration: 0,
+        expectedPoints: ['专业能力', '沟通表达', '逻辑思维'],
+        suggestedTime: 180,
+        scoringCriteria: ['完整回答', '逻辑清晰', '专业深度'],
+        status,
+        userResponse: q.answerText || undefined,
+        emotionScene: scene,
+        emotionInstruction,
+      });
+    }
+
+    session.rounds = rounds;
+
+    if (db.status === 'COMPLETED' || rounds.every(r => r.status === 'completed')) {
+      session.state = InterviewState.COMPLETED;
+    } else if (rounds.length > 0) {
+      session.state = InterviewState.READY;
+    }
+
+    console.log(
+      `[InterviewFlow] 已从 DB 恢复 ${rounds.length} 题 (sessionId=${session.sessionId}, dbStatus=${db.status}, currentQ=${db.currentQuestion})`
+    );
   }
 
   /**
@@ -163,6 +281,42 @@ export class InterviewFlowService {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('Session not found');
 
+    if (session.rounds.length === 0) {
+      try {
+        await this.tryRehydrateFromPrisma(session, session.userId);
+      } catch (err: any) {
+        console.warn(`[InterviewFlow] startInterviewPhase 内 DB 恢复跳过: ${err?.message || err}`);
+      }
+    }
+
+    if (session.rounds.length > 0) {
+      if (session.rounds.every(r => r.status === 'completed')) {
+        session.state = InterviewState.COMPLETED;
+        return {
+          totalRounds: session.rounds.length,
+          firstRound: session.rounds[session.rounds.length - 1],
+        };
+      }
+
+      session.state = InterviewState.READY;
+      const inProgress = session.rounds.find(r => r.status === 'in_progress');
+      if (inProgress) {
+        return {
+          totalRounds: session.rounds.length,
+          firstRound: inProgress,
+        };
+      }
+
+      await this.startNextRound(sessionId);
+      const cur =
+        session.rounds.find(r => r.status === 'in_progress') ||
+        session.rounds.find(r => r.status === 'pending');
+      return {
+        totalRounds: session.rounds.length,
+        firstRound: cur || session.rounds[session.rounds.length - 1],
+      };
+    }
+
     session.state = InterviewState.GENERATING;
 
     // 1. 使用DeepSeek生成面试内容
@@ -280,19 +434,84 @@ export class InterviewFlowService {
   }
 
   /**
-   * 解析面试内容
+   * 从 DeepSeek 长文里解析带 [emotion:xxx] 的题干（与 generateInterviewContent 提示词格式一致）。
+   * 旧逻辑要求「以 问题 开头或以 ？ 结尾」会与 Markdown **…** 包起来的段落完全不匹配，导致 0 题、App 无后续播报。
    */
   private parseInterviewContent(content: string) {
-    // 这里实现从DeepSeek响应中解析问题
-    // 简化版实现
-    const questions = content.split('\n').filter(line =>
-      line.trim().startsWith('问题') || line.trim().endsWith('？')
-    ).map((q, index) => ({
-      text: q.trim(),
+    const defaults = {
       expectedPoints: ['专业能力', '沟通表达', '逻辑思维'],
-      suggestedTime: 180, // 3分钟
-      scoringCriteria: ['完整回答', '逻辑清晰', '专业深度']
-    }));
+      suggestedTime: 180,
+      scoringCriteria: ['完整回答', '逻辑清晰', '专业深度'],
+    };
+
+    const stripOuterBold = (s: string) => {
+      let t = s.trim();
+      if (t.startsWith('**')) {
+        t = t.slice(2);
+      }
+      if (t.endsWith('**')) {
+        t = t.slice(0, -2);
+      }
+      return t.trim();
+    };
+
+    const dedupeKeys = new Set<string>();
+    const questions: Array<{
+      text: string;
+      expectedPoints: string[];
+      suggestedTime: number;
+      scoringCriteria: string[];
+    }> = [];
+
+    const pushQuestion = (rawBlock: string) => {
+      const text = stripOuterBold(rawBlock);
+      if (!/\[emotion:[^\]]+\]/.test(text)) {
+        return;
+      }
+      const bodyForLen = text.replace(/\[emotion:[^\]]+\]/g, '').trim();
+      if (bodyForLen.length < 12) {
+        return;
+      }
+      const key = bodyForLen.slice(0, 96);
+      if (dedupeKeys.has(key)) {
+        return;
+      }
+      dedupeKeys.add(key);
+      questions.push({ text, ...defaults });
+    };
+
+    // 1) 标准 Markdown：**[emotion:…] ……**（非贪婪到成对 **，可跨行）
+    const boldBlocks = content.matchAll(/\*\*\s*\[emotion:[^\]]+\][\s\S]*?\*\*/g);
+    for (const m of boldBlocks) {
+      pushQuestion(m[0]);
+    }
+
+    // 2) 模型偶发省略闭合 **，或输出被 max_tokens 截断：从 **[emotion 起到行尾/文尾
+    if (questions.length === 0) {
+      const looseBlocks = content.matchAll(/\*\*\s*\[emotion:[^\]]+\][\s\S]*?(?=\n\s*\*\*\s*\[emotion:]|$)/g);
+      for (const m of looseBlocks) {
+        pushQuestion(m[0].replace(/\s+$/, ''));
+      }
+    }
+
+    // 3) 无 ** 包裹：以 [emotion: 分段
+    if (questions.length === 0) {
+      const parts = content.split(/(?=\[emotion:[^\]]+\])/);
+      for (const p of parts) {
+        const t = p.trim();
+        if (t.startsWith('[emotion:')) {
+          pushQuestion(t);
+        }
+      }
+    }
+
+    if (questions.length === 0) {
+      console.warn(
+        '[InterviewFlow] parseInterviewContent: 未解析到任何 [emotion:…] 题干，请检查 LLM 输出格式或提高 LLM_MAX_TOKENS（当前输出可能被截断）'
+      );
+    } else {
+      console.log(`[InterviewFlow] parseInterviewContent: 解析到 ${questions.length} 道有效题干`);
+    }
 
     return questions;
   }
@@ -313,8 +532,14 @@ export class InterviewFlowService {
     nextRound.status = 'in_progress';
     session.currentRound = nextRound.roundNumber;
 
-    // 通过数字人播放问题
-    await avatarService.sendTextToAvatar(sessionId, session.userId, nextRound.question);
+    // Web 嵌入式数字人侧记一笔；失败不阻断流程（实时链路靠 Socket + Qwen3-TTS）
+    try {
+      await avatarService.sendTextToAvatar(sessionId, session.userId, nextRound.question);
+    } catch (err: any) {
+      console.warn(
+        `[InterviewFlow] sendTextToAvatar 跳过: ${err?.message || err}`
+      );
+    }
 
     // 如果有音频文件，客户端会播放音频，这里不需要服务器端播放
     // if (nextRound.audioUrl) {
@@ -539,6 +764,18 @@ export class InterviewFlowService {
    */
   getSession(sessionId: string): InterviewSession | undefined {
     return this.sessions.get(sessionId);
+  }
+
+  /**
+   * WebSocket 断点续面：已有答题记录或 DB 已进入 IN_PROGRESS 时，避免重复首访欢迎语。
+   * 首访（仅 PREPARING、尚无作答）仍为 false，可走自我介绍欢迎流程。
+   */
+  isWarmResumeEligible(session: InterviewSession): boolean {
+    if (session.rounds.some(r => r.status === 'completed')) {
+      return true;
+    }
+    const st = session.dbMirror?.status;
+    return st === 'IN_PROGRESS' || st === 'COMPLETED';
   }
 
   /**

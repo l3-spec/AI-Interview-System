@@ -49,10 +49,18 @@ export interface CreateTTSSessionOptions {
  * 1. 客户端直连模式：客户端通过 WebSocket 直接发送文本、接收音频
  * 2. Backend 触发模式：backend-api 通过 Redis 发送文本，音频通过 Redis/WebSocket 回传
  */
+/** backend-api 经 Redis 下达的指令，在客户端 WebSocket 尚未 session.create 时暂存于此，建连后重放 */
+type PendingRedisCmd =
+  | { command: 'synthesize'; text: string; commit?: boolean }
+  | { command: 'commit' }
+  | { command: 'clear' };
+
 export class TTSSessionManager {
   private static instance: TTSSessionManager;
   private sessions = new Map<string, TTSSession>();
   private redisBus: RedisEventBus | null = null;
+  /** sessionId -> 等待移动端建连的 Redis 指令（避免「后端已 synthesize、TTS 侧尚无会话」丢字） */
+  private pendingRedisCommands = new Map<string, PendingRedisCmd[]>();
 
   private constructor() {}
 
@@ -114,8 +122,8 @@ export class TTSSessionManager {
           responseId,
           timestamp: Date.now(),
         });
-        
-        if (session.audioChunkCount % 20 === 0) {
+
+        if (session && session.audioChunkCount % 20 === 0) {
           logger.info(`[TTS-Session] 会话 ${sessionId} 推送音频分片: count=${session.audioChunkCount}, bytes=${Math.round(audioBase64.length * 0.75)}`);
         }
 
@@ -170,7 +178,48 @@ export class TTSSessionManager {
       `[TTS-Manager] 会话 ${sessionId} 已注册（DashScope 将在首次 append/commit 时按需连接，避免空闲超时）`,
     );
 
+    await this.replayPendingRedisCommands(sessionId);
+
     return sessionId;
+  }
+
+  /**
+   * backend-api 比 App 更早发出 Redis synthesize 时暂存指令，待同一 sessionId 的 WebSocket 建连后顺序执行。
+   */
+  enqueueRedisCommand(sessionId: string, cmd: PendingRedisCmd): void {
+    const max = parseInt(process.env.TTS_PENDING_REDIS_MAX || '128', 10);
+    const list = this.pendingRedisCommands.get(sessionId) ?? [];
+    if (list.length >= max) {
+      logger.warn(`[TTS-Manager] Redis 暂存队列已满 (${sessionId})，丢弃最旧一条`);
+      list.shift();
+    }
+    list.push(cmd);
+    this.pendingRedisCommands.set(sessionId, list);
+    logger.info(
+      `[TTS-Manager] Redis 指令已暂存（等待客户端建连）session=${sessionId} cmd=${cmd.command} queueLen=${list.length}`,
+    );
+  }
+
+  private async replayPendingRedisCommands(sessionId: string): Promise<void> {
+    const list = this.pendingRedisCommands.get(sessionId);
+    if (!list?.length) {
+      return;
+    }
+    this.pendingRedisCommands.delete(sessionId);
+    logger.info(`[TTS-Manager] 重放暂存 Redis 指令 session=${sessionId} count=${list.length}`);
+    for (const item of list) {
+      try {
+        if (item.command === 'synthesize') {
+          await this.handleRedisTextCommand(sessionId, item.text, item.commit);
+        } else if (item.command === 'commit') {
+          await this.commitText(sessionId);
+        } else if (item.command === 'clear') {
+          await this.clearText(sessionId);
+        }
+      } catch (err: any) {
+        logger.error(`[TTS-Manager] 重放 Redis 指令失败 (${item.command}): ${err?.message || err}`);
+      }
+    }
   }
 
   /**
@@ -278,6 +327,7 @@ export class TTSSessionManager {
    * 销毁指定会话
    */
   async destroySession(sessionId: string): Promise<void> {
+    this.pendingRedisCommands.delete(sessionId);
     const session = this.sessions.get(sessionId);
     if (!session) return;
 
@@ -295,6 +345,7 @@ export class TTSSessionManager {
     for (const id of sessionIds) {
       await this.destroySession(id);
     }
+    this.pendingRedisCommands.clear();
     logger.info('[TTS-Manager] 所有会话已清理');
   }
 

@@ -42,6 +42,12 @@ export interface TTSEventCallbacks {
 }
 
 export class Qwen3TTSClient {
+  /**
+   * DashScope 对单条 input_text_buffer.append 有「折算长度」上限（约 2000），中文权重更高。
+   * 保守按原始字符数切块，避免 invalid_value / CLIENT_ERROR。
+   */
+  private static readonly MAX_APPEND_RAW_CHARS = 900;
+
   private ws: WebSocket | null = null;
   private dashscopeUrl: string;
   private apiKey: string;
@@ -341,6 +347,46 @@ export class Qwen3TTSClient {
   }
 
   /**
+   * 将长文本切成多段 append，满足「单片段折算长度」限制（官方报错约 2000，中文计权更高）。
+   */
+  private splitTextForAppend(text: string): string[] {
+    const t = text;
+    const max = Qwen3TTSClient.MAX_APPEND_RAW_CHARS;
+    if (!t) return [];
+    if (t.length <= max) return [t];
+
+    const out: string[] = [];
+    let i = 0;
+    const breakChars = ['\n\n', '\n', '。', '！', '？', '；', '，', '、', '. ', '! ', '? ', '; ', ', ', ' '];
+
+    while (i < t.length) {
+      let end = Math.min(i + max, t.length);
+      if (end < t.length) {
+        const window = t.slice(i, end);
+        let bestIdx = -1;
+        let bestSepLen = 1;
+        for (const sep of breakChars) {
+          const idx = window.lastIndexOf(sep);
+          if (idx > bestIdx) {
+            bestIdx = idx;
+            bestSepLen = sep.length;
+          }
+        }
+        const minPiece = Math.floor(max * 0.4);
+        if (bestIdx >= minPiece) {
+          end = i + bestIdx + bestSepLen;
+        }
+      }
+      const piece = t.slice(i, end);
+      if (piece.length > 0) {
+        out.push(piece);
+      }
+      i = end;
+    }
+    return out;
+  }
+
+  /**
    * 追加文本（双轨 Track 1：文本流式输入）
    * 可以多次调用，文本会追加到缓冲区
    * 在 server_commit 模式下，服务端会自动判断合成时机
@@ -351,13 +397,21 @@ export class Qwen3TTSClient {
       return;
     }
 
-    const event = {
-      event_id: `evt_${Date.now()}`,
-      type: 'input_text_buffer.append',
-      text,
-    };
+    const pieces = this.splitTextForAppend(text);
+    if (pieces.length > 1) {
+      logger.info(
+        `[Qwen3-TTS] 单段过长，已拆成 ${pieces.length} 次 append（每段≤${Qwen3TTSClient.MAX_APPEND_RAW_CHARS} 原始字符）`,
+      );
+    }
 
-    this.send(event);
+    for (const piece of pieces) {
+      const event = {
+        event_id: `evt_${uuidv4().slice(0, 12)}`,
+        type: 'input_text_buffer.append',
+        text: piece,
+      };
+      this.send(event);
+    }
   }
 
   /**
@@ -374,8 +428,18 @@ export class Qwen3TTSClient {
 
   /**
    * 清空文本缓冲区（用于中断当前合成）
+   * 注意：DashScope 仅在 client commit 模式（mode=commit）下支持 clear；server_commit 会报错。
    */
   clearTextBuffer(): void {
+    if (this.config.mode === 'server_commit') {
+      logger.warn(
+        '[Qwen3-TTS] 已跳过 input_text_buffer.clear：server_commit 模式不支持该操作（请改用 session.finish 或仅停止下行）',
+      );
+      return;
+    }
+    if (!this.isConnected || !this.ws) {
+      return;
+    }
     const event = {
       event_id: `evt_clear_${Date.now()}`,
       type: 'input_text_buffer.clear',

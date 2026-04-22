@@ -161,27 +161,6 @@ export class RealtimeVoiceWebSocketServer {
     const hasCompletionIntent = completionIntents.some(keyword => normalizedText.includes(keyword));
     const completionClosingText = '感谢您的配合，我们会尽快生成本次面试报告，请留意通知。';
 
-    // 4. TTS 推送辅助函数
-    const sendToQwen3TTS = async (responseText: string, scene?: InterviewScene): Promise<'qwen3_streaming' | 'client'> => {
-      try {
-        const ttsHealth = await qwen3TTSClient.checkHealth();
-        if (!ttsHealth || ttsHealth.status !== 'ok') return 'client';
-        
-        const segments = interviewConductor['parseEmotionSegments'](responseText, scene);
-        console.log(`🎙️ [Qwen3-TTS] 开始合成文本流 (Session: ${ttsSessionId}): "${responseText.substring(0, 50)}${responseText.length > 50 ? '...' : ''}"`);
-        for (const segment of segments) {
-          if (segment.text.trim()) {
-            console.log(`   - 推送分段 [${segment.emotion || 'neutral'}]: "${segment.text}"`);
-            qwen3TTSClient.synthesize(ttsSessionId, segment.text, false);
-          }
-        }
-        qwen3TTSClient.commitText(ttsSessionId);
-        return 'qwen3_streaming';
-      } catch (err) {
-        return 'client';
-      }
-    };
-
     // 5. 进入业务逻辑 (InterviewFlowService)
     try {
       const result = await interviewFlowService.processUserResponse(sessionId, text);
@@ -194,7 +173,7 @@ export class RealtimeVoiceWebSocketServer {
       }
 
       if (result.isCompleted) {
-        const ttsMode = await sendToQwen3TTS(completionClosingText, 'closing');
+        const ttsMode = await this.synthesizeQwen3TtsSegments(ttsSessionId, completionClosingText, 'closing');
         this.io.to(sessionId).emit('voice_response', {
           text: completionClosingText,
           sessionId,
@@ -204,30 +183,11 @@ export class RealtimeVoiceWebSocketServer {
         });
         this.persistAvatarVoice(sessionId, completionClosingText);
       } else if (result.nextRound) {
-        let ttsMode: string = 'client';
-        if (result.nextRound.audioUrl) {
-          ttsMode = 'server';
-          console.log(`🔊 [VoiceResponse] 生成语音包 URL (下一步问题): ${result.nextRound.audioUrl}`);
-        } else {
-          const scene = interviewConductor.inferScene(result.nextRound.question, {
-            isFollowUp: (result.nextRound.followupCount || 0) > 0,
-          });
-          ttsMode = await sendToQwen3TTS(result.nextRound.question, scene);
-          if (ttsMode === 'qwen3_streaming') {
-            console.log(`🎤 [VoiceResponse] 使用 Qwen3-TTS 流式播报 (Session: ${ttsSessionId || sessionId})`);
-          }
-        }
-
-        this.io.to(sessionId).emit('voice_response', {
-          audioUrl: result.nextRound.audioUrl || null,
-          text: result.nextRound.question,
+        await this.emitRoundVoiceResponse({
           sessionId,
-          duration: result.nextRound.duration || 0,
-          ttsMode,
+          round: result.nextRound,
           ttsSessionId,
-          questionIndex: result.nextRound.roundNumber
         });
-        this.persistAvatarVoice(sessionId, result.nextRound.question, result.nextRound.roundNumber);
       }
     } catch (error: any) {
       // 容错落入直接对话模式
@@ -237,7 +197,7 @@ export class RealtimeVoiceWebSocketServer {
         sessionId,
         context: { jobPosition }
       });
-      const ttsMode = await sendToQwen3TTS(conductorResult.text);
+      const ttsMode = await this.synthesizeQwen3TtsSegments(ttsSessionId, conductorResult.text);
       
       if (ttsMode === 'qwen3_streaming') {
         console.log(`🎤 [VoiceResponse] 容错模式: 使用 Qwen3-TTS 流式播报`);
@@ -281,6 +241,77 @@ export class RealtimeVoiceWebSocketServer {
         questionIndex: typeof questionIndex === 'number' ? questionIndex : undefined,
       })
       .catch(() => undefined);
+  }
+
+  /** Qwen3-TTS 微服务：按情感分段推送并 commit */
+  private async synthesizeQwen3TtsSegments(
+    ttsSessionId: string,
+    responseText: string,
+    scene?: InterviewScene
+  ): Promise<'qwen3_streaming' | 'client'> {
+    try {
+      const ttsHealth = await qwen3TTSClient.checkHealth();
+      if (!ttsHealth || ttsHealth.status !== 'ok') return 'client';
+
+      const segments = interviewConductor['parseEmotionSegments'](responseText, scene);
+      console.log(
+        `🎙️ [Qwen3-TTS] 开始合成文本流 (Session: ${ttsSessionId}): "${responseText.substring(0, 50)}${responseText.length > 50 ? '...' : ''}"`
+      );
+      for (const segment of segments) {
+        if (segment.text.trim()) {
+          console.log(`   - 推送分段 [${segment.emotion || 'neutral'}]: "${segment.text}"`);
+          qwen3TTSClient.synthesize(ttsSessionId, segment.text, false);
+        }
+      }
+      qwen3TTSClient.commitText(ttsSessionId);
+      return 'qwen3_streaming';
+    } catch {
+      return 'client';
+    }
+  }
+
+  /**
+   * 向 Socket 房间下发面试官题目（与 handleInteractionFlow 一致）；
+   * 异步题库就绪后需调用此方法，否则 App 仅收到欢迎语、无正式题。
+   */
+  private async emitRoundVoiceResponse(params: {
+    sessionId: string;
+    round: {
+      question: string;
+      audioUrl?: string;
+      duration?: number;
+      roundNumber: number;
+      followupCount?: number;
+    };
+    ttsSessionId?: string;
+  }): Promise<void> {
+    const { sessionId, round, ttsSessionId: rawTts } = params;
+    const ttsSessionId = rawTts || sessionId;
+
+    let ttsMode: string = 'client';
+    if (round.audioUrl) {
+      ttsMode = 'server';
+      console.log(`🔊 [VoiceResponse] 生成语音包 URL (下一步问题): ${round.audioUrl}`);
+    } else {
+      const scene = interviewConductor.inferScene(round.question, {
+        isFollowUp: (round.followupCount || 0) > 0,
+      });
+      ttsMode = await this.synthesizeQwen3TtsSegments(ttsSessionId, round.question, scene);
+      if (ttsMode === 'qwen3_streaming') {
+        console.log(`🎤 [VoiceResponse] 使用 Qwen3-TTS 流式播报 (Session: ${ttsSessionId})`);
+      }
+    }
+
+    this.io.to(sessionId).emit('voice_response', {
+      audioUrl: round.audioUrl || null,
+      text: round.question,
+      sessionId,
+      duration: round.duration || 0,
+      ttsMode,
+      ttsSessionId,
+      questionIndex: round.roundNumber,
+    });
+    this.persistAvatarVoice(sessionId, round.question, round.roundNumber);
   }
 
   constructor(io: Server) {
@@ -538,10 +569,14 @@ export class RealtimeVoiceWebSocketServer {
             background
           );
 
-          const isResume = sessionState.welcomeSent;
+          const existingSession = interviewFlowService.getSession(sessionId);
+          const isResume =
+            sessionState.welcomeSent ||
+            (existingSession != null &&
+              existingSession.rounds.length > 0 &&
+              interviewFlowService.isWarmResumeEligible(existingSession));
 
           // ===== 断点续面：检查是否有进行中的面试流程 =====
-          const existingSession = interviewFlowService.getSession(sessionId);
           if (isResume && existingSession && existingSession.rounds.length > 0) {
             // 查找当前正在进行或下一个待回答的题目
             const currentRound = existingSession.rounds.find(
@@ -678,11 +713,26 @@ export class RealtimeVoiceWebSocketServer {
           // 【总控逻辑】发送完欢迎语后，异步初始化面试回合生成
           // 这样用户在自我介绍时，题目已经生成好，可以无缝衔接
           console.log(`🚀 [Coordinator] 正在为会话 ${sessionId} 异步准备面试回合...`);
-          interviewFlowService.startInterviewPhase(sessionId).then(res => {
-            console.log(`✅ [Coordinator] 面试回合准备就绪: 共 ${res.totalRounds} 题`);
-          }).catch(err => {
-            console.warn(`⚠️ [Coordinator] 异步生成题目失败 (用户回复时将实时补生成): ${err.message}`);
-          });
+          interviewFlowService
+            .startInterviewPhase(sessionId)
+            .then(async (res) => {
+              console.log(`✅ [Coordinator] 面试回合准备就绪: 共 ${res.totalRounds} 题`);
+              if (res.totalRounds > 0 && res.firstRound) {
+                try {
+                  await this.emitRoundVoiceResponse({
+                    sessionId,
+                    round: res.firstRound,
+                    ttsSessionId: sessionId,
+                  });
+                  console.log(`📣 [Coordinator] 已向客户端下发首道正式题（voice_response）`);
+                } catch (pushErr: any) {
+                  console.warn(`⚠️ [Coordinator] 首题下发失败: ${pushErr?.message || pushErr}`);
+                }
+              }
+            })
+            .catch((err) => {
+              console.warn(`⚠️ [Coordinator] 异步生成题目失败 (用户回复时将实时补生成): ${err.message}`);
+            });
 
         } catch (error: any) {
           console.error('加入会话失败:', error);

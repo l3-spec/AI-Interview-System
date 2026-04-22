@@ -49,6 +49,14 @@ app.post('/synthesize', async (req, res) => {
     }
 
     const manager = TTSSessionManager.getInstance();
+    if (!manager.hasActiveSession(sessionId)) {
+      manager.enqueueRedisCommand(sessionId, {
+        command: 'synthesize',
+        text,
+        commit,
+      });
+      return res.json({ success: true, sessionId, charCount: text.length, queued: true });
+    }
     await manager.appendText(sessionId, text);
     if (commit) {
       await manager.commitText(sessionId);
@@ -185,25 +193,34 @@ redisEventBus.onCommand(async (cmd) => {
   try {
     switch (cmd.command) {
       case 'synthesize': {
-        const ok = await sessionManager.handleRedisTextCommand(cmd.sessionId, cmd.text, cmd.commit);
-        if (!ok) {
-          // 会话不存在，通过 Redis 通知 backend-api 让客户端降级到 client TTS
-          redisEventBus.publish('tts:events', {
-            sessionId: cmd.sessionId,
-            event: 'session_not_found',
-            payload: { text: cmd.text },
-            timestamp: Date.now(),
-            source: 'tts-service',
+        // App 的 TTS WebSocket 往往晚于 backend-api 的 Redis 指令：无会话时暂存，session.create 后重放
+        if (!sessionManager.hasActiveSession(cmd.sessionId)) {
+          sessionManager.enqueueRedisCommand(cmd.sessionId, {
+            command: 'synthesize',
+            text: cmd.text,
+            commit: cmd.commit,
           });
+          break;
         }
+        await sessionManager.handleRedisTextCommand(cmd.sessionId, cmd.text, cmd.commit);
         break;
       }
-      case 'commit':
+      case 'commit': {
+        if (!sessionManager.hasActiveSession(cmd.sessionId)) {
+          sessionManager.enqueueRedisCommand(cmd.sessionId, { command: 'commit' });
+          break;
+        }
         await sessionManager.commitText(cmd.sessionId);
         break;
-      case 'clear':
+      }
+      case 'clear': {
+        if (!sessionManager.hasActiveSession(cmd.sessionId)) {
+          sessionManager.enqueueRedisCommand(cmd.sessionId, { command: 'clear' });
+          break;
+        }
         await sessionManager.clearText(cmd.sessionId);
         break;
+      }
       case 'close':
         await sessionManager.destroySession(cmd.sessionId);
         break;

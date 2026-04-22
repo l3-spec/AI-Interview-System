@@ -10,6 +10,11 @@ export interface InterviewSession {
   currentRound?: number;
   totalScore?: number;
   feedback?: string;
+  /** 来自 Prisma 的镜像字段：用于进程重启后判断是否为「已有进度的重连」 */
+  dbMirror?: {
+    status: string;
+    currentQuestion: number;
+  };
 }
 
 export interface UserInfo {

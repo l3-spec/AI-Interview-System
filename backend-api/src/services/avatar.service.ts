@@ -64,6 +64,34 @@ class AvatarService {
   /**
    * 启动数字人实例，返回会话ID与Web端访问信息
    */
+  /**
+   * 进程重启或 Map 丢失后，在发送文本前惰性恢复数字人会话（同源 sessionId + userId）。
+   */
+  async ensureActiveSession(params: {
+    userId: string;
+    sessionId: string;
+    avatarCode?: string;
+    voiceCode?: string;
+  }): Promise<void> {
+    const {
+      userId,
+      sessionId,
+      avatarCode = DEFAULT_AVATAR_CODE,
+      voiceCode = DEFAULT_VOICE_CODE,
+    } = params;
+
+    if (!userId) {
+      throw new Error('userId 是必填参数');
+    }
+
+    const existing = this.sessions.get(sessionId);
+    if (existing && existing.userId === userId && existing.status === 'active') {
+      return;
+    }
+
+    await this.startAvatarInstance({ userId, sessionId, avatarCode, voiceCode });
+  }
+
   async startAvatarInstance(params: StartAvatarParams): Promise<{
     sessionId: string;
     channelInfo: ChannelInfo;
@@ -127,7 +155,13 @@ class AvatarService {
    */
   async stopAvatarInstance(sessionId: string, userId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
-    if (!session || session.userId !== userId) {
+    if (!session) {
+      console.warn(
+        `[AvatarService] stopAvatarInstance: 会话 ${sessionId} 不在内存中，跳过后置结束（常见于服务重启后）`
+      );
+      return;
+    }
+    if (session.userId !== userId) {
       throw new Error('会话不存在或用户不匹配');
     }
 
@@ -144,6 +178,8 @@ class AvatarService {
     if (!text) {
       throw new Error('文本内容不能为空');
     }
+
+    await this.ensureActiveSession({ userId, sessionId });
 
     const session = this.sessions.get(sessionId);
     if (!session || session.userId !== userId) {
@@ -198,6 +234,7 @@ class AvatarService {
     webUrl: string;
     metadata: Record<string, unknown>;
   }> {
+    await this.ensureActiveSession({ userId, sessionId });
     const session = this.sessions.get(sessionId);
     if (!session || session.userId !== userId) {
       throw new Error('会话不存在或用户不匹配');

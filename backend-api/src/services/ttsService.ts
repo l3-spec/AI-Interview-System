@@ -126,43 +126,43 @@ export class TTSService {
   }): Promise<TTSResult> {
     const { text, sessionId, questionIndex, voice } = params;
 
+    // 未配置服务端 TTS 时直接返回，避免每段文本都打「开始/失败」日志（Qwen3-TTS 流式仍由 WebSocket 侧负责）
+    if (!this.isEnabled) {
+      const hint =
+        this.mode === 'client'
+          ? 'TTS_PROVIDER 为 client 模式，服务端不合成语音'
+          : '请配置 TTS_PROVIDER 及对应密钥（如 ALIYUN_TTS_ACCESS_KEY_ID / ALIYUN_TTS_ACCESS_KEY_SECRET）';
+      return {
+        success: false,
+        error: `服务端 TTS 未启用：${hint}`,
+      };
+    }
+
     try {
       console.log(`开始TTS转换: ${text.substring(0, 50)}...`);
 
       let result: TTSResult;
 
-      if (this.isEnabled) {
-        switch (this.provider) {
-          case 'index-tts2':
-            result = await this.indexTTS2TTS(text, voice);
-            break;
-          case 'aliyun':
-            result = await this.aliyunTTS(text, voice);
-            break;
-          case 'azure':
-            result = await this.azureTTS(text, voice);
-            break;
-          case 'baidu':
-            result = await this.baiduTTS(text, voice);
-            break;
-          case 'volcengine':
-            result = await this.volcengineTTS(text, voice);
-            break;
-          default:
-            throw new Error(`不支持的TTS提供商: ${this.provider}`);
-        }
-      } else {
-        const hint =
-          this.mode === 'client'
-            ? 'TTS_PROVIDER 为 client 模式，服务端不合成语音'
-            : '请配置 TTS_PROVIDER 及对应密钥（如 ALIYUN_TTS_ACCESS_KEY_ID / ALIYUN_TTS_ACCESS_KEY_SECRET）';
-        result = {
-          success: false,
-          error: `服务端 TTS 未启用：${hint}`,
-        };
+      switch (this.provider) {
+        case 'index-tts2':
+          result = await this.indexTTS2TTS(text, voice);
+          break;
+        case 'aliyun':
+          result = await this.aliyunTTS(text, voice);
+          break;
+        case 'azure':
+          result = await this.azureTTS(text, voice);
+          break;
+        case 'baidu':
+          result = await this.baiduTTS(text, voice);
+          break;
+        case 'volcengine':
+          result = await this.volcengineTTS(text, voice);
+          break;
+        default:
+          throw new Error(`不支持的TTS提供商: ${this.provider}`);
       }
 
-      // 记录使用情况
       await this.recordUsage({
         provider: this.provider,
         textLength: text.length,
@@ -172,7 +172,11 @@ export class TTSService {
         errorMsg: result.error,
       });
 
-      console.log(`TTS转换${result.success ? '成功' : '失败'}`);
+      if (result.success) {
+        console.log('TTS转换成功');
+      } else {
+        console.warn(`TTS转换失败: ${result.error || '未知原因'}`);
+      }
       return result;
 
     } catch (error) {
