@@ -414,4 +414,20 @@ interface ApiService {
         @Part("legalPerson") legalPerson: RequestBody,
         @Part("registrationNumber") registrationNumber: RequestBody
     ): ApiResponse<VerificationInfo>
+
+    // ==================== 用户个人资料 ====================
+
+    /**
+     * 更新个人资料
+     */
+    @PUT("users/profile")
+    suspend fun updateUserProfile(
+        @Body request: UpdateProfileRequest
+    ): ApiResponse<User>
+
+    /**
+     * 获取地区字典树
+     */
+    @GET("region-dictionary/tree")
+    suspend fun getRegionTree(): ApiResponse<List<RegionDictionaryItem>>
 }

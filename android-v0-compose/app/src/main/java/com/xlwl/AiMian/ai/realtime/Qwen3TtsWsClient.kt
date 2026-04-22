@@ -574,7 +574,7 @@ class Qwen3TtsWsClient(
 
     private fun startNewWavCache() {
         try {
-            currentWavFile = File(cacheDir, "qwen3_tts_${System.currentTimeMillis()}.wav")
+            currentWavFile = File(cacheDir, "DEBUG_QWEN3_${System.currentTimeMillis()}.wav")
             pcmOutputStream = FileOutputStream(currentWavFile!!)
             // 先写 44 字节占位（后面 finishWavFile 时回填 WAV 头）
             pcmOutputStream!!.write(ByteArray(44))
@@ -612,7 +612,10 @@ class Qwen3TtsWsClient(
                 writeWavHeader(raf, sampleRate, 1, pcmLen)
             }
 
-            Log.i(TAG, "WAV 文件已生成: ${wavFile.absolutePath} ($pcmLen bytes PCM)")
+            Log.i(TAG, "==== TTS DEBUG: QWEN3 WAV SAVED ====")
+            Log.i(TAG, "Path: ${wavFile.absolutePath}")
+            Log.i(TAG, "Size: $pcmLen bytes PCM")
+            Log.i(TAG, "=====================================")
 
             val useWavForDuix = !preferStreamPcmForDuix || onDuixPcmChunk == null
             if (useWavForDuix) {

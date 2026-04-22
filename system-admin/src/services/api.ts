@@ -175,6 +175,19 @@ export interface JobDictionaryCategory {
   positions?: JobDictionaryPosition[];
 }
 
+export interface RegionDictionaryItem {
+  id: string;
+  code: string | null;
+  name: string;
+  level: number;
+  parentId: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  children?: RegionDictionaryItem[];
+}
+
 export type AppPlatform = 'ANDROID' | 'IOS';
 
 export interface AppVersion {
@@ -738,12 +751,26 @@ export const jobDictionaryApi = {
   },
 
   getPublicDictionary: async (): Promise<ApiResponse<JobDictionaryCategory[]>> => {
-    const response = (await apiClient.get('/job-dictionary')) as ApiResponse<any>;
-    if (response?.success && Array.isArray(response.data)) {
-      response.data = response.data.map((item: any) => mapDictionaryCategory(item, true));
-    }
     return response as ApiResponse<JobDictionaryCategory[]>;
   },
+};
+
+export const regionDictionaryApi = {
+  getRegions: async (params?: Record<string, any>): Promise<ApiResponse<RegionDictionaryItem[]>> => {
+    return await apiClient.get('/admin/region-dictionary', { params });
+  },
+  getRegionTree: async (): Promise<ApiResponse<RegionDictionaryItem[]>> => {
+    return await apiClient.get('/region-dictionary/tree');
+  },
+  createRegion: async (payload: Partial<RegionDictionaryItem>): Promise<ApiResponse<RegionDictionaryItem>> => {
+    return await apiClient.post('/admin/region-dictionary', payload);
+  },
+  updateRegion: async (id: string, payload: Partial<RegionDictionaryItem>): Promise<ApiResponse<RegionDictionaryItem>> => {
+    return await apiClient.put(`/admin/region-dictionary/${id}`, payload);
+  },
+  deleteRegion: async (id: string): Promise<ApiResponse> => {
+    return await apiClient.delete(`/admin/region-dictionary/${id}`);
+  }
 };
 
 // 文件上传相关 API

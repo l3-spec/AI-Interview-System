@@ -118,10 +118,15 @@ class VolcanoTtsService(private val context: Context) {
         if (bytes.isEmpty()) throw RuntimeException("TTS响应为空字节")
 
         val suffix = DEFAULT_FORMAT
-        val audioFile = File(context.cacheDir, "volcano_tts_${System.currentTimeMillis()}.$suffix")
+        val debugDir = context.getExternalFilesDir("tts_debug") ?: File(context.cacheDir, "tts_debug")
+        if (!debugDir.exists()) debugDir.mkdirs()
+        val audioFile = File(debugDir, "DEBUG_VOLCANO_${System.currentTimeMillis()}.$suffix")
         FileOutputStream(audioFile).use { it.write(bytes) }
 
-        Log.i(TAG, "Volcano TTS 成功: ${audioFile.absolutePath}, ${bytes.size} bytes")
+        Log.i(TAG, "==== TTS DEBUG: VOLCANO WAV SAVED ====")
+        Log.i(TAG, "Path: ${audioFile.absolutePath}")
+        Log.i(TAG, "Size: ${bytes.size} bytes")
+        Log.i(TAG, "=======================================")
 
         TtsResult(
             audioFile = audioFile,

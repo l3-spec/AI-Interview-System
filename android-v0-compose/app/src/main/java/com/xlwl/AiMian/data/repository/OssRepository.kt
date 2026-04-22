@@ -28,6 +28,19 @@ class OssRepository(private val api: OssApi) {
       }
     }
 
+  suspend fun uploadImage(file: File, objectKey: String?): Result<OssUploadResult> =
+    runCatching {
+      val requestBody = file.asRequestBody("image/*".toMediaType())
+      val part = MultipartBody.Part.createFormData("file", file.name, requestBody)
+      val objectKeyBody = objectKey?.toRequestBody("text/plain".toMediaType())
+      val response = api.uploadFile(part, objectKeyBody)
+      if (response.success && response.data != null) {
+        response.data
+      } else {
+        throw IllegalStateException(response.message ?: response.error ?: "图片上传失败")
+      }
+    }
+
   suspend fun notifyUploadComplete(request: OssUploadCompleteRequest): Result<Unit> =
     runCatching {
       val response = api.uploadComplete(request)

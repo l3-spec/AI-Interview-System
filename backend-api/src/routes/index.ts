@@ -25,6 +25,7 @@ import jobDictionaryRoutes from './jobDictionary';
 import jobPreferenceRoutes from './jobPreferences';
 import messageRoutes from './messages';
 import aliyunAvatarRoutes from './aliyunAvatar.routes';
+import regionDictionaryRoutes from './regionDictionary';
 // voiceRoutes 已在 index.ts 中直接注册，避免重复注册
 // import voiceRoutes from './voice.routes';
 
@@ -65,6 +66,7 @@ router.use('/assessments', assessmentRoutes);  // 职业测评路由（新增）
 router.use('/content', contentRoutes);         // 内容社区路由（新增）
 router.use('/home', homeFeedRoutes);           // 首页内容聚合路由（新增）
 router.use('/job-dictionary', jobDictionaryRoutes); // 职岗字典路由（新增）
+router.use('/region-dictionary', regionDictionaryRoutes); // 地区字典路由（新增）
 router.use('/job-preferences', jobPreferenceRoutes); // 职岗偏好路由（新增）
 router.use('/messages', messageRoutes);        // 消息中心路由（新增）
 router.use('/aliyun-avatar', aliyunAvatarRoutes); // 阿里云 Avatar 数字人路由（新增）

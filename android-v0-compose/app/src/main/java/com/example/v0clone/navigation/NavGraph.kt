@@ -77,6 +77,8 @@ import com.xlwl.AiMian.data.model.HomeFeedTargetType
 import com.xlwl.AiMian.navigation.Routes.LOGIN
 import com.xlwl.AiMian.data.repository.OssRepository
 import com.xlwl.AiMian.data.repository.AppUpdateRepository
+import com.xlwl.AiMian.data.repository.UserRepository
+import com.xlwl.AiMian.ui.profile.ProfileViewModel
 import com.xlwl.AiMian.data.repository.VerificationRepository
 import com.xlwl.AiMian.ui.auth.LoginScreen
 import com.xlwl.AiMian.ui.auth.LoginFlowScreen
@@ -167,6 +169,7 @@ fun AppNavHost(navController: NavHostController) {
     val jobPreferenceRepo = remember(apiService) { JobPreferenceRepository(apiService) }
     val jobDictionaryRepo = remember(jobDictionaryApi) { JobDictionaryRepository(jobDictionaryApi) }
     val appUpdateRepo = remember(apiService) { AppUpdateRepository(apiService) }
+    val userRepo = remember(apiService) { UserRepository(apiService) }
     var latestAppVersion by remember { mutableStateOf<AppVersionInfo?>(null) }
     val openDownload = remember(context) {
         { url: String ->
@@ -574,12 +577,18 @@ fun AppNavHost(navController: NavHostController) {
         }
 
         composable(Routes.PROFILE_PERSONAL_INFO) {
+            val profileViewModel: ProfileViewModel = viewModel(
+                factory = ProfileViewModel.provideFactory(userRepo, authRepo, ossRepository, authManager)
+            )
             if (token.isNullOrEmpty()) {
                 LaunchedEffect(Unit) {
                     navController.navigate(LOGIN) { launchSingleTop = true }
                 }
             } else {
-                PersonalInfoRoute(onBack = { navController.popBackStack() })
+                PersonalInfoRoute(
+                    viewModel = profileViewModel,
+                    onBack = { navController.popBackStack() }
+                )
             }
         }
 

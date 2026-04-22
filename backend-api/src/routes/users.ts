@@ -2,7 +2,8 @@ import express from 'express';
 import {
   getUsers,
   getUserById,
-  updateUserStatus
+  updateUserStatus,
+  updateUserProfile
 } from '../controllers/userController';
 import { authenticateToken } from '../middleware/auth';
 
@@ -97,4 +98,41 @@ router.get('/:id', authenticateToken, getUserById);
  */
 router.patch('/:id/status', authenticateToken, updateUserStatus);
 
-export default router; 
+/**
+ * @swagger
+ * /api/users/profile:
+ *   put:
+ *     summary: 更新个人资料
+ *     tags: [用户管理]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               avatar:
+ *                 type: string
+ *               gender:
+ *                 type: string
+ *               region:
+ *                 type: string
+ *               phone:
+ *                 type: string
+ *               signature:
+ *                 type: string
+ *               openToCompanies:
+ *                 type: boolean
+ *               autoPublish:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: 更新成功
+ */
+router.put('/profile', authenticateToken, updateUserProfile);
+
+export default router;

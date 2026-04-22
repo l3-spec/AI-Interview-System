@@ -21,7 +21,23 @@ data class User(
     val email: String,
     val name: String?,
     val avatar: String? = null,
-    val phone: String? = null
+    val phone: String? = null,
+    val gender: String? = null,
+    val region: String? = null,
+    val signature: String? = null,
+    val openToCompanies: Boolean = true,
+    val autoPublish: Boolean = true
+)
+
+data class UpdateProfileRequest(
+    val name: String? = null,
+    val avatar: String? = null,
+    val gender: String? = null,
+    val region: String? = null,
+    val phone: String? = null,
+    val signature: String? = null,
+    val openToCompanies: Boolean? = null,
+    val autoPublish: Boolean? = null
 )
 
 data class LoginData(

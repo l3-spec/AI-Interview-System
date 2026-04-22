@@ -19,6 +19,7 @@ import AssessmentManagement from './pages/AssessmentManagement';
 import PostManagement from './pages/PostManagement';
 import AppVersionManagement from './pages/AppVersionManagement';
 import InterviewAnalysisManagement from './pages/InterviewAnalysisManagement';
+import RegionDictionaryManagement from './pages/RegionDictionaryManagement';
 import './App.css';
 
 const App: React.FC = () => {
@@ -38,6 +39,7 @@ const App: React.FC = () => {
             <Route path="jobs" element={<JobManagement />} />
             <Route path="messages" element={<MessageManagement />} />
             <Route path="job-dictionary" element={<JobDictionaryManagement />} />
+            <Route path="region-dictionary" element={<RegionDictionaryManagement />} />
             <Route path="home-content" element={<HomeContentManagement />} />
             <Route path="posts" element={<PostManagement />} />
             <Route path="assessments" element={<AssessmentManagement />} />

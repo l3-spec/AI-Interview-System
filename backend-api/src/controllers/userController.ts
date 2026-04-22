@@ -202,3 +202,86 @@ export const updateUserStatus = async (req: Request, res: Response) => {
     });
   }
 }; 
+
+// 更新用户个人资料
+export const updateUserProfile = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id || req.params.id;
+    const { 
+      name, 
+      avatar, 
+      gender, 
+      region, 
+      phone, 
+      signature,
+      openToCompanies,
+      autoPublish,
+      education,
+      experience,
+      skills
+    } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: '未授权访问'
+      });
+    }
+
+    // 准备更新数据
+    const updateData: any = {
+      updatedAt: new Date()
+    };
+
+    if (name !== undefined) updateData.name = name;
+    if (avatar !== undefined) updateData.avatar = avatar;
+    if (gender !== undefined) updateData.gender = gender;
+    if (region !== undefined) updateData.region = region;
+    if (phone !== undefined) updateData.phone = phone;
+    if (signature !== undefined) updateData.signature = signature;
+    if (openToCompanies !== undefined) updateData.openToCompanies = !!openToCompanies;
+    if (autoPublish !== undefined) updateData.autoPublish = !!autoPublish;
+    if (education !== undefined) updateData.education = education;
+    if (experience !== undefined) updateData.experience = experience;
+    
+    if (skills !== undefined) {
+      updateData.skills = Array.isArray(skills) ? JSON.stringify(skills) : skills;
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        avatar: true,
+        phone: true,
+        gender: true,
+        region: true,
+        signature: true,
+        openToCompanies: true,
+        autoPublish: true,
+        education: true,
+        experience: true,
+        skills: true,
+        updatedAt: true
+      }
+    });
+
+    res.json({
+      success: true,
+      message: '个人资料已更新',
+      data: {
+        ...updatedUser,
+        skills: updatedUser.skills ? JSON.parse(updatedUser.skills) : []
+      }
+    });
+  } catch (error) {
+    console.error('更新个人资料失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '更新个人资料失败'
+    });
+  }
+};

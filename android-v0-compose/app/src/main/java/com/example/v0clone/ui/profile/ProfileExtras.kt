@@ -69,6 +69,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -97,6 +99,8 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import coil.compose.AsyncImage
 import com.xlwl.AiMian.ui.components.CompactTopBar
+import com.xlwl.AiMian.ui.profile.ProfileViewModel
+import androidx.compose.runtime.collectAsState
 import kotlinx.coroutines.delay
 
 private val PageGradient = Brush.verticalGradient(
@@ -114,6 +118,7 @@ private val CardShape = RoundedCornerShape(12.dp)
 
 @Composable
 fun PersonalInfoRoute(
+    viewModel: ProfileViewModel,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -130,24 +135,28 @@ fun PersonalInfoRoute(
     }
 
     val scrollState = rememberScrollState()
-    var name by rememberSaveable { mutableStateOf("星链候选人") }
-    var avatarUri by rememberSaveable { mutableStateOf<Uri?>(null) }
-    var gender by rememberSaveable { mutableStateOf("男") }
-    var region by rememberSaveable { mutableStateOf("北京 西城区") }
-    var phone by rememberSaveable { mutableStateOf("138****8000") }
-    var signature by rememberSaveable { mutableStateOf("全栈工程师 / 熟悉 Kotlin + React") }
+    
+    val user by viewModel.user.collectAsState()
+    val regions by viewModel.regions.collectAsState()
+    
+    var localAvatarUri by remember { mutableStateOf<Uri?>(null) }
 
-    // Dialog 状态控制
+    // BottomSheet 状态控制
     var showNameDialog by remember { mutableStateOf(false) }
-    var showGenderDialog by remember { mutableStateOf(false) }
-    var showRegionDialog by remember { mutableStateOf(false) }
-    var showPhoneDialog by remember { mutableStateOf(false) }
+    var showGenderSheet by remember { mutableStateOf(false) }
+    var showRegionSheet by remember { mutableStateOf(false) }
+    var showPhoneSheet by remember { mutableStateOf(false) }
     var showSignatureDialog by remember { mutableStateOf(false) }
 
     // 图片选取
     val pickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
-        onResult = { uri -> if (uri != null) avatarUri = uri }
+        onResult = { uri -> 
+            if (uri != null) {
+                localAvatarUri = uri
+                viewModel.uploadAvatar(context, uri)
+            }
+        }
     )
 
     Scaffold(
@@ -181,7 +190,6 @@ fun PersonalInfoRoute(
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    // 头像部分
                     InfoRow(
                         label = "头像",
                         onClick = {
@@ -193,42 +201,68 @@ fun PersonalInfoRoute(
                             modifier = Modifier.size(48.dp),
                             color = Color(0xFFF0F2F5)
                         ) {
-                            if (avatarUri != null) {
+                            val displayAvatar = localAvatarUri ?: user?.avatar
+                            if (displayAvatar != null) {
                                 AsyncImage(
-                                    model = avatarUri,
+                                    model = displayAvatar,
                                     contentDescription = null,
                                     modifier = Modifier.fillMaxSize(),
                                     contentScale = ContentScale.Crop
                                 )
                             } else {
                                 Icon(
-                                    imageVector = Icons.Outlined.Face,
+                                    Icons.Outlined.Face,
                                     contentDescription = null,
-                                    tint = SubtleText,
-                                    modifier = Modifier.padding(10.dp)
+                                    modifier = Modifier.padding(8.dp),
+                                    tint = Color(0xFFB6BAC1)
                                 )
                             }
                         }
                     }
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color(0xFFEEEEEE))
 
-                    InfoRow(label = "名字", value = name, onClick = { showNameDialog = true })
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color(0xFFEEEEEE))
+                    HorizontalDivider(thickness = 0.5.dp, color = Color(0xFFEEEEEE), modifier = Modifier.padding(horizontal = 16.dp))
 
-                    InfoRow(label = "性别", value = gender, onClick = { showGenderDialog = true })
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color(0xFFEEEEEE))
+                    InfoRow(
+                        label = "姓名",
+                        value = user?.name ?: "未设置",
+                        onClick = { showNameDialog = true }
+                    )
 
-                    InfoRow(label = "地区", value = region, onClick = { showRegionDialog = true })
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color(0xFFEEEEEE))
+                    HorizontalDivider(thickness = 0.5.dp, color = Color(0xFFEEEEEE), modifier = Modifier.padding(horizontal = 16.dp))
 
-                    InfoRow(label = "手机号", value = phone, onClick = { showPhoneDialog = true })
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color(0xFFEEEEEE))
+                    InfoRow(
+                        label = "性别",
+                        value = user?.gender ?: "未设置",
+                        onClick = { showGenderSheet = true }
+                    )
 
-                    InfoRow(label = "签名", value = signature, onClick = { showSignatureDialog = true })
+                    HorizontalDivider(thickness = 0.5.dp, color = Color(0xFFEEEEEE), modifier = Modifier.padding(horizontal = 16.dp))
+
+                    InfoRow(
+                        label = "地区",
+                        value = user?.region ?: "未设置",
+                        onClick = { showRegionSheet = true }
+                    )
+
+                    HorizontalDivider(thickness = 0.5.dp, color = Color(0xFFEEEEEE), modifier = Modifier.padding(horizontal = 16.dp))
+
+                    InfoRow(
+                        label = "手机号",
+                        value = user?.phone ?: "未设置",
+                        onClick = { showPhoneSheet = true }
+                    )
+                    
+                    HorizontalDivider(thickness = 0.5.dp, color = Color(0xFFEEEEEE), modifier = Modifier.padding(horizontal = 16.dp))
+
+                    InfoRow(
+                        label = "个人签名",
+                        value = user?.signature ?: "写点什么介绍自己吧",
+                        onClick = { showSignatureDialog = true }
+                    )
                 }
             }
 
-            // 可见性设置
+            // 公开设置卡片
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -240,85 +274,81 @@ fun PersonalInfoRoute(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Text(
-                        text = "可见性设置",
-                        style = MaterialTheme.typography.titleSmall.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            color = TitleColor.copy(alpha = 0.6f)
-                        ),
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
                     VisibilityRow(
-                        icon = Icons.Outlined.Visibility,
-                        title = "对企业开放",
-                        subtitle = "允许企业查看你的基础资料与求职意向"
+                        icon = Icons.Outlined.Notifications,
+                        title = "是否对企业开放",
+                        subtitle = "开启后，企业可以在人才库中搜索到你",
+                        checked = user?.openToCompanies ?: true,
+                        onCheckedChange = { viewModel.updateProfile(openToCompanies = it) }
                     )
                     VisibilityRow(
                         icon = Icons.Outlined.Schedule,
                         title = "投递后自动公开",
-                        subtitle = "投递职位后默认对该企业公开完整资料"
+                        subtitle = "向企业投递简历后，自动向该企业公开个人资料",
+                        checked = user?.autoPublish ?: true,
+                        onCheckedChange = { viewModel.updateProfile(autoPublish = it) }
                     )
                 }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // 保存按钮放在底部
-            Button(
-                onClick = {
-                    Toast.makeText(context, "资料已保存", Toast.LENGTH_SHORT).show()
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp),
-                shape = RoundedCornerShape(24.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = AccentOrange)
-            ) {
-                Text("保存修改", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 4.dp))
             }
         }
     }
 
-    // 弹出框实现
     if (showNameDialog) {
         EditFieldDialog(
-            title = "修改名字",
-            initialValue = name,
+            title = "修改姓名",
+            initialValue = user?.name ?: "",
             onDismiss = { showNameDialog = false },
-            onConfirm = { name = it; showNameDialog = false }
+            onConfirm = { 
+                viewModel.updateProfile(name = it)
+                showNameDialog = false 
+            }
         )
     }
 
-    if (showGenderDialog) {
-        GenderPickerDialog(
-            onDismiss = { showGenderDialog = false },
-            onSelect = { gender = it; showGenderDialog = false }
+    if (showGenderSheet) {
+        ModernGenderBottomSheet(
+            onDismiss = { showGenderSheet = false },
+            onSelect = { 
+                viewModel.updateProfile(gender = it)
+                showGenderSheet = false 
+            }
         )
     }
 
-    if (showRegionDialog) {
-        RegionPickerDialog(
-            onDismiss = { showRegionDialog = false },
-            onSelect = { region = it; showRegionDialog = false }
+    if (showRegionSheet) {
+        ModernRegionBottomSheet(
+            regions = regions,
+            onDismiss = { showRegionSheet = false },
+            onSelect = { 
+                viewModel.updateProfile(region = it)
+                showRegionSheet = false 
+            }
         )
     }
 
-    if (showPhoneDialog) {
-        PhoneUpdateDialog(
-            onDismiss = { showPhoneDialog = false },
-            onUpdate = { phone = it; showPhoneDialog = false }
+    if (showPhoneSheet) {
+        ModernPhoneUpdateBottomSheet(
+            viewModel = viewModel,
+            onDismiss = { showPhoneSheet = false },
+            onUpdate = { 
+                viewModel.updateProfile(phone = it)
+                showPhoneSheet = false 
+            }
         )
     }
 
     if (showSignatureDialog) {
         EditFieldDialog(
             title = "修改签名",
-            initialValue = signature,
+            initialValue = user?.signature ?: "",
             onDismiss = { showSignatureDialog = false },
-            onConfirm = { signature = it; showSignatureDialog = false },
+            onConfirm = { 
+                viewModel.updateProfile(signature = it)
+                showSignatureDialog = false 
+            },
             singleLine = false
         )
     }
@@ -383,110 +413,198 @@ private fun EditFieldDialog(
     singleLine: Boolean = true
 ) {
     var text by remember { mutableStateOf(initialValue) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title, fontWeight = FontWeight.Bold) },
-        text = {
-            OutlinedTextField(
-                value = text,
-                onValueChange = { text = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = singleLine,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = AccentOrange,
-                    cursorColor = AccentOrange
-                )
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(text) }) {
-                Text("确定", color = AccentOrange)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消", color = SubtleText)
-            }
-        }
-    )
-}
-
-@Composable
-private fun GenderPickerDialog(
-    onDismiss: () -> Unit,
-    onSelect: (String) -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("选择性别", fontWeight = FontWeight.Bold) },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                TextButton(
-                    onClick = { onSelect("男") },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("男", color = TitleColor, fontSize = 16.sp)
-                }
-                HorizontalDivider(thickness = 0.5.dp, color = Color(0xFFEEEEEE))
-                TextButton(
-                    onClick = { onSelect("女") },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("女", color = TitleColor, fontSize = 16.sp)
-                }
-            }
-        },
-        confirmButton = {}
-    )
-}
-
-@Composable
-private fun RegionPickerDialog(
-    onDismiss: () -> Unit,
-    onSelect: (String) -> Unit
-) {
-    // 模拟地区选择逻辑 - 实际应为级联选择器
-    val cities = listOf("北京", "上海", "深圳", "广州", "杭州", "成都")
-    val districts = mapOf(
-        "北京" to listOf("西城区", "东城区", "海淀区", "朝阳区"),
-        "上海" to listOf("徐汇区", "黄浦区", "静安区", "浦东新区")
-    )
     
-    var selectedCity by remember { mutableStateOf<String?>(null) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (selectedCity == null) "选择城市" else "选择区域", fontWeight = FontWeight.Bold) },
-        text = {
-            LazyColumn(modifier = Modifier.height(300.dp)) {
-                if (selectedCity == null) {
-                    items(cities) { city ->
-                        TextButton(onClick = { selectedCity = city }, modifier = Modifier.fillMaxWidth()) {
-                            Text(city, color = TitleColor)
-                        }
-                    }
-                } else {
-                    val list = districts[selectedCity] ?: listOf("中心城区")
-                    items(list) { dist ->
-                        TextButton(onClick = { onSelect("$selectedCity $dist") }, modifier = Modifier.fillMaxWidth()) {
-                            Text(dist, color = TitleColor)
-                        }
-                    }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(AccentOrange.copy(alpha = 0.1f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (singleLine) Icons.Outlined.Badge else Icons.Outlined.Email,
+                        contentDescription = null,
+                        tint = AccentOrange
+                    )
                 }
-            }
-        },
-        confirmButton = {
-            if (selectedCity != null) {
-                TextButton(onClick = { selectedCity = null }) {
-                    Text("返回", color = AccentOrange)
+
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = TitleColor
+                    )
+                )
+
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = singleLine,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = AccentOrange,
+                        unfocusedBorderColor = Color(0xFFEEEEEE),
+                        cursorColor = AccentOrange
+                    )
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("取消", color = SubtleText)
+                    }
+                    Button(
+                        onClick = { onConfirm(text) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentOrange)
+                    ) {
+                        Text("确定", fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
-    )
+    }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PhoneUpdateDialog(
+private fun ModernGenderBottomSheet(
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+        dragHandle = { BottomSheetDefaults.DragHandle(color = Color(0xFFDDDDDD)) }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 48.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                "选择性别",
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                modifier = Modifier.padding(vertical = 12.dp)
+            )
+            
+            SelectionItem(
+                label = "男",
+                icon = Icons.Outlined.Face,
+                onClick = { onSelect("男") }
+            )
+            SelectionItem(
+                label = "女",
+                icon = Icons.Outlined.Face,
+                onClick = { onSelect("女") }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ModernRegionBottomSheet(
+    regions: List<com.xlwl.AiMian.data.model.RegionDictionaryItem>,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit
+) {
+    var selectedProvince by remember { mutableStateOf<com.xlwl.AiMian.data.model.RegionDictionaryItem?>(null) }
+    var selectedCity by remember { mutableStateOf<com.xlwl.AiMian.data.model.RegionDictionaryItem?>(null) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+        dragHandle = { BottomSheetDefaults.DragHandle(color = Color(0xFFDDDDDD)) }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = when {
+                        selectedProvince == null -> "选择省份"
+                        selectedCity == null -> "选择城市"
+                        else -> "选择区县"
+                    },
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                )
+                if (selectedProvince != null) {
+                    TextButton(onClick = { 
+                        if (selectedCity != null) selectedCity = null else selectedProvince = null 
+                    }) {
+                        Text("返回", color = AccentOrange)
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+
+            LazyColumn(modifier = Modifier.height(400.dp)) {
+                when {
+                    selectedProvince == null -> {
+                        items(regions) { province ->
+                            SelectionItem(label = province.name, onClick = { selectedProvince = province })
+                        }
+                    }
+                    selectedCity == null -> {
+                        items(selectedProvince?.children ?: emptyList()) { city ->
+                            SelectionItem(label = city.name, onClick = { selectedCity = city })
+                        }
+                    }
+                    else -> {
+                        items(selectedCity?.children ?: emptyList()) { district ->
+                            SelectionItem(
+                                label = district.name,
+                                onClick = { onSelect("${selectedProvince?.name} ${selectedCity?.name} ${district.name}") }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ModernPhoneUpdateBottomSheet(
+    viewModel: ProfileViewModel,
     onDismiss: () -> Unit,
     onUpdate: (String) -> Unit
 ) {
@@ -501,17 +619,36 @@ private fun PhoneUpdateDialog(
         }
     }
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("修改手机号", fontWeight = FontWeight.Bold) },
-        text = {
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+        dragHandle = { BottomSheetDefaults.DragHandle(color = Color(0xFFDDDDDD)) }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp)
+                .padding(bottom = 48.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            Text(
+                "修改手机号",
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+            )
+
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = phone,
                     onValueChange = { if (it.length <= 11) phone = it },
                     label = { Text("新手机号") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = AccentOrange,
+                        unfocusedBorderColor = Color(0xFFEEEEEE)
+                    )
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
@@ -519,46 +656,87 @@ private fun PhoneUpdateDialog(
                         onValueChange = { if (it.length <= 6) code = it },
                         label = { Text("验证码") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = AccentOrange,
+                            unfocusedBorderColor = Color(0xFFEEEEEE)
+                        )
                     )
                     Button(
-                        onClick = { countdown = 60 },
+                        onClick = { 
+                            countdown = 60
+                            viewModel.sendVerificationCode(phone)
+                        },
                         enabled = phone.length == 11 && countdown == 0,
                         colors = ButtonDefaults.buttonColors(containerColor = AccentOrange),
-                        modifier = Modifier.height(56.dp)
+                        modifier = Modifier.height(56.dp),
+                        shape = RoundedCornerShape(16.dp)
                     ) {
                         Text(if (countdown > 0) "${countdown}s" else "获取")
                     }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(
+
+            Button(
                 onClick = { if (phone.length == 11 && code.length == 6) onUpdate(phone) },
-                enabled = phone.length == 11 && code.length == 6
+                enabled = phone.length == 11 && code.length == 6,
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00ADC1))
             ) {
-                Text("验证并更新", color = AccentOrange)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text("验证并更新", fontWeight = FontWeight.Bold, fontSize = 16.sp)
             }
         }
-    )
+    }
+}
+
+@Composable
+private fun SelectionItem(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = Color.Transparent
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(vertical = 14.dp, horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            if (icon != null) {
+                Icon(icon, contentDescription = null, tint = AccentOrange, modifier = Modifier.size(20.dp))
+            }
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    color = TitleColor,
+                    fontSize = 16.sp
+                )
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = Color(0xFFDDDDDD), modifier = Modifier.size(16.dp))
+        }
+    }
 }
 
 @Composable
 private fun VisibilityRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
-    subtitle: String
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
 ) {
-    var checked by rememberSaveable { mutableStateOf(true) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { checked = !checked }
+            .clickable { onCheckedChange(!checked) }
             .padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -588,7 +766,7 @@ private fun VisibilityRow(
                 style = MaterialTheme.typography.bodySmall.copy(color = SubtleText, fontSize = 12.sp)
             )
         }
-        Checkbox(checked = checked, onCheckedChange = { checked = it })
+        Checkbox(checked = checked, onCheckedChange = { onCheckedChange(it) })
     }
 }
 

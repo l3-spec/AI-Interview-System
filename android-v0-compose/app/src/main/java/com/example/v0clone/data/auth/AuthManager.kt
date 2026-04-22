@@ -9,6 +9,8 @@ import android.util.Base64
 import org.json.JSONObject
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import com.xlwl.AiMian.data.model.User
+import com.google.gson.Gson
 
 private val Context.dataStore by preferencesDataStore(name = "auth")
 
@@ -20,6 +22,8 @@ class AuthManager(private val context: Context) {
         private val KEY_LAST_AI_JOB_ID = stringPreferencesKey("last_ai_job_id")
         private val KEY_LAST_AI_CATEGORY_ID = stringPreferencesKey("last_ai_category_id")
     }
+
+    private val gson = Gson()
 
     val tokenFlow: Flow<String?> = context.dataStore.data.map { it[KEY_TOKEN] }
         .map { token ->
@@ -41,6 +45,10 @@ class AuthManager(private val context: Context) {
     val lastAiJobIdFlow: Flow<String?> = context.dataStore.data.map { it[KEY_LAST_AI_JOB_ID] }
     val lastAiJobCategoryIdFlow: Flow<String?> = context.dataStore.data.map { it[KEY_LAST_AI_CATEGORY_ID] }
 
+    val userFlow: Flow<User?> = userJsonFlow.map { json ->
+        if (json.isNullOrBlank()) null else try { gson.fromJson(json, User::class.java) } catch (e: Exception) { null }
+    }
+
     suspend fun setToken(token: String?) {
         context.dataStore.edit { prefs ->
             if (token == null) prefs.remove(KEY_TOKEN) else prefs[KEY_TOKEN] = token
@@ -51,6 +59,10 @@ class AuthManager(private val context: Context) {
         context.dataStore.edit { prefs ->
             if (json == null) prefs.remove(KEY_USER_JSON) else prefs[KEY_USER_JSON] = json
         }
+    }
+
+    suspend fun updateUser(user: User) {
+        setUserJson(gson.toJson(user))
     }
 
     suspend fun setInterviewGuideSeen(seen: Boolean) {

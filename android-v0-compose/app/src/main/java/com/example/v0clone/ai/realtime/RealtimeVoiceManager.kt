@@ -275,7 +275,7 @@ class RealtimeVoiceManager(private val context: Context) {
 
     // Qwen3 ASR/TTS 微服务客户端（WebSocket 长连接）
     private val qwen3Asr = Qwen3AsrWsClient()
-    private val qwen3Tts = Qwen3TtsWsClient(cacheDir = context.cacheDir)
+    private val qwen3Tts = Qwen3TtsWsClient(cacheDir = getTtsDebugDir())
     private var useQwen3Asr = false  // 是否启用 Qwen3 ASR（由服务端配置决定）
     private var useQwen3Tts = false  // 是否启用 Qwen3 TTS
     
@@ -1852,12 +1852,36 @@ class RealtimeVoiceManager(private val context: Context) {
                 Log.e(TAG, "AudioTrack.write 错误: $writeResult")
             }
             
+            // 3. (调试) 保存 PCM 原始数据
+            saveDebugPcmChunk(audioData)
+            
             // 2.驱动数字人嘴型
             // 将 PCM 直接喂给数字人引擎
             digitalHumanController?.pushPcm(audioData)
             
         } catch (e: Exception) {
             Log.e(TAG, "处理音频分片失败", e)
+        }
+    }
+
+    private fun getTtsDebugDir(): File {
+        val dir = context.getExternalFilesDir("tts_debug") ?: File(context.cacheDir, "tts_debug")
+        if (!dir.exists()) dir.mkdirs()
+        return dir
+    }
+
+    private var debugPcmFile: File? = null
+    private fun saveDebugPcmChunk(data: ByteArray) {
+        try {
+            if (debugPcmFile == null) {
+                debugPcmFile = File(getTtsDebugDir(), "DEBUG_WS_CHUNK_${System.currentTimeMillis()}.pcm")
+                Log.i(TAG, "==== TTS DEBUG: WS CHUNK SAVING STARTED ====")
+                Log.i(TAG, "Path: ${debugPcmFile?.absolutePath}")
+                Log.i(TAG, "=============================================")
+            }
+            java.io.FileOutputStream(debugPcmFile!!, true).use { it.write(data) }
+        } catch (e: Exception) {
+            Log.e(TAG, "保存调试PCM失败", e)
         }
     }
 

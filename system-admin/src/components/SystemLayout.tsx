@@ -42,6 +42,7 @@ const SystemLayout: React.FC = () => {
     { path: '/jobs', label: '职位管理', icon: '💼' },
     { path: '/messages', label: '消息中心', icon: '💬' },
     { path: '/job-dictionary', label: '职岗字典', icon: '🗂️' },
+    { path: '/region-dictionary', label: '地区字典', icon: '📍' },
     { path: '/home-content', label: '首页内容', icon: '🎯' },
     { path: '/posts', label: '帖子管理', icon: '📰' },
     { path: '/assessments', label: '职业测评', icon: '📝' },

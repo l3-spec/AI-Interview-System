@@ -76,12 +76,8 @@ fun ProfileScreen(navController: NavController) {
     val context = LocalContext.current
     val authManager = remember { AuthManager(context) }
     val token by authManager.tokenFlow.collectAsState(initial = null)
-    val userJson by authManager.userJsonFlow.collectAsState(initial = null)
+    val user by authManager.userFlow.collectAsState(initial = null)
     val scope = rememberCoroutineScope()
-    val gson = remember { Gson() }
-    val user = remember(userJson) {
-        userJson?.let { runCatching { gson.fromJson(it, User::class.java) }.getOrNull() }
-    }
     val loginClient = remember {
         RetrofitClient.createOkHttpClient(
             tokenProvider = { null }

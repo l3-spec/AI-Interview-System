@@ -24,6 +24,10 @@ model User {
   experience  String?
   skills      String? // JSON string of skills array
   avatar      String?
+  region      String?
+  signature   String?   @db.Text
+  openToCompanies Boolean @default(true)
+  autoPublish     Boolean @default(true)
   isActive    Boolean   @default(true)
   isVerified  Boolean   @default(false)
   lastLoginAt DateTime?
@@ -172,6 +176,21 @@ model JobDictionaryPosition {
 
   @@index([categoryId], map: "idx_job_dictionary_positions_category")
   @@map("job_dictionary_positions")
+}
+
+// 地区字典表
+model RegionDictionary {
+  id        String   @id @default(uuid())
+  code      String?  @unique
+  name      String
+  level     Int      @default(1) // 1: 省, 2: 市, 3: 区
+  parentId  String?
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("region_dictionary")
 }
 
 model UserJobPreference {

@@ -94,6 +94,12 @@ import {
   getPlatformAiSettings,
   putPlatformAiSettings,
 } from '../controllers/platformAiSettingsController';
+import {
+  adminGetRegions,
+  adminCreateRegion,
+  adminUpdateRegion,
+  adminDeleteRegion
+} from '../controllers/regionDictionaryController';
 
 const router = express.Router();
 
@@ -755,5 +761,34 @@ router.post('/ai-interviews/:sessionId/retry', [
   param('sessionId').isUUID().withMessage('会话ID格式无效'),
   validate
 ], retryAnalysisTask);
+
+// 地区字典管理
+router.get('/region-dictionary', [
+  requirePermission('job:read'),
+  query('parentId').optional(),
+  query('level').optional().isInt(),
+  validate
+], adminGetRegions);
+
+router.post('/region-dictionary', [
+  requirePermission('job:write'),
+  body('name').isLength({ min: 1 }).withMessage('名称不能为空'),
+  body('code').optional(),
+  body('level').isInt().withMessage('层级必须是整数'),
+  body('parentId').optional(),
+  validate
+], adminCreateRegion);
+
+router.put('/region-dictionary/:id', [
+  requirePermission('job:write'),
+  param('id').isUUID().withMessage('ID格式错误'),
+  validate
+], adminUpdateRegion);
+
+router.delete('/region-dictionary/:id', [
+  requirePermission('job:write'),
+  param('id').isUUID().withMessage('ID格式错误'),
+  validate
+], adminDeleteRegion);
 
 export default router;
