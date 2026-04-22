@@ -163,8 +163,9 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-// 初始化 Redis 事件总线（用于接收来自 backend-api 的指令）
+// 初始化 Redis 事件总线（ASR 识别结果 → backend-api；并接收 asr:commands）
 const redisEventBus = new RedisEventBus();
+sessionManager.setRedisBus(redisEventBus);
 
 server.listen(PORT, () => {
   logger.info(`🎙️ ASR 微服务已启动 - 端口: ${PORT}`);

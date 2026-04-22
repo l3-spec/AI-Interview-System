@@ -10,6 +10,7 @@ import {
 } from '../controllers/publicController';
 import { authenticateToken } from '../middleware/auth';
 import { getLatestAppVersion } from '../controllers/appVersionController';
+import { getClientRuntimeConfigHandler } from '../controllers/clientRuntimeController';
 
 const router = express.Router();
 
@@ -126,5 +127,8 @@ router.get('/home', getHomeFeed);
 
 // 应用版本检测
 router.get('/app-version', getLatestAppVersion);
+
+// 移动端运行时配置（ASR/TTS 地址、Qwen 参数、可选密钥等）
+router.get('/client-runtime-config', getClientRuntimeConfigHandler);
 
 export default router; 

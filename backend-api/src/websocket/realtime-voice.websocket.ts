@@ -46,6 +46,9 @@ function welcomeJobLabel(raw: string | undefined): string {
 export class RealtimeVoiceWebSocketServer {
   private io: Server;
   private voicePipeline: RealtimeVoicePipelineService | null = null;
+  /** Redis ASR 与 Socket `text_message` 可能上报同一段文本，短时内只处理一次以免重复推进轮次 */
+  private recentInteractionDedupe = new Map<string, { normalized: string; at: number }>();
+  private static readonly INTERACTION_DEDUPE_MS = 2800;
   /**
    * 双轨流式处理核心逻辑
    * 轨道1：文本流 -> 字幕展示
@@ -123,8 +126,29 @@ export class RealtimeVoiceWebSocketServer {
     jobPosition?: string;
     ttsSessionId?: string;
   }) {
-    const { sessionId, text, source, userId, jobPosition, ttsSessionId: rawTtsSessionId } = params;
+    const { sessionId, source, userId, jobPosition, ttsSessionId: rawTtsSessionId } = params;
+    const text = (params.text || '').trim();
     const ttsSessionId = rawTtsSessionId || sessionId;
+
+    if (!text) {
+      console.log(`⚠️ 跳过空文本交互 (Session: ${sessionId}, Source: ${source})`);
+      return;
+    }
+
+    const normalizedDedupe = text.replace(/\s+/g, '');
+    const dedupeNow = Date.now();
+    const prevDedupe = this.recentInteractionDedupe.get(sessionId);
+    if (
+      prevDedupe &&
+      prevDedupe.normalized === normalizedDedupe &&
+      dedupeNow - prevDedupe.at < RealtimeVoiceWebSocketServer.INTERACTION_DEDUPE_MS
+    ) {
+      console.log(
+        `⏭️ 跳过重复交互 (${source})：${dedupeNow - prevDedupe.at}ms 内相同文本`,
+      );
+      return;
+    }
+    this.recentInteractionDedupe.set(sessionId, { normalized: normalizedDedupe, at: dedupeNow });
 
     console.log(`🔄 处理交互流程 (Session: ${sessionId}, Source: ${source}): "${text}"`);
 
@@ -804,7 +828,8 @@ export class RealtimeVoiceWebSocketServer {
               model: ai.qwenTtsModel,
               defaultConfig: {
                 voice: ai.ttsVoice,
-                sampleRate: 24000,
+                // 与 DUIX pushPcm 常用 16k 对齐；若仅扬声器试听可改用 24000（需在客户端分流）
+                sampleRate: 16000,
                 responseFormat: 'pcm',
                 mode: 'server_commit',
                 language: ai.ttsLanguage,

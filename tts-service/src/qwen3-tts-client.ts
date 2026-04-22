@@ -235,11 +235,9 @@ export class Qwen3TTSClient {
    * 发送 session.update 配置 TTS 参数
    */
   private sendSessionUpdate(): void {
-    // 强制安全性检查：对于 Qwen3-TTS-Instruct-Flash 模型，目前在多数公有云区域仅 cherry 是合法的基础音色。
-    // 如果外部配置（数据库、环境变量）传入了已确认不合法的 bill, George, Neil 等，在这里强制回退到 cherry，
-    // 以防止后端连接报错中断。音色特征通过 instructions 情感指令来弥补。
+    // 历史上部分音色在个别地域曾触发 DashScope 报错，仅对仍不稳定的旧名做回退；Neil 等已在百炼 Qwen3 实时 TTS 文档中支持，勿再拦截。
     let safeVoice = this.config.voice;
-    const invalidVoices = ['bill', 'george', 'neil', 'ben', 'steven'];
+    const invalidVoices = ['bill', 'george', 'ben', 'steven'];
     if (invalidVoices.includes(safeVoice.toLowerCase())) {
       logger.warn(`[Qwen3-TTS] 检测到不合规或未授权的音色: "${safeVoice}"，强制回退到官方标准音色 "cherry" 以确保连接通畅。`);
       safeVoice = 'cherry';
@@ -267,7 +265,7 @@ export class Qwen3TTSClient {
 
     this.send(event);
     logger.info(
-      `[Qwen3-TTS] session.update 已发送: voice="${this.config.voice}", language_type="${this.config.language}", mode=${this.config.mode}`,
+      `[Qwen3-TTS] session.update 已发送: voice="${safeVoice}", language_type="${this.config.language}", mode=${this.config.mode}`,
     );
   }
 

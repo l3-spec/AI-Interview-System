@@ -20,6 +20,13 @@ interface ApiService {
         @Query("platform") platform: String = "ANDROID",
         @Query("currentVersionCode") currentVersionCode: Int? = null
     ): ApiResponse<AppVersionInfo?>
+
+    /**
+     * 冷启动时由 [com.xlwl.AiMian.data.repository.ClientRuntimeConfigRepository] 单独请求；
+     * 与业务 Retrofit 共用同一 DTO 定义便于对照。
+     */
+    @GET("public/client-runtime-config")
+    suspend fun getClientRuntimeConfig(): ApiResponse<ClientRuntimeConfigDto>
     
     // ==================== 测评相关 ====================
     

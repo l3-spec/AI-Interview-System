@@ -25,6 +25,7 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import com.xlwl.AiMian.config.AppConfig
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -47,10 +48,17 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class Qwen3TtsWsClient(
     private val cacheDir: File,
-    private val sampleRate: Int = 24000, 
-    // 百炼实时 TTS 官方示例普遍使用 Cherry；勿使用 CosyVoice 名（如 siqi）作 voice
-    private val voice: String = "cherry",
-    private val instructions: String = "你是一位资深、严谨的男性面试官。请以沉稳、厚重、专业且略带严厉的男声语调进行对话，语气要正式、公正、节奏平稳。"
+    /**
+     * 须与 DUIX [ai.guiji.duix.sdk] `pushPcm` 约定一致：引擎侧按 **16kHz / mono / PCM16 LE** 解读。
+     * 若此处用 24000 而直接 `pushPcm` 给数字人，听感会降调、拖慢、发闷（并非 SDK 刻意「变声」）。
+     */
+    private val sampleRate: Int = 16000,
+    /**
+     * 百炼 Qwen3 实时 TTS 的 `voice`（如 Cherry、Ethan）。
+     * 若为空字符串，则不在 session.create 里传 voice，由 tts-service 的 `TTS_VOICE` 环境变量决定（避免 App 写死覆盖服务端配置）。
+     * 勿使用 CosyVoice 名（如 siqi）作 voice。
+     */
+    private val voice: String = "",
 ) {
     companion object {
         private const val TAG = "Qwen3TtsWsClient"
@@ -174,12 +182,14 @@ class Qwen3TtsWsClient(
             put("type", "session.create")
             sid?.let { put("sessionId", it) }
             put("config", JSONObject().apply {
-                put("voice", voice)
+                if (voice.isNotBlank()) {
+                    put("voice", voice)
+                }
                 put("sampleRate", sampleRate)
                 put("responseFormat", "pcm")
                 put("mode", "server_commit")
                 put("language", "Chinese")
-                put("instructions", instructions)
+                put("instructions", AppConfig.qwen3TtsInstructions)
             })
         }
         send(msg)

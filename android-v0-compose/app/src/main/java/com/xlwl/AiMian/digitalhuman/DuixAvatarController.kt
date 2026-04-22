@@ -10,8 +10,8 @@ import ai.guiji.duix.sdk.client.DUIX
 import ai.guiji.duix.sdk.client.loader.ModelInfo
 import ai.guiji.duix.sdk.client.render.DUIXRenderer
 import ai.guiji.duix.sdk.client.render.DUIXTextureView
-import com.xlwl.AiMian.BuildConfig
 import com.xlwl.AiMian.ai.realtime.RealtimeVoiceManager
+import com.xlwl.AiMian.config.AppConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -68,9 +68,9 @@ class DuixAvatarController(
     private val _latencyMetrics = MutableStateFlow(mapOf<String, String>())
     val latencyMetrics: StateFlow<Map<String, String>> = _latencyMetrics.asStateFlow()
 
-    // URLs from BuildConfig
-    private val duixBaseUrl = BuildConfig.DUIX_BASE_CONFIG_URL
-    private val duixModelUrl = BuildConfig.DUIX_MODEL_URL
+    // URLs 优先来自服务端 /api/public/client-runtime-config
+    private val duixBaseUrl get() = AppConfig.duixBaseConfigUrl
+    private val duixModelUrl get() = AppConfig.duixModelUrl
     private val defaultModelId = "Oliver"
     private val defaultModelZip = "Oliver.zip"
 

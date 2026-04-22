@@ -29,6 +29,9 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xlwl.AiMian.R
+import com.xlwl.AiMian.data.repository.ClientRuntimeConfigRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @SuppressLint("CustomSplashScreen")
 class SplashActivity : ComponentActivity() {
@@ -65,6 +68,9 @@ fun SplashScreen(
 
     LaunchedEffect(Unit) {
         startAnimation = true
+        withContext(Dispatchers.IO) {
+            ClientRuntimeConfigRepository.fetchAndApply()
+        }
         kotlinx.coroutines.delay(1800) // 给予足够动画时间后自动跳转
         onSplashComplete()
     }

@@ -30,7 +30,7 @@ import java.util.concurrent.TimeUnit
  *   2. 收到 session.created → 就绪
  *   3. 发送 audio.append（Base64 编码 PCM 数据）
  *   4. 收到 asr.partial（实时部分识别结果）
- *   5. 收到 asr.transcription_completed（完整识别结果）
+ *   5. 收到 asr.transcription_final 或 asr.transcription_completed（完整识别结果，与 asr-service 一致）
  *   6. 发送 audio.commit（手动模式下手动提交）
  *   7. 发送 session.finish 关闭会话
  *
@@ -201,21 +201,21 @@ class Qwen3AsrWsClient(
                     Log.i(TAG, "ASR 会话已创建: sessionId=$sid")
                 }
 
-                // 实时识别中间结果
-                "asr.partial" -> {
-                    val text = json.optString("text", "")
-                    if (text.isNotEmpty()) {
-                        _partialResult.value = text
+                // 实时识别中间结果（asr-service 使用 asr.transcription_partial）
+                "asr.partial", "asr.transcription_partial" -> {
+                    val part = json.optString("text", "")
+                    if (part.isNotEmpty()) {
+                        _partialResult.value = part
                     }
                 }
 
-                // 完整识别结果（一句话）
-                "asr.transcription_completed" -> {
-                    val text = json.optString("text", "")
-                    Log.i(TAG, "ASR 识别完成: $text")
+                // 完整识别结果（asr-service 使用 asr.transcription_final）
+                "asr.transcription_final", "asr.transcription_completed" -> {
+                    val finalText = json.optString("text", "")
+                    Log.i(TAG, "ASR 识别完成: $finalText")
                     _partialResult.value = ""
-                    if (text.isNotBlank()) {
-                        _transcriptionCompleted.tryEmit(TranscriptionResult(text, true))
+                    if (finalText.isNotBlank()) {
+                        _transcriptionCompleted.tryEmit(TranscriptionResult(finalText, true))
                     }
                 }
 
@@ -225,8 +225,8 @@ class Qwen3AsrWsClient(
                     _speechStarted.tryEmit(Unit)
                 }
 
-                // 语音结束检测
-                "asr.speech_ended" -> {
+                // 语音结束检测（asr-service 使用 asr.speech_stopped）
+                "asr.speech_ended", "asr.speech_stopped" -> {
                     Log.d(TAG, "ASR 检测到语音结束")
                     _speechEnded.tryEmit(Unit)
                 }

@@ -1197,7 +1197,7 @@ fun AppNavHost(navController: NavHostController) {
                             val data = sessionData!!
                             val firstQuestion = data.questions.minByOrNull { it.questionIndex }
                             DuixAvatarInterviewScreen(
-                                projectId = com.xlwl.AiMian.BuildConfig.ALIYUN_AVATAR_PROJECT_ID,
+                                projectId = com.xlwl.AiMian.config.AppConfig.aliyunAvatarProjectId,
                                 jobPositionLabel = selectedPosition,
                                 interviewQuestion = firstQuestion?.questionText ?: "请做一下自我介绍",
                                 interviewSessionId = data.sessionId,

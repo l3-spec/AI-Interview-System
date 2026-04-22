@@ -6,7 +6,6 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.PackageManager
-import com.xlwl.AiMian.BuildConfig
 import android.util.Log
 import android.view.ViewGroup
 import android.view.WindowManager
