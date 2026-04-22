@@ -403,6 +403,28 @@ export class InterviewFlowService {
     // 开始下一轮（或者是刚才插入的追问）
     const nextRound = await this.startNextRound(sessionId);
 
+    // 进入「下一道主题题」时，用上一轮回答轻量润色预生成题干（追问回合 roundNumber 不变，不触发）
+    if (
+      nextRound &&
+      currentRound &&
+      nextRound.roundNumber > currentRound.roundNumber &&
+      (currentRound.userResponse || '').trim()
+    ) {
+      try {
+        const refined = await deepseekService.contextualizePreparedQuestion({
+          jobPosition: session.userInfo.targetJob,
+          preparedQuestion: nextRound.question,
+          candidateLastAnswer: (currentRound.userResponse || '').trim(),
+          candidateName: session.userInfo.name,
+        });
+        if (refined && refined.length > 12) {
+          nextRound.question = refined.trim();
+        }
+      } catch (e) {
+        console.warn('[InterviewFlow] 下一题上下文润色跳过:', e);
+      }
+    }
+
     return {
       nextRound,
       isCompleted: !nextRound,
@@ -495,6 +517,21 @@ export class InterviewFlowService {
 
     const response = await deepseekService.generateSummary(prompt);
     return response.summary;
+  }
+
+  /**
+   * 当前候选人正在作答的题号（与 DB questionIndex 对齐，0-based）
+   */
+  getCurrentRespondingQuestionIndex0(sessionId: string): number | null {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return null;
+    }
+    const current = session.rounds.find(r => r.status === 'in_progress');
+    if (!current) {
+      return null;
+    }
+    return Math.max(0, current.roundNumber - 1);
   }
 
   /**

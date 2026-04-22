@@ -6,6 +6,7 @@ import com.xlwl.AiMian.data.model.AiInterviewCreateSessionData
 import com.xlwl.AiMian.data.model.AiInterviewSessionDetail
 import com.xlwl.AiMian.data.model.AiInterviewSessionSummary
 import com.xlwl.AiMian.data.model.AiInterviewSessionsResponse
+import com.xlwl.AiMian.data.model.AttachConversationTurnVideoBody
 import com.xlwl.AiMian.data.model.AiInterviewSubmitAnswerRequest
 import com.xlwl.AiMian.data.model.CreateAiInterviewSessionRequest
 import com.xlwl.AiMian.data.model.NextAiInterviewQuestionResponse
@@ -13,8 +14,10 @@ import com.xlwl.AiMian.data.model.SubmitAiInterviewAnswerResponse
 import android.graphics.Bitmap
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.util.UUID
 
 class AiInterviewRepository(private val api: AiInterviewApi) {
@@ -64,6 +67,51 @@ class AiInterviewRepository(private val api: AiInterviewApi) {
       },
       onFailure = { Result.failure(it) }
     )
+
+  /**
+   * 将已上传 OSS 的 URL 绑定到某轮沟通记录（sequence 来自 Socket `candidate_turn_recorded`）
+   */
+  suspend fun attachConversationTurnVideoUrl(
+    sessionId: String,
+    sequence: Int,
+    videoUrl: String,
+    durationMs: Int? = null
+  ): Result<Unit> =
+    runCatching {
+      val r = api.attachConversationTurnVideo(
+        sessionId,
+        sequence,
+        AttachConversationTurnVideoBody(videoUrl = videoUrl, durationMs = durationMs)
+      )
+      if (r.success) {
+        Unit
+      } else {
+        throw Exception(r.message ?: r.error ?: "绑定答题视频失败")
+      }
+    }
+
+  /**
+   * 直传本地视频文件，由后端写入 OSS 并绑定到该轮沟通
+   */
+  suspend fun uploadConversationTurnVideoFile(
+    sessionId: String,
+    sequence: Int,
+    file: File,
+    mime: String = "video/mp4"
+  ): Result<String> =
+    runCatching {
+      val body = MultipartBody.Part.createFormData(
+        "video",
+        file.name,
+        file.asRequestBody(mime.toMediaTypeOrNull())
+      )
+      val r = api.uploadConversationTurnVideo(sessionId, sequence, body)
+      if (r.success) {
+        r.data?.videoUrl ?: throw Exception("上传成功但未返回 videoUrl")
+      } else {
+        throw Exception(r.message ?: r.error ?: "上传答题视频失败")
+      }
+    }
 
   suspend fun complete(sessionId: String): Result<SubmitAiInterviewAnswerResponse> =
     runCatching { api.complete(sessionId) }.fold(

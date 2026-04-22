@@ -128,11 +128,13 @@ export class RealtimeVoiceWebSocketServer {
 
     console.log(`🔄 处理交互流程 (Session: ${sessionId}, Source: ${source}): "${text}"`);
 
-    // 1. 记录用户话语
-    void aiInterviewService.recordConversationTurn(sessionId, {
+    // 1. 记录用户话语（带题号，便于与答题视频、题库行对齐）
+    const questionIndex0 = interviewFlowService.getCurrentRespondingQuestionIndex0(sessionId);
+    const turnMeta = await aiInterviewService.recordConversationTurn(sessionId, {
       speaker: 'CANDIDATE',
       candidateText: text,
-    }).catch(() => undefined);
+      ...(typeof questionIndex0 === 'number' ? { questionIndex: questionIndex0 } : {}),
+    });
 
     // 2. 发送回显（用于客户端展示“我”的字幕）
     this.io.to(sessionId).emit('asr_partial', {
@@ -140,6 +142,18 @@ export class RealtimeVoiceWebSocketServer {
       isFinal: true,
       sessionId
     });
+
+    // 2b. 告知客户端本回合沟通序号，用于上传该轮答题视频后 PATCH 绑定
+    if (turnMeta) {
+      this.io.to(sessionId).emit('candidate_turn_recorded', {
+        sessionId,
+        sequence: turnMeta.sequence,
+        turnId: turnMeta.id,
+        questionIndex: typeof questionIndex0 === 'number' ? questionIndex0 : null,
+        uploadHint:
+          'POST /api/ai-interview/sessions/:sessionId/conversation-turns/:sequence/candidate-video（multipart 字段 video）或 JSON body { videoUrl }',
+      });
+    }
 
     // 3. 检查结束意图
     const normalizedText = text.replace(/\s+/g, '');

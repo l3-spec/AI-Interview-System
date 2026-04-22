@@ -55,6 +55,14 @@ data class ConversationMessage(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+/** 后端 Socket `candidate_turn_recorded`：绑定该轮答题视频时使用 sequence */
+data class CandidateTurnRecorded(
+    val sessionId: String,
+    val sequence: Int,
+    val turnId: String?,
+    val questionIndex: Int?,
+)
+
 enum class ConnectionState { DISCONNECTED, CONNECTING, CONNECTED }
 
 class RealtimeVoiceManager(private val context: Context) {
@@ -344,6 +352,9 @@ class RealtimeVoiceManager(private val context: Context) {
     private val _errors = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val errors: SharedFlow<String> = _errors.asSharedFlow()
 
+    private val _candidateTurnRecorded = MutableSharedFlow<CandidateTurnRecorded>(extraBufferCapacity = 8)
+    val candidateTurnRecorded: SharedFlow<CandidateTurnRecorded> = _candidateTurnRecorded.asSharedFlow()
+
     /** TTS 朗读进度 0~1，用于两行字幕滚动（Qwen3 流式 + MediaPlayer） */
     private val _ttsPlaybackProgress = MutableStateFlow(0f)
     val ttsPlaybackProgress: StateFlow<Float> = _ttsPlaybackProgress.asStateFlow()
@@ -470,6 +481,24 @@ class RealtimeVoiceManager(private val context: Context) {
             newSocket.on("error") { args ->
                 handleError(args.getOrNull(0))
             }
+            newSocket.on("candidate_turn_recorded") { args ->
+                safeHandleEvent("candidate_turn_recorded", args) { jo ->
+                    val sid = jo.optString("sessionId")
+                    val seq = jo.optInt("sequence", -1)
+                    if (sid.isBlank() || seq < 0) return@safeHandleEvent
+                    val tid = jo.optString("turnId").takeIf { it.isNotBlank() }
+                    val qRaw = if (jo.isNull("questionIndex")) null else jo.opt("questionIndex")
+                    val qIdx = when (qRaw) {
+                        is Number -> qRaw.toInt().takeIf { it >= 0 }
+                        else -> null
+                    }
+                    scope.launch {
+                        _candidateTurnRecorded.emit(
+                            CandidateTurnRecorded(sid, seq, tid, qIdx)
+                        )
+                    }
+                }
+            }
 
             Log.d(TAG, "尝试连接实时语音服务: $serverUrl (session=$sessionId)")
             newSocket.connect()
@@ -528,7 +557,7 @@ class RealtimeVoiceManager(private val context: Context) {
                                 // TTS 开始播放 → 标记数字人正在说话，清除等待标志
                                 awaitingTtsPlayback = false
                                 _isDigitalHumanSpeaking.value = true
-                                Log.d(TAG, "Qwen3 TTS 播放正式开始，关闭录音")
+                                Log.i(TAG, "🎙️ [FLOW] Qwen3 TTS 播放正式开始 -> 关闭录音")
                                 stopRecordingInternal()
                             } else {
                                 // TTS 停止播放：只有在没有等待中的新响应时才标记说话结束
@@ -537,12 +566,13 @@ class RealtimeVoiceManager(private val context: Context) {
                                     return@collect
                                 }
                                 
+                                Log.i(TAG, "🎙️ [FLOW] Qwen3 TTS 播报结束")
                                 _isDigitalHumanSpeaking.value = false
                                 if (!_interviewCompleted.value && vadEnabled) {
                                     // 延迟 500ms 确保一句话彻底结束，避免回答还没播完就录音
                                     kotlinx.coroutines.delay(500)
                                     if (!_isDigitalHumanSpeaking.value && !awaitingTtsPlayback) {
-                                        Log.i(TAG, "Qwen3 TTS 播报链路释放，准备开启自动监听")
+                                        Log.i(TAG, "🎙️ [FLOW] Qwen3 TTS 链路释放 -> 开启自动监听")
                                         tryAutoStartRecordingIfIdle()
                                     }
                                 }
@@ -940,22 +970,28 @@ class RealtimeVoiceManager(private val context: Context) {
                     // 超时保护
                     val elapsed = System.currentTimeMillis() - recordingStartTime
                     if (elapsed >= MAX_RECORDING_DURATION_MS) {
-                        Log.w(TAG, "录音超时，强制结束 - 时长: ${elapsed}ms")
+                        Log.w(TAG, "🎙️ [FLOW] 录音超时（${MAX_RECORDING_DURATION_MS}ms），强制结束")
                         isRecording = false
                         break
                     }
                     
+                    // Qwen3 ASR 模式下的额外保护：如果检测到说话但长时间没收到 ASR 结果
+                    if (useQwen3Asr && speechDetected && elapsed > 15000) { // 15秒无响应
+                         Log.w(TAG, "🎙️ [FLOW] Qwen3 ASR 响应过慢，尝试重启识别")
+                         // 此处不强制断开，但记录警告
+                    }
+                    
                 } else if (bytesRead < 0) {
-                    Log.e(TAG, "录音读取失败: bytesRead=$bytesRead")
+                    Log.e(TAG, "🎙️ [FLOW] 录音读取失败: bytesRead=$bytesRead")
                     _errors.tryEmit("录音读取失败: $bytesRead")
                     break
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "VAD录音过程中出现异常", e)
+            Log.e(TAG, "🎙️ [FLOW] VAD录音异常", e)
             _errors.tryEmit(e.message ?: "录音失败")
         } finally {
-            Log.i(TAG, "VAD录音循环结束 - 总字节数: $totalBytes, 统计: ${vadDetector.getStatistics()}")
+            Log.i(TAG, "🎙️ [FLOW] VAD录音循环结束 - 总字节数: $totalBytes, 说话检测: $speechDetected")
             
             try {
                 recorder.stop()
@@ -969,14 +1005,27 @@ class RealtimeVoiceManager(private val context: Context) {
             
             // Qwen3 ASR 模式下无需本地处理（服务端自动识别并通过 WebSocket 返回结果）
             if (useQwen3Asr) {
-                Log.i(TAG, "Qwen3 ASR 录音结束 - 等待服务端返回识别结果")
+                Log.i(TAG, "🎙️ [FLOW] Qwen3 ASR 录音已结束，等待服务端识别结果")
+                // 关键修复：Qwen3 ASR 模式结束后，如果长时间没等到结果，也应该允许重启录音
+                scope.launch {
+                    delay(5000) // 等待5秒
+                    if (!isRecording && !_isDigitalHumanSpeaking.value && !awaitingTtsPlayback) {
+                        Log.d(TAG, "🎙️ [FLOW] Qwen3 ASR 结束5秒后仍空闲，尝试恢复监听")
+                        tryAutoStartRecordingIfIdle()
+                    }
+                }
             } else if (speechDetected && totalBytes > 0) {
                 processRecordedAudio(true, sessionId)
             } else {
-                Log.w(TAG, "未检测到有效语音，取消处理")
+                Log.i(TAG, "🎙️ [FLOW] 未检测到有效语音，准备重新开始监听")
                 _partialTranscript.value = ""
                 recordedBuffer?.reset()
                 recordedBuffer = null
+                // 关键修复：静音/空闲结束后也要尝试重启录音，否则循环会断掉
+                scope.launch {
+                    delay(100)
+                    tryAutoStartRecordingIfIdle()
+                }
             }
         }
     }
@@ -1019,6 +1068,12 @@ class RealtimeVoiceManager(private val context: Context) {
             isRecording = false
             _isRecordingFlow.value = false
             processRecordedAudio(totalBytes > 0, sessionId)
+            
+            // 手动模式下，如果处理完后没有触发说话，也要尝试重启
+            scope.launch {
+                delay(1000)
+                tryAutoStartRecordingIfIdle()
+            }
         }
     }
 
@@ -1046,10 +1101,11 @@ class RealtimeVoiceManager(private val context: Context) {
             Log.i(TAG, "ASR识别结果: $text")
             
             if (text.isEmpty()) {
-                Log.w(TAG, "ASR未识别到语音内容")
+                Log.w(TAG, "🎙️ [FLOW] ASR未识别到语音内容")
                 _partialTranscript.value = ""
                 _isProcessing.value = false
-                _errors.tryEmit("未识别到语音内容")
+                // _errors.tryEmit("未识别到语音内容") // 静音时不报错，直接重启
+                tryAutoStartRecordingIfIdle()
                 return
             }
             
@@ -1158,11 +1214,11 @@ class RealtimeVoiceManager(private val context: Context) {
                     scope.launch {
                         delay(10_000)
                         if (awaitingTtsPlayback) {
-                            Log.w(TAG, "⚠️ TTS 播放超时（10s），强制恢复空闲状态")
+                            Log.w(TAG, "⚠️ [FLOW] TTS 播放超时（10s），强制清除锁定状态恢复监听")
                             awaitingTtsPlayback = false
-                            if (!_isDigitalHumanSpeaking.value) {
-                                tryAutoStartRecordingIfIdle()
-                            }
+                            _isDigitalHumanSpeaking.value = false // 关键：同时重置说话状态
+                            currentPlayingTextHash = null
+                            tryAutoStartRecordingIfIdle()
                         }
                     }
                 } else {

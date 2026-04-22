@@ -1200,6 +1200,9 @@ fun AppNavHost(navController: NavHostController) {
                                 projectId = com.xlwl.AiMian.BuildConfig.ALIYUN_AVATAR_PROJECT_ID,
                                 jobPositionLabel = selectedPosition,
                                 interviewQuestion = firstQuestion?.questionText ?: "请做一下自我介绍",
+                                interviewSessionId = data.sessionId,
+                                candidateUserId = currentUserId,
+                                aiInterviewRepository = aiInterviewRepository,
                                 onInterviewComplete = { sessionId ->
                                     coroutineScope.launch {
                                         runCatching {

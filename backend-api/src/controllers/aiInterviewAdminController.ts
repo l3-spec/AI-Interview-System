@@ -162,6 +162,7 @@ export const getInterviewSessionAnalysis = async (req: Request, res: Response) =
                     duration: q.answerDuration
                 })),
                 conversationTurns: session.conversationTurns?.map((t: any) => ({
+                    id: t.id,
                     sequence: t.sequence,
                     speaker: t.speaker,
                     avatarText: t.avatarText,

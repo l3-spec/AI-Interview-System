@@ -56,6 +56,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import com.xlwl.AiMian.ai.realtime.RealtimeVoiceManager
 import com.xlwl.AiMian.ai.realtime.ConnectionState
+import com.xlwl.AiMian.data.repository.AiInterviewRepository
 import com.example.v0clone.model.DimensionScore
 import com.example.v0clone.model.InterviewReport
 import com.example.v0clone.model.MultimodalSummary
@@ -87,6 +88,11 @@ fun DuixAvatarInterviewScreen(
     /** 传给后端的岗位短标签（应与题干分开，勿传整段题目） */
     jobPositionLabel: String? = null,
     interviewQuestion: String? = null,
+    /** 与 backend-api / Prisma 会话一致，用于沟通记录与答题视频绑定 */
+    interviewSessionId: String? = null,
+    candidateUserId: String? = null,
+    /** 可选：收到 `candidate_turn_recorded` 后可将本地录像上传并调用 [AiInterviewRepository.uploadConversationTurnVideoFile] */
+    aiInterviewRepository: AiInterviewRepository? = null,
     onInterviewComplete: (sessionId: String) -> Unit = {},
     onBack: () -> Unit = {}
 ) {
@@ -167,9 +173,22 @@ fun DuixAvatarInterviewScreen(
         }
     }
 
-    LaunchedEffect(interviewCompleted) {
+    LaunchedEffect(interviewCompleted, interviewSessionId) {
         if (interviewCompleted) {
-            onInterviewComplete("some_session_id")
+            onInterviewComplete(interviewSessionId.orEmpty())
+        }
+    }
+
+    LaunchedEffect(aiInterviewRepository, interviewSessionId, realtimeVoiceManager) {
+        val repo = aiInterviewRepository ?: return@LaunchedEffect
+        val sid = interviewSessionId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        realtimeVoiceManager.candidateTurnRecorded.collect { ev ->
+            if (ev.sessionId == sid) {
+                Log.i(
+                    "DuixAvatarScreen",
+                    "沟通回合已落库 sequence=${ev.sequence} qIdx=${ev.questionIndex} — 录像就绪后可 uploadConversationTurnVideoFile / attachConversationTurnVideoUrl"
+                )
+            }
         }
     }
     val dialogState = avatarController?.dialogState?.collectAsState()?.value ?: 0
@@ -210,11 +229,13 @@ fun DuixAvatarInterviewScreen(
             scope.launch {
                 realtimeVoiceManager.initialize(
                     serverUrl = serverUrl,
-                    sessionId = java.util.UUID.randomUUID().toString(),
+                    sessionId = interviewSessionId?.takeIf { it.isNotBlank() }
+                        ?: java.util.UUID.randomUUID().toString(),
                     jobPosition = jobPositionLabel?.takeIf { it.isNotBlank() }
                         ?: interviewQuestion?.takeIf { it.length <= 40 }
                         ?: "AI面试官",
-                    userId = "user_${System.currentTimeMillis()}"
+                    userId = candidateUserId?.takeIf { it.isNotBlank() }
+                        ?: "user_${System.currentTimeMillis()}"
                 )
             }
         }

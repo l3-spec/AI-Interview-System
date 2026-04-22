@@ -64,6 +64,7 @@ interface Question {
 }
 
 interface ConversationTurn {
+    id?: string;
     sequence: number;
     speaker: string;
     avatarText?: string | null;
@@ -807,7 +808,8 @@ const InterviewAnalysisManagement: React.FC = () => {
                                         color: t.speaker === 'AVATAR' ? 'blue' : 'green',
                                         children: (
                                             <div>
-                                                <Tag>{t.speaker === 'AVATAR' ? '数字人' : '候选人'}</Tag>
+                                                <Tag color="default">#{t.sequence}</Tag>
+                                                <Tag>{t.speaker === 'AVATAR' ? '面试官/数字人' : '候选人'}</Tag>
                                                 {t.questionIndex != null && <Tag>题{t.questionIndex}</Tag>}
                                                 <div style={{ marginTop: 8 }}>
                                                     {t.avatarText && (
@@ -817,18 +819,24 @@ const InterviewAnalysisManagement: React.FC = () => {
                                                     )}
                                                     {t.candidateText && (
                                                         <Paragraph type="secondary" style={{ marginBottom: 8 }} copyable>
-                                                            文本：{t.candidateText}
+                                                            识别/作答文本：{t.candidateText}
                                                         </Paragraph>
                                                     )}
                                                     {t.candidateVideoUrl && (
-                                                        <Space>
+                                                        <Space direction="vertical" style={{ width: '100%' }}>
+                                                            <video
+                                                                src={buildAssetUrl(t.candidateVideoUrl) || t.candidateVideoUrl}
+                                                                controls
+                                                                playsInline
+                                                                style={{ width: '100%', maxHeight: 260, borderRadius: 8, background: '#000' }}
+                                                            />
                                                             <Button
                                                                 type="link"
                                                                 size="small"
                                                                 icon={<PlayCircleOutlined />}
                                                                 onClick={() => handlePlayVideo(t.candidateVideoUrl!)}
                                                             >
-                                                                播放答题视频
+                                                                全屏播放器打开
                                                             </Button>
                                                         </Space>
                                                     )}

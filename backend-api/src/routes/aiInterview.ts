@@ -710,6 +710,113 @@ router.post('/submit-answer',
 );
 
 /**
+ * 绑定「某一沟通过程序号」对应的候选人答题视频（先由 Socket 推送 candidate_turn_recorded.sequence）
+ */
+router.patch(
+  '/sessions/:sessionId/conversation-turns/:sequence/candidate-video',
+  authenticateToken,
+  [
+    param('sessionId').isUUID().withMessage('会话ID无效'),
+    param('sequence').isInt({ min: 0 }).withMessage('sequence 无效'),
+    body('videoUrl').optional().isString().isLength({ min: 1 }),
+    body('videoPath').optional().isString(),
+    body('durationMs').optional().isInt({ min: 0 }),
+  ],
+  async (req: any, res: any) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ success: false, message: '参数错误', errors: errors.array() });
+      }
+      const userId = req.user?.type === 'user' ? req.user.id : undefined;
+      if (!userId) {
+        return res.status(403).json({ success: false, message: '仅求职者账号可绑定答题视频' });
+      }
+      const { sessionId, sequence } = req.params;
+      const { videoUrl, videoPath, durationMs } = req.body;
+      if (!videoUrl && !videoPath) {
+        return res.status(400).json({ success: false, message: '请提供 videoUrl 或 videoPath' });
+      }
+      const result = await aiInterviewService.attachCandidateVideoToConversationTurn({
+        sessionId,
+        userId,
+        sequence: parseInt(String(sequence), 10),
+        videoUrl,
+        videoPath,
+        durationMs: durationMs != null ? parseInt(String(durationMs), 10) : undefined,
+      });
+      if (!result.success) {
+        const code = result.error?.includes('不存在') ? 404 : result.error?.includes('无权') ? 403 : 400;
+        return res.status(code).json({ success: false, message: result.error });
+      }
+      return res.json({ success: true, message: result.message });
+    } catch (error) {
+      console.error('绑定沟通回合视频失败:', error);
+      return res.status(500).json({ success: false, message: '服务器内部错误' });
+    }
+  }
+);
+
+/**
+ * 同上，multipart 直传文件至 OSS 后写入沟通记录
+ */
+router.post(
+  '/sessions/:sessionId/conversation-turns/:sequence/candidate-video',
+  authenticateToken,
+  [
+    param('sessionId').isUUID().withMessage('会话ID无效'),
+    param('sequence').isInt({ min: 0 }).withMessage('sequence 无效'),
+  ],
+  uploadSingle('video'),
+  async (req: any, res: any) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ success: false, message: '参数错误', errors: errors.array() });
+      }
+      const userId = req.user?.type === 'user' ? req.user.id : undefined;
+      if (!userId) {
+        return res.status(403).json({ success: false, message: '仅求职者账号可上传' });
+      }
+      if (!isOSSConfigured()) {
+        return res.status(503).json({ success: false, message: 'OSS 未配置' });
+      }
+      const file = req.file as Express.Multer.File | undefined;
+      if (!file) {
+        return res.status(400).json({ success: false, message: '请上传视频文件（字段名：video）' });
+      }
+      const { sessionId, sequence } = req.params;
+      const seq = parseInt(String(sequence), 10);
+      const safeUser = String(userId).replace(/[^a-zA-Z0-9_-]/g, '_');
+      const ext = path.extname(file.originalname || '') || '.mp4';
+      const objectKey = `uploads/ai-interview/round-videos/${safeUser}/${sessionId}/turn_${seq}_${Date.now()}${ext}`;
+
+      try {
+        const up = await ossService.uploadLocalFile(file.path, objectKey);
+        cleanupTempFile(file.path);
+        const result = await aiInterviewService.attachCandidateVideoToConversationTurn({
+          sessionId,
+          userId,
+          sequence: seq,
+          videoUrl: up.url,
+        });
+        if (!result.success) {
+          const code = result.error?.includes('不存在') ? 404 : result.error?.includes('无权') ? 403 : 400;
+          return res.status(code).json({ success: false, message: result.error });
+        }
+        return res.json({ success: true, message: result.message, data: { videoUrl: up.url } });
+      } catch (e) {
+        cleanupTempFile(file?.path);
+        throw e;
+      }
+    } catch (error) {
+      console.error('上传沟通回合视频失败:', error);
+      return res.status(500).json({ success: false, message: '服务器内部错误' });
+    }
+  }
+);
+
+/**
  * @swagger
  * /api/ai-interview/complete/{sessionId}:
  *   post:

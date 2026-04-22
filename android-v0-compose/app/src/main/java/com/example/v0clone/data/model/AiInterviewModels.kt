@@ -78,6 +78,17 @@ data class SubmitAiInterviewAnswerResponse(
   val error: String? = null
 )
 
+/** 绑定实时面试某一沟通过程序号对应的答题视频（与 Socket 事件 candidate_turn_recorded.sequence 对应） */
+data class AttachConversationTurnVideoBody(
+  val videoUrl: String? = null,
+  val videoPath: String? = null,
+  val durationMs: Int? = null
+)
+
+data class AttachConversationTurnVideoData(
+  val videoUrl: String? = null
+)
+
 @Parcelize
 data class AiInterviewFlowState(
   val sessionId: String,

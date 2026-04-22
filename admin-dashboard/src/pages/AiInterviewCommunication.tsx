@@ -28,6 +28,7 @@ interface SessionRow {
 }
 
 interface ConvTurn {
+  id?: string;
   sequence: number;
   speaker: string;
   avatarText?: string | null;
@@ -156,7 +157,8 @@ const AiInterviewCommunication: React.FC = () => {
                       color: t.speaker === 'AVATAR' ? 'blue' : 'green',
                       children: (
                         <div>
-                          <Tag>{t.speaker === 'AVATAR' ? '数字人' : '候选人'}</Tag>
+                          <Tag color="default">#{t.sequence}</Tag>
+                          <Tag>{t.speaker === 'AVATAR' ? '面试官/数字人' : '候选人'}</Tag>
                           {t.questionIndex != null && <Tag>题{t.questionIndex}</Tag>}
                           <div style={{ marginTop: 8 }}>
                             {t.avatarText && (
@@ -164,20 +166,28 @@ const AiInterviewCommunication: React.FC = () => {
                             )}
                             {t.candidateText && (
                               <Paragraph type="secondary" style={{ marginBottom: 8 }} copyable>
-                                文本：{t.candidateText}
+                                识别/作答文本：{t.candidateText}
                               </Paragraph>
                             )}
                             {t.candidateVideoUrl && (
-                              <Button
-                                type="link"
-                                size="small"
-                                icon={<PlayCircleOutlined />}
-                                href={t.candidateVideoUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                打开答题视频
-                              </Button>
+                              <div style={{ marginTop: 8 }}>
+                                <video
+                                  src={t.candidateVideoUrl}
+                                  controls
+                                  playsInline
+                                  style={{ width: '100%', maxHeight: 240, borderRadius: 8, background: '#000' }}
+                                />
+                                <Button
+                                  type="link"
+                                  size="small"
+                                  icon={<PlayCircleOutlined />}
+                                  href={t.candidateVideoUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  新窗口打开
+                                </Button>
+                              </div>
                             )}
                           </div>
                           <Text type="secondary" style={{ fontSize: 12 }}>

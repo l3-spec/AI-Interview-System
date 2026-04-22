@@ -46,6 +46,7 @@ class DuixAvatarInterviewActivity : ComponentActivity() {
                     projectId = BuildConfig.ALIYUN_AVATAR_PROJECT_ID,
                     jobPositionLabel = position,
                     interviewQuestion = questionText,
+                    interviewSessionId = sessionId.takeIf { it.isNotBlank() },
                     onInterviewComplete = { completedSessionId ->
                         // TODO: 调用后端标记面试完成
                         finish()

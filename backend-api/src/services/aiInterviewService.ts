@@ -868,7 +868,9 @@ class AIInterviewService {
         candidateVideoUrl: normalized.videoUrl,
         candidateText: answerText || undefined,
         questionIndex,
-      }).catch(() => undefined);
+      })
+        .then(() => undefined)
+        .catch(() => undefined);
 
       const refreshedSession = await prisma.aIInterviewSession.findUnique({
         where: { id: sessionId },
@@ -966,11 +968,7 @@ class AIInterviewService {
       });
 
       const videoForTurn = normalized.videoUrl || videoUrl;
-      void this.recordConversationTurn(sessionId, {
-        speaker: 'CANDIDATE',
-        candidateVideoUrl: videoForTurn,
-        questionIndex,
-      }).catch(() => undefined);
+      await this.mergeCandidateVideoIntoConversationTurn(sessionId, questionIndex, videoForTurn);
 
       return { success: true, message: '已绑定面试视频链接' };
     } catch (error) {
@@ -978,6 +976,116 @@ class AIInterviewService {
       return {
         success: false,
         error: error instanceof Error ? error.message : '绑定面试视频链接失败',
+      };
+    }
+  }
+
+  /**
+   * 把答题视频合并到最近一条「同题号、尚无视频」的候选人沟通记录，避免重复插入仅含视频的回合。
+   */
+  private async mergeCandidateVideoIntoConversationTurn(
+    sessionId: string,
+    questionIndex: number,
+    videoUrl: string
+  ): Promise<void> {
+    const trimmed = (videoUrl || '').trim();
+    if (!trimmed) {
+      return;
+    }
+    const turn = await prisma.aIInterviewConversationTurn.findFirst({
+      where: {
+        sessionId,
+        speaker: 'CANDIDATE',
+        questionIndex,
+        OR: [{ candidateVideoUrl: null }, { candidateVideoUrl: '' }],
+      },
+      orderBy: { sequence: 'desc' },
+    });
+    if (turn) {
+      await prisma.aIInterviewConversationTurn.update({
+        where: { id: turn.id },
+        data: { candidateVideoUrl: trimmed },
+      });
+      return;
+    }
+    await this.recordConversationTurn(sessionId, {
+      speaker: 'CANDIDATE',
+      candidateVideoUrl: trimmed,
+      questionIndex,
+    });
+  }
+
+  /**
+   * 客户端在 Socket 记录候选人文本后，按 sequence 补传该轮答题视频（OSS URL 或对象路径）。
+   */
+  async attachCandidateVideoToConversationTurn(params: {
+    sessionId: string;
+    userId: string;
+    sequence: number;
+    videoUrl?: string;
+    videoPath?: string;
+    durationMs?: number;
+  }): Promise<{ success: boolean; message?: string; error?: string }> {
+    const { sessionId, userId, sequence, videoUrl, videoPath, durationMs } = params;
+
+    try {
+      const session = await prisma.aIInterviewSession.findUnique({
+        where: { id: sessionId },
+        select: { userId: true },
+      });
+      if (!session) {
+        return { success: false, error: '面试会话不存在' };
+      }
+      if (session.userId !== userId) {
+        return { success: false, error: '无权操作该会话' };
+      }
+
+      const turn = await prisma.aIInterviewConversationTurn.findFirst({
+        where: { sessionId, sequence, speaker: 'CANDIDATE' },
+      });
+      if (!turn) {
+        return { success: false, error: '未找到对应的候选人沟通记录' };
+      }
+
+      const normalized = this.normalizeVideoInfo(
+        sessionId,
+        videoUrl,
+        videoPath,
+        typeof turn.questionIndex === 'number' ? turn.questionIndex : undefined
+      );
+      const finalUrl = (normalized.videoUrl || videoUrl || '').trim();
+      if (!finalUrl) {
+        return { success: false, error: '请提供有效的 videoUrl 或上传文件' };
+      }
+
+      await prisma.aIInterviewConversationTurn.update({
+        where: { id: turn.id },
+        data: { candidateVideoUrl: finalUrl },
+      });
+
+      if (typeof turn.questionIndex === 'number') {
+        await prisma.aIInterviewQuestion.updateMany({
+          where: { sessionId, questionIndex: turn.questionIndex },
+          data: {
+            answerVideoUrl: finalUrl,
+            answerVideoPath: normalized.videoPath,
+            answerDuration: durationMs ? Math.max(1, Math.round(durationMs / 1000)) : undefined,
+            answeredAt: new Date(),
+          },
+        });
+      }
+
+      await prisma.aIInterviewSession.update({
+        where: { id: sessionId },
+        data: { updatedAt: new Date() },
+      });
+
+      return { success: true, message: '已保存该轮答题视频' };
+    } catch (error) {
+      console.error('绑定沟通回合视频失败:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '绑定沟通回合视频失败',
       };
     }
   }
@@ -994,19 +1102,19 @@ class AIInterviewService {
       candidateText?: string;
       questionIndex?: number;
     }
-  ): Promise<void> {
+  ): Promise<{ sequence: number; id: string } | null> {
     const hasAvatar = payload.speaker === 'AVATAR' && (payload.avatarText || '').trim().length > 0;
     const hasCandidate =
       payload.speaker === 'CANDIDATE' &&
       ((payload.candidateVideoUrl || '').trim().length > 0 || (payload.candidateText || '').trim().length > 0);
     if (!hasAvatar && !hasCandidate) {
-      return;
+      return null;
     }
 
     try {
       const exists = await prisma.aIInterviewSession.count({ where: { id: sessionId } });
       if (!exists) {
-        return;
+        return null;
       }
 
       const agg = await prisma.aIInterviewConversationTurn.aggregate({
@@ -1015,7 +1123,7 @@ class AIInterviewService {
       });
       const nextSeq = (agg._max.sequence ?? -1) + 1;
 
-      await prisma.aIInterviewConversationTurn.create({
+      const row = await prisma.aIInterviewConversationTurn.create({
         data: {
           sessionId,
           sequence: nextSeq,
@@ -1028,8 +1136,10 @@ class AIInterviewService {
           questionIndex: typeof payload.questionIndex === 'number' ? payload.questionIndex : null,
         },
       });
+      return { sequence: nextSeq, id: row.id };
     } catch (err) {
       console.warn(`[AIInterview] recordConversationTurn failed session=${sessionId}`, err);
+      return null;
     }
   }
 

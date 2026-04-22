@@ -72,6 +72,10 @@ export class DeepseekService {
   private maxTokens: number;
   private temperature: number;
   private isEnabled: boolean;
+  /** 常规对话/分析类请求 HTTP 超时（毫秒） */
+  private readonly defaultTimeoutMs: number;
+  /** 整卷面试生成等长输出，易超过 30s，单独放宽 */
+  private readonly longGenerationTimeoutMs: number;
 
   constructor() {
     this.providerName = process.env.LLM_PROVIDER || 'deepseek';
@@ -89,6 +93,15 @@ export class DeepseekService {
 
     this.maxTokens = parseInt(process.env.LLM_MAX_TOKENS || process.env.DEEPSEEK_MAX_TOKENS || process.env.VOLCENGINE_MAX_TOKENS || '2000');
     this.temperature = parseFloat(process.env.LLM_TEMPERATURE || process.env.DEEPSEEK_TEMPERATURE || process.env.VOLCENGINE_TEMPERATURE || '0.7');
+
+    this.defaultTimeoutMs = Math.max(
+      15000,
+      parseInt(process.env.LLM_TIMEOUT_MS || process.env.DEEPSEEK_TIMEOUT_MS || '120000', 10)
+    );
+    this.longGenerationTimeoutMs = Math.max(
+      this.defaultTimeoutMs,
+      parseInt(process.env.LLM_LONG_TIMEOUT_MS || '180000', 10)
+    );
 
     // 如果没有API密钥，启用模拟模式
     this.isEnabled = !!this.apiKey;
@@ -408,8 +421,12 @@ export class DeepseekService {
 
   /**
    * 调用 Deepseek API
+   * @param options.timeoutMs 覆盖默认超时（整卷面试生成等请用更长超时，避免 Axios stream aborted）
    */
-  private async callDeepseekAPI(prompt: string): Promise<DeepseekResponse> {
+  private async callDeepseekAPI(
+    prompt: string,
+    options?: { timeoutMs?: number }
+  ): Promise<DeepseekResponse> {
     const requestData = {
       model: this.model,
       messages: [
@@ -436,12 +453,17 @@ export class DeepseekService {
       finalUrl = finalUrl.replace(/\/$/, '') + '/chat/completions';
     }
 
+    const timeoutMs = options?.timeoutMs ?? this.defaultTimeoutMs;
+
     const response = await axios.post(finalUrl, requestData, {
       headers: {
         'Authorization': `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json',
       },
-      timeout: 30000, // 30秒超时
+      timeout: timeoutMs,
+      // 长响应时避免过早断开读端（与 timeout 配合，减少 ERR_BAD_RESPONSE / stream aborted）
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity,
     });
 
     const responseData: DeepseekResponse = response.data;
@@ -576,7 +598,9 @@ export class DeepseekService {
     }
 
     try {
-      const response = await this.callDeepseekAPI(prompt);
+      const response = await this.callDeepseekAPI(prompt, {
+        timeoutMs: this.longGenerationTimeoutMs,
+      });
       const content = response.choices[0]?.message?.content || '';
       return { content };
     } catch (error) {
@@ -674,6 +698,50 @@ export class DeepseekService {
         weaknesses: [],
         suggestions: []
       };
+    }
+  }
+
+  /**
+   * 在保留考察意图的前提下，用候选人上一轮回答做轻量衔接，润色下一道「预生成」题干（1～2 句问句）
+   */
+  async contextualizePreparedQuestion(params: {
+    jobPosition: string;
+    preparedQuestion: string;
+    candidateLastAnswer: string;
+    candidateName?: string;
+  }): Promise<string> {
+    const { jobPosition, preparedQuestion, candidateLastAnswer, candidateName } = params;
+    const nameHint = candidateName ? `候选人姓名：${candidateName}\n` : '';
+    const prompt = `
+你是一位严谨的 AI 面试官，岗位：${jobPosition}。
+
+${nameHint}【已预生成的下一题（不可改变考察方向，不可换成无关问题）】
+${preparedQuestion}
+
+【候选人上一轮回答摘要】
+${candidateLastAnswer.slice(0, 1200)}
+
+请输出**唯一一段**新的面试提问中文文本：
+- 必须与预生成题目考察同一能力点，不得偏题或换题；
+- 自然承接候选人回答中的 1 个可核实信息点（公司/项目/技术栈/职责），可用「您刚才提到…」式衔接；
+- 保持 1～2 句、语气专业克制；
+- 不要输出分析、前缀、Markdown，不要加 [emotion:…] 标记。
+`.trim();
+
+    if (!this.isEnabled) {
+      return preparedQuestion;
+    }
+
+    try {
+      const response = await this.callDeepseekAPI(prompt);
+      const content = (response.choices[0]?.message?.content || '').trim();
+      if (content.length < 12) {
+        return preparedQuestion;
+      }
+      return content;
+    } catch (error) {
+      console.error('上下文润色下一题失败:', error);
+      return preparedQuestion;
     }
   }
 

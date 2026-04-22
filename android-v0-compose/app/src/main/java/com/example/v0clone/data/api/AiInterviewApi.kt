@@ -5,6 +5,8 @@ import com.xlwl.AiMian.data.model.AiInterviewSessionDetail
 import com.xlwl.AiMian.data.model.AiInterviewSessionSummary
 import com.xlwl.AiMian.data.model.AiInterviewSessionsResponse
 import com.xlwl.AiMian.data.model.AiInterviewSubmitAnswerRequest
+import com.xlwl.AiMian.data.model.AttachConversationTurnVideoBody
+import com.xlwl.AiMian.data.model.AttachConversationTurnVideoData
 import com.xlwl.AiMian.data.model.CreateAiInterviewSessionRequest
 import com.xlwl.AiMian.data.model.NextAiInterviewQuestionResponse
 import com.xlwl.AiMian.data.model.SubmitAiInterviewAnswerResponse
@@ -38,6 +40,21 @@ interface AiInterviewApi {
   suspend fun submitAnswer(
     @Body request: AiInterviewSubmitAnswerRequest
   ): SubmitAiInterviewAnswerResponse
+
+  @PATCH("ai-interview/sessions/{sessionId}/conversation-turns/{sequence}/candidate-video")
+  suspend fun attachConversationTurnVideo(
+    @Path("sessionId") sessionId: String,
+    @Path("sequence") sequence: Int,
+    @Body body: AttachConversationTurnVideoBody
+  ): ApiResponse<AttachConversationTurnVideoData?>
+
+  @Multipart
+  @POST("ai-interview/sessions/{sessionId}/conversation-turns/{sequence}/candidate-video")
+  suspend fun uploadConversationTurnVideo(
+    @Path("sessionId") sessionId: String,
+    @Path("sequence") sequence: Int,
+    @Part video: MultipartBody.Part
+  ): ApiResponse<AttachConversationTurnVideoData?>
 
   @POST("ai-interview/complete/{sessionId}")
   suspend fun complete(
