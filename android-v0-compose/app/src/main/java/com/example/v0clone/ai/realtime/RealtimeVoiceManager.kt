@@ -582,12 +582,12 @@ class RealtimeVoiceManager(private val context: Context) {
                                 awaitingTtsPlayback = false
                                 micToAsrAllowedAfterElapsedRealtime = Long.MAX_VALUE
                                 _isDigitalHumanSpeaking.value = true
-                                if (useQwen3Asr) {
+                                if (vadEnabled) {
                                     bargeInVadDetector.reset()
                                     Log.i(TAG, "🎙️ [FLOW] Qwen3 TTS 播放正式开始 -> 保持采麦以支持 VAD 抢话")
                                     ensureRecordingForBargeIn()
                                 } else {
-                                    Log.i(TAG, "🎙️ [FLOW] Qwen3 TTS 播放正式开始 -> 关闭录音（非 Qwen3 ASR 无抢话通路的回声风险）")
+                                    Log.i(TAG, "🎙️ [FLOW] Qwen3 TTS 播放正式开始 -> 关闭录音（VAD 已关闭）")
                                     stopRecordingInternal()
                                 }
                             } else {
@@ -865,10 +865,10 @@ class RealtimeVoiceManager(private val context: Context) {
 
     fun interrupt() {
         try {
-            // 清空 Qwen3 TTS 缓冲区并停止播放
-            if (useQwen3Tts) {
-                qwen3Tts.clearAndStop()
-            }
+            Log.i(TAG, "interrupt: 统一停止 MediaPlayer / Socket 流式 / Qwen3 TTS，并打断数字人")
+            // 与 stopAllAudio 一致：覆盖所有播音路径；并额外 stopAudio() 停掉 DUIX 文件播放等
+            stopAllAudio()
+            runCatching { digitalHumanController?.interruptPlayback() }
             socket?.emit("interrupt")
         } catch (e: Exception) {
             Log.e(TAG, "发送打断请求失败", e)
@@ -951,6 +951,9 @@ class RealtimeVoiceManager(private val context: Context) {
                 val bytesRead = recorder.read(buffer, 0, buffer.size)
                 
                 if (bytesRead > 0) {
+                    val avatarAudioBlockingMic =
+                        _isDigitalHumanSpeaking.value || awaitingTtsPlayback
+
                     // Qwen3 ASR 模式：实时推流，服务端 VAD + 识别
                     if (useQwen3Asr) {
                         // 仅在允许时向 ASR 送流；阻塞期间仍分析麦克风流，用独立 VAD 做抢话检测
@@ -969,50 +972,59 @@ class RealtimeVoiceManager(private val context: Context) {
                         // Qwen3 ASR 使用服务端 VAD，客户端不需要本地 VAD 断句
                         // 但仍保留超时保护
                     } else {
-                        // 原有本地 VAD + 阿里云 ASR 模式
+                        // 本地 VAD + 阿里云 ASR：播音/等待 TTS 时只跑抢话 VAD，避免外放触发主 VAD 断句
+                        if (vadEnabled && avatarAudioBlockingMic) {
+                            val barge = bargeInVadDetector.analyze(buffer)
+                            if (barge.state == VoiceActivityDetector.State.SPEECH) {
+                                handleUserSpeechBargeIn()
+                            }
+                        }
                     }
 
-                    // VAD分析（本地 VAD 模式下有效）
-                    val vadResult = vadDetector.analyze(buffer)
+                    // VAD：阿里云 ASR 且数字人播音中仅抢话分支已处理，跳过主 VAD；Qwen3 ASR 仍跑主 VAD
+                    val skipMainVad = !useQwen3Asr && vadEnabled && avatarAudioBlockingMic
+                    if (!skipMainVad) {
+                        val vadResult = vadDetector.analyze(buffer)
 
-                    when (vadResult.state) {
-                        VoiceActivityDetector.State.IDLE -> {
-                            if (!useQwen3Asr) {
-                                _partialTranscript.value = "正在聆听，请开始说话..."
-                            }
-                        }
-
-                        VoiceActivityDetector.State.SPEECH_START -> {
-                            if (!speechDetected) {
-                                speechDetected = true
-                                Log.i(TAG, "检测到说话，开始录音缓冲")
-                            }
-                            if (!useQwen3Asr) {
-                                _partialTranscript.value = "检测到说话，正在录音... (${vadResult.db.toInt()}dB)"
-                            }
-                        }
-
-                        VoiceActivityDetector.State.SPEECH -> {
-                            val durationSec = vadResult.speechDuration / 1000
-                            if (!useQwen3Asr) {
-                                _partialTranscript.value = "正在录音... ${durationSec}秒 (${vadResult.db.toInt()}dB)"
-                                recordedBuffer?.write(buffer, 0, bytesRead)
-                                totalBytes += bytesRead
+                        when (vadResult.state) {
+                            VoiceActivityDetector.State.IDLE -> {
+                                if (!useQwen3Asr) {
+                                    _partialTranscript.value = "正在聆听，请开始说话..."
+                                }
                             }
 
-                            if (totalBytes % 32768 == 0) {
-                                Log.d(TAG, "已录音: ${totalBytes / 1024}KB, 时长: ${durationSec}秒")
+                            VoiceActivityDetector.State.SPEECH_START -> {
+                                if (!speechDetected) {
+                                    speechDetected = true
+                                    Log.i(TAG, "检测到说话，开始录音缓冲")
+                                }
+                                if (!useQwen3Asr) {
+                                    _partialTranscript.value = "检测到说话，正在录音... (${vadResult.db.toInt()}dB)"
+                                }
                             }
-                        }
 
-                        VoiceActivityDetector.State.SPEECH_END -> {
-                            if (!useQwen3Asr) {
-                                Log.i(TAG, "检测到说话结束 - 时长: ${vadResult.speechDuration}ms, 数据: ${totalBytes}字节")
-                                _partialTranscript.value = "说话结束，正在识别..."
-                                isRecording = false
-                                break
+                            VoiceActivityDetector.State.SPEECH -> {
+                                val durationSec = vadResult.speechDuration / 1000
+                                if (!useQwen3Asr) {
+                                    _partialTranscript.value = "正在录音... ${durationSec}秒 (${vadResult.db.toInt()}dB)"
+                                    recordedBuffer?.write(buffer, 0, bytesRead)
+                                    totalBytes += bytesRead
+                                }
+
+                                if (totalBytes % 32768 == 0) {
+                                    Log.d(TAG, "已录音: ${totalBytes / 1024}KB, 时长: ${durationSec}秒")
+                                }
                             }
-                            // Qwen3 ASR 模式下不主动断录，让服务端 VAD 控制
+
+                            VoiceActivityDetector.State.SPEECH_END -> {
+                                if (!useQwen3Asr) {
+                                    Log.i(TAG, "检测到说话结束 - 时长: ${vadResult.speechDuration}ms, 数据: ${totalBytes}字节")
+                                    _partialTranscript.value = "说话结束，正在识别..."
+                                    isRecording = false
+                                    break
+                                }
+                                // Qwen3 ASR 模式下不主动断录，让服务端 VAD 控制
+                            }
                         }
                     }
                     
@@ -1211,8 +1223,8 @@ class RealtimeVoiceManager(private val context: Context) {
             
             if (willSpeak) {
                 micToAsrAllowedAfterElapsedRealtime = Long.MAX_VALUE
-                if (useQwen3Asr) {
-                    // 不向 ASR 推流以防外放回声，但保持采麦 + 独立 VAD 抢话
+                if (vadEnabled) {
+                    // 不向 ASR 推流期间保持采麦 + 抢话 VAD（含非 Qwen3 ASR，主 VAD 在播音时会跳过断句）
                     bargeInVadDetector.reset()
                     ensureRecordingForBargeIn()
                 } else {
@@ -1559,9 +1571,12 @@ class RealtimeVoiceManager(private val context: Context) {
      * 强制停止所有正在播报的音频，确保全局唯一性
      */
     fun stopAllAudio() {
-        Log.i(TAG, "执行强制停止所有音频播报：MediaPlayer, VolcanoTTS, Qwen3TTS")
+        Log.i(TAG, "执行强制停止所有音频播报：Socket 流式 AudioTrack, MediaPlayer, Qwen3TTS")
         
-        // 1. 停止 MediaPlayer (处理 server 模式音频包)
+        // 0. Socket 下发的 PCM 流（audio_chunk → AudioTrack + DUIX pushPcm）
+        stopStreamingAudio()
+        
+        // 1. 停止 MediaPlayer (火山 / 本地文件 / 服务端音频包)
         try {
             mediaPlayer?.let {
                 if (it.isPlaying) it.stop()
@@ -1574,7 +1589,7 @@ class RealtimeVoiceManager(private val context: Context) {
         mediaProgressJob?.cancel()
         mediaProgressJob = null
         
-        // 2. 停止 Qwen3 TTS 流式播报
+        // 2. 停止 Qwen3 TTS 流式播报（未启用时 send 可能无 WS，可忽略）
         try {
             qwen3Tts.clearAndStop()
         } catch (e: Exception) {
@@ -1619,7 +1634,6 @@ class RealtimeVoiceManager(private val context: Context) {
         if (aiPlaying) {
             Log.i(TAG, "🎙️ [BARGE-IN] 检测到用户语音，打断数字人播音并通知后端")
             interrupt()
-            runCatching { digitalHumanController?.interruptPlayback() }
         } else {
             Log.i(TAG, "🎙️ [BARGE-IN] 播音后冷却中检测到用户开口，提前恢复 ASR")
         }
