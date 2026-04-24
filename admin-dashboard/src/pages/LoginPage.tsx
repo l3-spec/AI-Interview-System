@@ -30,7 +30,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
 
   const handleSubmit = async (values: { email: string; password: string }) => {
     if (!agreedPolicies) {
-      message.warning('请先阅读并勾选同意《用户服务协议》和《隐私政策》');
+      message.warning('请先阅读并勾选同意《用户须知》和《隐私条款》');
       return;
     }
     setLoading(true);
@@ -143,12 +143,12 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
             <Checkbox checked={agreedPolicies} onChange={(e) => setAgreedPolicies(e.target.checked)}>
               <span style={{ fontSize: 13, color: '#595959' }}>
                 我已阅读并同意
-                <Link to="/user-agreement" target="_blank" rel="noopener noreferrer" style={{ color: '#0091ff' }}>
-                  《用户服务协议》
+                <Link to="/user-instructions" target="_blank" rel="noopener noreferrer" style={{ color: '#0091ff' }}>
+                  《用户须知》
                 </Link>
                 和
                 <Link to="/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ color: '#0091ff' }}>
-                  《隐私政策》
+                  《隐私条款》
                 </Link>
               </span>
             </Checkbox>

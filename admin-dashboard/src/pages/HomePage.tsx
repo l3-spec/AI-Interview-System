@@ -142,7 +142,7 @@ const HomePage: React.FC = () => {
     e.preventDefault();
     e.stopPropagation();
     if (!loginAgreedPolicies) {
-      setError('请先阅读并勾选同意《用户服务协议》和《隐私政策》');
+      setError('请先阅读并勾选同意《用户须知》和《隐私条款》');
       return;
     }
     console.log('开始登录，邮箱:', email);
@@ -192,7 +192,7 @@ const HomePage: React.FC = () => {
     setRegisterLoading(true);
 
     if (!registerAgreedPolicies) {
-      setRegisterError('请先阅读并勾选同意《用户服务协议》和《隐私政策》');
+      setRegisterError('请先阅读并勾选同意《用户须知》和《隐私条款》');
       setRegisterLoading(false);
       return;
     }
@@ -473,9 +473,9 @@ const HomePage: React.FC = () => {
       <footer className="home-footer">
         <div className="home-footer__container">
           <div className="home-footer__links">
-            <Link to="/user-agreement" className="home-footer__link">用户服务协议</Link>
+            <Link to="/user-instructions" className="home-footer__link">用户须知</Link>
             <span className="home-footer__separator">|</span>
-            <Link to="/privacy-policy" className="home-footer__link">隐私政策</Link>
+            <Link to="/privacy-policy" className="home-footer__link">隐私条款</Link>
             <span className="home-footer__separator">|</span>
             <Link to="/privacy-rights" className="home-footer__link">隐私权利</Link>
           </div>
@@ -587,12 +587,12 @@ const HomePage: React.FC = () => {
                 />
                 <span>
                   我已阅读并同意
-                  <Link to="/user-agreement" target="_blank" rel="noopener noreferrer" style={{ color: '#0091ff', margin: '0 2px' }}>
-                    《用户服务协议》
+                  <Link to="/user-instructions" target="_blank" rel="noopener noreferrer" style={{ color: '#0091ff', margin: '0 2px' }}>
+                    《用户须知》
                   </Link>
                   和
                   <Link to="/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ color: '#0091ff', margin: '0 2px' }}>
-                    《隐私政策》
+                    《隐私条款》
                   </Link>
                 </span>
               </label>
@@ -820,12 +820,12 @@ const HomePage: React.FC = () => {
                 />
                 <span>
                   我已阅读并同意
-                  <Link to="/user-agreement" target="_blank" rel="noopener noreferrer" style={{ color: '#0091ff', margin: '0 2px' }}>
-                    《用户服务协议》
+                  <Link to="/user-instructions" target="_blank" rel="noopener noreferrer" style={{ color: '#0091ff', margin: '0 2px' }}>
+                    《用户须知》
                   </Link>
                   和
                   <Link to="/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ color: '#0091ff', margin: '0 2px' }}>
-                    《隐私政策》
+                    《隐私条款》
                   </Link>
                 </span>
               </label>

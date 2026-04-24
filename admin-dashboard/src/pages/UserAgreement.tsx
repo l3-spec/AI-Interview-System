@@ -88,8 +88,8 @@ const UserAgreement: React.FC = () => {
               <h2 className="legal-page__section-title">六、联系我们</h2>
               <p>
                 如您对本协议有疑问，可通过本网站公示的客服渠道或
-                <a className="legal-page__link-accent" href="mailto:privacy@xinglianfuture.com">
-                  privacy@xinglianfuture.com
+                <a className="legal-page__link-accent" href="mailto:privacy@u-talent.cn">
+                  privacy@u-talent.cn
                 </a>
                 与我们联系。
               </p>

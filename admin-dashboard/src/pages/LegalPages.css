@@ -144,19 +144,14 @@
 }
 
 .legal-page__content {
-  padding: 20px 24px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+  padding: 20px 24px 48px;
   width: 100%;
   max-width: 720px;
-  align-self: center;
+  margin: 0 auto;
 }
 
 .legal-page__meta {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  margin-bottom: 24px;
 }
 
 .legal-page__meta h1 {
@@ -176,37 +171,35 @@
 .legal-page__section p,
 .legal-page__section li,
 .legal-page__note {
-  margin: 0;
+  margin: 0 0 12px;
   font-size: 14px;
-  line-height: 1.57;
+  line-height: 1.6;
   color: #242525;
 }
 
 .legal-page__sections {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+  /* 使用标准块级布局，避免 flex 弹性间距问题 */
 }
 
 .legal-page__section {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  margin-bottom: 24px;
 }
 
 .legal-page__section-title {
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: -0.32px;
-  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0 0 12px;
+  color: #111;
 }
 
 .legal-page__section-list {
-  margin: 0;
-  padding-left: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  margin: 0 0 16px;
+  padding-left: 20px;
+}
+
+.legal-page__section-list li {
+  margin-bottom: 6px;
 }
 
 .legal-page__section-list--disc {
@@ -283,16 +276,14 @@
 
 /* 子章节缩进 */
 .legal-page__subsection {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 6px;
+  margin-top: 12px;
+  margin-bottom: 12px;
 }
 
 .legal-page__subsection-title {
   font-size: 14px;
   font-weight: 600;
-  margin: 0;
+  margin: 0 0 8px;
   color: #242525;
 }
 

@@ -11,7 +11,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.xlwl.AiMian.digitalhuman.DuixAvatarInterviewScreen
 import com.xlwl.AiMian.ai.guide.InterviewPrecautionsScreen
 import com.xlwl.AiMian.ai.guide.InterviewCameraTestScreen
-import com.xlwl.AiMian.ai.guide.InterviewDeviceTestScreen
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -427,8 +426,8 @@ fun AppNavHost(navController: NavHostController) {
                             navController.currentBackStackEntry?.savedStateHandle?.set("selected_job_id", jobId)
                         }
                         
-                        // 如果已经上传过自拍，则直接进入设备检测
-                        val destination = if (hasSeenGuide) Routes.DIGITAL_INTERVIEW_DEVICE_TEST else Routes.DIGITAL_INTERVIEW_PRECAUTIONS
+                        // 如果已经上传过自拍，则直接进入数字人面试
+                        val destination = if (hasSeenGuide) Routes.DIGITAL_INTERVIEW else Routes.DIGITAL_INTERVIEW_PRECAUTIONS
                         navController.navigate(destination) {
                             launchSingleTop = true
                         }
@@ -461,8 +460,8 @@ fun AppNavHost(navController: NavHostController) {
                         backStackEntry.savedStateHandle.set("selected_category", categoryName)
                         backStackEntry.savedStateHandle.set("selected_job_id", position.id)
                         
-                        // 如果已经上传过自拍，则直接进入设备检测
-                        val destination = if (hasSeenGuide) Routes.DIGITAL_INTERVIEW_DEVICE_TEST else Routes.DIGITAL_INTERVIEW_PRECAUTIONS
+                        // 如果已经上传过自拍，则直接进入数字人面试
+                        val destination = if (hasSeenGuide) Routes.DIGITAL_INTERVIEW else Routes.DIGITAL_INTERVIEW_PRECAUTIONS
                         navController.navigate(destination) {
                             launchSingleTop = true
                         }
@@ -1062,39 +1061,12 @@ fun AppNavHost(navController: NavHostController) {
                         } else {
                             navController.currentBackStackEntry?.savedStateHandle?.remove<String>("selected_job_id")
                         }
-                        navController.navigate(Routes.DIGITAL_INTERVIEW_DEVICE_TEST) { launchSingleTop = true }
-                    }
-                )
-            }
-        }
-
-        // AI面试前置引导 - 设备调试
-        composable(Routes.DIGITAL_INTERVIEW_DEVICE_TEST) { backStackEntry ->
-            if (token.isNullOrEmpty()) {
-                LaunchedEffect(Unit) {
-                    navController.navigate(LOGIN) { launchSingleTop = true }
-                }
-            } else {
-                InterviewDeviceTestScreen(
-                    onBack = { navController.popBackStack() },
-                    onFinish = {
-                        val sourceEntry = navController.previousBackStackEntry
-                        val pos = sourceEntry?.savedStateHandle?.get<String>("selected_position") ?: backStackEntry.savedStateHandle.get<String>("selected_position")
-                        val cat = sourceEntry?.savedStateHandle?.get<String>("selected_category") ?: backStackEntry.savedStateHandle.get<String>("selected_category")
-                        val jId = sourceEntry?.savedStateHandle?.get<String>("selected_job_id") ?: backStackEntry.savedStateHandle.get<String>("selected_job_id")
-                        
-                        navController.currentBackStackEntry?.savedStateHandle?.set("selected_position", pos)
-                        navController.currentBackStackEntry?.savedStateHandle?.set("selected_category", cat)
-                        if (jId != null) {
-                            navController.currentBackStackEntry?.savedStateHandle?.set("selected_job_id", jId)
-                        } else {
-                            navController.currentBackStackEntry?.savedStateHandle?.remove<String>("selected_job_id")
-                        }
                         navController.navigate(Routes.DIGITAL_INTERVIEW) { launchSingleTop = true }
                     }
                 )
             }
         }
+
 
         // 数字人面试页面 - DUIX 数字人全屏体验
         composable(Routes.DIGITAL_INTERVIEW) { backStackEntry ->

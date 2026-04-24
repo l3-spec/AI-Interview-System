@@ -18,6 +18,7 @@ import Settings from '../pages/Settings';
 import JobCreate from '../pages/jobs/JobCreate';
 import JobEdit from '../pages/jobs/JobEdit';
 import JobDetail from '../pages/jobs/JobDetail';
+import UserInstructions from '../pages/UserInstructions';
 import PrivacyPolicy from '../pages/PrivacyPolicy';
 import PrivacyRights from '../pages/PrivacyRights';
 import UserAgreement from '../pages/UserAgreement';
@@ -50,6 +51,7 @@ export const AppRoutes: React.FC = () => {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+        <Route path="/user-instructions" element={<UserInstructions />} />
         <Route path="/privacy-rights" element={<PrivacyRights />} />
         <Route path="/user-agreement" element={<UserAgreement />} />
         <Route path="/privacy-statement" element={<Navigate to="/privacy-policy" replace />} />
@@ -77,6 +79,7 @@ export const AppRoutes: React.FC = () => {
         <Route path="settings" element={<Settings />} />
       </Route>
       <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+      <Route path="/user-instructions" element={<UserInstructions />} />
       <Route path="/privacy-rights" element={<PrivacyRights />} />
       <Route path="/user-agreement" element={<UserAgreement />} />
       <Route path="/privacy-statement" element={<Navigate to="/privacy-policy" replace />} />
@@ -84,4 +87,5 @@ export const AppRoutes: React.FC = () => {
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
-}; 
+};
+ 

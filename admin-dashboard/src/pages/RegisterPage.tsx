@@ -41,7 +41,7 @@ const RegisterPage: React.FC = () => {
     setLoading(true);
 
     if (!agreedPolicies) {
-      setError('请先阅读并勾选同意《用户服务协议》和《隐私政策》');
+      setError('请先阅读并勾选同意《用户须知》和《隐私条款》');
       setLoading(false);
       return;
     }
@@ -336,12 +336,12 @@ const RegisterPage: React.FC = () => {
             />
             <span>
               我已阅读并同意
-              <Link to="/user-agreement" target="_blank" rel="noopener noreferrer" style={{ color: '#0091ff', margin: '0 2px' }}>
-                《用户服务协议》
+              <Link to="/user-instructions" target="_blank" rel="noopener noreferrer" style={{ color: '#0091ff', margin: '0 2px' }}>
+                《用户须知》
               </Link>
               和
               <Link to="/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ color: '#0091ff', margin: '0 2px' }}>
-                《隐私政策》
+                《隐私条款》
               </Link>
             </span>
           </label>
@@ -396,9 +396,9 @@ const RegisterPage: React.FC = () => {
         fontSize: '12px'
       }}>
         注册前请阅读
-        <Link to="/user-agreement" style={{ color: '#0091ff', textDecoration: 'none' }}>《用户服务协议》</Link>
+        <Link to="/user-instructions" style={{ color: '#0091ff', textDecoration: 'none' }}>《用户须知》</Link>
         与
-        <Link to="/privacy-policy" style={{ color: '#0091ff', textDecoration: 'none' }}>《隐私政策》</Link>
+        <Link to="/privacy-policy" style={{ color: '#0091ff', textDecoration: 'none' }}>《隐私条款》</Link>
       </div>
 
       <FirstLaunchPrivacyModal
