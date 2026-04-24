@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 前景约缩至 0.8：四边各 10% 内边距（相对 108dp 自适应层） / Foreground at ~0.8 scale: 10% inset per side of the 108dp layer -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@mipmap/ic_launcher_foreground"
+    android:insetLeft="10.8dp"
+    android:insetTop="10.8dp"
+    android:insetRight="10.8dp"
+    android:insetBottom="10.8dp" />
