@@ -13,7 +13,7 @@ import { ttsService } from '../services/ttsService';
 import { deepseekService } from '../services/deepseekService';
 import { volcOpenApiService } from '../services/volc-openapi.service';
 import { aiInterviewService } from '../services/aiInterviewService';
-import { interviewFlowService } from '../services/interviewFlowService';
+import { interviewServiceClient } from '../services/interview-service-client';
 import { dashScopeService } from '../services/dashscope.service';
 import { qwen3ASRClient } from '../services/qwen3-asr-service-client';
 import { qwen3TTSClient } from '../services/qwen3-tts-service-client';
@@ -153,7 +153,19 @@ export class RealtimeVoiceWebSocketServer {
     console.log(`🔄 处理交互流程 (Session: ${sessionId}, Source: ${source}): "${text}"`);
 
     // 1. 记录用户话语（带题号，便于与答题视频、题库行对齐）
-    const questionIndex0 = interviewFlowService.getCurrentRespondingQuestionIndex0(sessionId);
+    let questionIndex0 = null;
+    try {
+      const sessionResult = await interviewServiceClient.getSession(sessionId);
+      if (sessionResult.success && sessionResult.session) {
+        const currentRound = sessionResult.session.rounds.find((r: any) => r.status === 'in_progress');
+        if (currentRound) {
+          questionIndex0 = Math.max(0, currentRound.roundNumber - 1);
+        }
+      }
+    } catch (e) {
+      console.warn(`[Coordinator] 获取当前题号失败: ${e}`);
+    }
+
     const turnMeta = await aiInterviewService.recordConversationTurn(sessionId, {
       speaker: 'CANDIDATE',
       candidateText: text,
@@ -188,7 +200,7 @@ export class RealtimeVoiceWebSocketServer {
     if (hasCompletionIntent) {
        console.log(`🔚 检测到主动结束意图 (Session: ${sessionId}): "${text}"`);
        try {
-         const summary = await interviewFlowService.endInterview(sessionId);
+         const summary = await interviewServiceClient.endInterview(sessionId);
          const ttsMode = await this.synthesizeQwen3TtsSegments(ttsSessionId, completionClosingText, 'closing');
          this.io.to(sessionId).emit('voice_response', {
            text: completionClosingText,
@@ -204,15 +216,15 @@ export class RealtimeVoiceWebSocketServer {
        }
     }
 
-    // 5. 进入业务逻辑 (InterviewFlowService)
+    // 5. 进入业务逻辑 (InterviewServiceClient)
     try {
-      const result = await interviewFlowService.processUserResponse(sessionId, text);
+      const result = await interviewServiceClient.processUserResponse(sessionId, text);
       
       // 如果发现面试还没进入 READY 状态（可能异步还没生成完），尝试拉起
       if (!result.nextRound && !result.isCompleted) {
         console.log(`⏳ [Coordinator] 会话 ${sessionId} 题目正在生成或未找到当前轮次，尝试拉起第一题...`);
-        const phaseResult = await interviewFlowService.startInterviewPhase(sessionId);
-        result.nextRound = phaseResult.firstRound || null;
+        const phaseResult = await interviewServiceClient.startInterviewPhase(sessionId);
+        result.nextRound = phaseResult.nextRound || null;
       }
 
       if (result.isCompleted) {
@@ -604,32 +616,44 @@ export class RealtimeVoiceWebSocketServer {
           this.touchSession(sessionId);
 
           // 初始化面试流程引擎，确保后续 flow 正常运作
-          await interviewFlowService.initializeSession(
+          await interviewServiceClient.initializeSession({
             sessionId, 
-            userId || 'anonymous', 
-            '面试者', 
-            jobPosition || '通用职位',
+            userId: userId || 'anonymous', 
+            userName: '面试者', 
+            targetJob: jobPosition || '通用职位',
             background
-          );
+          });
 
-          const existingSession = interviewFlowService.getSession(sessionId);
+          const sessionResult = await interviewServiceClient.getSession(sessionId);
+          const existingSession = sessionResult?.session;
+          
+          const isWarmResumeEligible = (session: any): boolean => {
+            if (!session) return false;
+            // 如果已经有完成的轮次，肯定是续面
+            if (session.rounds.some((r: any) => r.status === 'completed')) return true;
+            // 如果已经有生成的题目（即使状态是 PREPARING），且当前不是第0题，也认为是续面
+            if (session.rounds.length > 0 && (session.dbMirror?.currentQuestion ?? 0) > 0) return true;
+            const st = session.dbMirror?.status;
+            return st === 'IN_PROGRESS' || st === 'COMPLETED';
+          };
+
           const isResume =
             sessionState.welcomeSent ||
             (existingSession != null &&
               existingSession.rounds.length > 0 &&
-              interviewFlowService.isWarmResumeEligible(existingSession));
+              isWarmResumeEligible(existingSession));
 
           // ===== 断点续面：检查是否有进行中的面试流程 =====
           if (isResume && existingSession && existingSession.rounds.length > 0) {
             // 查找当前正在进行或下一个待回答的题目
             const currentRound = existingSession.rounds.find(
-              r => r.status === 'in_progress' || r.status === 'pending'
+              (r: any) => r.status === 'in_progress' || r.status === 'pending'
             );
 
             if (currentRound) {
               const resumeRoundNum = currentRound.roundNumber;
               const totalRounds = existingSession.rounds.length;
-              const completedRounds = existingSession.rounds.filter(r => r.status === 'completed').length;
+              const completedRounds = existingSession.rounds.filter((r: any) => r.status === 'completed').length;
 
               console.log(`🔄 断点续面 - sessionId: ${sessionId}, 恢复第 ${resumeRoundNum} 题 (已完成 ${completedRounds}/${totalRounds})`);
 
@@ -655,18 +679,15 @@ export class RealtimeVoiceWebSocketServer {
               });
               this.persistAvatarVoice(sessionId, resumeText);
 
-              // 然后发送当前题目（优先使用已有 audioUrl，避免重复 TTS）
+              // 然后只下发当前题目；无预生成音频时交给 Qwen3-TTS 服务合成，避免客户端重放历史上下文。
               setTimeout(() => {
-                socket.emit('voice_response', {
-                  audioUrl: currentRound.audioUrl || null,
-                  text: currentRound.question,
+                this.emitRoundVoiceResponse({
                   sessionId,
-                  duration: currentRound.duration || 0,
-                  ttsMode: currentRound.audioUrl ? 'server' : 'client',
-                  questionIndex: currentRound.roundNumber,
-                  isResume: true,
+                  round: currentRound,
+                  ttsSessionId: sessionId,
+                }).catch((err: any) => {
+                  console.warn(`⚠️ [Coordinator] 续面当前题下发失败: ${err?.message || err}`);
                 });
-                this.persistAvatarVoice(sessionId, currentRound.question, currentRound.roundNumber);
               }, 1500);
 
               this.markWelcomeAsSent(socket.id, sessionId);
@@ -756,15 +777,16 @@ export class RealtimeVoiceWebSocketServer {
           // 【总控逻辑】发送完欢迎语后，异步初始化面试回合生成
           // 这样用户在自我介绍时，题目已经生成好，可以无缝衔接
           console.log(`🚀 [Coordinator] 正在为会话 ${sessionId} 异步准备面试回合...`);
-          interviewFlowService
+          interviewServiceClient
             .startInterviewPhase(sessionId)
-            .then(async (res) => {
-              console.log(`✅ [Coordinator] 面试回合准备就绪: 共 ${res.totalRounds} 题`);
-              if (res.totalRounds > 0 && res.firstRound) {
+            .then(async (res: any) => {
+              console.log(`✅ [Coordinator] 面试回合准备就绪`);
+              // 如果是续面，已经在上面处理过了，这里不需要再推送首题，避免双重语音
+              if (res.nextRound && !isResume) {
                 try {
                   await this.emitRoundVoiceResponse({
                     sessionId,
-                    round: res.firstRound,
+                    round: res.nextRound,
                     ttsSessionId: sessionId,
                   });
                   console.log(`📣 [Coordinator] 已向客户端下发首道正式题（voice_response）`);
@@ -773,7 +795,7 @@ export class RealtimeVoiceWebSocketServer {
                 }
               }
             })
-            .catch((err) => {
+            .catch((err: any) => {
               console.warn(`⚠️ [Coordinator] 异步生成题目失败 (用户回复时将实时补生成): ${err.message}`);
             });
 

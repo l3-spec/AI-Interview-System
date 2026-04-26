@@ -1,7 +1,5 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 const COMPANY_STAGE_LABEL = '融资阶段';
 
 const parseJsonArray = <T>(value: string | null, fallback: T[]): T[] => {

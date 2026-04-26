@@ -1,16 +1,19 @@
-import { deepseekService, OpeningResult, ClosingResult } from './deepseekService';
-import { ttsService } from './ttsService';
+import { deepseekService, OpeningResult, ClosingResult } from './deepseek.service';
+import { ttsService } from './tts.service';
 import { avatarService } from './avatar.service';
 import { interviewConductor } from './interview-conductor.service';
-import { aiInterviewService } from './aiInterviewService';
+import { aiInterviewService } from './ai-interview.service';
 import { InterviewSession, InterviewRound, InterviewState, ResponseAnalysis } from '../models/interviewFlow';
+import { prisma } from '../lib/prisma';
 
 function rehydrateQuestionHasAnswer(q: {
   answerText?: string | null;
   answerVideoUrl?: string | null;
+  answerVideoPath?: string | null;
 }): boolean {
   return Boolean(
     q.answerVideoUrl ||
+    q.answerVideoPath ||
     (q.answerText && String(q.answerText).trim().length > 0)
   );
 }
@@ -23,6 +26,88 @@ function rehydrateQuestionHasAnswer(q: {
  */
 export class InterviewFlowService {
   private sessions = new Map<string, InterviewSession>();
+
+  private toQuestionIndex(round: InterviewRound): number {
+    return Math.max(0, round.roundNumber - 1);
+  }
+
+  private async persistRoundStarted(session: InterviewSession, round: InterviewRound): Promise<void> {
+    try {
+      await prisma.aIInterviewSession.update({
+        where: { id: session.sessionId },
+        data: {
+          status: 'IN_PROGRESS',
+          currentQuestion: this.toQuestionIndex(round),
+        },
+      });
+    } catch (err: any) {
+      console.warn(`[InterviewFlow] 持久化当前题失败: ${err?.message || err}`);
+    }
+  }
+
+  private async persistRoundAnswer(
+    session: InterviewSession,
+    round: InterviewRound,
+    response: string
+  ): Promise<void> {
+    const answerText = (response || '').trim();
+    if (!answerText) {
+      return;
+    }
+
+    const questionIndex = this.toQuestionIndex(round);
+    try {
+      await prisma.aIInterviewQuestion.updateMany({
+        where: { sessionId: session.sessionId, questionIndex },
+        data: {
+          answerText,
+          answeredAt: new Date(),
+        },
+      });
+
+      await prisma.aIInterviewSession.update({
+        where: { id: session.sessionId },
+        data: {
+          status: 'IN_PROGRESS',
+          currentQuestion: questionIndex,
+        },
+      });
+    } catch (err: any) {
+      console.warn(`[InterviewFlow] 持久化候选人回答失败: ${err?.message || err}`);
+    }
+  }
+
+  private async persistInterviewCompleted(session: InterviewSession): Promise<void> {
+    try {
+      await prisma.aIInterviewSession.update({
+        where: { id: session.sessionId },
+        data: {
+          status: 'COMPLETED',
+          completedAt: new Date(),
+          currentQuestion: session.rounds.length,
+        },
+      });
+    } catch (err: any) {
+      console.warn(`[InterviewFlow] 持久化面试完成失败: ${err?.message || err}`);
+    }
+  }
+
+  private async persistRefinedQuestion(session: InterviewSession, round: InterviewRound): Promise<void> {
+    try {
+      await prisma.aIInterviewQuestion.updateMany({
+        where: { sessionId: session.sessionId, questionIndex: this.toQuestionIndex(round) },
+        data: {
+          questionText: round.question,
+          audioUrl: null,
+          audioPath: null,
+          videoUrl: null,
+          status: 'PREPARING',
+        },
+      });
+    } catch (err: any) {
+      console.warn(`[InterviewFlow] 持久化微调题干失败: ${err?.message || err}`);
+    }
+  }
   
   /**
    * 初始化会话（由外部提供sessionId）
@@ -294,7 +379,7 @@ export class InterviewFlowService {
         session.state = InterviewState.COMPLETED;
         return {
           totalRounds: session.rounds.length,
-          firstRound: session.rounds[session.rounds.length - 1],
+          nextRound: session.rounds[session.rounds.length - 1],
         };
       }
 
@@ -303,7 +388,7 @@ export class InterviewFlowService {
       if (inProgress) {
         return {
           totalRounds: session.rounds.length,
-          firstRound: inProgress,
+          nextRound: inProgress,
         };
       }
 
@@ -313,7 +398,7 @@ export class InterviewFlowService {
         session.rounds.find(r => r.status === 'pending');
       return {
         totalRounds: session.rounds.length,
-        firstRound: cur || session.rounds[session.rounds.length - 1],
+        nextRound: cur || session.rounds[session.rounds.length - 1],
       };
     }
 
@@ -333,7 +418,7 @@ export class InterviewFlowService {
 
     return {
       totalRounds: interviewRounds.length,
-      firstRound: interviewRounds[0]
+      nextRound: interviewRounds[0]
     };
   }
 
@@ -526,11 +611,13 @@ export class InterviewFlowService {
     const nextRound = session.rounds.find(r => r.status === 'pending');
     if (!nextRound) {
       session.state = InterviewState.COMPLETED;
+      await this.persistInterviewCompleted(session);
       return null;
     }
 
     nextRound.status = 'in_progress';
     session.currentRound = nextRound.roundNumber;
+    await this.persistRoundStarted(session, nextRound);
 
     // Web 嵌入式数字人侧记一笔；失败不阻断流程（实时链路靠 Socket + Qwen3-TTS）
     try {
@@ -567,6 +654,7 @@ export class InterviewFlowService {
     if (currentRound) {
       currentRound.userResponse = response;
       currentRound.status = 'completed';
+      await this.persistRoundAnswer(session, currentRound, response);
 
       // AI分析用户回答
       const prompt = `
@@ -644,6 +732,9 @@ export class InterviewFlowService {
         });
         if (refined && refined.length > 12) {
           nextRound.question = refined.trim();
+          nextRound.audioUrl = undefined;
+          nextRound.duration = 0;
+          await this.persistRefinedQuestion(session, nextRound);
         }
       } catch (e) {
         console.warn('[InterviewFlow] 下一题上下文润色跳过:', e);
@@ -772,6 +863,10 @@ export class InterviewFlowService {
    */
   isWarmResumeEligible(session: InterviewSession): boolean {
     if (session.rounds.some(r => r.status === 'completed')) {
+      return true;
+    }
+    // 如果已经有生成的题目（即使状态是 PREPARING），且当前不是第0题，也认为是续面
+    if (session.rounds.length > 0 && (session.dbMirror?.currentQuestion ?? 0) > 0) {
       return true;
     }
     const st = session.dbMirror?.status;

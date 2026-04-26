@@ -4,8 +4,16 @@ type LogLevel = typeof LOG_LEVELS[number];
 const currentLevel: LogLevel = (process.env.LOG_LEVEL as LogLevel) || 'info';
 const currentLevelIndex = LOG_LEVELS.indexOf(currentLevel);
 
+const LOG_TZ = 'Asia/Shanghai';
+
+/** 日志用 ISO-8601，东八区（与原先相同的毫秒精度）。 */
 function timestamp(): string {
-  return new Date().toISOString();
+  const d = new Date();
+  const ymdHms = d
+    .toLocaleString('sv-SE', { timeZone: LOG_TZ, hour12: false })
+    .replace(' ', 'T');
+  const ms = d.getUTCMilliseconds().toString().padStart(3, '0');
+  return `${ymdHms}.${ms}+08:00`;
 }
 
 export const logger = {

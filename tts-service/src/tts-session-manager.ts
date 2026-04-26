@@ -149,7 +149,9 @@ export class TTSSessionManager {
           sessionId,
         });
         const session = this.sessions.get(sessionId);
-        if (session) session.state = 'closed';
+        if (session) {
+          session.dashscopeConnected = false;
+        }
       },
 
       onError: (error) => {
@@ -158,6 +160,10 @@ export class TTSSessionManager {
           sessionId,
           error,
         });
+        const session = this.sessions.get(sessionId);
+        if (session) {
+          session.dashscopeConnected = false;
+        }
       },
     });
 
@@ -226,8 +232,8 @@ export class TTSSessionManager {
    * 首次需要向上游送文本时再连接 DashScope，避免「仅建立会话、无文本」导致 Idle timeout。
    */
   private async ensureDashScopeConnected(session: TTSSession): Promise<boolean> {
-    if (session.dashscopeConnected) return true;
-    if (session.state !== 'active') return false;
+    if (session.dashscopeConnected && session.ttsClient.connected) return true;
+    if (session.state === 'closed') return false;
 
     if (session.dashscopeConnectPromise) {
       return session.dashscopeConnectPromise;

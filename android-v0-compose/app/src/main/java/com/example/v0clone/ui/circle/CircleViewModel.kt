@@ -25,6 +25,27 @@ import com.xlwl.AiMian.ui.components.BannerData
 
 private const val PAGE_SIZE = 20
 
+/** 职圈列表兜底封面（CDN 外网图不可用时仍有图可点） — 与后端 seed/导入错开，按 postId 散列选用 */
+private val DEFAULT_CIRCLE_COVERS = listOf(
+    "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=800&q=82",
+    "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=800&q=82",
+    "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=800&q=82",
+    "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=82",
+    "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=800&q=82",
+    "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?auto=format&fit=crop&w=800&q=82",
+    "https://images.unsplash.com/photo-1524758631624-e2822e304c36?auto=format&fit=crop&w=800&q=82",
+    "https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&w=800&q=82",
+    "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&w=800&q=82",
+    "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=800&q=82",
+    "https://images.unsplash.com/photo-1483478550801-ceba5fe50e8e?auto=format&fit=crop&w=800&q=82",
+    "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=800&q=82",
+)
+
+private fun pickDefaultCircleCover(postId: String): String {
+    val h = postId.hashCode().and(0x7fff_ffff)
+    return DEFAULT_CIRCLE_COVERS[h % DEFAULT_CIRCLE_COVERS.size]
+}
+
 data class CircleCard(
     val id: String,
     val title: String,
@@ -208,9 +229,25 @@ class CircleViewModel(private val repository: ContentRepository) : ViewModel() {
         return LoadResult(merged, message)
     }
 
+    private fun resolveMediaUrl(url: String?): String? {
+        if (url.isNullOrBlank()) return null
+        if (url.startsWith("http://") || url.startsWith("https://")) return url
+        
+        val baseUrl = com.xlwl.AiMian.config.AppConfig.apiBaseUrl
+        val cleanUrl = if (url.startsWith("/api/")) {
+            url.substring(5)
+        } else if (url.startsWith("api/")) {
+            url.substring(4)
+        } else {
+            url.trimStart('/')
+        }
+        
+        return if (baseUrl.endsWith("/")) "$baseUrl$cleanUrl" else "$baseUrl/$cleanUrl"
+    }
+
     private fun Banner.toBannerData() = BannerData(
         id = id,
-        imageUrl = imageUrl,
+        imageUrl = resolveMediaUrl(imageUrl) ?: imageUrl,
         label = subtitle,
         title = title,
         subtitle = description,
@@ -234,26 +271,32 @@ class CircleViewModel(private val repository: ContentRepository) : ViewModel() {
     }
 
     private fun UserPost.toCircleCard(): CircleCard {
-        val cover = coverImage ?: images.firstOrNull() ?: ""
+        val safeImages = images.orEmpty()
+        val raw = coverImage?.takeIf { it.isNotBlank() } ?: safeImages.firstOrNull { it.isNotBlank() }
+        val cover = raw?.takeIf { it.isNotBlank() } ?: pickDefaultCircleCover(id)
         val authorDisplay = author?.name?.takeIf { it.isNotBlank() } ?: "STAR-LINK 职圈"
         val timestamp = parseTimestamp(createdAt)
+        
+        val resolvedCover = resolveMediaUrl(cover) ?: cover
+        val resolvedAvatar = resolveMediaUrl(author?.avatar)
+        
         val fallback = ContentCard(
             id = id,
-            imageUrl = cover,
+            imageUrl = resolvedCover,
             title = title,
             tags = tags,
             author = authorDisplay,
             views = formatViewCount(viewCount),
-            avatarUrl = author?.avatar,
+            avatarUrl = resolvedAvatar,
             summary = null
         )
         return CircleCard(
             id = id,
             title = title,
-            coverImage = cover,
+            coverImage = resolvedCover,
             tags = tags,
             authorName = authorDisplay,
-            authorAvatar = author?.avatar,
+            authorAvatar = resolvedAvatar,
             viewCount = viewCount,
             isExpert = false,
             orderKey = timestamp,
@@ -262,26 +305,31 @@ class CircleViewModel(private val repository: ContentRepository) : ViewModel() {
     }
 
     private fun ExpertPost.toCircleCard(): CircleCard {
-        val cover = coverImage ?: ""
+        // 列表封面：主图为主；若主图未配置或拉取失败，由 UI 层用 Subcompose 再降级到专家头像
+        val cover = coverImage?.takeIf { it.isNotBlank() } ?: expertAvatar?.takeIf { it.isNotBlank() } ?: ""
         val authorDisplay = expertName.ifBlank { "STAR-LINK 职圈大咖" }
         val timestamp = parseTimestamp(publishedAt)
+        
+        val resolvedCover = resolveMediaUrl(cover) ?: cover
+        val resolvedAvatar = resolveMediaUrl(expertAvatar)
+        
         val fallback = ContentCard(
             id = id,
-            imageUrl = cover,
+            imageUrl = resolvedCover,
             title = title,
             tags = tags,
             author = authorDisplay,
             views = formatViewCount(viewCount),
-            avatarUrl = expertAvatar,
+            avatarUrl = resolvedAvatar,
             summary = expertTitle.takeIf { !it.isNullOrBlank() }
         )
         return CircleCard(
             id = id,
             title = title,
-            coverImage = cover,
+            coverImage = resolvedCover,
             tags = tags,
             authorName = authorDisplay,
-            authorAvatar = expertAvatar,
+            authorAvatar = resolvedAvatar,
             viewCount = viewCount,
             isExpert = true,
             orderKey = timestamp,

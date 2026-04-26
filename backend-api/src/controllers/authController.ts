@@ -1,14 +1,12 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import { PrismaClient } from '@prisma/client';
 import { config } from '../config';
+import { prisma } from '../lib/prisma';
 import { AppError, asyncHandler } from '../middleware/errorHandler';
 import { loginSchema, registerSchema, sendCodeSchema } from '../utils/validation';
 import { signToken } from '../utils/jwt';
 import { loginCodeService } from '../services/loginCodeService';
 import { randomBytes } from 'crypto';
-
-const prisma = new PrismaClient();
 
 /**
  * 生成JWT Token

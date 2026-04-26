@@ -1,8 +1,7 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { toMediaUrl } from '../utils/ossUtils';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
+import { withRetry } from '../utils/prismaUtils';
 
 const DEFAULT_PAGE_SIZE = 12;
 const MAX_PAGE_SIZE = 30;
@@ -56,11 +55,13 @@ export const getHomeFeed = async (req: Request, res: Response) => {
 
     const desiredCounts = computeFeedCounts(pageSizeNum);
 
-    const [postFeed, companyFeed, jobFeed] = await Promise.all([
-      getHotPostFeed(pageNum, desiredCounts[HomeFeedType.HOT_POST]),
-      getHotCompanyFeed(pageNum, desiredCounts[HomeFeedType.HOT_COMPANY]),
-      getHotJobFeed(pageNum, desiredCounts[HomeFeedType.HOT_JOB]),
-    ]);
+    const [postFeed, companyFeed, jobFeed] = await withRetry(() => 
+      Promise.all([
+        getHotPostFeed(pageNum, desiredCounts[HomeFeedType.HOT_POST]),
+        getHotCompanyFeed(pageNum, desiredCounts[HomeFeedType.HOT_COMPANY]),
+        getHotJobFeed(pageNum, desiredCounts[HomeFeedType.HOT_JOB]),
+      ])
+    );
 
     const mixedContent = mixHomeFeed({
       [HomeFeedType.HOT_POST]: postFeed.items,
@@ -193,10 +194,10 @@ async function getHotPostFeed(page: number, take: number) {
       targetId: item.id,
       title: item.title,
       summary: buildSummary(item.content),
-      imageUrl: item.coverImage || firstImage(item.images),
+      imageUrl: toMediaUrl(item.coverImage || firstImage(item.images)) || null,
       tags: safeParseJson<string[]>(item.tags, []),
       authorName: item.user?.name?.trim() || 'STAR-LINK 职圈',
-      authorAvatar: item.user?.avatar || null,
+      authorAvatar: toMediaUrl(item.user?.avatar) || null,
       badge: '热门帖子',
       metricLabel: '热度',
       metricValue: `${formatCompactCount(item.viewCount)} 浏览`,
@@ -209,10 +210,10 @@ async function getHotPostFeed(page: number, take: number) {
       targetId: item.id,
       title: item.title,
       summary: buildSummary(item.content),
-      imageUrl: item.coverImage || null,
+      imageUrl: toMediaUrl(item.coverImage) || null,
       tags: safeParseJson<string[]>(item.tags, []),
       authorName: item.expertName,
-      authorAvatar: item.expertAvatar || null,
+      authorAvatar: toMediaUrl(item.expertAvatar) || null,
       badge: '热门帖子',
       metricLabel: '热度',
       metricValue: `${formatCompactCount(item.viewCount)} 浏览`,
@@ -289,7 +290,7 @@ async function getHotCompanyFeed(page: number, take: number) {
       imageUrl: null,
       tags,
       authorName: item.company.name,
-      authorAvatar: item.company.logo || null,
+      authorAvatar: toMediaUrl(item.company.logo) || null,
       badge: '热门企业',
       metricLabel: '热招岗位',
       metricValue: `${Math.max(item.hiringCount, 1)} 个热招岗位`,
@@ -309,97 +310,99 @@ async function getHotJobFeed(page: number, take: number) {
   const now = new Date();
   const windowEnd = offset + take + EXTRA_FETCH_BUFFER;
 
-  const [promotedTotal, regularTotal, promotedJobs, regularJobs] = await Promise.all([
-    prisma.promotedJob.count({
-      where: {
-        isActive: true,
-        startDate: { lte: now },
-        endDate: { gte: now },
-        job: {
-          status: 'ACTIVE',
-          isPublished: true,
-          company: {
-            isActive: true,
-          },
-        },
-      },
-    }),
-    prisma.job.count({
-      where: {
-        status: 'ACTIVE',
-        isPublished: true,
-        company: {
+  const [promotedTotal, regularTotal, promotedJobs, regularJobs] = await withRetry(() => 
+    Promise.all([
+      prisma.promotedJob.count({
+        where: {
           isActive: true,
-        },
-      },
-    }),
-    prisma.promotedJob.findMany({
-      where: {
-        isActive: true,
-        startDate: { lte: now },
-        endDate: { gte: now },
-        job: {
-          status: 'ACTIVE',
-          isPublished: true,
-          company: {
-            isActive: true,
-          },
-        },
-      },
-      take: windowEnd,
-      orderBy: [
-        { priority: 'desc' },
-        { promotionType: 'desc' },
-        { createdAt: 'desc' },
-      ],
-      include: {
-        job: {
-          include: {
+          startDate: { lte: now },
+          endDate: { gte: now },
+          job: {
+            status: 'ACTIVE',
+            isPublished: true,
             company: {
-              select: {
-                id: true,
-                name: true,
-                logo: true,
-              },
-            },
-            _count: {
-              select: {
-                applications: true,
-              },
+              isActive: true,
             },
           },
         },
-      },
-    }),
-    prisma.job.findMany({
-      where: {
-        status: 'ACTIVE',
-        isPublished: true,
-        company: {
+      }),
+      prisma.job.count({
+        where: {
+          status: 'ACTIVE',
+          isPublished: true,
+          company: {
+            isActive: true,
+          },
+        },
+      }),
+      prisma.promotedJob.findMany({
+        where: {
           isActive: true,
-        },
-      },
-      take: windowEnd * 2,
-      orderBy: [
-        { updatedAt: 'desc' },
-        { createdAt: 'desc' },
-      ],
-      include: {
-        company: {
-          select: {
-            id: true,
-            name: true,
-            logo: true,
+          startDate: { lte: now },
+          endDate: { gte: now },
+          job: {
+            status: 'ACTIVE',
+            isPublished: true,
+            company: {
+              isActive: true,
+            },
           },
         },
-        _count: {
-          select: {
-            applications: true,
+        take: windowEnd,
+        orderBy: [
+          { priority: 'desc' },
+          { promotionType: 'desc' },
+          { createdAt: 'desc' },
+        ],
+        include: {
+          job: {
+            include: {
+              company: {
+                select: {
+                  id: true,
+                  name: true,
+                  logo: true,
+                },
+              },
+              _count: {
+                select: {
+                  applications: true,
+                },
+              },
+            },
           },
         },
-      },
-    }),
-  ]);
+      }),
+      prisma.job.findMany({
+        where: {
+          status: 'ACTIVE',
+          isPublished: true,
+          company: {
+            isActive: true,
+          },
+        },
+        take: windowEnd * 2,
+        orderBy: [
+          { updatedAt: 'desc' },
+          { createdAt: 'desc' },
+        ],
+        include: {
+          company: {
+            select: {
+              id: true,
+              name: true,
+              logo: true,
+            },
+          },
+          _count: {
+            select: {
+              applications: true,
+            },
+          },
+        },
+      }),
+    ])
+  );
 
   const mergedJobs = new Map<string, HomeFeedCard>();
 
@@ -414,7 +417,7 @@ async function getHotJobFeed(page: number, take: number) {
       imageUrl: null,
       tags: safeParseJson<string[]>(item.job.skills, []).slice(0, 3),
       authorName: item.job.company.name,
-      authorAvatar: item.job.company.logo || null,
+      authorAvatar: toMediaUrl(item.job.company.logo) || null,
       badge: '热门职岗',
       metricLabel: '投递热度',
       metricValue: item.job.salary?.trim() || `${Math.max(item.job._count.applications, 1)} 人关注`,
@@ -436,7 +439,7 @@ async function getHotJobFeed(page: number, take: number) {
       imageUrl: null,
       tags: safeParseJson<string[]>(item.skills, []).slice(0, 3),
       authorName: item.company.name,
-      authorAvatar: item.company.logo || null,
+      authorAvatar: toMediaUrl(item.company.logo) || null,
       badge: '热门职岗',
       metricLabel: '投递热度',
       metricValue: item.salary?.trim() || `${Math.max(item._count.applications, 1)} 人关注`,
@@ -553,7 +556,7 @@ export const getHomeBanners = async (req: Request, res: Response) => {
     const withResolvedUrls = banners.map((b) => ({
       ...b,
       // DB 中存 objectKey（uploads/...）或历史代理路径，对外统一为 App 可加载的地址
-      imageUrl: toMediaUrl(b.imageUrl) ?? b.imageUrl,
+      imageUrl: toMediaUrl(b.imageUrl) ?? b.imageUrl ?? null,
     }));
 
     res.json({
@@ -613,7 +616,7 @@ export const getHomeFeaturedArticles = async (req: Request, res: Response) => {
       id: item.id,
       title: item.title,
       summary: item.summary,
-      imageUrl: item.imageUrl,
+      imageUrl: toMediaUrl(item.imageUrl) || null,
       author: item.author,
       tags: item.tags ? safeParseJson<string[]>(item.tags, []) : [],
       viewCount: item.viewCount,

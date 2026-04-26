@@ -257,13 +257,17 @@ fun AppNavHost(navController: NavHostController) {
                     onCardClick = { card ->
                         when (card.targetType) {
                             HomeFeedTargetType.JOB -> {
-                                navController.navigate("${Routes.JOB_DETAIL}/${URLEncoder.encode(card.id, "UTF-8")}")
+                                navController.navigate("${Routes.JOB_DETAIL}/${URLEncoder.encode(card.targetId, "UTF-8")}")
                             }
                             HomeFeedTargetType.COMPANY -> {
-                                navController.navigate("${Routes.COMPANY}/${URLEncoder.encode(card.id, "UTF-8")}")
+                                navController.navigate("${Routes.COMPANY}/${URLEncoder.encode(card.targetId, "UTF-8")}")
+                            }
+                            HomeFeedTargetType.POST -> {
+                                navController.navigate("circle/${URLEncoder.encode(card.targetId, "UTF-8")}")
                             }
                             else -> {
-                                // 帖子或其他
+                                // 处理其他可能的内容类型，回退到帖子详情
+                                navController.navigate("circle/${URLEncoder.encode(card.targetId, "UTF-8")}")
                             }
                         }
                     },
@@ -1170,32 +1174,44 @@ fun AppNavHost(navController: NavHostController) {
                         }
                         sessionData != null -> {
                             val data = sessionData!!
-                            val firstQuestion = data.questions.minByOrNull { it.questionIndex }
-                            DuixAvatarInterviewScreen(
-                                projectId = com.xlwl.AiMian.config.AppConfig.aliyunAvatarProjectId,
-                                jobPositionLabel = selectedPosition,
-                                interviewQuestion = firstQuestion?.questionText ?: "请做一下自我介绍",
-                                interviewSessionId = data.sessionId,
-                                candidateUserId = currentUserId,
-                                aiInterviewRepository = aiInterviewRepository,
-                                onInterviewComplete = { sessionId ->
-                                    coroutineScope.launch {
-                                        runCatching {
-                                            if (sessionId.isNotBlank()) {
-                                                aiInterviewRepository.complete(sessionId)
-                                            }
-                                        }.onFailure { error ->
-                                            Log.w("DigitalInterview", "标记面试完成失败", error)
-                                        }
-                                    }
+                            val isCompleted = data.status.equals("COMPLETED", ignoreCase = true) ||
+                                (data.totalQuestions > 0 && data.currentQuestion >= data.totalQuestions)
+                            if (isCompleted) {
+                                LaunchedEffect(data.sessionId) {
                                     navController.navigate(Routes.INTERVIEW_COMPLETE) {
                                         popUpTo(Routes.DIGITAL_INTERVIEW) { inclusive = true }
                                     }
-                                },
-                                onBack = {
-                                    navController.popBackStack()
                                 }
-                            )
+                            }
+                            val currentQuestion = data.questions.find { it.questionIndex == data.currentQuestion }
+                                ?: data.questions.minByOrNull { it.questionIndex }
+                            if (!isCompleted) {
+                                DuixAvatarInterviewScreen(
+                                    projectId = com.xlwl.AiMian.config.AppConfig.aliyunAvatarProjectId,
+                                    jobPositionLabel = selectedPosition,
+                                    interviewQuestion = currentQuestion?.questionText ?: "请做一下自我介绍",
+                                    interviewSessionId = data.sessionId,
+                                    candidateUserId = currentUserId,
+                                    aiInterviewRepository = aiInterviewRepository,
+                                    onInterviewComplete = { sessionId ->
+                                        coroutineScope.launch {
+                                            runCatching {
+                                                if (sessionId.isNotBlank()) {
+                                                    aiInterviewRepository.complete(sessionId)
+                                                }
+                                            }.onFailure { error ->
+                                                Log.w("DigitalInterview", "标记面试完成失败", error)
+                                            }
+                                        }
+                                        navController.navigate(Routes.INTERVIEW_COMPLETE) {
+                                            popUpTo(Routes.DIGITAL_INTERVIEW) { inclusive = true }
+                                        }
+                                    },
+                                    onBack = {
+                                        navController.popBackStack()
+                                    }
+                                )
+                            }
                         }
                         else -> {
                             CircularProgressIndicator(color = Color.White)

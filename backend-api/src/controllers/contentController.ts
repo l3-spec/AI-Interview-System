@@ -1,11 +1,9 @@
 import { Request, Response } from 'express';
 import type { Express } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import path from 'path';
 import { ossService } from '../services/ossService';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 const parseJsonArray = (value?: string | null) => {
   if (!value) return [] as string[];
@@ -128,10 +126,16 @@ const mapUserPostResponse = (post: any) => {
       ? tags
       : [];
 
+  const mappedImages = imageList
+    .map((item: string) => getOSSUrl(item) ?? item)
+    .filter((u: string | null) => !!u);
+  // 列表/详情统一：无单独封面时用图集第一张，避免 App 只读 coverImage 时出现整片空白
+  const resolvedCover = getOSSUrl(coverImage) ?? mappedImages[0] ?? null;
+
   return {
     ...rest,
-    coverImage: getOSSUrl(coverImage),
-    images: imageList.map((item: string) => getOSSUrl(item) ?? item),
+    coverImage: resolvedCover,
+    images: mappedImages,
     tags: tagList,
     author: user
       ? {

@@ -8,7 +8,7 @@ export const rateLimiter = (req: Request, res: Response, next: NextFunction) => 
   const clientId = req.ip || 'unknown';
   const now = Date.now();
   const windowMs = 15 * 60 * 1000; // 15分钟窗口
-  const maxRequests = 100; // 最大请求数
+  const maxRequests = 1000; // 最大请求数
 
   const clientData = requestCounts.get(clientId);
   

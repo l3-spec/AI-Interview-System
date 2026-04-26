@@ -22,7 +22,10 @@ data class AiInterviewCreateSessionData(
   val jobCategory: String? = null,
   val jobSubCategory: String? = null,
   val plannedDuration: Int? = null,
-  val prompt: String? = null
+  val prompt: String? = null,
+  val currentQuestion: Int = 0,
+  val resumed: Boolean = false,
+  val status: String? = null
 )
 
 @Parcelize

@@ -74,16 +74,25 @@ fun InterviewCameraTestScreen(
             ) == PackageManager.PERMISSION_GRANTED
         )
     }
+    var hasAudioPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        hasCameraPermission = granted
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        hasCameraPermission = permissions[Manifest.permission.CAMERA] == true
+        hasAudioPermission = permissions[Manifest.permission.RECORD_AUDIO] == true
     }
 
     LaunchedEffect(Unit) {
-        if (!hasCameraPermission) {
-            permissionLauncher.launch(Manifest.permission.CAMERA)
+        if (!hasCameraPermission || !hasAudioPermission) {
+            permissionLauncher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
         }
     }
 
@@ -283,7 +292,7 @@ fun InterviewCameraTestScreen(
                 Spacer(modifier = Modifier.width(6.dp))
                 Column {
                     Text(
-                        text = "本场面试要求使用摄像头，请保持设备开启",
+                        text = "本场面试要求使用摄像头和麦克风，请保持设备开启",
                         color = GuideTextSecondary,
                         fontSize = 13.sp,
                         lineHeight = 18.sp

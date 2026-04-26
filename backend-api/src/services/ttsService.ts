@@ -2,12 +2,10 @@ import path from 'path';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs';
-import { PrismaClient } from '@prisma/client';
 import * as crypto from 'crypto';
 import { volcengineTtsService } from './volcengine';
 import { ossService } from './ossService';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 /**
  * TTS (文本转语音) 服务

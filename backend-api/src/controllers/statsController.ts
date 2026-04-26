@@ -52,7 +52,7 @@ export const getDashboardStats = async (req: Request, res: Response) => {
       prisma.job.count({ where: { companyId, isPublished: true } }),
       prisma.interview.count({ where: { companyId } }),
       prisma.interview.count({ where: { companyId, status: 'COMPLETED' } }),
-      prisma.candidate.count(),
+      prisma.user.count(),
       prisma.jobApplication.count({
         where: {
           job: { companyId },
@@ -99,13 +99,13 @@ export const getDashboardStats = async (req: Request, res: Response) => {
     }
 
     // 获取面试结果分布
-    const interviewResults = await prisma.interview.groupBy({
+    const interviewResults = (await prisma.interview.groupBy({
       by: ['status'],
       where: { companyId },
       _count: {
         id: true
       }
-    }) as Array<{ status: string; _count: { id: number } }>;
+    })) as unknown as Array<{ status: string; _count: { id: number } }>;
 
     res.json({
       success: true,
@@ -169,11 +169,11 @@ export const getInterviewStats = async (req: Request, res: Response) => {
       passedInterviews
     ] = await Promise.all([
       prisma.interview.count({ where }),
-      prisma.interview.groupBy({
+      (prisma.interview.groupBy({
         by: ['status'],
         where,
         _count: { id: true }
-      }) as Promise<Array<{ status: string; _count: { id: number } }>>,
+      })) as unknown as Promise<Array<{ status: string; _count: { id: number } }>>,
       prisma.interviewReport.aggregate({
         where: {
           interview: where
@@ -302,8 +302,8 @@ export const getCandidateStats = async (req: Request, res: Response) => {
       totalCandidates,
       interviewedCandidates
     ] = await Promise.all([
-      prisma.candidate.count({ where }),
-      prisma.candidate.count({
+      prisma.user.count({ where }),
+      prisma.user.count({
         where: {
           ...where,
           interviews: {

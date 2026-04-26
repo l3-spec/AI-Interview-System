@@ -170,9 +170,26 @@ class HomeViewModel(private val repository: ContentRepository) : ViewModel() {
         }
     }
 
+    private fun resolveMediaUrl(url: String?): String? {
+        if (url.isNullOrBlank()) return null
+        if (url.startsWith("http://") || url.startsWith("https://")) return url
+        
+        val baseUrl = com.xlwl.AiMian.config.AppConfig.apiBaseUrl
+        // 去掉开头的 /api/ 以便与 apiBaseUrl (通常以 api/ 结尾) 接合
+        val cleanUrl = if (url.startsWith("/api/")) {
+            url.substring(5)
+        } else if (url.startsWith("api/")) {
+            url.substring(4)
+        } else {
+            url.trimStart('/')
+        }
+        
+        return if (baseUrl.endsWith("/")) "$baseUrl$cleanUrl" else "$baseUrl/$cleanUrl"
+    }
+
     private fun Banner.toBannerData() = BannerData(
         id = id,
-        imageUrl = imageUrl,
+        imageUrl = resolveMediaUrl(imageUrl) ?: imageUrl,
         label = subtitle,
         title = title,
         subtitle = description,
@@ -196,12 +213,12 @@ class HomeViewModel(private val repository: ContentRepository) : ViewModel() {
 
         return ContentCard(
             id = id,
-            imageUrl = imageUrl,
+            imageUrl = resolveMediaUrl(imageUrl),
             title = title,
             tags = tags,
             author = authorName,
             views = viewsValue,
-            avatarUrl = authorAvatar,
+            avatarUrl = resolveMediaUrl(authorAvatar),
             summary = summary
                 ?.takeIf { it.isNotBlank() },
             badge = badge,

@@ -86,6 +86,7 @@ export const getCandidateById = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, message: '未授权访问' });
     }
 
+    // User 表无单独 resume 列，概况用 education / experience / skills
     const candidate = await prisma.user.findUnique({
       where: { id },
       select: {
@@ -93,7 +94,10 @@ export const getCandidateById = async (req: Request, res: Response) => {
         name: true,
         email: true,
         phone: true,
-        resume: true,
+        education: true,
+        experience: true,
+        skills: true,
+        avatar: true,
         createdAt: true,
         _count: {
           select: {

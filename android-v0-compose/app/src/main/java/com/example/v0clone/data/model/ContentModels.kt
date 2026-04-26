@@ -54,8 +54,10 @@ data class UserPost(
     val id: String,
     val title: String,
     val content: String,
+    @SerializedName(value = "coverImage", alternate = ["cover_image"])
     val coverImage: String?,
-    val images: List<String>,
+    /** API 在个别环境下可能为 null，列表侧统一用 orEmpty() */
+    val images: List<String>? = null,
     val tags: List<String>,
     val viewCount: Int,
     val likeCount: Int,
@@ -80,9 +82,11 @@ data class ExpertPost(
     val expertName: String,
     val expertTitle: String,
     val expertCompany: String,
+    @SerializedName(value = "expertAvatar", alternate = ["expert_avatar"])
     val expertAvatar: String?,
     val title: String,
     val content: String,
+    @SerializedName(value = "coverImage", alternate = ["cover_image"])
     val coverImage: String?,
     val tags: List<String>,
     val viewCount: Int,

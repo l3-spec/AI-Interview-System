@@ -107,7 +107,6 @@ export const getUserById = async (req: Request, res: Response) => {
         education: true,
         experience: true,
         skills: true,
-        resume: true,
         isActive: true,
         isVerified: true,
         lastLoginAt: true,

@@ -322,9 +322,9 @@ private fun MyPostCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                if (post.images.isNotEmpty()) {
+                if (post.images.orEmpty().isNotEmpty()) {
                     AsyncImage(
-                        model = post.images.first(),
+                        model = post.images.orEmpty().first(),
                         contentDescription = post.title,
                         modifier = Modifier
                             .size(72.dp)

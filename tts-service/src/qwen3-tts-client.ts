@@ -141,6 +141,7 @@ export class Qwen3TTSClient {
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
         },
+        perMessageDeflate: false,
       });
 
       this.ws.on('open', () => {
@@ -148,13 +149,27 @@ export class Qwen3TTSClient {
         logger.info(`[Qwen3-TTS] DashScope WebSocket 连接成功 (model=${modelName})`);
         this.isConnected = true;
         this.reconnectAttempts = 0;
-
-        this.sendSessionUpdate();
-        if (!settled) { settled = true; resolve(); }
+        
+        // 注意：这里不再立即调用此处的 resolve，因为我们要等待 session.created
       });
 
       this.ws.on('message', (data) => {
-        this.handleMessage(data.toString());
+        const raw = data.toString();
+        // 预检消息以确认会话建立
+        try {
+          const json = JSON.parse(raw);
+          if (json.type === 'session.created' && !settled) {
+            this.sessionId = json.session?.id;
+            // 会话建立成功，如果是初始连接，则尝试发送 session.update（如果需要）
+            // 注意：某些模型要求在 session.created 后再发送 update
+            this.sendSessionUpdate();
+            
+            settled = true;
+            resolve();
+          }
+        } catch (_e) {}
+        
+        this.handleMessage(raw);
       });
 
       this.ws.on('close', (code, reason) => {
@@ -213,9 +228,8 @@ export class Qwen3TTSClient {
               }
             });
           }, delay);
-        } else if (wasConnected && code !== 1000) {
-          logger.error('[Qwen3-TTS] 重连次数已用尽，通知会话结束');
-          this.callbacks.onError('DashScope TTS 连接丢失，重连次数已用尽');
+        } else {
+          // 即使是正常关闭 (code=1000)，也需要通知管理器，以便重置连接状态
           this.callbacks.onSessionFinished();
         }
       });
@@ -224,6 +238,13 @@ export class Qwen3TTSClient {
         clearTimeout(timeout);
         const details = err.code ? ` (code=${err.code})` : '';
         logger.error(`[Qwen3-TTS] DashScope WebSocket 错误: ${err.message}${details}`);
+        
+        // 针对 WS_ERR_INVALID_CONTROL_PAYLOAD_LENGTH 错误提供专门的排查建议
+        if (err.message && err.message.includes('invalid payload length 126')) {
+          logger.error('[Qwen3-TTS] 诊断：检测到协议违规 (126)。这通常是因为发送了不支持的参数（如 voice 音色名错误）导致服务端返回了过长的错误消息。');
+          logger.error(`[Qwen3-TTS] 请检查 .env 或客户端传入的参数。当前请求音色: "${this.config.voice}"`);
+        }
+        
         logger.error(`[Qwen3-TTS] 连接参数: url=${url}, model=${modelName}`);
         this.isConnected = false;
         if (!settled) { settled = true; reject(err); }
@@ -237,10 +258,10 @@ export class Qwen3TTSClient {
   private sendSessionUpdate(): void {
     // 历史上部分音色在个别地域曾触发 DashScope 报错，仅对仍不稳定的旧名做回退；Neil 等已在百炼 Qwen3 实时 TTS 文档中支持，勿再拦截。
     let safeVoice = this.config.voice;
-    const invalidVoices = ['bill', 'george', 'ben', 'steven'];
+    const invalidVoices = ['bill', 'george', 'ben', 'steven', 'xiaoxiao', 'siri'];
     if (invalidVoices.includes(safeVoice.toLowerCase())) {
-      logger.warn(`[Qwen3-TTS] 检测到不合规或未授权的音色: "${safeVoice}"，强制回退到官方标准音色 "cherry" 以确保连接通畅。`);
-      safeVoice = 'cherry';
+      logger.warn(`[Qwen3-TTS] 检测到不合规或未授权的音色: "${safeVoice}"，强制回退到官方标准音色 "Cherry" 以确保连接通畅。`);
+      safeVoice = 'Cherry';
     }
 
     const sessionConfig: any = {
@@ -248,7 +269,7 @@ export class Qwen3TTSClient {
       voice: safeVoice,
       response_format: this.config.responseFormat,
       sample_rate: this.config.sampleRate,
-      language_type: this.config.language,
+      language: this.config.language,
     };
 
     // 如果使用 instruct 模型且配置了指令
@@ -258,7 +279,7 @@ export class Qwen3TTSClient {
     }
 
     const event = {
-      event_id: `evt_${uuidv4().slice(0, 8)}`,
+      event_id: `evt_${uuidv4()}`, // 使用完整 UUID
       type: 'session.update',
       session: sessionConfig,
     };
@@ -404,7 +425,7 @@ export class Qwen3TTSClient {
 
     for (const piece of pieces) {
       const event = {
-        event_id: `evt_${uuidv4().slice(0, 12)}`,
+        event_id: `evt_${uuidv4()}`,
         type: 'input_text_buffer.append',
         text: piece,
       };
@@ -430,7 +451,7 @@ export class Qwen3TTSClient {
    */
   clearTextBuffer(): void {
     if (this.config.mode === 'server_commit') {
-      logger.warn(
+      logger.debug(
         '[Qwen3-TTS] 已跳过 input_text_buffer.clear：server_commit 模式不支持该操作（请改用 session.finish 或仅停止下行）',
       );
       return;

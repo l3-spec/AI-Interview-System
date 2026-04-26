@@ -1393,7 +1393,7 @@ export const createInterview = async (req: Request, res: Response) => {
     }
 
     // 验证候选人存在
-    const candidate = await prisma.candidate.findUnique({
+    const candidate = await prisma.user.findUnique({
       where: { id: candidateId }
     });
 
@@ -1403,18 +1403,15 @@ export const createInterview = async (req: Request, res: Response) => {
 
     const interview = await prisma.interview.create({
       data: {
-        candidateId,
+        userId: candidateId,
         companyId,
         jobId,
-        type,
-        scheduledAt: new Date(scheduledAt),
-        location,
-        meetingUrl,
-        notes,
-        status: 'SCHEDULED'
+        startTime: new Date(scheduledAt),
+        feedback: notes,
+        status: 'PENDING'
       },
       include: {
-        candidate: {
+        user: {
           select: {
             id: true,
             name: true,
@@ -1430,10 +1427,12 @@ export const createInterview = async (req: Request, res: Response) => {
       }
     });
 
+    const interviewView = mapPrismaInterviewToView(interview);
+
     res.status(201).json({
       success: true,
       message: '面试创建成功',
-      data: interview
+      data: interviewView
     });
   } catch (error) {
     console.error('创建面试失败:', error);
@@ -1488,7 +1487,7 @@ export const updateInterviewResult = async (req: Request, res: Response) => {
     // 更新面试备注
     await prisma.interview.update({
       where: { id },
-      data: { notes: feedback }
+      data: { feedback: feedback }
     });
 
     res.json({ success: true, message: '面试结果更新成功' });
@@ -1583,7 +1582,7 @@ export const exportInterviewData = async (req: Request, res: Response) => {
     const interviews = await prisma.interview.findMany({
       where,
       include: {
-        candidate: {
+        user: {
           select: {
             name: true,
             email: true
@@ -1603,10 +1602,12 @@ export const exportInterviewData = async (req: Request, res: Response) => {
       orderBy: { createdAt: 'desc' }
     });
 
+    const mappedInterviews = interviews.map(mapPrismaInterviewToView);
+
     // 简化版本：返回JSON数据，实际项目中可以集成Excel导出库
     res.json({
       success: true,
-      data: interviews,
+      data: mappedInterviews,
       format: format,
       message: '数据导出成功'
     });

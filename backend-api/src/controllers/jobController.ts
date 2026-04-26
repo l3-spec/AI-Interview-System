@@ -421,18 +421,19 @@ export const getJobCandidates = async (req: Request, res: Response) => {
     const skip = (Number(page) - 1) * Number(pageSize);
     const take = Number(pageSize);
 
-    // 获取已申请该职位的候选人
-    const [applications, total] = await Promise.all([
+    // JobApplication 关联的是 User（无 candidate 关系名）；User 表无 resume 字段
+    const [applicationRows, total] = await Promise.all([
       prisma.jobApplication.findMany({
         where: { jobId },
         include: {
-          candidate: {
+          user: {
             select: {
               id: true,
               name: true,
               email: true,
               phone: true,
-              resume: true
+              education: true,
+              experience: true
             }
           }
         },
@@ -442,6 +443,20 @@ export const getJobCandidates = async (req: Request, res: Response) => {
       }),
       prisma.jobApplication.count({ where: { jobId } })
     ]);
+
+    const applications = applicationRows.map((row) => {
+      const { user, ...rest } = row;
+      return {
+        ...rest,
+        // 管理端表格使用顶层 name/email/phone/education/experience
+        name: user.name,
+        email: user.email,
+        phone: user.phone ?? '',
+        education: user.education ?? '',
+        experience: user.experience ?? '',
+        candidate: user
+      };
+    });
 
     res.json({
       success: true,
@@ -475,15 +490,18 @@ export const getJobInterviews = async (req: Request, res: Response) => {
     const skip = (Number(page) - 1) * Number(pageSize);
     const take = Number(pageSize);
 
-    const [interviews, total] = await Promise.all([
+    const [interviewRows, total] = await Promise.all([
       prisma.interview.findMany({
         where: { jobId, companyId },
         include: {
-          candidate: {
+          user: {
             select: {
               id: true,
               name: true,
-              email: true
+              email: true,
+              avatar: true,
+              education: true,
+              experience: true
             }
           },
           report: {
@@ -498,6 +516,11 @@ export const getJobInterviews = async (req: Request, res: Response) => {
       }),
       prisma.interview.count({ where: { jobId, companyId } })
     ]);
+
+    const interviews = interviewRows.map(({ user, ...rest }) => ({
+      ...rest,
+      candidate: user
+    }));
 
     res.json({
       success: true,

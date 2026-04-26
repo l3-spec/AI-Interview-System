@@ -12,8 +12,8 @@ import {
 import { authenticateToken } from '../middleware/auth';
 import { upload } from '../middleware/upload';
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { prisma } from '../lib/prisma';
 import jwt from 'jsonwebtoken';
 import { checkAuth } from '../middleware/auth';
 
@@ -26,7 +26,6 @@ interface AuthRequest extends Request {
 }
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 /**
  * @swagger

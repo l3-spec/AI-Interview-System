@@ -1,9 +1,7 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { ossService } from '../services/ossService';
 import { isOSSConfigured, toObjectKey, toPublicUrl, typeToFolder } from '../utils/ossUtils';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 const mapVerificationForResponse = (verification: any) => {
   if (!verification) return verification;

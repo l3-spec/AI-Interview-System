@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { interviewFlowService } from '../services/interviewFlowService';
+import { interviewServiceClient } from '../services/interview-service-client';
 import { InterviewRequest, UserResponseRequest } from '../models/interviewFlow';
 
 export class InterviewFlowController {
@@ -21,7 +21,7 @@ export class InterviewFlowController {
         return;
       }
 
-      const sessionId = await interviewFlowService.startIntroductionPhase(
+      const sessionId = await interviewServiceClient.startIntroductionPhase(
         userId,
         userName,
         isFirstTime
@@ -67,7 +67,7 @@ export class InterviewFlowController {
         return;
       }
 
-      const userInfo = await interviewFlowService.collectUserInfo(sessionId, {
+      const userInfo = await interviewServiceClient.collectUserInfo(sessionId, {
         targetJob,
         background,
         experience,
@@ -113,7 +113,7 @@ export class InterviewFlowController {
         return;
       }
 
-      const result = await interviewFlowService.startInterviewPhase(sessionId);
+      const result = await interviewServiceClient.startInterviewPhase(sessionId);
 
       res.json({
         success: true,
@@ -121,7 +121,7 @@ export class InterviewFlowController {
           sessionId,
           state: 'ready',
           totalRounds: result.totalRounds,
-          firstQuestion: result.firstRound,
+          firstQuestion: result.nextRound || result.firstRound, // Allow both for backward compatibility
           message: '面试内容已生成，准备开始',
           nextAction: 'start_first_round'
         }
@@ -145,11 +145,11 @@ export class InterviewFlowController {
     try {
       const { sessionId } = req.params;
 
-      const nextRound = await interviewFlowService.startNextRound(sessionId);
+      const nextRound = await interviewServiceClient.startNextRound(sessionId);
 
       if (!nextRound) {
         // 面试已完成
-        const summary = await interviewFlowService.endInterview(sessionId);
+        const summary = await interviewServiceClient.endInterview(sessionId);
         res.json({
           success: true,
           data: {
@@ -195,7 +195,7 @@ export class InterviewFlowController {
   async processUserResponse(req: Request, res: Response): Promise<void> {
     try {
       const { sessionId } = req.params;
-      const { response, audioUrl, duration } = req.body as UserResponseRequest;
+      const { response } = req.body as UserResponseRequest;
 
       if (!sessionId || !response) {
         res.status(400).json({
@@ -208,7 +208,7 @@ export class InterviewFlowController {
         return;
       }
 
-      const result = await interviewFlowService.processUserResponse(sessionId, response);
+      const result = await interviewServiceClient.processUserResponse(sessionId, response);
 
       res.json({
         success: true,
@@ -240,7 +240,7 @@ export class InterviewFlowController {
     try {
       const { sessionId } = req.params;
 
-      const summary = await interviewFlowService.endInterview(sessionId);
+      const summary = await interviewServiceClient.endInterview(sessionId);
 
       res.json({
         success: true,
@@ -265,9 +265,9 @@ export class InterviewFlowController {
     try {
       const { sessionId } = req.params;
 
-      const session = interviewFlowService.getSession(sessionId);
+      const result = await interviewServiceClient.getSession(sessionId);
 
-      if (!session) {
+      if (!result.success || !result.session) {
         res.status(404).json({
           success: false,
           error: {
@@ -280,7 +280,7 @@ export class InterviewFlowController {
 
       res.json({
         success: true,
-        data: session
+        data: result.session
       });
     } catch (error) {
       console.error('获取会话状态失败:', error);
@@ -299,7 +299,7 @@ export class InterviewFlowController {
    */
   async getAllSessions(req: Request, res: Response): Promise<void> {
     try {
-      const sessions = interviewFlowService.getAllSessions();
+      const sessions = await interviewServiceClient.getAllSessions();
 
       res.json({
         success: true,
@@ -327,7 +327,8 @@ export class InterviewFlowController {
     try {
       const { sessionId } = req.params;
 
-      const session = interviewFlowService.getSession(sessionId);
+      const result = await interviewServiceClient.getSession(sessionId);
+      const session = result.session;
       if (!session) {
         res.status(404).json({
           success: false,
@@ -339,12 +340,10 @@ export class InterviewFlowController {
         return;
       }
 
-      const currentRound = session.rounds.find(r => r.status === 'in_progress');
-      if (currentRound) {
-        currentRound.status = 'skipped';
-      }
-
-      const nextRound = await interviewFlowService.startNextRound(sessionId);
+      // Note: skip logic would need to be moved to interview-service for full correctness,
+      // but for now we'll just move to next round if available.
+      // This is a simplified version.
+      const nextRound = await interviewServiceClient.startNextRound(sessionId);
 
       res.json({
         success: true,

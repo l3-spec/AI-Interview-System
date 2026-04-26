@@ -1,8 +1,7 @@
 import { Request, Response } from 'express';
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { normalizeStatus, normalizeType, parseJson, truncateContent } from '../utils/messageUtils';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 const mapEntry = (entry: any) => ({
   id: entry.id,

@@ -1179,27 +1179,23 @@ export const getJobStats = async (req: Request, res: Response) => {
     }
 
     // 并行查询各种统计数据
+    // 注意：Prisma schema 中 Job 暂无 viewCount 字段，无法做 _sum 聚合；有统计需求时先加列再 aggregate
     const [
       totalJobs,
       activeJobs,
       pausedJobs,
       closedJobs,
       newJobsCount,
-      totalApplications,
-      totalViewCount
+      totalApplications
     ] = await Promise.all([
       prisma.job.count(),
       prisma.job.count({ where: { status: 'ACTIVE' } }),
       prisma.job.count({ where: { status: 'DRAFT' } }), // "暂停" 对应 "草稿"
       prisma.job.count({ where: { status: 'CLOSED' } }),
       prisma.job.count({ where: { createdAt: { gte: startDate } } }),
-      prisma.jobApplication.count(),
-      prisma.job.aggregate({
-        _sum: {
-          viewCount: true
-        }
-      })
+      prisma.jobApplication.count()
     ]);
+    const totalViewSum = 0;
 
     const stats = {
       jobs: {
@@ -1214,8 +1210,8 @@ export const getJobStats = async (req: Request, res: Response) => {
         avgPerJob: totalJobs > 0 ? (totalApplications / totalJobs).toFixed(2) : 0
       },
       views: {
-        total: totalViewCount._sum.viewCount || 0,
-        avgPerJob: totalJobs > 0 ? ((totalViewCount._sum.viewCount || 0) / totalJobs).toFixed(2) : 0
+        total: totalViewSum,
+        avgPerJob: totalJobs > 0 ? (totalViewSum / totalJobs).toFixed(2) : 0
       },
       timeRange
     };

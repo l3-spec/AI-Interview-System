@@ -14,6 +14,11 @@ android {
             // 设备为 64 位，优先只打包 arm64，减少构建体积与依赖
             abiFilters 'arm64-v8a'
         }
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_LINKER_FLAGS=-Wl,-z,max-page-size=16384"
+            }
+        }
     }
 
     buildTypes {

@@ -1,9 +1,8 @@
 import { Request, Response } from 'express';
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { normalizeStatus, normalizeType, truncateContent } from '../utils/messageUtils';
 import { logSystemAction } from '../utils/systemLog';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 const buildMockMessages = () => {
   const now = new Date();

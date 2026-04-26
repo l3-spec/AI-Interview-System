@@ -1,8 +1,6 @@
-import { PrismaClient } from '@prisma/client';
 import { ttsService } from './ttsService';
 import { digitalHumanService } from './digitalHumanService';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 interface ProcessSessionOptions {
   regenerateMissingOnly?: boolean;

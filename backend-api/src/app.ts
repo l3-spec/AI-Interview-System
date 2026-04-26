@@ -2,12 +2,11 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
-import { PrismaClient } from '@prisma/client';
 import routes from './routes';
 import voiceRoutes from './routes/voice.routes';
+import { prisma } from './lib/prisma';
 
 const app = express();
-const prisma = new PrismaClient();
 
 // CORS配置 - 支持admin-dashboard和system-admin
 const corsOptions = {

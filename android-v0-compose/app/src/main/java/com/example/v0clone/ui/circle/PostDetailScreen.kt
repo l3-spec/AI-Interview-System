@@ -1598,7 +1598,7 @@ private fun UserPost.toPostDetail(): PostDetail {
     val authorTitle = try { author?.headline?.takeIf { !it.isNullOrBlank() } } catch (e: Exception) { null } ?: "社区热帖"
     val safeContent = try { content } catch (e: Exception) { null } ?: ""
     val safeTags = try { tags } catch (e: Exception) { null } ?: emptyList()
-    val safeImages = try { images } catch (e: Exception) { null } ?: emptyList()
+    val safeImages = try { images.orEmpty() } catch (e: Exception) { emptyList() }
     
     return PostDetail(
         id = id ?: "",
@@ -1621,7 +1621,9 @@ private fun UserPost.toPostDetail(): PostDetail {
         ),
         sections = buildContentSections(safeContent),
         comments = emptyList(),
-        heroImageUrl = try { coverImage } catch (e: Exception) { null },
+        heroImageUrl = (try { coverImage } catch (e: Exception) { null })
+            ?.takeIf { !it.isNullOrBlank() }
+            ?: safeImages.firstOrNull(),
         galleryImages = safeImages
     )
 }

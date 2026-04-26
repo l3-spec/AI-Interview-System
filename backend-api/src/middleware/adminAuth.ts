@@ -1,9 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { config } from '../config';
 import { verifyToken } from '../utils/jwt';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 // 扩展Request接口以包含admin信息
 declare global {

@@ -23,6 +23,7 @@
     "prisma:fresh": "prisma migrate reset --force --skip-seed && npm run seed && prisma migrate status",
     "prisma:studio": "prisma studio",
     "seed": "ts-node prisma/seed.ts",
+    "import:career-wechat": "ts-node prisma/careerCommunityImportWeChat.ts",
     "worker": "ts-node src/workers/videoGenerationWorker.ts"
   },
   "keywords": [
@@ -94,6 +95,7 @@
     "nodemon": "^3.0.1",
     "prisma": "^5.1.1",
     "ts-node": "^10.9.1",
-    "typescript": "^5.1.6"
+    "typescript": "^5.1.6",
+    "xlsx": "^0.18.5"
   }
 }

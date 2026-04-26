@@ -50,13 +50,6 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// 静态文件服务
-app.use('/uploads', express.static('uploads'));
-
-// Fay数字人静态文件服务（替换原有数字人）
-const publicPath = path.join(__dirname, '../public');
-app.use('/fay', express.static(path.join(publicPath, 'fay'))); // 新的Fay路径
-
 // 日志中间件
 app.use(requestLogger);
 
@@ -123,6 +116,12 @@ const realtimeVoiceWebSocket = new RealtimeVoiceWebSocketServer(io);
 fayWebSocket.attachToApp(app);
 realtimeVoiceWebSocket.attachToApp(app);
 
+// 静态文件服务
+app.use('/uploads', express.static('uploads'));
+app.use('/api/uploads', express.static('uploads'));
+app.use('/static', express.static('static'));
+app.use('/api/static', express.static('static'));
+
 // API路由
 // 先注册 voiceRoutes，确保 /api/voice 路由优先匹配
 app.use('/api/voice', voiceRoutes);
@@ -135,10 +134,10 @@ app.use('/api/fay', fayRoutes); // Fay数字人API路由
 import digitalHumanTestRoutes from './routes/digital-human-test.routes';
 app.use(digitalHumanTestRoutes);
 
-// 静态文件服务
-const staticPublicPath = path.join(__dirname, '../public');
-app.use('/fay', express.static(path.join(staticPublicPath, 'fay')));
-app.use('/test', express.static(path.join(staticPublicPath, 'test')));
+// Fay数字人静态文件服务
+const publicPath = path.join(__dirname, '../public');
+app.use('/fay', express.static(path.join(publicPath, 'fay')));
+app.use('/test', express.static(path.join(publicPath, 'test')));
 
 // 视频文件服务
 app.use('/videos', express.static(path.join(__dirname, '../videos')));
@@ -208,10 +207,22 @@ httpServer.listen(PORT, async () => {
   console.log(`🌟 环境: ${config.nodeEnv}`);
   console.log(`🎭 Fay WebSocket服务: ws://localhost:${PORT}`);
   console.log(`🎤 实时语音WebSocket服务: ws://localhost:${PORT}`);
+
+  // 启动子服务管理器
   try {
-    await warmPlatformAiConfigRuntime();
+    const { serviceSupervisor } = require('./services/service-supervisor');
+    serviceSupervisor.startAll();
   } catch (e: any) {
-    console.warn('平台 AI 配置预热跳过:', e?.message || e);
+    console.warn('⚠️ ServiceSupervisor 启动失败:', e?.message || e);
+  }
+
+  try {
+    console.log('🔄 正在预热平台 AI 配置...');
+    await warmPlatformAiConfigRuntime();
+    console.log('✅ 平台 AI 配置预热完成');
+  } catch (e: any) {
+    console.warn('⚠️ 平台 AI 配置预热跳过:', e?.message || e);
+    console.warn('提示: 这通常是由于数据库尚未就绪或连接超时。系统将在后续请求中自动重试。');
   }
 });
 

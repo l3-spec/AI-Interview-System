@@ -1,12 +1,11 @@
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import { deepseekService } from './deepseekService';
 import { videoGenerationQueue } from '../queues/videoGenerationQueue';
 import { interviewMediaService } from './interviewMediaService';
 import { buildObjectKey, resolveVideoUrl } from '../utils/videoUrlResolver';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 /**
  * AI面试会话管理服务
@@ -275,6 +274,75 @@ class AIInterviewService {
     return nextQuestion ? nextQuestion.questionIndex : questions.length;
   }
 
+  private toSessionQuestion(question: any, includeAnswer = false): SessionQuestion {
+    return {
+      questionIndex: question.questionIndex,
+      questionText: question.questionText,
+      audioUrl: question.audioUrl || undefined,
+      audioPath: question.audioPath || undefined,
+      videoUrl: question.videoUrl || undefined,
+      duration: question.answerDuration || undefined,
+      status: question.status || undefined,
+      ...(includeAnswer
+        ? {
+            answerText: question.answerText || undefined,
+            answerVideoUrl: question.answerVideoUrl || undefined,
+          }
+        : {}),
+    };
+  }
+
+  private getPlayableQuestion(questions: any[], questionIndex: number): SessionQuestion[] {
+    const question = questions.find(q => q.questionIndex === questionIndex);
+    return question ? [this.toSessionQuestion(question)] : [];
+  }
+
+  private resolveResumeQuestionIndex(session: {
+    currentQuestion: number;
+    totalQuestions: number;
+    questions: Array<{
+      questionIndex: number;
+      answerText?: string | null;
+      answerVideoUrl?: string | null;
+      answerVideoPath?: string | null;
+    }>;
+  }): number {
+    const nextUnanswered = this.getNextUnansweredQuestionIndex(session.questions);
+    return Math.max(0, Math.min(nextUnanswered, session.totalQuestions));
+  }
+
+  private async syncResumeProgress(session: {
+    id: string;
+    status: string;
+    startedAt?: Date | null;
+    currentQuestion: number;
+    totalQuestions: number;
+    questions: Array<{
+      questionIndex: number;
+      answerText?: string | null;
+      answerVideoUrl?: string | null;
+      answerVideoPath?: string | null;
+    }>;
+  }): Promise<{ currentQuestion: number; status: string; isCompleted: boolean }> {
+    const currentQuestion = this.resolveResumeQuestionIndex(session);
+    const isCompleted = currentQuestion >= session.totalQuestions;
+    const status = isCompleted ? 'COMPLETED' : session.status === 'PREPARING' ? 'IN_PROGRESS' : session.status;
+
+    if (session.currentQuestion !== currentQuestion || session.status !== status || (!session.startedAt && !isCompleted)) {
+      await prisma.aIInterviewSession.update({
+        where: { id: session.id },
+        data: {
+          currentQuestion,
+          status,
+          ...(session.startedAt || isCompleted ? {} : { startedAt: new Date() }),
+          ...(isCompleted ? { completedAt: new Date() } : {}),
+        },
+      });
+    }
+
+    return { currentQuestion, status, isCompleted };
+  }
+
   private async queueAnalysisIfNeeded(sessionId: string, priority = 0): Promise<void> {
     const { analysisQueue } = await import('../jobs/analysisQueue');
     await analysisQueue.enqueueAnalysis(sessionId, priority);
@@ -290,6 +358,7 @@ class AIInterviewService {
     sessionId?: string;
     message?: string;
     questions?: SessionQuestion[];
+    totalQuestions?: number;
     prompt?: string;
     plannedDuration?: number;
     jobCategory?: string;
@@ -367,38 +436,42 @@ class AIInterviewService {
       if (existingSession) {
         console.log(`发现未完成的会话 ${existingSession.id}，直接返回继续面试`);
 
-        const existingQuestions: SessionQuestion[] = existingSession.questions.map((q: any) => ({
-          questionIndex: q.questionIndex,
-          questionText: q.questionText,
-          audioUrl: q.audioUrl || undefined,
-          audioPath: q.audioPath || undefined,
-          videoUrl: q.videoUrl || undefined,
-          duration: q.answerDuration || undefined,
-          status: q.status || undefined,
-          answerText: q.answerText || undefined,
-          answerVideoUrl: q.answerVideoUrl || undefined,
-        }));
+        const progress = await this.syncResumeProgress(existingSession);
+        const playableQuestions = progress.isCompleted
+          ? []
+          : this.getPlayableQuestion(existingSession.questions, progress.currentQuestion);
 
-        const needsMediaRegeneration = existingQuestions.some(
+        const needsMediaRegeneration = playableQuestions.some(
           q => !q.videoUrl || !q.audioUrl || (q.status && q.status !== 'READY')
         );
         if (needsMediaRegeneration) {
           this.triggerQuestionMediaGeneration(existingSession.id, true);
         }
 
+        if (progress.isCompleted) {
+          try {
+            await this.queueAnalysisIfNeeded(existingSession.id, 0);
+          } catch (error) {
+            console.error('[AIInterview] 恢复时创建分析任务失败:', error);
+          }
+        }
+
         return {
           success: true,
           jobId: existingSession.jobId || resolvedJobId,
           sessionId: existingSession.id,
-          message: '发现未完成的面试会话，继续为您恢复进度',
-          questions: existingQuestions,
+          message: progress.isCompleted
+            ? '面试已完成'
+            : `发现未完成的面试会话，继续从第${progress.currentQuestion + 1}题恢复`,
+          questions: playableQuestions,
+          totalQuestions: existingSession.totalQuestions,
           prompt: existingSession.prompt || undefined,
           plannedDuration: existingSession.plannedDuration || undefined,
           jobCategory: existingSession.jobCategory || undefined,
           jobSubCategory: existingSession.jobSubCategory || undefined,
           resumed: true,
-          currentQuestion: existingSession.currentQuestion,
-          status: existingSession.status,
+          currentQuestion: progress.currentQuestion,
+          status: progress.status,
         };
       }
 
@@ -491,7 +564,8 @@ class AIInterviewService {
           jobId: resolvedJobId,
           sessionId,
           message: '已为您复用历史面试题',
-          questions: sessionQuestions,
+          questions: this.getPlayableQuestion(sessionQuestions, 0),
+          totalQuestions,
           prompt: reusableSession.prompt || undefined,
           plannedDuration: plannedDurationMinutes,
           jobCategory: normalizedJobCategory,
@@ -590,7 +664,8 @@ class AIInterviewService {
         jobId: resolvedJobId,
         sessionId,
         message: '面试会话创建成功',
-        questions: sessionQuestions,
+        questions: this.getPlayableQuestion(sessionQuestions, 0),
+        totalQuestions,
         prompt: generationResult.prompt,
         plannedDuration: estimatedDurationMinutes,
         jobCategory: normalizedJobCategory,
@@ -1275,6 +1350,7 @@ class AIInterviewService {
   async getUnfinishedSession(userId: string): Promise<{
     success: boolean;
     session?: SessionData;
+    isCompleted?: boolean;
     error?: string;
   }> {
     try {
@@ -1299,6 +1375,21 @@ class AIInterviewService {
         };
       }
 
+      const progress = await this.syncResumeProgress(unfinishedSession);
+      if (progress.isCompleted) {
+        try {
+          await this.queueAnalysisIfNeeded(unfinishedSession.id, 0);
+        } catch (error) {
+          console.error('[AIInterview] 恢复未完成会话时创建分析任务失败:', error);
+        }
+
+        return {
+          success: true,
+          isCompleted: true,
+          error: '面试已完成',
+        };
+      }
+
       const sessionData: SessionData = {
         sessionId: unfinishedSession.id,
         userId: unfinishedSession.userId,
@@ -1306,16 +1397,10 @@ class AIInterviewService {
         jobTarget: unfinishedSession.jobTarget,
         companyTarget: unfinishedSession.companyTarget || undefined,
         background: unfinishedSession.background || undefined,
-        status: unfinishedSession.status,
-        currentQuestion: unfinishedSession.currentQuestion,
+        status: progress.status,
+        currentQuestion: progress.currentQuestion,
         totalQuestions: unfinishedSession.totalQuestions,
-        questions: unfinishedSession.questions.map((q: any) => ({
-          questionIndex: q.questionIndex,
-          questionText: q.questionText,
-          audioUrl: q.audioUrl,
-          audioPath: q.audioPath,
-          duration: q.answerDuration,
-        })),
+        questions: this.getPlayableQuestion(unfinishedSession.questions, progress.currentQuestion),
         createdAt: unfinishedSession.createdAt,
         startedAt: unfinishedSession.startedAt || undefined,
       };

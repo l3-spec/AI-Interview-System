@@ -344,20 +344,58 @@ private fun CirclePostCard(
                     .fillMaxWidth()
                     .aspectRatio(imageAspectRatio)
                     .clip(RoundedCornerShape(topStart = CardCorner, topEnd = CardCorner))
+                    .background(Color(0xFFE8EAED))
             ) {
-                if (!card.coverImage.isNullOrBlank()) {
-                    AsyncImage(
-                        model = card.coverImage,
-                        contentDescription = card.title,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color(0xFFE5E7EB))
-                    )
+                // 底层常显浅灰，避免加载中/透明帧时与白色卡片「融成一片空白」
+                // 有 URL 时也要处理加载失败：Coil 的 AsyncImage 失败时无占位会留白；失败或仅有头像时用专家/作者头像顶封面
+                val cover = card.coverImage
+                when {
+                    !cover.isNullOrBlank() -> {
+                        SubcomposeAsyncImage(
+                            model = cover,
+                            contentDescription = card.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                            loading = {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color(0xFFE8EAED))
+                                )
+                            },
+                            error = {
+                                if (!card.authorAvatar.isNullOrBlank()) {
+                                    AsyncImage(
+                                        model = card.authorAvatar,
+                                        contentDescription = card.title,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(Color(0xFFE5E7EB))
+                                    )
+                                }
+                            }
+                        )
+                    }
+                    !card.authorAvatar.isNullOrBlank() -> {
+                        AsyncImage(
+                            model = card.authorAvatar,
+                            contentDescription = card.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                    else -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color(0xFFE5E7EB))
+                        )
+                    }
                 }
 
                 if (card.isExpert) {
