@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import path from 'path';
 import { ossService } from '../services/ossService';
 import { prisma } from '../lib/prisma';
+import { withRetry } from '../utils/prismaUtils';
 
 const parseJsonArray = (value?: string | null) => {
   if (!value) return [] as string[];
@@ -233,7 +234,7 @@ const ensurePostInteractionTables = async () => {
       console.log('[ensurePostInteractionTables] 开始确保互动表存在...');
 
       // 原有表结构 - 更新评论表以支持回复
-      await prisma.$executeRawUnsafe(`
+      await withRetry(() => prisma.$executeRawUnsafe(`
         CREATE TABLE IF NOT EXISTS community_post_comments (
           id VARCHAR(36) PRIMARY KEY,
           post_type VARCHAR(16) NOT NULL,
@@ -250,7 +251,7 @@ const ensurePostInteractionTables = async () => {
           INDEX community_post_comments_user_idx (user_id),
           INDEX community_post_comments_parent_idx (parent_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-      `);
+      `));
 
       // 逐个添加列（MySQL不支持ADD COLUMN IF NOT EXISTS）
       const columnsToAdd = [
@@ -400,28 +401,28 @@ const getPostEngagementPayload = async (kind: PostKind, postId: string, userId?:
 
   const post =
     kind === 'USER'
-      ? await prisma.userPost.findUnique({
+      ? await withRetry(() => prisma.userPost.findUnique({
           where: { id: postId },
           select: {
             id: true,
             likeCount: true,
             commentCount: true,
           },
-        })
-      : await prisma.expertPost.findUnique({
+        }))
+      : await withRetry(() => prisma.expertPost.findUnique({
           where: { id: postId },
           select: {
             id: true,
             likeCount: true,
             commentCount: true,
           },
-        });
+        }));
 
   if (!post) {
     return null;
   }
 
-  const [favoriteCountRows, likedRows, favoritedRows] = await Promise.all([
+  const [favoriteCountRows, likedRows, favoritedRows] = await withRetry(() => Promise.all([
     prisma.$queryRawUnsafe<Array<{ count: bigint | number }>>(
       `SELECT COUNT(*) AS count FROM community_post_favorites WHERE post_type = ? AND post_id = ?`,
       kind,
@@ -443,7 +444,7 @@ const getPostEngagementPayload = async (kind: PostKind, postId: string, userId?:
           userId
         )
       : Promise.resolve([]),
-  ]);
+  ]));
 
   const favoriteCountValue = favoriteCountRows[0]?.count ?? 0;
 
@@ -705,7 +706,7 @@ export const getUserPosts = async (req: Request, res: Response) => {
       where.OR = [{ status: 'PUBLISHED', isHot: true }];
     }
 
-    const [posts, total] = await Promise.all([
+    const [posts, total] = await withRetry(() => Promise.all([
       prisma.userPost.findMany({
         where,
         skip,
@@ -732,7 +733,7 @@ export const getUserPosts = async (req: Request, res: Response) => {
         },
       }),
       prisma.userPost.count({ where }),
-    ]);
+    ]));
 
     const formattedPosts = posts.map(mapUserPostResponse);
 
@@ -782,7 +783,7 @@ export const getMyPosts = async (req: Request, res: Response) => {
       },
     };
 
-    const [posts, total] = await Promise.all([
+    const [posts, total] = await withRetry(() => Promise.all([
       prisma.userPost.findMany({
         where,
         skip,
@@ -802,7 +803,7 @@ export const getMyPosts = async (req: Request, res: Response) => {
         },
       }),
       prisma.userPost.count({ where }),
-    ]);
+    ]));
 
     const formattedPosts = posts.map(mapUserPostResponse);
 
@@ -834,7 +835,7 @@ export const getUserPostDetail = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const post = await prisma.userPost.findUnique({
+    const post = await withRetry(() => prisma.userPost.findUnique({
       where: { id },
       include: {
         user: {
@@ -848,7 +849,7 @@ export const getUserPostDetail = async (req: Request, res: Response) => {
           },
         },
       },
-    });
+    }));
 
     if (!post) {
       return res.status(404).json({
@@ -980,7 +981,7 @@ export const createUserPost = async (req: Request, res: Response) => {
 
     const coverImage = imageUrls.length > 0 ? imageUrls[0] : null;
 
-    const created = await prisma.userPost.create({
+    const created = await withRetry(() => prisma.userPost.create({
       data: {
         userId: req.user.id,
         title,
@@ -1003,7 +1004,7 @@ export const createUserPost = async (req: Request, res: Response) => {
           },
         },
       },
-    });
+    }));
 
     const responseData = mapUserPostResponse(created);
 
@@ -1036,22 +1037,22 @@ export const deleteMyPost = async (req: Request, res: Response) => {
     }
 
     const { id } = req.params;
-    const post = await prisma.userPost.findUnique({
+    const post = await withRetry(() => prisma.userPost.findUnique({
       where: { id },
       select: { id: true, userId: true },
-    });
+    }));
 
     if (!post || post.userId !== req.user.id) {
       return res.status(404).json({ success: false, message: '帖子不存在或已删除' });
     }
 
-    await prisma.userPost.update({
+    await withRetry(() => prisma.userPost.update({
       where: { id },
       data: {
         status: 'DELETED',
         isHot: false,
       },
-    });
+    }));
 
     res.json({ success: true, message: '帖子已删除' });
   } catch (error: any) {
@@ -1075,7 +1076,7 @@ export const getExpertPosts = async (req: Request, res: Response) => {
     const skip = (parseInt(page as string) - 1) * parseInt(pageSize as string);
     const take = parseInt(pageSize as string);
 
-    const [posts, total] = await Promise.all([
+    const [posts, total] = await withRetry(() => Promise.all([
       prisma.expertPost.findMany({
         where: {
           publishedAt: {
@@ -1099,7 +1100,7 @@ export const getExpertPosts = async (req: Request, res: Response) => {
           },
         },
       }),
-    ]);
+    ]));
 
     // 解析 JSON 字符串
     const formattedPosts = posts.map((post) => ({
@@ -1135,9 +1136,9 @@ export const getExpertPostDetail = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const post = await prisma.expertPost.findUnique({
+    const post = await withRetry(() => prisma.expertPost.findUnique({
       where: { id },
-    });
+    }));
 
     if (!post) {
       return res.status(404).json({
@@ -1146,15 +1147,14 @@ export const getExpertPostDetail = async (req: Request, res: Response) => {
       });
     }
 
-    // 增加浏览量
-    await prisma.expertPost.update({
+    await withRetry(() => prisma.expertPost.update({
       where: { id },
       data: {
         viewCount: {
           increment: 1,
         },
       },
-    });
+    }));
 
     // 解析 JSON 字符串
     const formattedPost = {
@@ -1398,7 +1398,7 @@ const likePost = (kind: PostKind) => async (req: Request, res: Response) => {
     }
 
     const { id } = req.params;
-    const post = await ensurePostExists(kind, id);
+    const post = await withRetry(() => ensurePostExists(kind, id));
 
     if (!post) {
       return res.status(404).json({
@@ -1409,7 +1409,7 @@ const likePost = (kind: PostKind) => async (req: Request, res: Response) => {
 
     await ensurePostInteractionTables();
 
-    const existing = await prisma.$queryRawUnsafe<Array<{ matched: number }>>(
+    const existing = await withRetry(() => prisma.$queryRawUnsafe<Array<{ matched: number }>>(
       `
         SELECT 1 AS matched
         FROM community_post_likes
@@ -1419,10 +1419,10 @@ const likePost = (kind: PostKind) => async (req: Request, res: Response) => {
       kind,
       id,
       req.user.id
-    );
+    ));
 
     if (existing.length === 0) {
-      await prisma.$executeRawUnsafe(
+      await withRetry(() => prisma.$executeRawUnsafe(
         `
           INSERT INTO community_post_likes (id, post_type, post_id, user_id)
           VALUES (?, ?, ?, ?)
@@ -1431,26 +1431,26 @@ const likePost = (kind: PostKind) => async (req: Request, res: Response) => {
         kind,
         id,
         req.user.id
-      );
+      ));
 
       if (kind === 'USER') {
-        await prisma.userPost.update({
+        await withRetry(() => prisma.userPost.update({
           where: { id },
           data: {
             likeCount: {
               increment: 1,
             },
           },
-        });
+        }));
       } else {
-        await prisma.expertPost.update({
+        await withRetry(() => prisma.expertPost.update({
           where: { id },
           data: {
             likeCount: {
               increment: 1,
             },
           },
-        });
+        }));
       }
     }
 

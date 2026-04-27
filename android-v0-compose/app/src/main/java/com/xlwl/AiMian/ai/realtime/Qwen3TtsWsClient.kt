@@ -2,7 +2,6 @@ package com.xlwl.AiMian.ai.realtime
 
 import android.media.AudioAttributes
 import android.media.AudioFormat
-import android.media.AudioManager
 import android.media.AudioTrack
 import android.util.Base64
 import android.util.Log
@@ -286,52 +285,6 @@ class Qwen3TtsWsClient(
         playbackPollJob = null
     }
 
-    private fun writeToAudioTrack(pcmData: ByteArray) {
-        // 核心加固：如果已经绑定了数字人回调，严禁操作任何本地 AudioTrack，确保护航单路输出
-        if (onDuixPcmChunk != null) {
-            if (audioTrack != null) {
-                try {
-                    audioTrack?.stop()
-                    audioTrack?.release()
-                } catch (_: Exception) {
-                }
-                audioTrack = null
-                stopPlaybackPoll()
-            }
-            return
-        }
-
-        if (audioTrack == null) {
-            try {
-                val bufferSize = AudioTrack.getMinBufferSize(
-                    sampleRate,
-                    AudioFormat.CHANNEL_OUT_MONO,
-                    AudioFormat.ENCODING_PCM_16BIT
-                )
-                audioTrack = AudioTrack(
-                    AudioManager.STREAM_MUSIC,
-                    sampleRate,
-                    AudioFormat.CHANNEL_OUT_MONO,
-                    AudioFormat.ENCODING_PCM_16BIT,
-                    bufferSize.coerceAtLeast(pcmData.size * 2),
-                    AudioTrack.MODE_STREAM
-                ).apply {
-                    play()
-                }
-                startPlaybackPoll()
-                Log.i(TAG, "本地播放器已初始化 (AudioTrack)")
-            } catch (e: Exception) {
-                Log.e(TAG, "初始化 AudioTrack 失败: ${e.message}")
-                return
-            }
-        }
-        try {
-            audioTrack?.write(pcmData, 0, pcmData.size)
-        } catch (e: Exception) {
-            Log.e(TAG, "写入 AudioTrack 失败: ${e.message}")
-        }
-    }
-
     private fun startPlaybackPoll() {
         stopPlaybackPoll()
         playbackPollJob = scope.launch {
@@ -504,9 +457,12 @@ class Qwen3TtsWsClient(
                 Log.e(TAG, "DUIX pushPcm 失败: ${e.message}")
             }
 
-            // 如果没有设置数字人回调，则走本地 AudioTrack 播放
+            // 如果没有设置数字人回调，则走本地 AudioTrack 播放。
+            // 注意：这里只初始化播放器，实际写入在下方统一执行一次，避免同一个 PCM chunk 双写导致重复播报。
             if (onDuixPcmChunk == null) {
-                writeToAudioTrack(pcmData)
+                if (audioTrack == null) {
+                    initAudioTrack()
+                }
             }
             
             if (onDuixPcmChunk != null) {

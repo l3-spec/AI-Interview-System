@@ -8,6 +8,8 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaPlayer
 import android.media.MediaRecorder
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.NoiseSuppressor
 import android.media.audiofx.Visualizer
 import android.os.SystemClock
 import android.util.Log
@@ -314,6 +316,8 @@ class RealtimeVoiceManager(private val context: Context) {
 
     private var socket: Socket? = null
     private var audioRecord: AudioRecord? = null
+    private var acousticEchoCanceler: AcousticEchoCanceler? = null
+    private var noiseSuppressor: NoiseSuppressor? = null
     private var mediaPlayer: MediaPlayer? = null
     private var visualizer: Visualizer? = null
     private var digitalHumanController: DigitalHumanController? = null
@@ -331,6 +335,8 @@ class RealtimeVoiceManager(private val context: Context) {
     // 防重复播放机制：记录已播放的文本（使用文本内容的hash）
     private val playedTextHashes = mutableSetOf<String>()
     private var currentPlayingTextHash: String? = null
+    private var lastVoiceResponseKey: String? = null
+    private var lastVoiceResponseAtMs: Long = 0L
 
     // 标记是否有正在等待 TTS 播放的响应，防止 isSpeaking 收集器过早将 _isDigitalHumanSpeaking 置为 false
     @Volatile
@@ -455,6 +461,8 @@ class RealtimeVoiceManager(private val context: Context) {
             _interviewCompleted.value = false
             playedTextHashes.clear()
             currentPlayingTextHash = null
+            lastVoiceResponseKey = null
+            lastVoiceResponseAtMs = 0L
 
             val options = IO.Options().apply {
                 forceNew = true
@@ -787,9 +795,9 @@ class RealtimeVoiceManager(private val context: Context) {
                     minBuffer * 2
                 }
                 
-                Log.d(TAG, "创建AudioRecord - sampleRate=$SAMPLE_RATE, bufferSize=$bufferSize")
+                Log.d(TAG, "创建AudioRecord - source=VOICE_COMMUNICATION, sampleRate=$SAMPLE_RATE, bufferSize=$bufferSize")
                 val recorder = AudioRecord(
-                    MediaRecorder.AudioSource.MIC,
+                    MediaRecorder.AudioSource.VOICE_COMMUNICATION,
                     SAMPLE_RATE,
                     CHANNEL_CONFIG,
                     AUDIO_FORMAT,
@@ -804,6 +812,7 @@ class RealtimeVoiceManager(private val context: Context) {
                 }
                 
                 Log.i(TAG, "AudioRecord初始化成功，开始录音")
+                enableMicAudioEffects(recorder.audioSessionId)
                 
                 // 重置VAD
                 if (vadEnabled) {
@@ -927,6 +936,8 @@ class RealtimeVoiceManager(private val context: Context) {
         
         playedTextHashes.clear()
         currentPlayingTextHash = null
+        lastVoiceResponseKey = null
+        lastVoiceResponseAtMs = 0L
         awaitingTtsPlayback = false
         micToAsrAllowedAfterElapsedRealtime = 0L
         _interviewCompleted.value = false
@@ -1059,6 +1070,7 @@ class RealtimeVoiceManager(private val context: Context) {
             } catch (e: Exception) {
                 Log.e(TAG, "停止recorder时出错", e)
             }
+            releaseMicAudioEffects()
             recorder.release()
             audioRecord = null
             isRecording = false
@@ -1185,9 +1197,6 @@ class RealtimeVoiceManager(private val context: Context) {
         Log.d(TAG, "handleVoiceResponse被调用 - data=$data")
         
         try {
-            // 核心修复：处理任何新语音响应前，先切刷掉所有旧音频，防止重叠
-            stopAllAudio()
-
             val audioUrl = data.optString("audioUrl", null)
             val text = data.optString("text", "")
             val ttsMode = data.optString("ttsMode", if (audioUrl.isNullOrBlank()) "client" else "server")
@@ -1219,6 +1228,24 @@ class RealtimeVoiceManager(private val context: Context) {
                 audioUrl.hashCode().toString()
             } else {
                 null
+            }
+
+            val responseKey = listOf(sessionId, ttsMode.lowercase(Locale.ROOT), textHash ?: "", audioUrl ?: "")
+                .joinToString("|")
+            val now = SystemClock.elapsedRealtime()
+            if (responseKey == lastVoiceResponseKey && now - lastVoiceResponseAtMs < 4_000L) {
+                Log.w(TAG, "跳过短时间重复 voice_response，避免重复播报 - key=$responseKey")
+                return
+            }
+            lastVoiceResponseKey = responseKey
+            lastVoiceResponseAtMs = now
+
+            // Qwen3 流式音频由 TTS WebSocket 推送。这里不能 clear Qwen3 TTS，
+            // 否则会把服务端刚提交的流式播报清掉，再触发本地兜底造成多路播放。
+            if (ttsMode.equals("qwen3_streaming", ignoreCase = true)) {
+                stopAllAudio(stopQwenTts = false, stopSocketStreamingAudio = false)
+            } else {
+                stopAllAudio()
             }
             
             if (willSpeak) {
@@ -1252,7 +1279,8 @@ class RealtimeVoiceManager(private val context: Context) {
                 text.contains(keyword, ignoreCase = true)
             }
             if (completionHint) {
-                markInterviewCompleted("voice-response")
+                // 服务器已经下发了结束播报，不再额外播放本地 farewell，避免结束页前重复播报。
+                markInterviewCompleted("voice-response", speakFarewell = false, stopCurrentAudio = false)
             }
 
             // 严格互斥：优先流式，次之本地合成，再次之音频包
@@ -1269,11 +1297,7 @@ class RealtimeVoiceManager(private val context: Context) {
                     Log.w(TAG, "⚠️ TTS WebSocket 尚未就绪，尝试建立连接并等待数据...")
                     initQwen3Services(sessionId)
                     
-                    // 只有在彻底失败（如 URL 为空）时才考虑本地降级
-                    if (!useQwen3Tts) {
-                        Log.e(TAG, "Qwen3 TTS 未启用，回退到本地合成")
-                        playClientSideTts(text, textHash)
-                    }
+                    // 流式模式下只等待 TTS WebSocket；不要立刻本地兜底，否则服务端流随后到达会双播。
                 }
                 // 流程交给 qwen3Tts 内部解决，不要再往下跑
                 return
@@ -1364,14 +1388,22 @@ class RealtimeVoiceManager(private val context: Context) {
         _errors.tryEmit(message)
     }
 
-    private fun markInterviewCompleted(reason: String? = null) {
+    private fun markInterviewCompleted(
+        reason: String? = null,
+        speakFarewell: Boolean = true,
+        stopCurrentAudio: Boolean = true
+    ) {
         if (_interviewCompleted.value) return
         Log.i(TAG, "标记面试已完成${reason?.let { "：$it" } ?: ""}")
-        qwen3Tts.resetPlaybackProgress()
+        if (stopCurrentAudio) {
+            qwen3Tts.resetPlaybackProgress()
+            stopAllAudio()
+        }
         _ttsPlaybackProgress.value = 0f
         _interviewCompleted.value = true
-        stopAllAudio()
         stopRecordingInternal()
+        if (!speakFarewell) return
+
         val farewell = "您太棒了，感谢完成这次愉快的面聊，我们会尽快完成后续的评测工作，报告会在“我的”“简历报告”里展示，请稍晚些查看该报告。"
         appendMessage(
             ConversationMessage(
@@ -1570,11 +1602,16 @@ class RealtimeVoiceManager(private val context: Context) {
     /**
      * 强制停止所有正在播报的音频，确保全局唯一性
      */
-    fun stopAllAudio() {
+    fun stopAllAudio(
+        stopQwenTts: Boolean = true,
+        stopSocketStreamingAudio: Boolean = true
+    ) {
         Log.i(TAG, "执行强制停止所有音频播报：Socket 流式 AudioTrack, MediaPlayer, Qwen3TTS")
         
         // 0. Socket 下发的 PCM 流（audio_chunk → AudioTrack + DUIX pushPcm）
-        stopStreamingAudio()
+        if (stopSocketStreamingAudio) {
+            stopStreamingAudio()
+        }
         
         // 1. 停止 MediaPlayer (火山 / 本地文件 / 服务端音频包)
         try {
@@ -1590,10 +1627,12 @@ class RealtimeVoiceManager(private val context: Context) {
         mediaProgressJob = null
         
         // 2. 停止 Qwen3 TTS 流式播报（未启用时 send 可能无 WS，可忽略）
-        try {
-            qwen3Tts.clearAndStop()
-        } catch (e: Exception) {
-            Log.w(TAG, "停止 Qwen3 TTS 异常: ${e.message}")
+        if (stopQwenTts) {
+            try {
+                qwen3Tts.clearAndStop()
+            } catch (e: Exception) {
+                Log.w(TAG, "停止 Qwen3 TTS 异常: ${e.message}")
+            }
         }
         
         // 3. 重置状态位（随后若继续播新语音，handleVoiceResponse 会再置为阻断 ASR）
@@ -1921,6 +1960,7 @@ class RealtimeVoiceManager(private val context: Context) {
             audioRecord?.stop()
         } catch (_: Exception) {
         }
+        releaseMicAudioEffects()
         try {
             audioRecord?.release()
         } catch (_: Exception) {
@@ -1928,6 +1968,57 @@ class RealtimeVoiceManager(private val context: Context) {
         audioRecord = null
         isRecording = false
         _isRecordingFlow.value = false
+    }
+
+    private fun enableMicAudioEffects(audioSessionId: Int) {
+        releaseMicAudioEffects()
+
+        if (audioSessionId == AudioRecord.ERROR || audioSessionId == AudioRecord.ERROR_BAD_VALUE) {
+            Log.w(TAG, "AEC/NS 跳过：无效 audioSessionId=$audioSessionId")
+            return
+        }
+
+        if (AcousticEchoCanceler.isAvailable()) {
+            try {
+                acousticEchoCanceler = AcousticEchoCanceler.create(audioSessionId)?.apply {
+                    enabled = true
+                }
+                Log.i(TAG, "AEC 回声消除已${if (acousticEchoCanceler?.enabled == true) "启用" else "创建但未启用"}")
+            } catch (e: Throwable) {
+                Log.w(TAG, "AEC 回声消除启用失败: ${e.message}")
+                acousticEchoCanceler = null
+            }
+        } else {
+            Log.w(TAG, "当前设备不支持 AEC 回声消除")
+        }
+
+        if (NoiseSuppressor.isAvailable()) {
+            try {
+                noiseSuppressor = NoiseSuppressor.create(audioSessionId)?.apply {
+                    enabled = true
+                }
+                Log.i(TAG, "NS 降噪已${if (noiseSuppressor?.enabled == true) "启用" else "创建但未启用"}")
+            } catch (e: Throwable) {
+                Log.w(TAG, "NS 降噪启用失败: ${e.message}")
+                noiseSuppressor = null
+            }
+        } else {
+            Log.w(TAG, "当前设备不支持 NS 降噪")
+        }
+    }
+
+    private fun releaseMicAudioEffects() {
+        try {
+            acousticEchoCanceler?.release()
+        } catch (_: Throwable) {
+        }
+        acousticEchoCanceler = null
+
+        try {
+            noiseSuppressor?.release()
+        } catch (_: Throwable) {
+        }
+        noiseSuppressor = null
     }
 
     private fun joinSession(sessionId: String, userId: String?, jobPosition: String?, background: String?) {

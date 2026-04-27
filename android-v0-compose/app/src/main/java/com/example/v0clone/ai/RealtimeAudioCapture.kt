@@ -6,6 +6,8 @@ import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.NoiseSuppressor
 import android.util.Log
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.*
@@ -34,6 +36,8 @@ class RealtimeAudioCapture(
     }
     
     private var audioRecord: AudioRecord? = null
+    private var acousticEchoCanceler: AcousticEchoCanceler? = null
+    private var noiseSuppressor: NoiseSuppressor? = null
     private var captureJob: Job? = null
     private var isCapturing = false
     
@@ -72,7 +76,7 @@ class RealtimeAudioCapture(
             val bufferSize = maxOf(minBufferSize, BUFFER_SIZE)
             
             audioRecord = AudioRecord(
-                MediaRecorder.AudioSource.MIC,
+                MediaRecorder.AudioSource.VOICE_COMMUNICATION,
                 SAMPLE_RATE,
                 CHANNEL_CONFIG,
                 AUDIO_FORMAT,
@@ -82,6 +86,8 @@ class RealtimeAudioCapture(
                     throw IllegalStateException("AudioRecord initialization failed")
                 }
             }
+
+            enableMicAudioEffects(audioRecord?.audioSessionId ?: AudioRecord.ERROR)
             
             // 开始录音
             audioRecord?.startRecording()
@@ -117,6 +123,7 @@ class RealtimeAudioCapture(
         
         // 停止并释放AudioRecord
         try {
+            releaseMicAudioEffects()
             audioRecord?.apply {
                 if (state == AudioRecord.STATE_INITIALIZED) {
                     stop()
@@ -130,6 +137,57 @@ class RealtimeAudioCapture(
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping audio capture", e)
         }
+    }
+
+    private fun enableMicAudioEffects(audioSessionId: Int) {
+        releaseMicAudioEffects()
+
+        if (audioSessionId == AudioRecord.ERROR || audioSessionId == AudioRecord.ERROR_BAD_VALUE) {
+            Log.w(TAG, "AEC/NS skipped: invalid audioSessionId=$audioSessionId")
+            return
+        }
+
+        if (AcousticEchoCanceler.isAvailable()) {
+            try {
+                acousticEchoCanceler = AcousticEchoCanceler.create(audioSessionId)?.apply {
+                    enabled = true
+                }
+                Log.i(TAG, "AEC enabled=${acousticEchoCanceler?.enabled == true}")
+            } catch (e: Throwable) {
+                Log.w(TAG, "Failed to enable AEC: ${e.message}")
+                acousticEchoCanceler = null
+            }
+        } else {
+            Log.w(TAG, "AEC is not available on this device")
+        }
+
+        if (NoiseSuppressor.isAvailable()) {
+            try {
+                noiseSuppressor = NoiseSuppressor.create(audioSessionId)?.apply {
+                    enabled = true
+                }
+                Log.i(TAG, "NS enabled=${noiseSuppressor?.enabled == true}")
+            } catch (e: Throwable) {
+                Log.w(TAG, "Failed to enable NS: ${e.message}")
+                noiseSuppressor = null
+            }
+        } else {
+            Log.w(TAG, "NS is not available on this device")
+        }
+    }
+
+    private fun releaseMicAudioEffects() {
+        try {
+            acousticEchoCanceler?.release()
+        } catch (_: Throwable) {
+        }
+        acousticEchoCanceler = null
+
+        try {
+            noiseSuppressor?.release()
+        } catch (_: Throwable) {
+        }
+        noiseSuppressor = null
     }
     
     /**
