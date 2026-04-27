@@ -205,9 +205,9 @@ let ensurePostInteractionTablesPromise: Promise<void> | null = null;
 // 检查列是否存在的辅助函数
 const checkColumnExists = async (tableName: string, columnName: string): Promise<boolean> => {
   try {
-    const result = await prisma.$queryRawUnsafe<Array<{ COLUMN_NAME: string }>>(
+    const result = await withRetry(() => prisma.$queryRawUnsafe<Array<{ COLUMN_NAME: string }>>(
       `SHOW COLUMNS FROM ${tableName} LIKE '${columnName}'`
-    );
+    ));
     return result.length > 0;
   } catch (e) {
     console.log(`[checkColumnExists] 检查列 ${tableName}.${columnName} 失败:`, (e as Error).message);
@@ -218,9 +218,10 @@ const checkColumnExists = async (tableName: string, columnName: string): Promise
 // 检查索引是否存在的辅助函数
 const checkIndexExists = async (tableName: string, indexName: string): Promise<boolean> => {
   try {
-    const result = await prisma.$queryRawUnsafe<Array<{ Key_name: string }>>(
-      `SHOW INDEX FROM ${tableName} WHERE Key_name = '${indexName}'`
-    );
+    const result = await withRetry(() => prisma.$queryRawUnsafe<Array<{ Key_name: string }>>(
+      `SHOW INDEX FROM ${tableName} WHERE Key_name = ?`,
+      indexName
+    ));
     return result.length > 0;
   } catch (e) {
     console.log(`[checkIndexExists] 检查索引 ${tableName}.${indexName} 失败:`, (e as Error).message);
@@ -266,9 +267,9 @@ const ensurePostInteractionTables = async () => {
         if (!exists) {
           try {
             console.log(`[ensurePostInteractionTables] 添加列: ${column.name}`);
-            await prisma.$executeRawUnsafe(
+            await withRetry(() => prisma.$executeRawUnsafe(
               `ALTER TABLE community_post_comments ADD COLUMN ${column.name} ${column.definition}`
-            );
+            ));
           } catch (e) {
             console.log(`[ensurePostInteractionTables] 列 ${column.name} 可能已存在，跳过:`, (e as Error).message);
           }
@@ -282,15 +283,15 @@ const ensurePostInteractionTables = async () => {
       if (!indexExists) {
         try {
           console.log('[ensurePostInteractionTables] 添加索引: community_post_comments_parent_idx');
-          await prisma.$executeRawUnsafe(
+          await withRetry(() => prisma.$executeRawUnsafe(
             `ALTER TABLE community_post_comments ADD INDEX community_post_comments_parent_idx (parent_id)`
-          );
+          ));
         } catch (e) {
           console.log('[ensurePostInteractionTables] 索引可能已存在，跳过:', (e as Error).message);
         }
       }
 
-      await prisma.$executeRawUnsafe(`
+      await withRetry(() => prisma.$executeRawUnsafe(`
         CREATE TABLE IF NOT EXISTS community_post_likes (
           id VARCHAR(36) PRIMARY KEY,
           post_type VARCHAR(16) NOT NULL,
@@ -300,9 +301,9 @@ const ensurePostInteractionTables = async () => {
           UNIQUE KEY community_post_likes_unique (post_type, post_id, user_id),
           INDEX community_post_likes_user_idx (user_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-      `);
+      `));
 
-      await prisma.$executeRawUnsafe(`
+      await withRetry(() => prisma.$executeRawUnsafe(`
         CREATE TABLE IF NOT EXISTS community_post_favorites (
           id VARCHAR(36) PRIMARY KEY,
           post_type VARCHAR(16) NOT NULL,
@@ -312,10 +313,10 @@ const ensurePostInteractionTables = async () => {
           UNIQUE KEY community_post_favorites_unique (post_type, post_id, user_id),
           INDEX community_post_favorites_user_idx (user_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-      `);
+      `));
 
       // 评论点赞表
-      await prisma.$executeRawUnsafe(`
+      await withRetry(() => prisma.$executeRawUnsafe(`
         CREATE TABLE IF NOT EXISTS community_comment_likes (
           id VARCHAR(36) PRIMARY KEY,
           comment_id VARCHAR(36) NOT NULL,
@@ -325,10 +326,10 @@ const ensurePostInteractionTables = async () => {
           INDEX community_comment_likes_comment_idx (comment_id),
           INDEX community_comment_likes_user_idx (user_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-      `);
+      `));
 
       // 评论表情表
-      await prisma.$executeRawUnsafe(`
+      await withRetry(() => prisma.$executeRawUnsafe(`
         CREATE TABLE IF NOT EXISTS community_comment_reactions (
           id VARCHAR(36) PRIMARY KEY,
           comment_id VARCHAR(36) NOT NULL,
@@ -339,7 +340,7 @@ const ensurePostInteractionTables = async () => {
           INDEX community_comment_reactions_comment_idx (comment_id),
           INDEX community_comment_reactions_user_idx (user_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-      `);
+      `));
 
       console.log('[ensurePostInteractionTables] 互动表确保完成');
     })().catch((error) => {
@@ -354,10 +355,10 @@ const ensurePostInteractionTables = async () => {
 
 const ensurePostExists = async (kind: PostKind, id: string) => {
   if (kind === 'USER') {
-    const post = await prisma.userPost.findUnique({
+    const post = await withRetry(() => prisma.userPost.findUnique({
       where: { id },
       select: { id: true, status: true },
-    });
+    }));
 
     if (!post || post.status !== 'PUBLISHED') {
       return null;
@@ -366,10 +367,10 @@ const ensurePostExists = async (kind: PostKind, id: string) => {
     return post;
   }
 
-  const post = await prisma.expertPost.findUnique({
+  const post = await withRetry(() => prisma.expertPost.findUnique({
     where: { id },
     select: { id: true, publishedAt: true },
-  });
+  }));
 
   if (!post || !post.publishedAt || post.publishedAt > new Date()) {
     return null;
@@ -493,7 +494,7 @@ const getPostCommentsPayload = async (kind: PostKind, postId: string, userId?: s
     if (hasReplyToUserId) joinClause += ` LEFT JOIN users reply_u ON reply_u.id = c.reply_to_user_id`;
 
     // 获取一级评论
-    const comments = await prisma.$queryRawUnsafe<PostCommentRecord[]>(
+    const comments = await withRetry(() => prisma.$queryRawUnsafe<PostCommentRecord[]>(
       `
         SELECT ${selectFields}
         FROM community_post_comments c
@@ -503,7 +504,7 @@ const getPostCommentsPayload = async (kind: PostKind, postId: string, userId?: s
       `,
       kind,
       postId
-    );
+    ));
 
     console.log(`[getPostCommentsPayload] 获取到 ${comments.length} 条评论`);
 
@@ -517,7 +518,7 @@ const getPostCommentsPayload = async (kind: PostKind, postId: string, userId?: s
     if (userId && commentIds.length > 0) {
       try {
         // 获取当前用户点赞的评论
-        const likedComments = await prisma.$queryRawUnsafe<Array<{ commentId: string }>>(
+        const likedComments = await withRetry(() => prisma.$queryRawUnsafe<Array<{ commentId: string }>>(
           `
             SELECT comment_id AS commentId
             FROM community_comment_likes
@@ -525,7 +526,7 @@ const getPostCommentsPayload = async (kind: PostKind, postId: string, userId?: s
           `,
           ...commentIds,
           userId
-        );
+        ));
         likedComments.forEach(r => likedMap.set(r.commentId, true));
       } catch (e) {
         console.log('[getPostCommentsPayload] 获取点赞状态失败:', (e as Error).message);
@@ -533,7 +534,7 @@ const getPostCommentsPayload = async (kind: PostKind, postId: string, userId?: s
 
       try {
         // 获取评论表情统计
-        const commentReactions = await prisma.$queryRawUnsafe<Array<{ commentId: string; emoji: string; count: bigint }>>(
+        const commentReactions = await withRetry(() => prisma.$queryRawUnsafe<Array<{ commentId: string; emoji: string; count: bigint }>>(
           `
             SELECT comment_id AS commentId, emoji, COUNT(*) AS count
             FROM community_comment_reactions
@@ -541,7 +542,7 @@ const getPostCommentsPayload = async (kind: PostKind, postId: string, userId?: s
             GROUP BY comment_id, emoji
           `,
           ...commentIds
-        );
+        ));
         commentReactions.forEach(r => {
           const current = reactionsMap.get(r.commentId) || {};
           current[r.emoji] = Number(r.count);
@@ -588,7 +589,7 @@ const getPostCommentsPayload = async (kind: PostKind, postId: string, userId?: s
             let replyJoinClause = `LEFT JOIN users u ON u.id = c.user_id`;
             if (hasReplyToUserId) replyJoinClause += ` LEFT JOIN users reply_u ON reply_u.id = c.reply_to_user_id`;
 
-            replies = await prisma.$queryRawUnsafe<PostCommentRecord[]>(
+            replies = await withRetry(() => prisma.$queryRawUnsafe<PostCommentRecord[]>(
               `
                 SELECT ${replySelectFields}
                 FROM community_post_comments c
@@ -598,7 +599,7 @@ const getPostCommentsPayload = async (kind: PostKind, postId: string, userId?: s
                 LIMIT 20
               `,
               comment.id
-            );
+            ));
           } catch (e) {
             console.log('[getPostCommentsPayload] 获取回复失败:', (e as Error).message);
             replies = [];
@@ -612,7 +613,7 @@ const getPostCommentsPayload = async (kind: PostKind, postId: string, userId?: s
 
         if (userId && replyIds.length > 0) {
           try {
-            const likedReplies = await prisma.$queryRawUnsafe<Array<{ commentId: string }>>(
+            const likedReplies = await withRetry(() => prisma.$queryRawUnsafe<Array<{ commentId: string }>>(
               `
                 SELECT comment_id AS commentId
                 FROM community_comment_likes
@@ -620,14 +621,14 @@ const getPostCommentsPayload = async (kind: PostKind, postId: string, userId?: s
               `,
               ...replyIds,
               userId
-            );
+            ));
             likedReplies.forEach(r => replyLikedMap.set(r.commentId, true));
           } catch (e) {
             console.log('[getPostCommentsPayload] 获取回复点赞状态失败:', (e as Error).message);
           }
 
           try {
-            const replyReactions = await prisma.$queryRawUnsafe<Array<{ commentId: string; emoji: string; count: bigint }>>(
+            const replyReactions = await withRetry(() => prisma.$queryRawUnsafe<Array<{ commentId: string; emoji: string; count: bigint }>>(
               `
                 SELECT comment_id AS commentId, emoji, COUNT(*) AS count
                 FROM community_comment_reactions
@@ -870,14 +871,14 @@ export const getUserPostDetail = async (req: Request, res: Response) => {
     let latestViewCount = post.viewCount;
 
     if (post.status === 'PUBLISHED') {
-      await prisma.userPost.update({
+      await withRetry(() => prisma.userPost.update({
         where: { id },
         data: {
           viewCount: {
             increment: 1,
           },
         },
-      });
+      }));
       latestViewCount += 1;
     }
 
@@ -1275,14 +1276,14 @@ const createPostComment = (kind: PostKind) => async (req: Request, res: Response
     // 如果是回复，验证父评论是否存在
     let actualParentId = parentId;
     if (parentId) {
-      const parentComments = await prisma.$queryRawUnsafe<Array<{ id: string; parentId: string | null }>>(
+      const parentComments = await withRetry(() => prisma.$queryRawUnsafe<Array<{ id: string; parent_id: string | null }>>(
         `
-          SELECT id, parent_id AS parentId
+          SELECT id, parent_id
           FROM community_post_comments
           WHERE id = ?
         `,
         parentId
-      );
+      ));
 
       if (parentComments.length === 0) {
         return res.status(404).json({
@@ -1292,13 +1293,13 @@ const createPostComment = (kind: PostKind) => async (req: Request, res: Response
       }
 
       // 如果父评论本身就是回复，则使用父评论的 parent_id（只支持两级评论）
-      if (parentComments[0].parentId) {
-        actualParentId = parentComments[0].parentId;
+      if (parentComments[0].parent_id) {
+        actualParentId = parentComments[0].parent_id;
       }
     }
 
     const commentId = randomUUID();
-    await prisma.$executeRawUnsafe(
+    await withRetry(() => prisma.$executeRawUnsafe(
       `
         INSERT INTO community_post_comments (id, post_type, post_id, user_id, parent_id, reply_to_user_id, content)
         VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -1310,42 +1311,42 @@ const createPostComment = (kind: PostKind) => async (req: Request, res: Response
       actualParentId,
       replyToUserId,
       content
-    );
+    ));
 
     // 更新父评论的回复数
     if (actualParentId) {
-      await prisma.$executeRawUnsafe(
+      await withRetry(() => prisma.$executeRawUnsafe(
         `
           UPDATE community_post_comments
           SET reply_count = reply_count + 1
           WHERE id = ?
         `,
         actualParentId
-      );
+      ));
     }
 
     // 更新帖子的评论数
     if (kind === 'USER') {
-      await prisma.userPost.update({
+      await withRetry(() => prisma.userPost.update({
         where: { id },
         data: {
           commentCount: {
             increment: 1,
           },
         },
-      });
+      }));
     } else {
-      await prisma.expertPost.update({
+      await withRetry(() => prisma.expertPost.update({
         where: { id },
         data: {
           commentCount: {
             increment: 1,
           },
         },
-      });
+      }));
     }
 
-    const comments = await prisma.$queryRawUnsafe<PostCommentRecord[]>(
+    const comments = await withRetry(() => prisma.$queryRawUnsafe<PostCommentRecord[]>(
       `
         SELECT
           c.id,
@@ -1366,7 +1367,7 @@ const createPostComment = (kind: PostKind) => async (req: Request, res: Response
         LIMIT 1
       `,
       commentId
-    );
+    ));
 
     const engagement = await getPostEngagementPayload(kind, id, req.user.id);
 
@@ -1481,7 +1482,7 @@ const unlikePost = (kind: PostKind) => async (req: Request, res: Response) => {
     }
 
     const { id } = req.params;
-    const post = await ensurePostExists(kind, id);
+    const post = await withRetry(() => ensurePostExists(kind, id));
 
     if (!post) {
       return res.status(404).json({
@@ -1492,7 +1493,7 @@ const unlikePost = (kind: PostKind) => async (req: Request, res: Response) => {
 
     await ensurePostInteractionTables();
 
-    const deleted = await prisma.$executeRawUnsafe(
+    const deleted = await withRetry(() => prisma.$executeRawUnsafe(
       `
         DELETE FROM community_post_likes
         WHERE post_type = ? AND post_id = ? AND user_id = ?
@@ -1500,27 +1501,27 @@ const unlikePost = (kind: PostKind) => async (req: Request, res: Response) => {
       kind,
       id,
       req.user.id
-    );
+    ));
 
     if (Number(deleted) > 0) {
       if (kind === 'USER') {
-        await prisma.userPost.update({
+        await withRetry(() => prisma.userPost.update({
           where: { id },
           data: {
             likeCount: {
               decrement: 1,
             },
           },
-        });
+        }));
       } else {
-        await prisma.expertPost.update({
+        await withRetry(() => prisma.expertPost.update({
           where: { id },
           data: {
             likeCount: {
               decrement: 1,
             },
           },
-        });
+        }));
       }
     }
 
@@ -1562,7 +1563,7 @@ const favoritePost = (kind: PostKind) => async (req: Request, res: Response) => 
 
     await ensurePostInteractionTables();
 
-    const existing = await prisma.$queryRawUnsafe<Array<{ matched: number }>>(
+    const existing = await withRetry(() => prisma.$queryRawUnsafe<Array<{ matched: number }>>(
       `
         SELECT 1 AS matched
         FROM community_post_favorites
@@ -1572,10 +1573,10 @@ const favoritePost = (kind: PostKind) => async (req: Request, res: Response) => 
       kind,
       id,
       req.user.id
-    );
+    ));
 
     if (existing.length === 0) {
-      await prisma.$executeRawUnsafe(
+      await withRetry(() => prisma.$executeRawUnsafe(
         `
           INSERT INTO community_post_favorites (id, post_type, post_id, user_id)
           VALUES (?, ?, ?, ?)
@@ -1584,7 +1585,7 @@ const favoritePost = (kind: PostKind) => async (req: Request, res: Response) => 
         kind,
         id,
         req.user.id
-      );
+      ));
     }
 
     const data = await getPostEngagementPayload(kind, id, req.user.id);
@@ -1625,7 +1626,7 @@ const unfavoritePost = (kind: PostKind) => async (req: Request, res: Response) =
 
     await ensurePostInteractionTables();
 
-    await prisma.$executeRawUnsafe(
+    await withRetry(() => prisma.$executeRawUnsafe(
       `
         DELETE FROM community_post_favorites
         WHERE post_type = ? AND post_id = ? AND user_id = ?
@@ -1633,7 +1634,7 @@ const unfavoritePost = (kind: PostKind) => async (req: Request, res: Response) =
       kind,
       id,
       req.user.id
-    );
+    ));
 
     const data = await getPostEngagementPayload(kind, id, req.user.id);
 
@@ -1680,7 +1681,7 @@ export const getPromotedJobs = async (req: Request, res: Response) => {
 
     const now = new Date();
 
-    const [promotedJobs, total] = await Promise.all([
+    const [promotedJobs, total] = await withRetry(() => Promise.all([
       prisma.promotedJob.findMany({
         where: {
           isActive: true,
@@ -1710,11 +1711,11 @@ export const getPromotedJobs = async (req: Request, res: Response) => {
           },
         },
       }),
-    ]);
+    ]));
 
     // 获取关联的 Job 信息
     const jobIds = promotedJobs.map((pj) => pj.jobId);
-    const jobs = await prisma.job.findMany({
+    const jobs = await withRetry(() => prisma.job.findMany({
       where: {
         id: {
           in: jobIds,
@@ -1732,7 +1733,7 @@ export const getPromotedJobs = async (req: Request, res: Response) => {
           },
         },
       },
-    });
+    }));
 
     // 合并数据
     const result = promotedJobs.map((pj) => {
@@ -1777,14 +1778,14 @@ export const recordPromotedJobClick = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    await prisma.promotedJob.update({
+    await withRetry(() => prisma.promotedJob.update({
       where: { id },
       data: {
         clickCount: {
           increment: 1,
         },
       },
-    });
+    }));
 
     res.json({
       success: true,
@@ -1821,10 +1822,10 @@ export const likeComment = async (req: Request, res: Response) => {
     console.log(`[likeComment] 开始处理评论点赞: commentId=${id}, userId=${req.user.id}`);
 
     // 验证评论是否存在
-    const comments = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+    const comments = await withRetry(() => prisma.$queryRawUnsafe<Array<{ id: string }>>(
       `SELECT id FROM community_post_comments WHERE id = ?`,
       id
-    );
+    ));
 
     if (comments.length === 0) {
       console.log(`[likeComment] 评论不存在: ${id}`);
@@ -1835,7 +1836,7 @@ export const likeComment = async (req: Request, res: Response) => {
     }
 
     // 检查是否已经点赞
-    const existing = await prisma.$queryRawUnsafe<Array<{ matched: number }>>(
+    const existing = await withRetry(() => prisma.$queryRawUnsafe<Array<{ matched: number }>>(
       `
         SELECT 1 AS matched
         FROM community_comment_likes
@@ -1844,11 +1845,11 @@ export const likeComment = async (req: Request, res: Response) => {
       `,
       id,
       req.user.id
-    );
+    ));
 
     if (existing.length === 0) {
       console.log(`[likeComment] 添加新点赞: commentId=${id}, userId=${req.user.id}`);
-      await prisma.$executeRawUnsafe(
+      await withRetry(() => prisma.$executeRawUnsafe(
         `
           INSERT INTO community_comment_likes (id, comment_id, user_id)
           VALUES (?, ?, ?)
@@ -1856,23 +1857,23 @@ export const likeComment = async (req: Request, res: Response) => {
         randomUUID(),
         id,
         req.user.id
-      );
+      ));
 
       // 更新评论点赞数
-      await prisma.$executeRawUnsafe(
+      await withRetry(() => prisma.$executeRawUnsafe(
         `
           UPDATE community_post_comments
           SET like_count = like_count + 1
           WHERE id = ?
         `,
         id
-      );
+      ));
     } else {
       console.log(`[likeComment] 已点赞，跳过: commentId=${id}, userId=${req.user.id}`);
     }
 
     // 获取更新后的评论信息，包含点赞状态和表情
-    const updatedComments = await prisma.$queryRawUnsafe<PostCommentRecord[]>(
+    const updatedComments = await withRetry(() => prisma.$queryRawUnsafe<PostCommentRecord[]>(
       `
         SELECT
           c.id,
@@ -1893,10 +1894,10 @@ export const likeComment = async (req: Request, res: Response) => {
         LIMIT 1
       `,
       id
-    );
+    ));
 
     // 获取该评论的所有表情统计
-    const reactions = await prisma.$queryRawUnsafe<Array<{ emoji: string; count: bigint }>>(
+    const reactions = await withRetry(() => prisma.$queryRawUnsafe<Array<{ emoji: string; count: bigint }>>(
       `
         SELECT emoji, COUNT(*) AS count
         FROM community_comment_reactions
@@ -1904,7 +1905,7 @@ export const likeComment = async (req: Request, res: Response) => {
         GROUP BY emoji
       `,
       id
-    );
+    ));
 
     const reactionsMap: any = {};
     reactions.forEach(r => {
@@ -1950,10 +1951,10 @@ export const unlikeComment = async (req: Request, res: Response) => {
     console.log(`[unlikeComment] 开始处理取消点赞: commentId=${id}, userId=${req.user.id}`);
 
     // 验证评论是否存在
-    const comments = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+    const comments = await withRetry(() => prisma.$queryRawUnsafe<Array<{ id: string }>>(
       `SELECT id FROM community_post_comments WHERE id = ?`,
       id
-    );
+    ));
 
     if (comments.length === 0) {
       console.log(`[unlikeComment] 评论不存在: ${id}`);
@@ -1963,31 +1964,31 @@ export const unlikeComment = async (req: Request, res: Response) => {
       });
     }
 
-    const deleted = await prisma.$executeRawUnsafe(
+    const deleted = await withRetry(() => prisma.$executeRawUnsafe(
       `
         DELETE FROM community_comment_likes
         WHERE comment_id = ? AND user_id = ?
       `,
       id,
       req.user.id
-    );
+    ));
 
     console.log(`[unlikeComment] 删除点赞记录数: ${Number(deleted)}`);
 
     if (Number(deleted) > 0) {
       // 更新评论点赞数
-      await prisma.$executeRawUnsafe(
+      await withRetry(() => prisma.$executeRawUnsafe(
         `
           UPDATE community_post_comments
           SET like_count = GREATEST(like_count - 1, 0)
           WHERE id = ?
         `,
         id
-      );
+      ));
     }
 
     // 获取更新后的评论信息
-    const updatedComments = await prisma.$queryRawUnsafe<PostCommentRecord[]>(
+    const updatedComments = await withRetry(() => prisma.$queryRawUnsafe<PostCommentRecord[]>(
       `
         SELECT
           c.id,
@@ -2008,10 +2009,10 @@ export const unlikeComment = async (req: Request, res: Response) => {
         LIMIT 1
       `,
       id
-    );
+    ));
 
     // 获取该评论的所有表情统计
-    const reactions = await prisma.$queryRawUnsafe<Array<{ emoji: string; count: bigint }>>(
+    const reactions = await withRetry(() => prisma.$queryRawUnsafe<Array<{ emoji: string; count: bigint }>>(
       `
         SELECT emoji, COUNT(*) AS count
         FROM community_comment_reactions
@@ -2019,7 +2020,7 @@ export const unlikeComment = async (req: Request, res: Response) => {
         GROUP BY emoji
       `,
       id
-    );
+    ));
 
     const reactionsMap: any = {};
     reactions.forEach(r => {
@@ -2082,10 +2083,10 @@ export const addCommentReaction = async (req: Request, res: Response) => {
     await ensurePostInteractionTables();
 
     // 验证评论是否存在
-    const comments = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+    const comments = await withRetry(() => prisma.$queryRawUnsafe<Array<{ id: string }>>(
       `SELECT id FROM community_post_comments WHERE id = ?`,
       id
-    );
+    ));
 
     if (comments.length === 0) {
       return res.status(404).json({
@@ -2095,7 +2096,7 @@ export const addCommentReaction = async (req: Request, res: Response) => {
     }
 
     // 检查是否已经添加过相同表情
-    const existing = await prisma.$queryRawUnsafe<Array<{ matched: number }>>(
+    const existing = await withRetry(() => prisma.$queryRawUnsafe<Array<{ matched: number }>>(
       `
         SELECT 1 AS matched
         FROM community_comment_reactions
@@ -2105,10 +2106,10 @@ export const addCommentReaction = async (req: Request, res: Response) => {
       id,
       req.user.id,
       emoji
-    );
+    ));
 
     if (existing.length === 0) {
-      await prisma.$executeRawUnsafe(
+      await withRetry(() => prisma.$executeRawUnsafe(
         `
           INSERT INTO community_comment_reactions (id, comment_id, user_id, emoji)
           VALUES (?, ?, ?, ?)
@@ -2117,11 +2118,11 @@ export const addCommentReaction = async (req: Request, res: Response) => {
         id,
         req.user.id,
         emoji
-      );
+      ));
     }
 
     // 获取评论的所有表情统计
-    const reactions = await prisma.$queryRawUnsafe<Array<{ emoji: string; count: bigint }>>(
+    const reactions = await withRetry(() => prisma.$queryRawUnsafe<Array<{ emoji: string; count: bigint }>>(
       `
         SELECT emoji, COUNT(*) AS count
         FROM community_comment_reactions
@@ -2129,7 +2130,7 @@ export const addCommentReaction = async (req: Request, res: Response) => {
         GROUP BY emoji
       `,
       id
-    );
+    ));
 
     const reactionsMap: any = {};
     reactions.forEach(r => {
@@ -2137,7 +2138,7 @@ export const addCommentReaction = async (req: Request, res: Response) => {
     });
 
     // 获取更新后的评论信息
-    const updatedComments = await prisma.$queryRawUnsafe<PostCommentRecord[]>(
+    const updatedComments = await withRetry(() => prisma.$queryRawUnsafe<PostCommentRecord[]>(
       `
         SELECT
           c.id,
@@ -2158,7 +2159,7 @@ export const addCommentReaction = async (req: Request, res: Response) => {
         LIMIT 1
       `,
       id
-    );
+    ));
 
     // 检查当前用户是否添加了该表情
     const hasReaction = existing.length > 0;
@@ -2210,10 +2211,10 @@ export const removeCommentReaction = async (req: Request, res: Response) => {
     await ensurePostInteractionTables();
 
     // 验证评论是否存在
-    const comments = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+    const comments = await withRetry(() => prisma.$queryRawUnsafe<Array<{ id: string }>>(
       `SELECT id FROM community_post_comments WHERE id = ?`,
       id
-    );
+    ));
 
     if (comments.length === 0) {
       console.log(`[removeCommentReaction] 评论不存在: ${id}`);
@@ -2223,7 +2224,7 @@ export const removeCommentReaction = async (req: Request, res: Response) => {
       });
     }
 
-    const deleted = await prisma.$executeRawUnsafe(
+    const deleted = await withRetry(() => prisma.$executeRawUnsafe(
       `
         DELETE FROM community_comment_reactions
         WHERE comment_id = ? AND user_id = ? AND emoji = ?
@@ -2231,12 +2232,12 @@ export const removeCommentReaction = async (req: Request, res: Response) => {
       id,
       req.user.id,
       emoji
-    );
+    ));
 
     console.log(`[removeCommentReaction] 删除表情记录数: ${Number(deleted)}`);
 
     // 获取评论的所有表情统计
-    const reactions = await prisma.$queryRawUnsafe<Array<{ emoji: string; count: bigint }>>(
+    const reactions = await withRetry(() => prisma.$queryRawUnsafe<Array<{ emoji: string; count: bigint }>>(
       `
         SELECT emoji, COUNT(*) AS count
         FROM community_comment_reactions
@@ -2244,7 +2245,7 @@ export const removeCommentReaction = async (req: Request, res: Response) => {
         GROUP BY emoji
       `,
       id
-    );
+    ));
 
     const reactionsMap: any = {};
     reactions.forEach(r => {
@@ -2252,7 +2253,7 @@ export const removeCommentReaction = async (req: Request, res: Response) => {
     });
 
     // 获取更新后的评论信息
-    const updatedComments = await prisma.$queryRawUnsafe<PostCommentRecord[]>(
+    const updatedComments = await withRetry(() => prisma.$queryRawUnsafe<PostCommentRecord[]>(
       `
         SELECT
           c.id,
@@ -2273,10 +2274,10 @@ export const removeCommentReaction = async (req: Request, res: Response) => {
         LIMIT 1
       `,
       id
-    );
+    ));
 
     // 获取当前用户对该评论的点赞状态
-    const liked = await prisma.$queryRawUnsafe<Array<{ matched: number }>>(
+    const liked = await withRetry(() => prisma.$queryRawUnsafe<Array<{ matched: number }>>(
       `
         SELECT 1 AS matched
         FROM community_comment_likes
@@ -2285,7 +2286,7 @@ export const removeCommentReaction = async (req: Request, res: Response) => {
       `,
       id,
       req.user.id
-    );
+    ));
 
     console.log(`[removeCommentReaction] 返回成功响应: commentId=${id}`);
     res.json({
@@ -2324,10 +2325,10 @@ export const getCommentReplies = async (req: Request, res: Response) => {
     await ensurePostInteractionTables();
 
     // 验证父评论是否存在
-    const parentComments = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+    const parentComments = await withRetry(() => prisma.$queryRawUnsafe<Array<{ id: string }>>(
       `SELECT id FROM community_post_comments WHERE id = ?`,
       id
-    );
+    ));
 
     if (parentComments.length === 0) {
       return res.status(404).json({
@@ -2337,7 +2338,7 @@ export const getCommentReplies = async (req: Request, res: Response) => {
     }
 
     // 获取回复列表
-    const replies = await prisma.$queryRawUnsafe<PostCommentRecord[]>(
+    const replies = await withRetry(() => prisma.$queryRawUnsafe<PostCommentRecord[]>(
       `
         SELECT
           c.id,
@@ -2361,17 +2362,17 @@ export const getCommentReplies = async (req: Request, res: Response) => {
       id,
       take,
       skip
-    );
+    ));
 
     // 获取总数
-    const countRows = await prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
+    const countRows = await withRetry(() => prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
       `
         SELECT COUNT(*) AS count
         FROM community_post_comments
         WHERE parent_id = ?
       `,
       id
-    );
+    ));
 
     const total = Number(countRows[0]?.count ?? 0);
 
@@ -2381,7 +2382,7 @@ export const getCommentReplies = async (req: Request, res: Response) => {
     let reactionsMap = new Map<string, any>();
 
     if (req.user?.id && replyIds.length > 0) {
-      const likedReplies = await prisma.$queryRawUnsafe<Array<{ commentId: string }>>(
+      const likedReplies = await withRetry(() => prisma.$queryRawUnsafe<Array<{ commentId: string }>>(
         `
           SELECT comment_id AS commentId
           FROM community_comment_likes
@@ -2389,10 +2390,10 @@ export const getCommentReplies = async (req: Request, res: Response) => {
         `,
         ...replyIds,
         req.user.id
-      );
+      ));
       likedReplies.forEach(r => likedMap.set(r.commentId, true));
 
-      const replyReactions = await prisma.$queryRawUnsafe<Array<{ commentId: string; emoji: string; count: bigint }>>(
+      const replyReactions = await withRetry(() => prisma.$queryRawUnsafe<Array<{ commentId: string; emoji: string; count: bigint }>>(
         `
           SELECT comment_id AS commentId, emoji, COUNT(*) AS count
           FROM community_comment_reactions
@@ -2400,7 +2401,7 @@ export const getCommentReplies = async (req: Request, res: Response) => {
           GROUP BY comment_id, emoji
         `,
         ...replyIds
-      );
+      ));
       replyReactions.forEach(r => {
         const current = reactionsMap.get(r.commentId) || {};
         current[r.emoji] = Number(r.count);

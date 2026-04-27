@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
+import { withRetry } from '../utils/prismaUtils';
 
 // 获取职岗列表
 export const getJobs = async (req: Request, res: Response) => {
@@ -47,7 +48,7 @@ export const getJobs = async (req: Request, res: Response) => {
     const skip = (Number(page) - 1) * Number(pageSize);
     const take = Number(pageSize);
 
-    const [jobs, total] = await Promise.all([
+    const [jobs, total] = await withRetry(() => Promise.all([
       prisma.job.findMany({
         where,
         include: {
@@ -80,7 +81,7 @@ export const getJobs = async (req: Request, res: Response) => {
         take
       }),
       prisma.job.count({ where })
-    ]);
+    ]));
 
     res.json({
       success: true,
@@ -132,7 +133,7 @@ export const createJob = async (req: Request, res: Response) => {
       salaryValue = salary;
     }
 
-    const job = await prisma.job.create({
+    const job = await withRetry(() => prisma.job.create({
       data: {
         title,
         description,
@@ -173,7 +174,7 @@ export const createJob = async (req: Request, res: Response) => {
           }
         }
       }
-    });
+    }));
 
     res.status(201).json({
       success: true,
@@ -195,7 +196,7 @@ export const getJobById = async (req: Request, res: Response) => {
     const { id } = req.params;
     const companyId = req.user?.id;
 
-    const job = await prisma.job.findFirst({
+    const job = await withRetry(() => prisma.job.findFirst({
       where: { id, companyId },
       include: {
         company: {
@@ -222,7 +223,7 @@ export const getJobById = async (req: Request, res: Response) => {
           }
         }
       }
-    });
+    }));
 
     if (!job) {
       return res.status(404).json({ success: false, message: '职岗不存在' });
@@ -296,10 +297,10 @@ export const updateJob = async (req: Request, res: Response) => {
       }
     }
 
-    const job = await prisma.job.updateMany({
+    const job = await withRetry(() => prisma.job.updateMany({
       where: { id, companyId },
       data: filteredData
-    });
+    }));
 
     if (job.count === 0) {
       return res.status(404).json({ success: false, message: '职岗不存在或无权限修改' });
@@ -321,9 +322,9 @@ export const deleteJob = async (req: Request, res: Response) => {
     const { id } = req.params;
     const companyId = req.user?.id;
 
-    const result = await prisma.job.deleteMany({
+    const result = await withRetry(() => prisma.job.deleteMany({
       where: { id, companyId }
-    });
+    }));
 
     if (result.count === 0) {
       return res.status(404).json({ success: false, message: '职岗不存在或无权限删除' });
@@ -422,7 +423,7 @@ export const getJobCandidates = async (req: Request, res: Response) => {
     const take = Number(pageSize);
 
     // JobApplication 关联的是 User（无 candidate 关系名）；User 表无 resume 字段
-    const [applicationRows, total] = await Promise.all([
+    const [applicationRows, total] = await withRetry(() => Promise.all([
       prisma.jobApplication.findMany({
         where: { jobId },
         include: {
@@ -442,7 +443,7 @@ export const getJobCandidates = async (req: Request, res: Response) => {
         take
       }),
       prisma.jobApplication.count({ where: { jobId } })
-    ]);
+    ]));
 
     const applications = applicationRows.map((row) => {
       const { user, ...rest } = row;
@@ -490,7 +491,7 @@ export const getJobInterviews = async (req: Request, res: Response) => {
     const skip = (Number(page) - 1) * Number(pageSize);
     const take = Number(pageSize);
 
-    const [interviewRows, total] = await Promise.all([
+    const [interviewRows, total] = await withRetry(() => Promise.all([
       prisma.interview.findMany({
         where: { jobId, companyId },
         include: {
@@ -515,7 +516,7 @@ export const getJobInterviews = async (req: Request, res: Response) => {
         take
       }),
       prisma.interview.count({ where: { jobId, companyId } })
-    ]);
+    ]));
 
     const interviews = interviewRows.map(({ user, ...rest }) => ({
       ...rest,
@@ -555,7 +556,7 @@ export const getJobStats = async (req: Request, res: Response) => {
       totalInterviews,
       completedInterviews,
       passedInterviews
-    ] = await Promise.all([
+    ] = await withRetry(() => Promise.all([
       prisma.jobApplication.count({ where: { jobId } }),
       prisma.interview.count({ where: { jobId } }),
       prisma.interview.count({ where: { jobId, status: 'COMPLETED' } }),
@@ -567,7 +568,7 @@ export const getJobStats = async (req: Request, res: Response) => {
           }
         }
       })
-    ]);
+    ]));
 
     res.json({
       success: true,
