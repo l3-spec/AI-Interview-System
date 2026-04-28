@@ -22,7 +22,7 @@ app.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
     service: 'tts-service',
-    model: process.env.QW_TTS_MODEL || 'qwen3-tts-flash-realtime',
+    model: process.env.QWEN_TTS_MODEL || 'qwen3-tts-flash-realtime',
     voice: process.env.TTS_VOICE || 'cherry',
     mode: process.env.TTS_MODE || 'server_commit',
     activeSessions: manager.getActiveSessionCount(),
@@ -236,8 +236,8 @@ server.listen(PORT, () => {
   logger.info(`🔊 TTS 微服务已启动 - 端口: ${PORT}`);
   logger.info(`   WebSocket 路径: ws://localhost:${PORT}/ws/tts`);
   logger.info(`   健康检查: http://localhost:${PORT}/health`);
-  logger.info(`   TTS 模型: ${process.env.QWEN_TTS_MODEL || 'qwen3-tts-flash-realtime'}`);
-  logger.info(`   默认音色: ${process.env.TTS_VOICE || 'cherry'}`);
+  logger.info(`[TTS-Startup] TTS 模型列表: ${process.env.QWEN_TTS_MODEL || 'qwen3-tts-flash-realtime'}`);
+  logger.info(`[TTS-Startup] 默认音色: ${process.env.TTS_VOICE || 'Cherry'}`);
   logger.info(`   合成模式: ${process.env.TTS_MODE || 'server_commit'} (双轨混合流式)`);
   logger.info(`   DashScope 地址: ${process.env.DASHSCOPE_WS_URL || 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime'}`);
 });

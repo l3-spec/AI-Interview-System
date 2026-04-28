@@ -98,7 +98,7 @@ export class TTSSessionManager {
     };
 
     logger.info(
-      `[TTS-Manager] createSession: sessionId=${sessionId} voice(客户端)=${options.voice ?? '未传'} TTS_VOICE(env)=${process.env.TTS_VOICE ?? '未设'} → 实际 voice="${ttsConfig.voice}" language_type="${ttsConfig.language}"`,
+      `[TTS-Manager] createSession: sessionId=${sessionId} voice(客户端)=${options.voice ?? '未传'} TTS_VOICE(env)=${process.env.TTS_VOICE ?? '未设'} model(env)=${process.env.QWEN_TTS_MODEL ?? 'default'} → 实际 voice="${ttsConfig.voice}" language_type="${ttsConfig.language}"`,
     );
 
     const ttsClient = new Qwen3TTSClient(ttsConfig, {

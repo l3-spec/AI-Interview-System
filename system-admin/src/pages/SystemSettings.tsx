@@ -9,6 +9,7 @@ import {
   Spin,
   Typography,
   message,
+  Select,
 } from 'antd';
 import { SaveOutlined } from '@ant-design/icons';
 import { platformAiSettingsApi, PlatformAiSettingsDTO } from '../services/api';
@@ -19,13 +20,29 @@ type FormValues = {
   dashscopeApiKey?: string;
   deepseekApiKey?: string;
   dashscopeWsUrl?: string;
-  qwenAsrModel?: string;
-  qwenTtsModel?: string;
+  qwenAsrModel?: string[];
+  qwenTtsModel?: string[];
   ttsVoice?: string;
   ttsLanguage?: string;
   deepseekModel?: string;
   deepseekApiUrl?: string;
 };
+const DEFAULT_ASR_MODELS = [
+  'qwen3-asr-flash-realtime',
+  'qwen3-asr-flash-realtime-2025-10-27',
+  'qwen3-asr-flash-realtime-2026-02-10',
+  'qwen3-asr-flash-2026-02-10',
+  'qwen3-asr-flash-2025-09-08',
+];
+const DEFAULT_TTS_MODELS = [
+  'qwen3-tts-flash-realtime',
+  'qwen3-tts-flash-realtime-2025-11-27',
+  'qwen3-tts-flash-realtime-2025-09-18',
+  'qwen3-tts-flash-2025-09-18',
+  'qwen3-tts-flash-2025-11-27',
+  'qwen3-tts-flash',
+  'qwen3-tts-instruct-flash-realtime',
+];
 
 const SystemSettings: React.FC = () => {
   const [form] = Form.useForm<FormValues>();
@@ -44,8 +61,8 @@ const SystemSettings: React.FC = () => {
       setMeta(res.data);
       form.setFieldsValue({
         dashscopeWsUrl: res.data.dashscopeWsUrl,
-        qwenAsrModel: res.data.qwenAsrModel,
-        qwenTtsModel: res.data.qwenTtsModel,
+        qwenAsrModel: res.data.qwenAsrModel ? res.data.qwenAsrModel.split(',').map(s => s.trim()).filter(Boolean) : [],
+        qwenTtsModel: res.data.qwenTtsModel ? res.data.qwenTtsModel.split(',').map(s => s.trim()).filter(Boolean) : [],
         ttsVoice: res.data.ttsVoice,
         ttsLanguage: res.data.ttsLanguage,
         deepseekModel: res.data.deepseekModel,
@@ -68,8 +85,8 @@ const SystemSettings: React.FC = () => {
     try {
       const payload: Record<string, string> = {
         dashscopeWsUrl: (values.dashscopeWsUrl || '').trim(),
-        qwenAsrModel: (values.qwenAsrModel || '').trim(),
-        qwenTtsModel: (values.qwenTtsModel || '').trim(),
+        qwenAsrModel: (values.qwenAsrModel || []).join(','),
+        qwenTtsModel: (values.qwenTtsModel || []).join(','),
         ttsVoice: (values.ttsVoice || '').trim(),
         ttsLanguage: (values.ttsLanguage || '').trim(),
         deepseekModel: (values.deepseekModel || '').trim(),
@@ -152,11 +169,29 @@ const SystemSettings: React.FC = () => {
             <Form.Item label="DashScope WebSocket 地址" name="dashscopeWsUrl">
               <Input placeholder="wss://dashscope.aliyuncs.com/api-ws/v1/realtime" />
             </Form.Item>
-            <Form.Item label="ASR 模型" name="qwenAsrModel">
-              <Input placeholder="qwen3-asr-flash-realtime" />
+            <Form.Item label="ASR 模型 (可输入多个作为备用，第一项失败后自动轮换)" name="qwenAsrModel">
+              <Select
+                mode="tags"
+                style={{ width: '100%' }}
+                placeholder="输入模型名并回车，或从列表中选择"
+                tokenSeparators={[',']}
+              >
+                {DEFAULT_ASR_MODELS.map(m => (
+                  <Select.Option key={m} value={m}>{m}</Select.Option>
+                ))}
+              </Select>
             </Form.Item>
-            <Form.Item label="TTS 模型" name="qwenTtsModel">
-              <Input placeholder="qwen3-tts-instruct-flash-realtime" />
+            <Form.Item label="TTS 模型 (可输入多个作为备用，第一项失败后自动轮换)" name="qwenTtsModel">
+              <Select
+                mode="tags"
+                style={{ width: '100%' }}
+                placeholder="输入模型名并回车，或从列表中选择"
+                tokenSeparators={[',']}
+              >
+                {DEFAULT_TTS_MODELS.map(m => (
+                  <Select.Option key={m} value={m}>{m}</Select.Option>
+                ))}
+              </Select>
             </Form.Item>
             <Form.Item
               label="TTS 音色（voice）"

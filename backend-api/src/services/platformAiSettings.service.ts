@@ -55,10 +55,19 @@ export async function getMergedPlatformAiConfig(): Promise<MergedPlatformAiConfi
     dashscopeWsUrl:
       trimStr(db.dashscopeWsUrl) ||
       (process.env.DASHSCOPE_WS_URL || 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime').trim(),
-    qwenAsrModel: trimStr(db.qwenAsrModel) || (process.env.QWEN_ASR_MODEL || 'qwen3-asr-flash-realtime').trim(),
+    qwenAsrModel:
+      trimStr(db.qwenAsrModel) ||
+      (
+        process.env.QWEN_ASR_MODEL ||
+        'qwen3-asr-flash-realtime,qwen3-asr-flash-realtime-2025-10-27,qwen3-asr-flash-realtime-2026-02-10,qwen3-asr-flash-2026-02-10,qwen3-asr-flash-2025-09-08'
+      ).trim(),
     qwenTtsModel:
-      trimStr(db.qwenTtsModel) || (process.env.QWEN_TTS_MODEL || 'qwen3-tts-instruct-flash-realtime').trim(),
-    ttsVoice: trimStr(db.ttsVoice) || (process.env.TTS_VOICE || 'cherry').trim(),
+      trimStr(db.qwenTtsModel) ||
+      (
+        process.env.QWEN_TTS_MODEL ||
+        'qwen3-tts-flash-realtime,qwen3-tts-flash-realtime-2025-11-27,qwen3-tts-flash-realtime-2025-09-18,qwen3-tts-flash-2025-09-18,qwen3-tts-flash-2025-11-27,qwen3-tts-flash'
+      ).trim(),
+    ttsVoice: trimStr(db.ttsVoice) || (process.env.TTS_VOICE || 'Cherry').trim(),
     ttsLanguage: trimStr(db.ttsLanguage) || (process.env.TTS_LANGUAGE || 'Chinese').trim(),
     deepseekApiKey:
       trimStr(db.deepseekApiKey) ||

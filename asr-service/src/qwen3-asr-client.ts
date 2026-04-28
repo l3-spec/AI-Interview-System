@@ -31,10 +31,13 @@ export interface ASREventCallbacks {
 }
 
 export class Qwen3ASRClient {
+  private static globalModelIndex = 0;
+  
   private ws: WebSocket | null = null;
   private dashscopeUrl: string;
   private apiKey: string;
-  private model: string;
+  private models: string[];
+  private currentModelIndex = 0;
   private config: Qwen3ASRConfig;
   private callbacks: ASREventCallbacks;
   private sessionId: string | null = null;
@@ -47,7 +50,26 @@ export class Qwen3ASRClient {
 
   constructor(config: Qwen3ASRConfig, callbacks: ASREventCallbacks) {
     this.apiKey = process.env.DASHSCOPE_API_KEY || '';
-    this.model = process.env.QWEN_ASR_MODEL || 'qwen3-asr-flash-realtime';
+    const modelEnv = process.env.QWEN_ASR_MODEL || 'qwen3-asr-flash-realtime';
+    this.models = modelEnv.split(',').map(m => m.trim()).filter(Boolean);
+    
+    const defaultFallbacks = [
+      'qwen3-asr-flash-realtime-2025-10-27',
+      'qwen3-asr-flash-realtime-2026-02-10',
+      'qwen3-asr-flash-2026-02-10',
+      'qwen3-asr-flash-2025-09-08'
+    ];
+    
+    if (this.models.length <= 1) {
+      for (const fallback of defaultFallbacks) {
+        if (!this.models.includes(fallback)) {
+          this.models.push(fallback);
+        }
+      }
+    }
+    
+    // 初始化为全局索引
+    this.currentModelIndex = Qwen3ASRClient.globalModelIndex % this.models.length;
     this.dashscopeUrl = process.env.DASHSCOPE_WS_URL || 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime';
     this.config = config;
     this.callbacks = callbacks;
@@ -59,13 +81,48 @@ export class Qwen3ASRClient {
 
   /**
    * 建立与 DashScope Qwen3-ASR 的 WebSocket 连接
+   * 若当前模型失败，则轮换至下一个备用模型
    */
   async connect(): Promise<void> {
+    let lastError: Error | null = null;
+    
+    // 尝试列表中每个模型，最多尝试 models.length 次
+    for (let i = 0; i < this.models.length; i++) {
+      const currentModel = this.models[this.currentModelIndex];
+      try {
+        await this.connectWithModel(currentModel);
+        if (i > 0) {
+          logger.info(`[Qwen3-ASR] 轮换成功：当前使用模型 ${currentModel}`);
+          Qwen3ASRClient.globalModelIndex = this.currentModelIndex;
+        }
+        return; // 连接成功
+      } catch (err: any) {
+        lastError = err;
+        logger.warn(`[Qwen3-ASR] 模型 ${currentModel} 连接失败: ${err.message}`);
+        
+        // 轮换至下一个模型
+        this.currentModelIndex = (this.currentModelIndex + 1) % this.models.length;
+        if (i === 0) {
+          Qwen3ASRClient.globalModelIndex = this.currentModelIndex;
+        }
+        if (i < this.models.length - 1) {
+          logger.info(`[Qwen3-ASR] 尝试轮换至下一个备选模型: ${this.models[this.currentModelIndex]}`);
+        }
+      }
+    }
+    
+    throw lastError || new Error('所有 ASR 模型均连接失败');
+  }
+
+  /**
+   * 使用指定模型建立 WebSocket 连接
+   */
+  private connectWithModel(modelName: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const url = `${this.dashscopeUrl}?model=${this.model}`;
+      const url = `${this.dashscopeUrl}?model=${modelName}`;
 
       logger.info(`[Qwen3-ASR] 正在连接 DashScope: ${url}`);
-      logger.info(`[Qwen3-ASR] model=${this.model}, apiKey=${this.apiKey ? 'sk-***' + this.apiKey.slice(-4) : '未设置'}`);
+      logger.info(`[Qwen3-ASR] model=${modelName}, apiKey=${this.apiKey ? 'sk-***' + this.apiKey.slice(-4) : '未设置'}`);
       if (this.apiKey) {
         const intl = this.apiKey.startsWith('sk-intl');
         logger.info(
@@ -102,7 +159,19 @@ export class Qwen3ASRClient {
       });
 
       this.ws.on('message', (data) => {
-        this.handleMessage(data.toString());
+        const raw = data.toString();
+        // 预检消息以捕获早期错误
+        try {
+          const json = JSON.parse(raw);
+          if (json.type === 'error' && !settled) {
+            const errMsg = json.error?.message || json.message || JSON.stringify(json);
+            logger.error(`[Qwen3-ASR] 会话建立前收到错误: ${errMsg}`);
+            settled = true;
+            reject(new Error(`DashScope ASR 握手失败: ${errMsg}`));
+          }
+        } catch (_e) {}
+        
+        this.handleMessage(raw);
       });
 
       this.ws.on('close', (code, reason) => {
@@ -169,7 +238,7 @@ export class Qwen3ASRClient {
         clearTimeout(timeout);
         const details = err.code ? ` (code=${err.code})` : '';
         logger.error(`[Qwen3-ASR] DashScope WebSocket 错误: ${err.message}${details}`);
-        logger.error(`[Qwen3-ASR] 连接参数: url=${url}, model=${this.model}, apiKey=${this.apiKey ? 'sk-***' + this.apiKey.slice(-4) : '未设置'}`);
+        logger.error(`[Qwen3-ASR] 连接参数: url=${url}, model=${modelName}, apiKey=${this.apiKey ? 'sk-***' + this.apiKey.slice(-4) : '未设置'}`);
         this.isConnected = false;
         if (!settled) { settled = true; reject(err); }
       });

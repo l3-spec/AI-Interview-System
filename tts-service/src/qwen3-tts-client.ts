@@ -48,11 +48,14 @@ export class Qwen3TTSClient {
    */
   private static readonly MAX_APPEND_RAW_CHARS = 900;
 
+  private static globalModelIndex = 0;
+  private static lastGlobalFailureAt = 0;
+
   private ws: WebSocket | null = null;
   private dashscopeUrl: string;
   private apiKey: string;
-  private model: string;
-  private fallbackModel: string | null;
+  private models: string[];
+  private currentModelIndex = 0;
   private config: Qwen3TTSConfig;
   private callbacks: TTSEventCallbacks;
   private sessionId: string | null = null;
@@ -62,16 +65,36 @@ export class Qwen3TTSClient {
   private readonly MAX_RECONNECT = 3;
   private firstAudioTime: number | null = null;
   private connectTime: number | null = null;
-  /** 当前是否已降级到 fallback 模型 */
-  private usingFallback = false;
 
   constructor(config: Qwen3TTSConfig, callbacks: TTSEventCallbacks) {
     this.apiKey = process.env.DASHSCOPE_API_KEY || '';
-    this.model = process.env.QWEN_TTS_MODEL || 'qwen3-tts-flash-realtime';
-    this.fallbackModel = process.env.QWEN_TTS_FALLBACK_MODEL || null;
+    const modelEnv = process.env.QWEN_TTS_MODEL || 'qwen3-tts-flash-realtime';
+    this.models = modelEnv.split(',').map(m => m.trim()).filter(Boolean);
+    
+    // 核心兜底逻辑：如果用户只配置了一个模型（通常是 flash-realtime），
+    // 且该模型已经欠费，我们需要确保有备选模型可以轮换。
+    const defaultFallbacks = [
+      'qwen3-tts-flash-realtime-2025-11-27',
+      'qwen3-tts-flash-realtime-2025-09-18',
+      'qwen3-tts-flash-2025-09-18',
+      'qwen3-tts-flash-2025-11-27',
+      'qwen3-tts-flash'
+    ];
+    
+    if (this.models.length <= 1) {
+      // 将备选模型追加到列表，除非它们已经存在
+      for (const fallback of defaultFallbacks) {
+        if (!this.models.includes(fallback)) {
+          this.models.push(fallback);
+        }
+      }
+    }
     this.dashscopeUrl = process.env.DASHSCOPE_WS_URL || 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime';
     this.config = config;
     this.callbacks = callbacks;
+    
+    // 初始化当前实例的模型索引为全局索引，确保从上一次已知的“健康”模型开始
+    this.currentModelIndex = Qwen3TTSClient.globalModelIndex % this.models.length;
 
     if (!this.apiKey) {
       throw new Error('DASHSCOPE_API_KEY 环境变量未配置');
@@ -80,35 +103,40 @@ export class Qwen3TTSClient {
 
   /**
    * 建立与 DashScope Qwen3-TTS 的 WebSocket 连接
-   * 如果首选模型连接失败且配置了 fallback 模型，会自动降级
+   * 如果首选模型连接失败且配置了备选模型，会自动轮换降级
    */
   async connect(): Promise<void> {
-    try {
-      await this.connectWithModel(this.model);
-    } catch (err: any) {
-      // 首选模型失败，尝试 fallback
-      if (this.fallbackModel && this.fallbackModel !== this.model && !this.usingFallback) {
-        logger.warn(`[Qwen3-TTS] 首选模型 ${this.model} 连接失败: ${err.message}`);
-        logger.info(`[Qwen3-TTS] 尝试降级到备选模型: ${this.fallbackModel}`);
-        this.usingFallback = true;
-        const originalModel = this.model;
-        this.model = this.fallbackModel;
-        try {
-          await this.connectWithModel(this.model);
-          logger.info(`[Qwen3-TTS] 降级成功：${originalModel} → ${this.model}`);
-          // 降级到 flash 模型时，instructions 不生效，清除避免误解
-          if (!this.model.includes('instruct')) {
-            logger.warn('[Qwen3-TTS] 备选模型不支持 instructions 情感指令，已忽略');
-          }
-          return;
-        } catch (fallbackErr: any) {
-          logger.error(`[Qwen3-TTS] 备选模型也失败: ${fallbackErr.message}`);
-          this.model = originalModel;
-          throw fallbackErr;
+    let lastError: Error | null = null;
+    
+    // 尝试列表中每个模型，最多尝试 models.length 次
+    for (let i = 0; i < this.models.length; i++) {
+      const currentModel = this.models[this.currentModelIndex];
+      try {
+        await this.connectWithModel(currentModel);
+        if (i > 0) {
+          logger.info(`[Qwen3-TTS] 轮换成功：当前使用模型 ${currentModel}`);
+          // 同步更新全局索引，让后续新会话直接使用此模型
+          Qwen3TTSClient.globalModelIndex = this.currentModelIndex;
+          // ...
+        }
+        return; // 连接成功
+      } catch (err: any) {
+        lastError = err;
+        logger.warn(`[Qwen3-TTS] 模型 ${currentModel} 连接失败: ${err.message}`);
+        
+        // 轮换至下一个模型
+        this.currentModelIndex = (this.currentModelIndex + 1) % this.models.length;
+        // 如果是首次连接就失败，同步更新全局索引
+        if (i === 0) {
+          Qwen3TTSClient.globalModelIndex = this.currentModelIndex;
+        }
+        if (i < this.models.length - 1) {
+          logger.info(`[Qwen3-TTS] 尝试轮换至下一个备选模型: ${this.models[this.currentModelIndex]}`);
         }
       }
-      throw err;
     }
+    
+    throw lastError || new Error('所有 TTS 模型均连接失败');
   }
 
   /**
@@ -155,7 +183,7 @@ export class Qwen3TTSClient {
 
       this.ws.on('message', (data) => {
         const raw = data.toString();
-        // 预检消息以确认会话建立
+        // 预检消息以确认会话建立或捕获早期错误
         try {
           const json = JSON.parse(raw);
           if (json.type === 'session.created' && !settled) {
@@ -166,6 +194,11 @@ export class Qwen3TTSClient {
             
             settled = true;
             resolve();
+          } else if (json.type === 'error' && !settled) {
+            const errMsg = json.error?.message || json.message || JSON.stringify(json);
+            logger.error(`[Qwen3-TTS] 会话建立前收到错误: ${errMsg}`);
+            settled = true;
+            reject(new Error(`DashScope TTS 握手失败: ${errMsg}`));
           }
         } catch (_e) {}
         
@@ -218,7 +251,7 @@ export class Qwen3TTSClient {
           logger.info(`[Qwen3-TTS] 将在 ${delay}ms 后自动重连 (${this.reconnectAttempts}/${this.MAX_RECONNECT})`);
           this.callbacks.onError(`DashScope TTS 连接断开，正在重连 (${this.reconnectAttempts}/${this.MAX_RECONNECT})...`);
           setTimeout(() => {
-            this.connectWithModel(this.model).then(() => {
+            this.connect().then(() => {
               logger.info('[Qwen3-TTS] 自动重连成功');
             }).catch(err => {
               logger.error(`[Qwen3-TTS] 自动重连失败: ${err.message}`);
@@ -239,9 +272,17 @@ export class Qwen3TTSClient {
         const details = err.code ? ` (code=${err.code})` : '';
         logger.error(`[Qwen3-TTS] DashScope WebSocket 错误: ${err.message}${details}`);
         
+        // 核心优化：如果连接刚建立就断开（通常是由于 Quota 导致的 payload 126 错误）
+        // 此时 connect() 已经 resolve 了，所以我们需要标记全局索引进行轮换，让下一次会话跳过此模型
+        if (this.isConnected && (Date.now() - (this.connectTime || 0) < 5000)) {
+          logger.warn(`[Qwen3-TTS] 检测到模型 ${modelName} 疑似额度耗尽（短时间内断开），将全局轮换至下一个模型`);
+          Qwen3TTSClient.globalModelIndex = (Qwen3TTSClient.globalModelIndex + 1) % this.models.length;
+          Qwen3TTSClient.lastGlobalFailureAt = Date.now();
+        }
+        
         // 针对 WS_ERR_INVALID_CONTROL_PAYLOAD_LENGTH 错误提供专门的排查建议
         if (err.message && err.message.includes('invalid payload length 126')) {
-          logger.error('[Qwen3-TTS] 诊断：检测到协议违规 (126)。这通常是因为发送了不支持的参数（如 voice 音色名错误）导致服务端返回了过长的错误消息。');
+          logger.error('[Qwen3-TTS] 诊断：检测到协议违规 (126)。这通常是因为发送了不支持的参数（如 voice 音色名错误）或模型额度超限导致的异常关闭。');
           logger.error(`[Qwen3-TTS] 请检查 .env 或客户端传入的参数。当前请求音色: "${this.config.voice}"`);
         }
         
@@ -257,12 +298,13 @@ export class Qwen3TTSClient {
    */
   private sendSessionUpdate(): void {
     // 历史上部分音色在个别地域曾触发 DashScope 报错，仅对仍不稳定的旧名做回退；Neil 等已在百炼 Qwen3 实时 TTS 文档中支持，勿再拦截。
-    let safeVoice = this.config.voice;
-    const invalidVoices = ['bill', 'george', 'ben', 'steven', 'xiaoxiao', 'siri'];
-    if (invalidVoices.includes(safeVoice.toLowerCase())) {
-      logger.warn(`[Qwen3-TTS] 检测到不合规或未授权的音色: "${safeVoice}"，强制回退到官方标准音色 "Cherry" 以确保连接通畅。`);
-      safeVoice = 'Cherry';
+    // 历史上部分音色在个别地域曾触发 DashScope 报错，仅对仍不稳定的旧名做回退
+    const invalidVoices = ['bill', 'george', 'ben', 'steven', 'xiaoxiao', 'siri', 'moon'];
+    if (invalidVoices.includes(this.config.voice.toLowerCase())) {
+      logger.warn(`[Qwen3-TTS] 检测到不合规或未授权的音色: "${this.config.voice}"，强制回退到官方标准音色 "Cherry" 以确保连接通畅。`);
+      this.config.voice = 'Cherry';
     }
+    const safeVoice = this.config.voice;
 
     const sessionConfig: any = {
       mode: this.config.mode,
@@ -517,11 +559,11 @@ export class Qwen3TTSClient {
 
   /** 当前实际使用的模型名称（可能因降级而与配置不同） */
   get activeModel(): string {
-    return this.model;
+    return this.models[this.currentModelIndex];
   }
 
   /** 是否已降级到 fallback 模型 */
   get isFallback(): boolean {
-    return this.usingFallback;
+    return this.currentModelIndex > 0;
   }
 }

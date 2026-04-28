@@ -84,8 +84,8 @@ export class RealtimeVoiceWebSocketServer {
           
           console.log(`✅ [Gateway] 代理 join_session: ${sessionId}`);
 
-          // 通知客户端加入成功
-          socket.emit('session_joined', { sessionId, status: 'success' });
+          // 通知客户端加入成功并进入准备状态 (Loading UI)
+          socket.emit('session_joined', { sessionId, status: 'success', state: 'preparing' });
 
           // 转发至 interview-service
           this.pubClient.publish('interview:events:inbound', JSON.stringify({
@@ -108,7 +108,7 @@ export class RealtimeVoiceWebSocketServer {
           const { sessionId } = data;
           socket.join(sessionId);
           this.sessions.set(socket.id, { sessionId, userId: data.userId, connectedAt: new Date(), socketId: socket.id });
-          socket.emit('session_joined', { sessionId, status: 'success' });
+          socket.emit('session_joined', { sessionId, status: 'success', state: 'preparing' });
           console.log(`✅ [Gateway] init_session: ${sessionId} (等待 join_session)`);
         } catch (error: any) {
           socket.emit('error', { message: error.message });

@@ -70,6 +70,10 @@ export class ASRSessionManager {
       vadMode: (options.vadMode as 'server_vad' | 'manual') || 'server_vad',
       vadSilenceDurationMs: options.vadSilenceDurationMs || 500,
     };
+    
+    logger.info(
+      `[ASR-Manager] createSession: sessionId=${sessionId} lang=${asrConfig.language} format=${asrConfig.inputFormat} model(env)=${process.env.QWEN_ASR_MODEL ?? 'default'}`,
+    );
 
     // 创建 Qwen3-ASR 客户端，注册回调 → 将识别结果转发给客户端 WebSocket
     const asrClient = new Qwen3ASRClient(asrConfig, {

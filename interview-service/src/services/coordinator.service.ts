@@ -130,6 +130,15 @@ export class CoordinatorService {
 
         const jobPosText = jobPosition || '这个职位';
         const resumeText = `欢迎回来，我们继续${jobPosText}的面试。现在是第${resumeRoundNum}题，请听题：`;
+        const combinedText = `${resumeText} ${currentRound.question}`;
+        
+        let ttsMode = 'client';
+        if (currentRound.audioUrl) {
+          ttsMode = 'server';
+        } else {
+          const scene = interviewConductor.inferScene(currentRound.question, { isFollowUp: (currentRound.followupCount || 0) > 0 });
+          ttsMode = await this.synthesizeQwen3TtsSegments(sessionId, combinedText, scene);
+        }
         
         // 发送客户端UI状态
         this.emitToGateway(sessionId, 'voice_response', {
@@ -137,17 +146,26 @@ export class CoordinatorService {
           text: resumeText,
           sessionId,
           duration: 0,
-          ttsMode: 'client',
+          ttsMode: 'qwen3_streaming',
           isWelcome: true,
           isResume: true,
           progress: { current: resumeRoundNum, total: totalRounds, completed: completedRounds },
+          state: 'playing'
         });
 
         this.persistAvatarVoice(sessionId, resumeText);
 
-        setTimeout(() => {
-          this.emitRoundVoiceResponse(sessionId, currentRound);
-        }, 1500);
+        // 立即发送本题题目（UI更新）
+        this.emitToGateway(sessionId, 'voice_response', {
+          audioUrl: currentRound.audioUrl || null,
+          text: currentRound.question,
+          sessionId,
+          duration: currentRound.duration || 0,
+          ttsMode,
+          questionIndex: currentRound.roundNumber,
+          state: 'playing'
+        });
+        this.persistAvatarVoice(sessionId, currentRound.question, currentRound.roundNumber);
 
         return;
       }
@@ -175,6 +193,7 @@ export class CoordinatorService {
         duration: 0,
         ttsMode: 'qwen3_streaming',
         isWelcome: true,
+        state: 'playing'
       });
     } else {
       // 降级为客户端发声
@@ -185,6 +204,7 @@ export class CoordinatorService {
         duration: 0,
         ttsMode: 'client',
         isWelcome: true,
+        state: 'playing'
       });
     }
     this.persistAvatarVoice(sessionId, welcomeText);
@@ -252,7 +272,8 @@ export class CoordinatorService {
          sessionId,
          ttsMode: await this.synthesizeQwen3TtsSegments(sessionId, closingText, 'closing'),
          isCompleted: true,
-         status: 'completed'
+         status: 'completed',
+         state: 'playing'
        });
        this.persistAvatarVoice(sessionId, closingText);
        return;
@@ -268,7 +289,8 @@ export class CoordinatorService {
            sessionId,
            ttsMode: await this.synthesizeQwen3TtsSegments(sessionId, closingText, 'closing'),
            isCompleted: true,
-           status: 'completed'
+           status: 'completed',
+           state: 'playing'
          });
          this.persistAvatarVoice(sessionId, closingText);
       } else if (result.nextRound) {
@@ -285,6 +307,7 @@ export class CoordinatorService {
          text: conductorResult.text,
          sessionId,
          ttsMode: await this.synthesizeQwen3TtsSegments(sessionId, conductorResult.text),
+         state: 'playing'
       });
       this.persistAvatarVoice(sessionId, conductorResult.text);
     }
@@ -306,6 +329,7 @@ export class CoordinatorService {
       duration: round.duration || 0,
       ttsMode,
       questionIndex: round.roundNumber,
+      state: 'playing'
     });
     this.persistAvatarVoice(sessionId, round.question, round.roundNumber);
   }
