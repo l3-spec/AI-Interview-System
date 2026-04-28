@@ -401,6 +401,13 @@ class Qwen3TtsWsClient(
                     _state.value = State.CONNECTED
                 }
 
+                "tts.clear" -> {
+                    Log.i(TAG, "收到 tts.clear，服务端要求中断当前播放")
+                    stopAudioPlayback()
+                    resetUtterancePlaybackState()
+                    audioChunkCount = 0
+                }
+
                 // tts-service 在 DashScope session.created 时转发（与本地 session.created 成对出现）
                 "tts.session_created" -> {
                     Log.i(

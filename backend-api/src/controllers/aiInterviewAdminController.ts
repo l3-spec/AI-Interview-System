@@ -348,44 +348,32 @@ export const retryAnalysisTask = async (req: Request, res: Response) => {
             return { status: 200, body: { success: true, message: '分析报告已存在' } };
         }
 
-        const pendingTask = await prisma.aIInterviewAnalysisTask.findFirst({
+        const pendingTask = await prisma.aIInterviewAnalysisReport.findFirst({
             where: {
                 sessionId,
-                status: { in: ['PENDING', 'PROCESSING'] }
-            },
-            orderBy: { createdAt: 'desc' }
+                analysisStatus: { in: ['PENDING', 'PROCESSING'] }
+            }
         });
 
         if (pendingTask) {
             return { status: 200, body: { success: true, message: '分析任务已在队列中' } };
         }
 
-        // 动态导入analysisQueue避免循环依赖
-        const { analysisQueue } = await import('../jobs/analysisQueue');
-
-        const failedTask = await prisma.aIInterviewAnalysisTask.findFirst({
-            where: {
+        await prisma.aIInterviewAnalysisReport.upsert({
+            where: { sessionId },
+            update: { analysisStatus: 'PENDING' },
+            create: {
                 sessionId,
-                status: 'FAILED'
-            },
-            orderBy: { createdAt: 'desc' }
+                overallScore: 0,
+                communicationScore: 0,
+                technicalScore: 0,
+                problemSolvingNewScore: 0,
+                collaborationResponsibilityScore: 0,
+                adaptabilityScore: 0,
+                learningScore: 0,
+                analysisStatus: 'PENDING'
+            } as any
         });
-
-        if (failedTask) {
-            try {
-                await analysisQueue.retryFailedTask(sessionId);
-            } catch (error) {
-                const message = error instanceof Error ? error.message : '未知错误';
-                if (message.includes('未找到失败的分析任务')) {
-                    await analysisQueue.enqueueAnalysis(sessionId, 0);
-                    return { status: 200, body: { success: true, message: '分析任务已加入队列' } };
-                }
-                throw error;
-            }
-            return { status: 200, body: { success: true, message: '失败任务已重新加入队列' } };
-        }
-
-        await analysisQueue.enqueueAnalysis(sessionId, 0);
 
         return { status: 200, body: { success: true, message: '分析任务已加入队列' } };
     };

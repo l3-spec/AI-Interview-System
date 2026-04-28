@@ -1,0 +1,21 @@
+src/config/swagger.ts(2,26): error TS2307: Cannot find module 'swagger-jsdoc' or its corresponding type declarations.
+src/config/swagger.ts(3,23): error TS2307: Cannot find module 'swagger-ui-express' or its corresponding type declarations.
+src/jobs/analysisQueue.ts(3,33): error TS2307: Cannot find module '../utils/systemLog' or its corresponding type declarations.
+src/services/aliyun-asr.service.ts(2,36): error TS2307: Cannot find module '../utils/aliyunTokenClient' or its corresponding type declarations.
+src/services/aliyun-token.service.ts(1,36): error TS2307: Cannot find module '../utils/aliyunTokenClient' or its corresponding type declarations.
+src/services/analysisService.ts(12,33): error TS2307: Cannot find module '../utils/systemLog' or its corresponding type declarations.
+src/services/analysisService.ts(516,46): error TS2339: Property 'jobRequirements' does not exist on type '{ user: { name: string; experience: string | null; skills: string | null; }; questions: { id: string; createdAt: Date; sessionId: string; questionIndex: number; audioPath: string | null; ... 8 more ...; answeredAt: Date | null; }[]; } & { ...; }'.
+src/services/analysisService.ts(641,17): error TS2322: Type '{ sessionId: string; overallScore: number; communicationScore: number; technicalScore: number; problemSolvingNewScore: number; collaborationResponsibilityScore: number; adaptabilityScore: number; learningScore: number; analysisStatus: string; analysisError: string; }' is not assignable to type '(Without<AIInterviewAnalysisReportCreateInput, AIInterviewAnalysisReportUncheckedCreateInput> & AIInterviewAnalysisReportUncheckedCreateInput) | (Without<...> & AIInterviewAnalysisReportCreateInput)'.
+  Type '{ sessionId: string; overallScore: number; communicationScore: number; technicalScore: number; problemSolvingNewScore: number; collaborationResponsibilityScore: number; adaptabilityScore: number; learningScore: number; analysisStatus: string; analysisError: string; }' is not assignable to type 'Without<AIInterviewAnalysisReportCreateInput, AIInterviewAnalysisReportUncheckedCreateInput> & AIInterviewAnalysisReportUncheckedCreateInput'.
+    Type '{ sessionId: string; overallScore: number; communicationScore: number; technicalScore: number; problemSolvingNewScore: number; collaborationResponsibilityScore: number; adaptabilityScore: number; learningScore: number; analysisStatus: string; analysisError: string; }' is missing the following properties from type 'AIInterviewAnalysisReportUncheckedCreateInput': problemSolvingScore, teamworkScore
+src/services/analysisService.ts(2011,26): error TS18047: 'report.generatedAt' is possibly 'null'.
+src/services/client-runtime-config.service.ts(2,43): error TS2307: Cannot find module './platformAiSettings.service' or its corresponding type declarations.
+src/services/coordinator.service.ts(165,80): error TS2345: Argument of type '"welcome"' is not assignable to parameter of type 'InterviewScene | undefined'.
+src/services/job-dictionary.service.ts(3,27): error TS2307: Cannot find module '../utils/prismaUtils' or its corresponding type declarations.
+src/services/platform-ai-settings.service.ts(3,27): error TS2307: Cannot find module '../utils/prismaUtils' or its corresponding type declarations.
+src/services/platform-ai-settings.service.ts(175,44): error TS2307: Cannot find module './deepseekService' or its corresponding type declarations.
+src/services/qaEvaluationService.ts(1,20): error TS2307: Cannot find module 'openai' or its corresponding type declarations.
+src/services/rtc-asr.service.ts(7,23): error TS7016: Could not find a declaration file for module 'ws'. '/Users/linxiong/Documents/GitHub/AI-Interview-System/interview-service/node_modules/ws/index.js' implicitly has an 'any' type.
+  Try `npm i --save-dev @types/ws` if it exists or add a new declaration (.d.ts) file containing `declare module 'ws';`
+src/services/rtc-asr.service.ts(362,23): error TS7006: Parameter 'data' implicitly has an 'any' type.
+src/services/rtc-asr.service.ts(412,21): error TS7006: Parameter 'error' implicitly has an 'any' type.

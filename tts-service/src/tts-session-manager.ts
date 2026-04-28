@@ -309,6 +309,10 @@ export class TTSSessionManager {
   async clearText(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session || session.state !== 'active') return;
+
+    // 广播中断指令到客户端（移动端收到后立即清理缓冲区和 AudioTrack）
+    this.sendToClient(sessionId, { type: 'tts.clear', sessionId });
+
     if (!session.dashscopeConnected) return;
     session.ttsClient.clearTextBuffer();
   }

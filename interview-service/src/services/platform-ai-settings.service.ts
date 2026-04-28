@@ -172,7 +172,7 @@ export async function publishPlatformAiPatch(cfg: MergedPlatformAiConfig): Promi
 export async function warmPlatformAiConfigRuntime(): Promise<void> {
   const cfg = await getMergedPlatformAiConfig();
   const { dashScopeService } = await import('./dashscope.service');
-  const { deepseekService } = await import('./deepseekService');
+  const { deepseekService } = await import('./deepseek.service');
   dashScopeService.refreshFromPlatformConfig(cfg);
   deepseekService.refreshFromPlatformConfig(cfg);
 }

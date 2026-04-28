@@ -2,8 +2,12 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { interviewFlowService } from './services/flow-controller.service';
+import { coordinatorService } from './services/coordinator.service';
 
 dotenv.config();
+
+// Ensure coordinator service is initialized to listen to Redis
+const _coordinator = coordinatorService;
 
 const app = express();
 const PORT = process.env.PORT || 3004;

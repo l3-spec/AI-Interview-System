@@ -1,0 +1,1070 @@
+/**
+ * 实时语音交互WebSocket服务
+ * 处理实时音频流和语音交互
+ */
+
+import { Server } from 'socket.io';
+
+import { createHash } from 'crypto';
+import { RTCServiceFactory, RTCConfig } from '../services/rtc-asr.service';
+import { AliyunASRService } from '../services/aliyun-asr.service';
+import { RealtimeVoicePipelineService } from '../services/realtime-voice-pipeline.service';
+import { ttsService } from '../services/ttsService';
+import { deepseekService } from '../services/deepseekService';
+import { volcOpenApiService } from '../services/volc-openapi.service';
+import { aiInterviewService } from '../services/aiInterviewService';
+import { interviewServiceClient } from '../services/interview-service-client';
+import { dashScopeService } from '../services/dashscope.service';
+import { qwen3ASRClient } from '../services/qwen3-asr-service-client';
+import { qwen3TTSClient } from '../services/qwen3-tts-service-client';
+import { interviewConductor, InterviewScene } from '../services/interview-conductor.service';
+import { getMergedPlatformAiConfig } from '../services/platformAiSettings.service';
+
+type SocketSessionInfo = {
+  sessionId: string;
+  userId?: string;
+  jobPosition?: string;
+  background?: string;
+  connectedAt: Date;
+  welcomeSent?: boolean;
+};
+
+type SessionState = {
+  sessionId: string;
+  welcomeSent: boolean;
+  lastActivity: number;
+  connectedSockets: Set<string>;
+};
+
+/** join_session 的 jobPosition 可能是「岗位名」，也可能是客户端误传的整段题干；欢迎语只应嵌入短标签 */
+function welcomeJobLabel(raw: string | undefined): string {
+  const s = (raw || '这个职位').trim();
+  if (s.length <= 40) return s;
+  return '本岗位';
+}
+
+export class RealtimeVoiceWebSocketServer {
+  private io: Server;
+  private voicePipeline: RealtimeVoicePipelineService | null = null;
+  /** Redis ASR 与 Socket `text_message` 可能上报同一段文本，短时内只处理一次以免重复推进轮次 */
+  private recentInteractionDedupe = new Map<string, { normalized: string; at: number }>();
+  private static readonly INTERACTION_DEDUPE_MS = 2800;
+  /**
+   * 双轨流式处理核心逻辑
+   * 轨道1：文本流 -> 字幕展示
+   * 轨道2：文本分片 -> TTS 合成流 -> 音频播放
+   */
+  private async handleDualTrackStreaming(socket: any, sessionId: string, text: string, context: any) {
+     console.log(`🚀 启动 [双轨混合流式生成] - sessionId: ${sessionId}`);
+     
+     // 1. LLM 文本轨道 (DeepSeek)
+     // 这里假设 deepseekService 已支持流式返回，我们模拟一个流式过程或调用其流式接口
+     // 实际实现中应调用 deepseekService.generateResponseStream
+     
+     // 为了演示效果和满足用户需求，我们先构建带情感标示的回复并分片下发
+     const fullResponse = await deepseekService.generateResponse({
+       userMessage: text,
+       sessionId,
+       context
+     });
+
+     // 模拟 KTV 字幕或流式分片
+     const chunks = fullResponse.split(/([，。！？；\n])/).filter(Boolean);
+     let accumulatedText = "";
+
+     for (const chunk of chunks) {
+        accumulatedText += chunk;
+        // 轨道1：下发文本分片
+        socket.emit('text_chunk', {
+          text: accumulatedText,
+          chunk: chunk,
+          sessionId
+        });
+
+        // 轨道2：将分片交给 Qwen3-TTS 合成
+        // 在该架构中，我们可以在分片达到句级长度时触发 TTS
+        if (/[。！？；]/.test(chunk)) {
+           try {
+             const ttsStream = await dashScopeService.synthesizeStreaming(accumulatedText, {
+                emotion: accumulatedText.includes('好') ? '用开怀且赞许的语气' : '用亲切耐心的面试官语气'
+             });
+             
+             // 轨道2：下发语音分片
+             ttsStream.on('data', (chunk: Buffer) => {
+                socket.emit('audio_chunk', {
+                  data: chunk,
+                  format: 'mp3',
+                  sessionId
+                });
+             });
+           } catch (e) {
+             console.error("TTS Stream fragment failed", e);
+           }
+        }
+        
+        await new Promise(r => setTimeout(r, 100)); // 模拟网络流式延迟
+     }
+
+     socket.emit('voice_response', {
+        audioUrl: null,
+        text: fullResponse,
+        sessionId,
+        ttsMode: 'server',
+        status: 'streaming_done'
+     });
+     this.persistAvatarVoice(sessionId, fullResponse);
+  }
+
+  /**
+   * 核心交互流程处理 (ASR 完成 或 手动文本输入后触发)
+   */
+  private async handleInteractionFlow(params: {
+    sessionId: string;
+    text: string;
+    source: 'asr' | 'text';
+    userId?: string;
+    jobPosition?: string;
+    ttsSessionId?: string;
+  }) {
+    const { sessionId, source, userId, jobPosition, ttsSessionId: rawTtsSessionId } = params;
+    const text = (params.text || '').trim();
+    const ttsSessionId = rawTtsSessionId || sessionId;
+
+    if (!text) {
+      console.log(`⚠️ 跳过空文本交互 (Session: ${sessionId}, Source: ${source})`);
+      return;
+    }
+
+    const normalizedDedupe = text.replace(/\s+/g, '');
+    const dedupeNow = Date.now();
+    const prevDedupe = this.recentInteractionDedupe.get(sessionId);
+    if (
+      prevDedupe &&
+      prevDedupe.normalized === normalizedDedupe &&
+      dedupeNow - prevDedupe.at < RealtimeVoiceWebSocketServer.INTERACTION_DEDUPE_MS
+    ) {
+      console.log(
+        `⏭️ 跳过重复交互 (${source})：${dedupeNow - prevDedupe.at}ms 内相同文本`,
+      );
+      return;
+    }
+    this.recentInteractionDedupe.set(sessionId, { normalized: normalizedDedupe, at: dedupeNow });
+
+    console.log(`🔄 处理交互流程 (Session: ${sessionId}, Source: ${source}): "${text}"`);
+
+    // 1. 记录用户话语（带题号，便于与答题视频、题库行对齐）
+    let questionIndex0 = null;
+    try {
+      const sessionResult = await interviewServiceClient.getSession(sessionId);
+      if (sessionResult.success && sessionResult.session) {
+        const currentRound = sessionResult.session.rounds.find((r: any) => r.status === 'in_progress');
+        if (currentRound) {
+          questionIndex0 = Math.max(0, currentRound.roundNumber - 1);
+        }
+      }
+    } catch (e) {
+      console.warn(`[Coordinator] 获取当前题号失败: ${e}`);
+    }
+
+    const turnMeta = await aiInterviewService.recordConversationTurn(sessionId, {
+      speaker: 'CANDIDATE',
+      candidateText: text,
+      ...(typeof questionIndex0 === 'number' ? { questionIndex: questionIndex0 } : {}),
+    });
+
+    // 2. 发送回显（用于客户端展示“我”的字幕）
+    this.io.to(sessionId).emit('asr_partial', {
+      text: text,
+      isFinal: true,
+      sessionId
+    });
+
+    // 2b. 告知客户端本回合沟通序号，用于上传该轮答题视频后 PATCH 绑定
+    if (turnMeta) {
+      this.io.to(sessionId).emit('candidate_turn_recorded', {
+        sessionId,
+        sequence: turnMeta.sequence,
+        turnId: turnMeta.id,
+        questionIndex: typeof questionIndex0 === 'number' ? questionIndex0 : null,
+        uploadHint:
+          'POST /api/ai-interview/sessions/:sessionId/conversation-turns/:sequence/candidate-video（multipart 字段 video）或 JSON body { videoUrl }',
+      });
+    }
+
+    // 3. 检查结束意图
+    const normalizedText = text.replace(/\s+/g, '');
+    const completionIntents = ['结束面试', '面试结束', '完成面试', '结束这个面试', '结束这次面试', '我答完了'];
+    const hasCompletionIntent = completionIntents.some(keyword => normalizedText.includes(keyword));
+    const completionClosingText = '感谢您的配合，我们会尽快生成本次面试报告，请留意通知。';
+
+    if (hasCompletionIntent) {
+       console.log(`🔚 检测到主动结束意图 (Session: ${sessionId}): "${text}"`);
+       try {
+         const summary = await interviewServiceClient.endInterview(sessionId);
+         const ttsMode = await this.synthesizeQwen3TtsSegments(ttsSessionId, completionClosingText, 'closing');
+         this.io.to(sessionId).emit('voice_response', {
+           text: completionClosingText,
+           sessionId,
+           ttsMode,
+           isCompleted: true,
+           status: 'completed'
+         });
+         this.persistAvatarVoice(sessionId, completionClosingText);
+         return; // 结束本轮流程
+       } catch (e: any) {
+         console.warn(`⚠️ 结束面试异常 (会话可能已清理): ${e.message}`);
+       }
+    }
+
+    // 5. 进入业务逻辑 (InterviewServiceClient)
+    try {
+      const result = await interviewServiceClient.processUserResponse(sessionId, text);
+      
+      // 如果发现面试还没进入 READY 状态（可能异步还没生成完），尝试拉起
+      if (!result.nextRound && !result.isCompleted) {
+        console.log(`⏳ [Coordinator] 会话 ${sessionId} 题目正在生成或未找到当前轮次，尝试拉起第一题...`);
+        const phaseResult = await interviewServiceClient.startInterviewPhase(sessionId);
+        result.nextRound = phaseResult.nextRound || null;
+      }
+
+      if (result.isCompleted) {
+        const ttsMode = await this.synthesizeQwen3TtsSegments(ttsSessionId, completionClosingText, 'closing');
+        this.io.to(sessionId).emit('voice_response', {
+          text: completionClosingText,
+          sessionId,
+          ttsMode,
+          isCompleted: true,
+          status: 'completed'
+        });
+        this.persistAvatarVoice(sessionId, completionClosingText);
+      } else if (result.nextRound) {
+        await this.emitRoundVoiceResponse({
+          sessionId,
+          round: result.nextRound,
+          ttsSessionId,
+        });
+      }
+    } catch (error: any) {
+      // 容错落入直接对话模式
+      console.log(`⚠️ 业务逻辑执行失败，回退到普通 LLM 模式: ${error.message}`);
+      const conductorResult = await interviewConductor.generateInterviewerResponse({
+        userMessage: text,
+        sessionId,
+        context: { jobPosition }
+      });
+      const ttsMode = await this.synthesizeQwen3TtsSegments(ttsSessionId, conductorResult.text);
+      
+      if (ttsMode === 'qwen3_streaming') {
+        console.log(`🎤 [VoiceResponse] 容错模式: 使用 Qwen3-TTS 流式播报`);
+      }
+
+      this.io.to(sessionId).emit('voice_response', {
+        text: conductorResult.text,
+        sessionId,
+        ttsMode,
+        ttsSessionId
+      });
+      this.persistAvatarVoice(sessionId, conductorResult.text);
+    }
+  }
+
+  private sessions: Map<string, SocketSessionInfo> = new Map();
+  private sessionStates: Map<string, SessionState> = new Map();
+  private sessionCleanupTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  private readonly sessionRetentionMs = Math.max(
+    30000,
+    parseInt(process.env.REALTIME_SESSION_RETENTION_MS || '120000', 10) || 120000,
+  );
+  private welcomeHistory: Map<string, { hash: string; expiresAt: number }> = new Map();
+  private readonly welcomeHistoryTtlMs = Math.max(
+    60000,
+    parseInt(process.env.REALTIME_WELCOME_TTL_MS || '300000', 10) || 300000,
+  );
+
+  /** 将数字人播报文本写入 AI 面试沟通记录（含情绪标注原文） */
+  private persistAvatarVoice(
+    sessionId: string,
+    text: string | undefined,
+    questionIndex?: number
+  ): void {
+    const trimmed = (text || '').trim();
+    if (!trimmed) return;
+    void aiInterviewService
+      .recordConversationTurn(sessionId, {
+        speaker: 'AVATAR',
+        avatarText: trimmed,
+        questionIndex: typeof questionIndex === 'number' ? questionIndex : undefined,
+      })
+      .catch(() => undefined);
+  }
+
+  /** Qwen3-TTS 微服务：按情感分段推送并 commit */
+  private async synthesizeQwen3TtsSegments(
+    ttsSessionId: string,
+    responseText: string,
+    scene?: InterviewScene
+  ): Promise<'qwen3_streaming' | 'client'> {
+    try {
+      const ttsHealth = await qwen3TTSClient.checkHealth();
+      if (!ttsHealth || ttsHealth.status !== 'ok') return 'client';
+
+      const segments = interviewConductor['parseEmotionSegments'](responseText, scene);
+      console.log(
+        `🎙️ [Qwen3-TTS] 开始合成文本流 (Session: ${ttsSessionId}): "${responseText.substring(0, 50)}${responseText.length > 50 ? '...' : ''}"`
+      );
+      for (const segment of segments) {
+        if (segment.text.trim()) {
+          console.log(`   - 推送分段 [${segment.emotion || 'neutral'}]: "${segment.text}"`);
+          qwen3TTSClient.synthesize(ttsSessionId, segment.text, false);
+        }
+      }
+      qwen3TTSClient.commitText(ttsSessionId);
+      return 'qwen3_streaming';
+    } catch {
+      return 'client';
+    }
+  }
+
+  /**
+   * 向 Socket 房间下发面试官题目（与 handleInteractionFlow 一致）；
+   * 异步题库就绪后需调用此方法，否则 App 仅收到欢迎语、无正式题。
+   */
+  private async emitRoundVoiceResponse(params: {
+    sessionId: string;
+    round: {
+      question: string;
+      audioUrl?: string;
+      duration?: number;
+      roundNumber: number;
+      followupCount?: number;
+    };
+    ttsSessionId?: string;
+  }): Promise<void> {
+    const { sessionId, round, ttsSessionId: rawTts } = params;
+    const ttsSessionId = rawTts || sessionId;
+
+    let ttsMode: string = 'client';
+    if (round.audioUrl) {
+      ttsMode = 'server';
+      console.log(`🔊 [VoiceResponse] 生成语音包 URL (下一步问题): ${round.audioUrl}`);
+    } else {
+      const scene = interviewConductor.inferScene(round.question, {
+        isFollowUp: (round.followupCount || 0) > 0,
+      });
+      ttsMode = await this.synthesizeQwen3TtsSegments(ttsSessionId, round.question, scene);
+      if (ttsMode === 'qwen3_streaming') {
+        console.log(`🎤 [VoiceResponse] 使用 Qwen3-TTS 流式播报 (Session: ${ttsSessionId})`);
+      }
+    }
+
+    this.io.to(sessionId).emit('voice_response', {
+      audioUrl: round.audioUrl || null,
+      text: round.question,
+      sessionId,
+      duration: round.duration || 0,
+      ttsMode,
+      ttsSessionId,
+      questionIndex: round.roundNumber,
+    });
+    this.persistAvatarVoice(sessionId, round.question, round.roundNumber);
+  }
+
+  constructor(io: Server) {
+    this.io = io;
+
+    void this.initializeServices();
+    this.setupSocketHandlers();
+  }
+
+  /**
+   * 初始化服务
+   */
+  private async initializeServices() {
+    try {
+      const pickEnv = (...keys: string[]): string => {
+        for (const key of keys) {
+          const value = process.env[key];
+          if (value && value.trim()) {
+            return value.trim();
+          }
+        }
+        return '';
+      };
+
+      const isTruthy = (value?: string | null): boolean => {
+        if (!value) {
+          return false;
+        }
+        const normalized = value.trim().toLowerCase();
+        return ['1', 'true', 'yes', 'on'].includes(normalized);
+      };
+
+      // 优先检查 Qwen3 ASR/TTS 独立微服务（推荐架构）
+      const asrServiceUrl = process.env.ASR_SERVICE_URL;
+      const ttsServiceUrl = process.env.TTS_SERVICE_URL;
+      if (asrServiceUrl || ttsServiceUrl) {
+        const asrHealth = await qwen3ASRClient.checkHealth();
+        const ttsHealth = await qwen3TTSClient.checkHealth();
+        console.log(`🎙️ Qwen3 ASR 微服务: ${asrHealth?.status === 'ok' ? '✅ 在线' : '❌ 离线'} (${asrServiceUrl || 'http://localhost:3002'})`);
+        console.log(`🔊 Qwen3 TTS 微服务: ${ttsHealth?.status === 'ok' ? '✅ 在线' : '❌ 离线'} (${ttsServiceUrl || 'http://localhost:3003'})`);
+
+        if (asrHealth?.status === 'ok' || ttsHealth?.status === 'ok') {
+          console.log('✅ Qwen3 独立微服务架构已启用（双轨混合流式）');
+          console.log('   客户端将直连 ASR/TTS 微服务，backend-api 通过 Redis 协调');
+
+          // 监听 ASR 完成事件，自动触发面试流程推进
+          qwen3ASRClient.on('transcription_completed', async (event) => {
+            const { sessionId, payload } = event;
+            const text = (payload.text || '').trim();
+            if (!text) return;
+
+            console.log(`[Qwen3] ASR 识别完成 (session: ${sessionId}): "${text}"`);
+            
+            // 自动触发消息处理流程
+            await this.handleInteractionFlow({
+              sessionId,
+              text,
+              source: 'asr'
+            }).catch(err => {
+              console.error(`[Qwen3] 自动处理 ASR 结果失败: ${err.message}`);
+            });
+          });
+
+          // 保留 voicePipeline 以兼容旧的直接 LLM 调用路径
+          this.voicePipeline = new RealtimeVoicePipelineService(
+            dashScopeService as any,
+            ttsService,
+            deepseekService
+          );
+          return;
+        }
+      }
+
+      // 回退：DashScope 内嵌模式（无独立微服务时）
+      const dashscopeApiKey = (process.env.DASHSCOPE_API_KEY || '').trim();
+      if (dashscopeApiKey) {
+        console.log('✅ 检测到 DASHSCOPE_API_KEY，切换至 DashScope 内嵌模式（建议部署独立 ASR/TTS 微服务以获得更低延迟）');
+        this.voicePipeline = new RealtimeVoicePipelineService(
+          dashScopeService as any,
+          ttsService,
+          deepseekService
+        );
+        return;
+      }
+
+      const aliyunAppKey = pickEnv('ALIYUN_NLS_APP_KEY', 'ALIYUN_APP_KEY');
+      const aliyunAccessKeyId = pickEnv('ALIYUN_NLS_ACCESS_KEY_ID', 'ALIYUN_TTS_ACCESS_KEY_ID');
+      const aliyunAccessKeySecret = pickEnv('ALIYUN_NLS_ACCESS_KEY_SECRET', 'ALIYUN_TTS_ACCESS_KEY_SECRET');
+
+      if (aliyunAppKey && aliyunAccessKeyId && aliyunAccessKeySecret) {
+        const aliyunService = new AliyunASRService({
+          appKey: aliyunAppKey,
+          accessKeyId: aliyunAccessKeyId,
+          accessKeySecret: aliyunAccessKeySecret,
+          region: (process.env.ALIYUN_NLS_REGION || process.env.ALIYUN_TTS_REGION || 'cn-shanghai').trim(),
+          endpoint: process.env.ALIYUN_NLS_ENDPOINT?.trim(),
+          enablePunctuation: isTruthy(process.env.ALIYUN_NLS_ENABLE_PUNCTUATION ?? 'true'),
+          enableInverseTextNormalization: isTruthy(process.env.ALIYUN_NLS_ENABLE_ITN ?? 'true'),
+          enableVoiceDetection: isTruthy(process.env.ALIYUN_NLS_ENABLE_VAD ?? process.env.ALIYUN_NLS_ENABLE_VOICE_DETECTION ?? 'false'),
+          defaultFormat: (process.env.ALIYUN_NLS_FORMAT || 'pcm').trim(),
+          defaultSampleRate: parseInt(process.env.ALIYUN_NLS_SAMPLE_RATE || '16000', 10),
+          timeoutMs: parseInt(process.env.ALIYUN_NLS_TIMEOUT_MS || '25000', 10),
+        });
+
+        this.voicePipeline = new RealtimeVoicePipelineService(
+          aliyunService,
+          ttsService,
+          deepseekService
+        );
+
+        console.log('✅ 实时语音服务已切换至阿里云ASR');
+        return;
+      }
+
+      // 配置RTC服务（从环境变量读取）
+      const region = pickEnv(
+        'RTC_REGION',
+        'VOLC_REGION',
+        'VOLCENGINE_REGION',
+        'RTC_CLUSTER',
+        'VOLC_CLUSTER',
+        'VOLCENGINE_CLUSTER'
+      );
+      const cluster = pickEnv(
+        'RTC_CLUSTER',
+        'VOLC_CLUSTER',
+        'VOLCENGINE_CLUSTER',
+        'RTC_REGION',
+        'VOLC_REGION',
+        'VOLCENGINE_REGION'
+      );
+
+      const rtcConfig: RTCConfig = {
+        provider: (process.env.RTC_PROVIDER as 'volcengine' | 'agora') || 'volcengine',
+        appId: pickEnv('RTC_APP_ID', 'VOLC_APP_ID', 'VOLCENGINE_APP_ID'),
+        appKey: pickEnv('RTC_APP_KEY', 'VOLC_APP_KEY'),
+        token: pickEnv('RTC_TOKEN', 'VOLC_TOKEN'),
+        authorization: undefined,
+        region: region || 'cn-north-1',
+        cluster: cluster || 'volcengine_streaming_common',
+      };
+
+      if (!rtcConfig.appId) {
+        console.warn('⚠️  RTC服务未配置，将使用模拟模式');
+        return;
+      }
+
+      if (rtcConfig.provider === 'volcengine') {
+        const tokenResult = await volcOpenApiService.getToken();
+        rtcConfig.token = tokenResult.token;
+        rtcConfig.appKey = tokenResult.rawToken;
+        rtcConfig.authorization = tokenResult.authorization;
+      } else if (!rtcConfig.token) {
+        throw new Error('实时语音服务缺少必要的 Token 配置');
+      }
+
+      // 创建ASR服务
+      const asrService = RTCServiceFactory.createASRService(rtcConfig);
+
+      // 使用已导出的TTS和DeepSeek服务实例
+      // 创建语音处理管道
+      this.voicePipeline = new RealtimeVoicePipelineService(
+        asrService,
+        ttsService,
+        deepseekService
+      );
+
+      console.log('✅ 实时语音服务初始化成功');
+    } catch (error: any) {
+      console.error('❌ 实时语音服务初始化失败:', error.message);
+      console.warn('将使用模拟模式');
+    }
+  }
+
+  /**
+   * 设置Socket处理器
+   */
+  private setupSocketHandlers() {
+    this.io.on('connection', (socket) => {
+      console.log('🔗 客户端已连接:', socket.id);
+
+      // 监听Socket.IO内部事件用于调试
+      socket.on('disconnect', (reason) => {
+        this.handleSocketDisconnect(socket.id, typeof reason === 'string' ? reason : undefined);
+      });
+
+      socket.on('error', (error) => {
+        console.error(`❌ Socket错误 (${socket.id}):`, error);
+      });
+
+      // 初始化会话（兼容 init_session）
+      socket.on('init_session', async (data: {
+        sessionId: string;
+        userId?: string;
+        jobPosition?: string;
+        background?: string;
+      }) => {
+        try {
+          const { sessionId, userId, jobPosition, background } = data;
+
+          socket.join(sessionId);
+          this.bindSocketToSession(socket.id, {
+            sessionId,
+            userId,
+            jobPosition,
+            background,
+          });
+
+          console.log(`✅ 用户初始化会话: ${sessionId} (Socket: ${socket.id})`);
+          console.log(`⚠️ init_session不发送欢迎语，等待join_session事件`);
+
+          socket.emit('session_joined', {
+            sessionId,
+            status: 'success',
+          });
+
+        } catch (error: any) {
+          console.error('初始化会话失败:', error);
+          socket.emit('error', { message: error.message });
+        }
+      });
+
+      // 加入会话（兼容旧版本）
+      socket.on('join_session', async (data: {
+        sessionId: string;
+        userId?: string;
+        jobPosition?: string;
+        background?: string;
+      }) => {
+        try {
+          const { sessionId, userId, jobPosition, background } = data;
+
+          socket.join(sessionId);
+          const { sessionState } = this.bindSocketToSession(socket.id, {
+            sessionId,
+            userId,
+            jobPosition,
+            background,
+          });
+
+          console.log(`✅ 用户加入会话: ${sessionId} (Socket: ${socket.id})`);
+
+          socket.emit('session_joined', {
+            sessionId,
+            status: 'success',
+          });
+          this.touchSession(sessionId);
+
+          // 初始化面试流程引擎，确保后续 flow 正常运作
+          await interviewServiceClient.initializeSession({
+            sessionId, 
+            userId: userId || 'anonymous', 
+            userName: '面试者', 
+            targetJob: jobPosition || '通用职位',
+            background
+          });
+
+          const sessionResult = await interviewServiceClient.getSession(sessionId);
+          const existingSession = sessionResult?.session;
+          
+          const isWarmResumeEligible = (session: any): boolean => {
+            if (!session) return false;
+            // 如果已经有完成的轮次，肯定是续面
+            if (session.rounds.some((r: any) => r.status === 'completed')) return true;
+            // 如果已经有生成的题目（即使状态是 PREPARING），且当前不是第0题，也认为是续面
+            if (session.rounds.length > 0 && (session.dbMirror?.currentQuestion ?? 0) > 0) return true;
+            const st = session.dbMirror?.status;
+            return st === 'IN_PROGRESS' || st === 'COMPLETED';
+          };
+
+          const isResume =
+            sessionState.welcomeSent ||
+            (existingSession != null &&
+              existingSession.rounds.length > 0 &&
+              isWarmResumeEligible(existingSession));
+
+          // ===== 断点续面：检查是否有进行中的面试流程 =====
+          if (isResume && existingSession && existingSession.rounds.length > 0) {
+            // 查找当前正在进行或下一个待回答的题目
+            const currentRound = existingSession.rounds.find(
+              (r: any) => r.status === 'in_progress' || r.status === 'pending'
+            );
+
+            if (currentRound) {
+              const resumeRoundNum = currentRound.roundNumber;
+              const totalRounds = existingSession.rounds.length;
+              const completedRounds = existingSession.rounds.filter((r: any) => r.status === 'completed').length;
+
+              console.log(`🔄 断点续面 - sessionId: ${sessionId}, 恢复第 ${resumeRoundNum} 题 (已完成 ${completedRounds}/${totalRounds})`);
+
+              // 确保该回合状态为 in_progress
+              if (currentRound.status === 'pending') {
+                currentRound.status = 'in_progress';
+                existingSession.currentRound = currentRound.roundNumber;
+              }
+
+              const jobPositionText = jobPosition || '这个职位';
+              const resumeText = `欢迎回来，我们继续${jobPositionText}的面试。现在是第${resumeRoundNum}题，请听题：`;
+
+              // 先发送简短的恢复提示
+              socket.emit('voice_response', {
+                audioUrl: null,
+                text: resumeText,
+                sessionId,
+                duration: 0,
+                ttsMode: 'client',
+                isWelcome: true,
+                isResume: true,
+                progress: { current: resumeRoundNum, total: totalRounds, completed: completedRounds },
+              });
+              this.persistAvatarVoice(sessionId, resumeText);
+
+              // 然后只下发当前题目；无预生成音频时交给 Qwen3-TTS 服务合成，避免客户端重放历史上下文。
+              setTimeout(() => {
+                this.emitRoundVoiceResponse({
+                  sessionId,
+                  round: currentRound,
+                  ttsSessionId: sessionId,
+                }).catch((err: any) => {
+                  console.warn(`⚠️ [Coordinator] 续面当前题下发失败: ${err?.message || err}`);
+                });
+              }, 1500);
+
+              this.markWelcomeAsSent(socket.id, sessionId);
+              return;
+            }
+          }
+
+          // ===== 首次进入 或 无进行中面试 =====
+          const jobPositionText = welcomeJobLabel(jobPosition);
+          const welcomeText = isResume
+            ? `欢迎回来，我们继续完成${jobPositionText}的面试。请从刚才的思路继续，或补充关键经历。`
+            : `让我陪您一起完成这个面试流程。请简单介绍一下您自己，并说明为什么想要应聘「${jobPositionText}」。`;
+          
+          console.log(
+            `${isResume ? '🎤 发送欢迎回来提示' : '🎤 发送初始欢迎问题'} - sessionId: ${sessionId}`
+          );
+          
+          const welcomeHash = this.hashText(welcomeText);
+          if (this.hasRecentWelcome(sessionId, welcomeHash)) {
+            console.warn(`⚠️ 检测到重复欢迎语，已在冷却窗口内，跳过发送 - sessionId: ${sessionId}`);
+            return;
+          }
+
+          // 优先尝试使用 Qwen3-TTS 微服务进行流式播报（推荐）
+          const ttsHealth = await qwen3TTSClient.checkHealth();
+          if (ttsHealth?.status === 'ok') {
+            console.log(`🎤 使用 Qwen3-TTS 微服务发送欢迎语 - sessionId: ${sessionId}`);
+            
+            const segments = interviewConductor['parseEmotionSegments'](welcomeText, isResume ? 'resume' : 'welcome' as any);
+            for (const segment of segments) {
+              qwen3TTSClient.synthesize(sessionId, segment.text, false);
+            }
+            qwen3TTSClient.commitText(sessionId);
+
+            socket.emit('voice_response', {
+              audioUrl: null,
+              text: welcomeText,
+              sessionId,
+              duration: 0,
+              ttsMode: 'qwen3_streaming',
+              userText: undefined,
+              isWelcome: true,
+            });
+            this.persistAvatarVoice(sessionId, welcomeText);
+          } else {
+            // 回退到传统文件模式 TTS (ttsService)
+            try {
+              const ttsResult = await ttsService.textToSpeech({
+                text: welcomeText,
+                sessionId: sessionId,
+                voice: undefined
+              });
+
+              if (ttsResult.success && ttsResult.audioUrl) {
+                console.log(`✅ 成功生成欢迎语语音包: ${ttsResult.audioUrl}`);
+                socket.emit('voice_response', {
+                  audioUrl: ttsResult.audioUrl,
+                  text: welcomeText,
+                  sessionId,
+                  duration: ttsResult.duration || 0,
+                  ttsMode: 'server',
+                  userText: undefined,
+                  isWelcome: true,
+                });
+                this.persistAvatarVoice(sessionId, welcomeText);
+              } else {
+                throw new Error(ttsResult.error || 'TTS generation failed');
+              }
+            } catch (ttsError) {
+              console.warn(`⚠️ 后端生成欢迎语音频失败，退回到客户端原生 TTS:`, ttsError);
+              socket.emit('voice_response', {
+                audioUrl: null,
+                text: welcomeText,
+                sessionId,
+                duration: 0,
+                ttsMode: 'client',
+                userText: undefined,
+                isWelcome: true,
+              });
+              this.persistAvatarVoice(sessionId, welcomeText);
+            }
+          }
+
+          this.recordWelcome(sessionId, welcomeHash);
+          this.markWelcomeAsSent(socket.id, sessionId);
+
+          // 【总控逻辑】发送完欢迎语后，异步初始化面试回合生成
+          // 这样用户在自我介绍时，题目已经生成好，可以无缝衔接
+          console.log(`🚀 [Coordinator] 正在为会话 ${sessionId} 异步准备面试回合...`);
+          interviewServiceClient
+            .startInterviewPhase(sessionId)
+            .then(async (res: any) => {
+              console.log(`✅ [Coordinator] 面试回合准备就绪`);
+              // 如果是续面，已经在上面处理过了，这里不需要再推送首题，避免双重语音
+              if (res.nextRound && !isResume) {
+                try {
+                  await this.emitRoundVoiceResponse({
+                    sessionId,
+                    round: res.nextRound,
+                    ttsSessionId: sessionId,
+                  });
+                  console.log(`📣 [Coordinator] 已向客户端下发首道正式题（voice_response）`);
+                } catch (pushErr: any) {
+                  console.warn(`⚠️ [Coordinator] 首题下发失败: ${pushErr?.message || pushErr}`);
+                }
+              }
+            })
+            .catch((err: any) => {
+              console.warn(`⚠️ [Coordinator] 异步生成题目失败 (用户回复时将实时补生成): ${err.message}`);
+            });
+
+        } catch (error: any) {
+          console.error('加入会话失败:', error);
+          socket.emit('error', { message: error.message });
+        }
+      });
+
+      // 接收文本消息（不需要ASR）
+      // 核心链路：用户文本 → LLM(带情感标注) → Qwen3-TTS(流式音频) → 客户端数字人播放
+      socket.on('text_message', async (data: {
+        text: string;
+        sessionId: string;
+        userId?: string;
+        jobPosition?: string;
+        ttsSessionId?: string;
+      }) => {
+        try {
+          const text = (data?.text || '').trim();
+          if (!text) return;
+
+          await this.handleInteractionFlow({
+            sessionId: data.sessionId,
+            text,
+            source: 'text',
+            userId: data.userId,
+            jobPosition: data.jobPosition,
+            ttsSessionId: data.ttsSessionId
+          });
+        } catch (error: any) {
+          console.error('处理文本消息失败:', error);
+          socket.emit('error', { message: error.message || '处理失败' });
+        }
+      });
+
+      /**
+       * 获取 Qwen3 ASR/TTS 微服务配置
+       * 客户端通过此事件获取微服务 WebSocket 地址，直接建立长连接
+       * 实现真正的端到端低延迟：
+       *   客户端 ←WebSocket→ ASR Service ←WebSocket→ DashScope Qwen3-ASR
+       *   客户端 ←WebSocket→ TTS Service ←WebSocket→ DashScope Qwen3-TTS
+       */
+      socket.on('get_qwen3_config', async (data: { sessionId?: string }) => {
+        try {
+          const asrWsUrl = qwen3ASRClient.getWebSocketUrl();
+          const ttsWsUrl = qwen3TTSClient.getWebSocketUrl();
+          const ai = await getMergedPlatformAiConfig();
+
+          const [asrHealth, ttsHealth] = await Promise.all([
+            qwen3ASRClient.checkHealth(),
+            qwen3TTSClient.checkHealth(),
+          ]);
+
+          socket.emit('qwen3_config', {
+            sessionId: data?.sessionId,
+            asr: {
+              wsUrl: asrWsUrl,
+              available: asrHealth?.status === 'ok',
+              model: ai.qwenAsrModel,
+              defaultConfig: {
+                language: 'zh',
+                sampleRate: 16000,
+                inputFormat: 'pcm',
+                vadMode: 'server_vad',
+              },
+            },
+            tts: {
+              wsUrl: ttsWsUrl,
+              available: ttsHealth?.status === 'ok',
+              model: ai.qwenTtsModel,
+              defaultConfig: {
+                voice: ai.ttsVoice,
+                // 与 DUIX pushPcm 常用 16k 对齐；若仅扬声器试听可改用 24000（需在客户端分流）
+                sampleRate: 16000,
+                responseFormat: 'pcm',
+                mode: 'server_commit',
+                language: ai.ttsLanguage,
+              },
+            },
+          });
+        } catch (error: any) {
+          socket.emit('error', { message: `获取 Qwen3 配置失败: ${error.message}` });
+        }
+      });
+
+      // 打断数字人说话
+      socket.on('interrupt', () => {
+        try {
+          const session = this.sessions.get(socket.id);
+          const sessionId = session?.sessionId;
+          
+          // 1. 停止旧的语音管道 (阿里云/DashScope 直连)
+          if (this.voicePipeline) {
+            this.voicePipeline.interrupt();
+          }
+
+          // 2. 停止 Qwen3 TTS 微服务 (独立部署模式)
+          if (sessionId) {
+            qwen3TTSClient.clearSynthesis(sessionId);
+          }
+
+          socket.emit('interrupted', { success: true });
+          console.log(`🛑 用户打断数字人说话 (Session: ${sessionId || 'unknown'})`);
+        } catch (error: any) {
+          console.error('打断失败:', error);
+          socket.emit('error', { message: error.message });
+        }
+      });
+
+      // 获取状态
+      socket.on('get_status', () => {
+        try {
+          if (this.voicePipeline) {
+            const status = this.voicePipeline.getStatus();
+            socket.emit('status', status);
+          } else {
+            socket.emit('status', {
+              isProcessing: false,
+              isDigitalHumanSpeaking: false,
+              currentSessionId: null,
+            });
+          }
+        } catch (error: any) {
+          socket.emit('error', { message: error.message });
+        }
+      });
+
+    });
+  }
+
+  /**
+   * 获取IO实例
+   */
+  public getIO(): Server {
+    return this.io;
+  }
+
+  private bindSocketToSession(
+    socketId: string,
+    payload: { sessionId: string; userId?: string; jobPosition?: string; background?: string }
+  ) {
+    const state = this.getOrCreateSessionState(payload.sessionId);
+    state.connectedSockets.add(socketId);
+    state.lastActivity = Date.now();
+    this.clearSessionCleanup(payload.sessionId);
+
+    const sessionInfo: SocketSessionInfo = {
+      sessionId: payload.sessionId,
+      userId: payload.userId,
+      jobPosition: payload.jobPosition,
+      background: payload.background,
+      connectedAt: new Date(),
+      welcomeSent: state.welcomeSent,
+    };
+
+    this.sessions.set(socketId, sessionInfo);
+
+    return { sessionInfo, sessionState: state };
+  }
+
+  private getOrCreateSessionState(sessionId: string): SessionState {
+    let sessionState = this.sessionStates.get(sessionId);
+    if (!sessionState) {
+      sessionState = {
+        sessionId,
+        welcomeSent: false,
+        lastActivity: Date.now(),
+        connectedSockets: new Set(),
+      };
+      this.sessionStates.set(sessionId, sessionState);
+    }
+    return sessionState;
+  }
+
+  private markWelcomeAsSent(socketId: string, overrideSessionId?: string) {
+    const socketSession = this.sessions.get(socketId);
+    if (socketSession) {
+      socketSession.welcomeSent = true;
+    }
+    const sessionId = overrideSessionId ?? socketSession?.sessionId;
+    if (!sessionId) {
+      return;
+    }
+    const state = this.sessionStates.get(sessionId);
+    if (state) {
+      state.welcomeSent = true;
+    }
+  }
+
+  private touchSession(sessionId: string) {
+    const sessionState = this.sessionStates.get(sessionId);
+    if (sessionState) {
+      sessionState.lastActivity = Date.now();
+      this.clearSessionCleanup(sessionId);
+    }
+  }
+
+  private clearSessionCleanup(sessionId: string) {
+    const timer = this.sessionCleanupTimers.get(sessionId);
+    if (timer) {
+      clearTimeout(timer);
+      this.sessionCleanupTimers.delete(sessionId);
+    }
+  }
+
+  private scheduleSessionCleanup(sessionId: string) {
+    if (this.sessionCleanupTimers.has(sessionId)) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      const state = this.sessionStates.get(sessionId);
+      if (state && state.connectedSockets.size === 0 && Date.now() - state.lastActivity >= this.sessionRetentionMs) {
+        this.sessionStates.delete(sessionId);
+      }
+      this.sessionCleanupTimers.delete(sessionId);
+    }, this.sessionRetentionMs);
+
+    this.sessionCleanupTimers.set(sessionId, timer);
+  }
+
+  private handleSocketDisconnect(socketId: string, reason?: string) {
+    const session = this.sessions.get(socketId);
+    if (!session) {
+      console.log(`👋 客户端断开连接: ${socketId}, 原因: ${reason ?? '未知'}`);
+      return;
+    }
+
+    console.log(`👋 用户断开连接 (Session: ${session.sessionId}, Socket: ${socketId}, 原因: ${reason ?? '未知'})`);
+    this.sessions.delete(socketId);
+
+    const state = this.sessionStates.get(session.sessionId);
+    if (state) {
+      state.connectedSockets.delete(socketId);
+      state.lastActivity = Date.now();
+      if (state.connectedSockets.size === 0) {
+        this.scheduleSessionCleanup(session.sessionId);
+      }
+    }
+  }
+
+  private hasRecentWelcome(sessionId: string, hash: string): boolean {
+    const entry = this.welcomeHistory.get(sessionId);
+    if (!entry) {
+      return false;
+    }
+    if (entry.expiresAt <= Date.now()) {
+      this.welcomeHistory.delete(sessionId);
+      return false;
+    }
+    return entry.hash === hash;
+  }
+
+  private recordWelcome(sessionId: string, hash: string) {
+    this.welcomeHistory.set(sessionId, {
+      hash,
+      expiresAt: Date.now() + this.welcomeHistoryTtlMs,
+    });
+  }
+
+  private hashText(value: string): string {
+    return createHash('sha256').update(value).digest('hex');
+  }
+
+  /**
+   * 附加到Express应用
+   */
+  public attachToApp(app: any) {
+    app.set('io', this.io);
+  }
+}

@@ -3,7 +3,7 @@ import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
-import { volcengineTtsService } from './volcengine/index';
+import { volcengineTtsService } from './volcengine/volcengineTtsService';
 import { ossService } from './ossService';
 import { prisma } from '../lib/prisma';
 

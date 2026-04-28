@@ -1,0 +1,367 @@
+import Redis from 'ioredis';
+import { qwen3TTSClient } from './qwen3-tts-service-client';
+import { interviewFlowService } from './flow-controller.service';
+import { prisma } from '../lib/prisma';
+import { InterviewScene, interviewConductor } from './interview-conductor.service';
+
+export class CoordinatorService {
+  private static instance: CoordinatorService;
+  private pubClient: Redis;
+  private subClient: Redis;
+  private asrSubClient: Redis;
+
+  private constructor() {
+    const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+    this.pubClient = new Redis(redisUrl);
+    this.subClient = new Redis(redisUrl);
+    this.asrSubClient = new Redis(redisUrl);
+
+    this.setupSubscriptions();
+  }
+
+  static getInstance(): CoordinatorService {
+    if (!CoordinatorService.instance) {
+      CoordinatorService.instance = new CoordinatorService();
+    }
+    return CoordinatorService.instance;
+  }
+
+  private setupSubscriptions() {
+    // 订阅来自 backend-api 网关的事件
+    this.subClient.subscribe('interview:events:inbound', (err) => {
+      if (err) console.error('[Coordinator] Failed to subscribe to inbound events:', err);
+      else console.log('[Coordinator] Subscribed to interview:events:inbound');
+    });
+
+    this.subClient.on('message', async (channel, message) => {
+      if (channel === 'interview:events:inbound') {
+        try {
+          const data = JSON.parse(message);
+          await this.handleInboundEvent(data);
+        } catch (e) {
+          console.error('[Coordinator] Error handling inbound message:', e);
+        }
+      }
+    });
+
+    // 订阅来自 asr-service 的转写完成事件
+    this.asrSubClient.subscribe('asr:events', (err) => {
+      if (err) console.error('[Coordinator] Failed to subscribe to ASR events:', err);
+      else console.log('[Coordinator] Subscribed to asr:events');
+    });
+
+    this.asrSubClient.on('message', async (channel, message) => {
+      if (channel === 'asr:events') {
+        try {
+          const data = JSON.parse(message);
+          if (data.event === 'transcription_completed') {
+            await this.handleAsrTranscription(data);
+          }
+        } catch (e) {
+          console.error('[Coordinator] Error handling ASR message:', e);
+        }
+      }
+    });
+  }
+
+  private emitToGateway(sessionId: string, type: string, payload: any) {
+    this.pubClient.publish('interview:events:outbound', JSON.stringify({
+      type,
+      sessionId,
+      payload
+    }));
+  }
+
+  private async handleInboundEvent(data: any) {
+    const { type, sessionId, userId, jobPosition, background, text, socketId } = data;
+
+    switch (type) {
+      case 'JOIN_SESSION':
+        await this.handleJoinSession(sessionId, userId, jobPosition, background, socketId);
+        break;
+      case 'TEXT_MESSAGE':
+        await this.processUserResponse(sessionId, text, 'text');
+        break;
+      case 'DISCONNECT':
+        console.log(`[Coordinator] Client disconnected: ${sessionId} (Socket: ${socketId})`);
+        break;
+      case 'INTERRUPT':
+        // TTS clear was already handled by Gateway, nothing more needed here
+        break;
+      case 'VIDEO_FRAME':
+        // Potential logic to handle video analysis tracking
+        break;
+      default:
+        console.warn(`[Coordinator] Unknown inbound event type: ${type}`);
+    }
+  }
+
+  private async handleJoinSession(sessionId: string, userId?: string, jobPosition?: string, background?: string, socketId?: string) {
+    console.log(`[Coordinator] Handling join_session for ${sessionId}`);
+    
+    // 初始化面试流服务
+    await interviewFlowService.initializeSession(
+      sessionId, 
+      userId || 'anonymous', 
+      '面试者', 
+      jobPosition || '通用职位',
+      background
+    );
+
+    const session = interviewFlowService.getSession(sessionId);
+
+    // 检查是否断点续面
+    const isResume = this.isWarmResumeEligible(session);
+
+    if (isResume && session && session.rounds.length > 0) {
+      const currentRound = session.rounds.find((r: any) => r.status === 'in_progress' || r.status === 'pending');
+      
+      if (currentRound) {
+        const resumeRoundNum = currentRound.roundNumber;
+        const totalRounds = session.rounds.length;
+        const completedRounds = session.rounds.filter((r: any) => r.status === 'completed').length;
+        
+        console.log(`🔄 [Coordinator] 断点续面: ${sessionId}, 恢复第 ${resumeRoundNum} 题`);
+        
+        if (currentRound.status === 'pending') {
+            currentRound.status = 'in_progress';
+            session.currentRound = currentRound.roundNumber;
+        }
+
+        const jobPosText = jobPosition || '这个职位';
+        const resumeText = `欢迎回来，我们继续${jobPosText}的面试。现在是第${resumeRoundNum}题，请听题：`;
+        
+        // 发送客户端UI状态
+        this.emitToGateway(sessionId, 'voice_response', {
+          audioUrl: null,
+          text: resumeText,
+          sessionId,
+          duration: 0,
+          ttsMode: 'client',
+          isWelcome: true,
+          isResume: true,
+          progress: { current: resumeRoundNum, total: totalRounds, completed: completedRounds },
+        });
+
+        this.persistAvatarVoice(sessionId, resumeText);
+
+        setTimeout(() => {
+          this.emitRoundVoiceResponse(sessionId, currentRound);
+        }, 1500);
+
+        return;
+      }
+    }
+
+    // 首次进入面试
+    const jobPosText = (jobPosition || '这个职位').trim().length <= 40 ? (jobPosition || '这个职位').trim() : '本岗位';
+    const welcomeText = `让我陪您一起完成这个面试流程。请简单介绍一下您自己，并说明为什么想要应聘「${jobPosText}」。`;
+
+    console.log(`🎤 [Coordinator] 发送初始欢迎问题: ${sessionId}`);
+    
+    // 使用 Qwen3-TTS 合成欢迎语
+    const ttsHealth = await qwen3TTSClient.checkHealth();
+    if (ttsHealth?.status === 'ok') {
+      const segments = interviewConductor['parseEmotionSegments'](welcomeText, 'opening');
+      for (const segment of segments) {
+        qwen3TTSClient.synthesize(sessionId, segment.text, false);
+      }
+      qwen3TTSClient.commitText(sessionId);
+
+      this.emitToGateway(sessionId, 'voice_response', {
+        audioUrl: null,
+        text: welcomeText,
+        sessionId,
+        duration: 0,
+        ttsMode: 'qwen3_streaming',
+        isWelcome: true,
+      });
+    } else {
+      // 降级为客户端发声
+      this.emitToGateway(sessionId, 'voice_response', {
+        audioUrl: null,
+        text: welcomeText,
+        sessionId,
+        duration: 0,
+        ttsMode: 'client',
+        isWelcome: true,
+      });
+    }
+    this.persistAvatarVoice(sessionId, welcomeText);
+
+    // 异步生成后续题目
+    interviewFlowService.startInterviewPhase(sessionId).then((res: any) => {
+      console.log(`✅ [Coordinator] 面试回合准备就绪 (${sessionId})`);
+      if (res.nextRound && !isResume) {
+        // 第一题生成好了，下发
+        this.emitRoundVoiceResponse(sessionId, res.nextRound);
+      }
+    }).catch(err => console.warn(`⚠️ [Coordinator] 异步生成题目失败:`, err));
+  }
+
+  private isWarmResumeEligible(session: any): boolean {
+    if (!session) return false;
+    if (session.rounds?.some((r: any) => r.status === 'completed')) return true;
+    if (session.rounds?.length > 0 && session.currentRound > 0) return true;
+    return false;
+  }
+
+  private async handleAsrTranscription(data: any) {
+    const { sessionId, payload } = data;
+    const text = (payload.text || '').trim();
+    if (!text) return;
+    
+    console.log(`[Coordinator] ASR 识别完成 (${sessionId}): "${text}"`);
+    await this.processUserResponse(sessionId, text, 'asr');
+  }
+
+  private async processUserResponse(sessionId: string, text: string, source: 'asr' | 'text') {
+    if (!text.trim()) return;
+    
+    // UI 回显
+    this.emitToGateway(sessionId, 'asr_partial', { text, isFinal: true, sessionId });
+
+    // 处理用户记录
+    const session = interviewFlowService.getSession(sessionId);
+    let questionIndex = null;
+    if (session) {
+      const currentRound = session.rounds.find((r: any) => r.status === 'in_progress');
+      if (currentRound) questionIndex = Math.max(0, currentRound.roundNumber - 1);
+    }
+    
+    const turnMeta = await this.recordConversationTurn(sessionId, { speaker: 'CANDIDATE', candidateText: text, questionIndex });
+    
+    if (turnMeta) {
+      this.emitToGateway(sessionId, 'candidate_turn_recorded', {
+        sessionId,
+        sequence: turnMeta.sequence,
+        turnId: turnMeta.id,
+        questionIndex,
+      });
+    }
+
+    // 检查结束意图
+    const normalizedText = text.replace(/\s+/g, '');
+    const completionIntents = ['结束面试', '面试结束', '完成面试', '结束这个面试', '结束这次面试', '我答完了'];
+    if (completionIntents.some(k => normalizedText.includes(k))) {
+       console.log(`🔚 [Coordinator] 检测到主动结束意图: ${sessionId}`);
+       await interviewFlowService.endInterview(sessionId);
+       const closingText = '感谢您的配合，我们会尽快生成本次面试报告，请留意通知。';
+       this.emitToGateway(sessionId, 'voice_response', {
+         text: closingText,
+         sessionId,
+         ttsMode: await this.synthesizeQwen3TtsSegments(sessionId, closingText, 'closing'),
+         isCompleted: true,
+         status: 'completed'
+       });
+       this.persistAvatarVoice(sessionId, closingText);
+       return;
+    }
+
+    // 调用业务逻辑
+    try {
+      const result = await interviewFlowService.processUserResponse(sessionId, text);
+      if (result.isCompleted) {
+         const closingText = '面试已全部完成，感谢您的配合，我们会尽快生成本次面试报告，请留意通知。';
+         this.emitToGateway(sessionId, 'voice_response', {
+           text: closingText,
+           sessionId,
+           ttsMode: await this.synthesizeQwen3TtsSegments(sessionId, closingText, 'closing'),
+           isCompleted: true,
+           status: 'completed'
+         });
+         this.persistAvatarVoice(sessionId, closingText);
+      } else if (result.nextRound) {
+         await this.emitRoundVoiceResponse(sessionId, result.nextRound);
+      }
+    } catch (e: any) {
+      console.warn(`⚠️ [Coordinator] 处理回答失败, 退回对话模式:`, e);
+      const conductorResult = await interviewConductor.generateInterviewerResponse({
+        userMessage: text,
+        sessionId,
+        context: { }
+      });
+      this.emitToGateway(sessionId, 'voice_response', {
+         text: conductorResult.text,
+         sessionId,
+         ttsMode: await this.synthesizeQwen3TtsSegments(sessionId, conductorResult.text),
+      });
+      this.persistAvatarVoice(sessionId, conductorResult.text);
+    }
+  }
+
+  private async emitRoundVoiceResponse(sessionId: string, round: any) {
+    let ttsMode = 'client';
+    if (round.audioUrl) {
+      ttsMode = 'server';
+    } else {
+      const scene = interviewConductor.inferScene(round.question, { isFollowUp: (round.followupCount || 0) > 0 });
+      ttsMode = await this.synthesizeQwen3TtsSegments(sessionId, round.question, scene);
+    }
+
+    this.emitToGateway(sessionId, 'voice_response', {
+      audioUrl: round.audioUrl || null,
+      text: round.question,
+      sessionId,
+      duration: round.duration || 0,
+      ttsMode,
+      questionIndex: round.roundNumber,
+    });
+    this.persistAvatarVoice(sessionId, round.question, round.roundNumber);
+  }
+
+  private async synthesizeQwen3TtsSegments(sessionId: string, responseText: string, scene?: InterviewScene): Promise<'qwen3_streaming' | 'client'> {
+    try {
+      const ttsHealth = await qwen3TTSClient.checkHealth();
+      if (!ttsHealth || ttsHealth.status !== 'ok') return 'client';
+
+      const segments = interviewConductor['parseEmotionSegments'](responseText, scene);
+      for (const segment of segments) {
+        if (segment.text.trim()) {
+          qwen3TTSClient.synthesize(sessionId, segment.text, false);
+        }
+      }
+      qwen3TTSClient.commitText(sessionId);
+      return 'qwen3_streaming';
+    } catch {
+      return 'client';
+    }
+  }
+
+  private async recordConversationTurn(sessionId: string, data: any) {
+    try {
+      // Find max sequence
+      const turns = await prisma.aIInterviewConversationTurn.findMany({
+        where: { sessionId },
+        orderBy: { sequence: 'desc' },
+        take: 1
+      });
+      const nextSequence = turns.length > 0 ? turns[0].sequence + 1 : 1;
+
+      return await prisma.aIInterviewConversationTurn.create({
+        data: {
+          sessionId,
+          sequence: nextSequence,
+          speaker: data.speaker,
+          candidateText: data.candidateText,
+          avatarText: data.avatarText,
+          questionIndex: data.questionIndex,
+        }
+      });
+    } catch (e) {
+      console.error('[Coordinator] Failed to record conversation turn:', e);
+      return null;
+    }
+  }
+
+  private persistAvatarVoice(sessionId: string, text: string, questionIndex?: number) {
+    if (!text.trim()) return;
+    this.recordConversationTurn(sessionId, {
+      speaker: 'AVATAR',
+      avatarText: text.trim(),
+      questionIndex,
+    });
+  }
+}
+
+export const coordinatorService = CoordinatorService.getInstance();

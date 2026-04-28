@@ -2,6 +2,7 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import { body, param, query, validationResult } from 'express-validator';
+import { prisma } from '../lib/prisma';
 import { aiInterviewService } from '../services/aiInterviewService';
 import { deepseekService } from '../services/deepseekService';
 import { ttsService } from '../services/ttsService';
@@ -1760,9 +1761,9 @@ router.get('/sessions/:sessionId/analysis',
       }
 
       const { sessionId } = req.params;
-      const { analysisService } = await import('../services/analysisService');
-
-      const report = await analysisService.getAnalysisReport(sessionId);
+      const report = await prisma.aIInterviewAnalysisReport.findUnique({
+        where: { sessionId }
+      });
 
       if (!report) {
         return res.status(404).json({
@@ -1773,7 +1774,69 @@ router.get('/sessions/:sessionId/analysis',
 
       res.json({
         success: true,
-        data: report
+        data: (() => {
+          const insights = report.videoInsights ? JSON.parse(report.videoInsights) : null;
+          const videoItems = Array.isArray(insights?.video) ? insights.video : [];
+          const fallbackPosture = videoItems.length
+              ? Math.round(videoItems.reduce((sum: number, item: any) => sum + (item.postureStability || 0), 0) / videoItems.length)
+              : null;
+          const fallbackGaze = videoItems.length
+              ? Math.round(videoItems.reduce((sum: number, item: any) => sum + (item.gazeFocus || 0), 0) / videoItems.length)
+              : null;
+          const fallbackEmotionStability = videoItems.length
+              ? Math.round(videoItems.reduce((sum: number, item: any) => sum + (item.emotionStability || 0), 0) / videoItems.length)
+              : null;
+          const fallbackMicroExpressionScore = videoItems.length
+              ? Math.round(videoItems.reduce((sum: number, item: any) => sum + (item.microExpressionScore || 0), 0) / videoItems.length)
+              : null;
+          const postureStability = report.postureStability ?? fallbackPosture;
+          const gazeFocus = report.gazeFocus ?? fallbackGaze;
+
+          return {
+              sessionId: report.sessionId,
+              overallScore: report.overallScore,
+              competencies: JSON.parse(report.competenciesJson || '[]'),
+              strengths: JSON.parse(report.strengths || '[]'),
+              improvements: JSON.parse(report.improvements || '[]'),
+              jobMatch: report.jobMatchTitle ? {
+                  title: report.jobMatchTitle,
+                  description: report.jobMatchDescription || '',
+                  matchRatio: report.jobMatchRatio || 0
+              } : null,
+              tips: report.tips || '',
+              metrics: {
+                  videoConfidenceScore: report.videoConfidenceScore,
+                  emotionDistribution: report.emotionDistribution ? JSON.parse(report.emotionDistribution) : null,
+                  emotionStability: fallbackEmotionStability,
+                  speechQuality: report.speechQuality,
+                  bodyLanguageScore: report.bodyLanguageScore,
+                  postureStability,
+                  gazeFocus,
+                  microExpressionScore: fallbackMicroExpressionScore
+              },
+              newDimensionScores: {
+                  professionalAbilityScore: report.professionalAbilityScore,
+                  achievementInnovationScore: report.achievementInnovationScore,
+                  learningAbilityScore: report.learningAbilityScore,
+                  opennessInnovationScore: report.opennessInnovationScore,
+                  stressResistanceScore: report.stressResistanceScore,
+                  collaborationResponsibilityScore: report.collaborationResponsibilityScore,
+                  learningGrowthScore: report.learningGrowthScore,
+                  communicationCollaborationScore: report.communicationCollaborationScore,
+                  problemSolvingScore: report.problemSolvingNewScore,
+                  achievementExecutionScore: report.achievementExecutionScore,
+                  stressResilienceScore: report.stressResilienceScore
+              },
+              multimodalScores: report.multimodalScoresJson ? JSON.parse(report.multimodalScoresJson) : null,
+              questionByQuestion: report.questionByQuestionJson ? JSON.parse(report.questionByQuestionJson) : null,
+              contentMultimodalFusion: report.contentMultimodalFusionJson ? JSON.parse(report.contentMultimodalFusionJson) : null,
+              integrity: insights?.integrity || null,
+              voiceprint: insights?.voiceprint || null,
+              insights,
+              analysisStatus: report.analysisStatus,
+              generatedAt: report.generatedAt ? report.generatedAt.toISOString() : new Date().toISOString()
+          };
+        })()
       });
 
     } catch (error) {
@@ -1826,13 +1889,26 @@ router.get('/sessions/:sessionId/analysis/status',
       }
 
       const { sessionId } = req.params;
-      const { analysisService } = await import('../services/analysisService');
+      const report = await prisma.aIInterviewAnalysisReport.findUnique({
+        where: { sessionId }
+      });
 
-      const status = await analysisService.getAnalysisStatus(sessionId);
+      const task = await prisma.aIInterviewAnalysisTask.findFirst({
+        where: { sessionId },
+        orderBy: { createdAt: 'desc' }
+      });
 
       res.json({
         success: true,
-        data: status
+        data: {
+            status: report?.analysisStatus || task?.status || 'NOT_STARTED',
+            report: report ? { analysisStatus: report.analysisStatus, overallScore: report.overallScore } : null,
+            task: task ? {
+                status: task.status,
+                retryCount: task.retryCount,
+                errorMessage: task.errorMessage
+            } : null
+        }
       });
 
     } catch (error) {
@@ -1885,9 +1961,21 @@ router.post('/sessions/:sessionId/analysis/retry',
       }
 
       const { sessionId } = req.params;
-      const { analysisQueue } = await import('../jobs/analysisQueue');
-
-      await analysisQueue.retryFailedTask(sessionId);
+      await prisma.aIInterviewAnalysisReport.upsert({
+        where: { sessionId },
+        update: { analysisStatus: 'PENDING' },
+        create: {
+          sessionId,
+          overallScore: 0,
+          communicationScore: 0,
+          technicalScore: 0,
+          problemSolvingNewScore: 0,
+          collaborationResponsibilityScore: 0,
+          adaptabilityScore: 0,
+          learningScore: 0,
+          analysisStatus: 'PENDING'
+        } as any
+      });
 
       res.json({
         success: true,

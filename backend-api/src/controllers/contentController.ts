@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import type { Express } from 'express';
 import { randomUUID } from 'crypto';
-import path from 'path';
+import * as path from 'path';
 import { ossService } from '../services/ossService';
 import { prisma } from '../lib/prisma';
 import { withRetry } from '../utils/prismaUtils';
@@ -636,7 +636,7 @@ const getPostCommentsPayload = async (kind: PostKind, postId: string, userId?: s
                 GROUP BY comment_id, emoji
               `,
               ...replyIds
-            );
+            ));
             replyReactions.forEach(r => {
               const current = replyReactionsMap.get(r.commentId) || {};
               current[r.emoji] = Number(r.count);
@@ -693,7 +693,7 @@ export const getUserPosts = async (req: Request, res: Response) => {
         { status: 'PUBLISHED' },
         req.user
           ? {
-              userId: req.user.id,
+              userId: req.user!.id,
               status: {
                 not: 'DELETED',
               },
@@ -778,7 +778,7 @@ export const getMyPosts = async (req: Request, res: Response) => {
     const take = parsedSize;
 
     const where = {
-      userId: req.user.id,
+      userId: req.user!.id,
       status: {
         in: ['PUBLISHED', 'DRAFT', 'HIDDEN', 'PENDING'],
       },
@@ -859,7 +859,7 @@ export const getUserPostDetail = async (req: Request, res: Response) => {
       });
     }
 
-    const isOwner = req.user && post.userId && req.user.id === post.userId;
+    const isOwner = req.user && post.userId && req.user!.id === post.userId;
     if (post.status !== 'PUBLISHED' && !isOwner) {
       return res.status(404).json({
         success: false,
@@ -984,7 +984,7 @@ export const createUserPost = async (req: Request, res: Response) => {
 
     const created = await withRetry(() => prisma.userPost.create({
       data: {
-        userId: req.user.id,
+        userId: req.user!.id,
         title,
         content,
         coverImage,
@@ -1043,7 +1043,7 @@ export const deleteMyPost = async (req: Request, res: Response) => {
       select: { id: true, userId: true },
     }));
 
-    if (!post || post.userId !== req.user.id) {
+    if (!post || post.userId !== req.user!.id) {
       return res.status(404).json({ success: false, message: '帖子不存在或已删除' });
     }
 
@@ -1307,7 +1307,7 @@ const createPostComment = (kind: PostKind) => async (req: Request, res: Response
       commentId,
       kind,
       id,
-      req.user.id,
+      req.user!.id,
       actualParentId,
       replyToUserId,
       content
@@ -1369,7 +1369,7 @@ const createPostComment = (kind: PostKind) => async (req: Request, res: Response
       commentId
     ));
 
-    const engagement = await getPostEngagementPayload(kind, id, req.user.id);
+    const engagement = await getPostEngagementPayload(kind, id, req.user!.id);
 
     res.status(201).json({
       success: true,
@@ -1419,7 +1419,7 @@ const likePost = (kind: PostKind) => async (req: Request, res: Response) => {
       `,
       kind,
       id,
-      req.user.id
+      req.user!.id
     ));
 
     if (existing.length === 0) {
@@ -1431,7 +1431,7 @@ const likePost = (kind: PostKind) => async (req: Request, res: Response) => {
         randomUUID(),
         kind,
         id,
-        req.user.id
+        req.user!.id
       ));
 
       if (kind === 'USER') {
@@ -1455,7 +1455,7 @@ const likePost = (kind: PostKind) => async (req: Request, res: Response) => {
       }
     }
 
-    const data = await getPostEngagementPayload(kind, id, req.user.id);
+    const data = await getPostEngagementPayload(kind, id, req.user!.id);
 
     res.json({
       success: true,
@@ -1500,7 +1500,7 @@ const unlikePost = (kind: PostKind) => async (req: Request, res: Response) => {
       `,
       kind,
       id,
-      req.user.id
+      req.user!.id
     ));
 
     if (Number(deleted) > 0) {
@@ -1525,7 +1525,7 @@ const unlikePost = (kind: PostKind) => async (req: Request, res: Response) => {
       }
     }
 
-    const data = await getPostEngagementPayload(kind, id, req.user.id);
+    const data = await getPostEngagementPayload(kind, id, req.user!.id);
 
     res.json({
       success: true,
@@ -1572,7 +1572,7 @@ const favoritePost = (kind: PostKind) => async (req: Request, res: Response) => 
       `,
       kind,
       id,
-      req.user.id
+      req.user!.id
     ));
 
     if (existing.length === 0) {
@@ -1584,11 +1584,11 @@ const favoritePost = (kind: PostKind) => async (req: Request, res: Response) => 
         randomUUID(),
         kind,
         id,
-        req.user.id
+        req.user!.id
       ));
     }
 
-    const data = await getPostEngagementPayload(kind, id, req.user.id);
+    const data = await getPostEngagementPayload(kind, id, req.user!.id);
 
     res.json({
       success: true,
@@ -1633,10 +1633,10 @@ const unfavoritePost = (kind: PostKind) => async (req: Request, res: Response) =
       `,
       kind,
       id,
-      req.user.id
+      req.user!.id
     ));
 
-    const data = await getPostEngagementPayload(kind, id, req.user.id);
+    const data = await getPostEngagementPayload(kind, id, req.user!.id);
 
     res.json({
       success: true,
@@ -1819,7 +1819,7 @@ export const likeComment = async (req: Request, res: Response) => {
     const { id } = req.params;
     await ensurePostInteractionTables();
 
-    console.log(`[likeComment] 开始处理评论点赞: commentId=${id}, userId=${req.user.id}`);
+    console.log(`[likeComment] 开始处理评论点赞: commentId=${id}, userId=${req.user!.id}`);
 
     // 验证评论是否存在
     const comments = await withRetry(() => prisma.$queryRawUnsafe<Array<{ id: string }>>(
@@ -1844,11 +1844,11 @@ export const likeComment = async (req: Request, res: Response) => {
         LIMIT 1
       `,
       id,
-      req.user.id
+      req.user!.id
     ));
 
     if (existing.length === 0) {
-      console.log(`[likeComment] 添加新点赞: commentId=${id}, userId=${req.user.id}`);
+      console.log(`[likeComment] 添加新点赞: commentId=${id}, userId=${req.user!.id}`);
       await withRetry(() => prisma.$executeRawUnsafe(
         `
           INSERT INTO community_comment_likes (id, comment_id, user_id)
@@ -1856,7 +1856,7 @@ export const likeComment = async (req: Request, res: Response) => {
         `,
         randomUUID(),
         id,
-        req.user.id
+        req.user!.id
       ));
 
       // 更新评论点赞数
@@ -1869,7 +1869,7 @@ export const likeComment = async (req: Request, res: Response) => {
         id
       ));
     } else {
-      console.log(`[likeComment] 已点赞，跳过: commentId=${id}, userId=${req.user.id}`);
+      console.log(`[likeComment] 已点赞，跳过: commentId=${id}, userId=${req.user!.id}`);
     }
 
     // 获取更新后的评论信息，包含点赞状态和表情
@@ -1948,7 +1948,7 @@ export const unlikeComment = async (req: Request, res: Response) => {
     const { id } = req.params;
     await ensurePostInteractionTables();
 
-    console.log(`[unlikeComment] 开始处理取消点赞: commentId=${id}, userId=${req.user.id}`);
+    console.log(`[unlikeComment] 开始处理取消点赞: commentId=${id}, userId=${req.user!.id}`);
 
     // 验证评论是否存在
     const comments = await withRetry(() => prisma.$queryRawUnsafe<Array<{ id: string }>>(
@@ -1970,7 +1970,7 @@ export const unlikeComment = async (req: Request, res: Response) => {
         WHERE comment_id = ? AND user_id = ?
       `,
       id,
-      req.user.id
+      req.user!.id
     ));
 
     console.log(`[unlikeComment] 删除点赞记录数: ${Number(deleted)}`);
@@ -2104,7 +2104,7 @@ export const addCommentReaction = async (req: Request, res: Response) => {
         LIMIT 1
       `,
       id,
-      req.user.id,
+      req.user!.id,
       emoji
     ));
 
@@ -2116,7 +2116,7 @@ export const addCommentReaction = async (req: Request, res: Response) => {
         `,
         randomUUID(),
         id,
-        req.user.id,
+        req.user!.id,
         emoji
       ));
     }
@@ -2199,7 +2199,7 @@ export const removeCommentReaction = async (req: Request, res: Response) => {
     // 支持从 query 参数或 body 中获取 emoji
     const emoji = (req.query.emoji as string) || req.body.emoji;
 
-    console.log(`[removeCommentReaction] 移除表情: commentId=${id}, emoji=${emoji}, userId=${req.user.id}`);
+    console.log(`[removeCommentReaction] 移除表情: commentId=${id}, emoji=${emoji}, userId=${req.user!.id}`);
 
     if (!emoji || typeof emoji !== 'string') {
       return res.status(400).json({
@@ -2230,7 +2230,7 @@ export const removeCommentReaction = async (req: Request, res: Response) => {
         WHERE comment_id = ? AND user_id = ? AND emoji = ?
       `,
       id,
-      req.user.id,
+      req.user!.id,
       emoji
     ));
 
@@ -2285,7 +2285,7 @@ export const removeCommentReaction = async (req: Request, res: Response) => {
         LIMIT 1
       `,
       id,
-      req.user.id
+      req.user!.id
     ));
 
     console.log(`[removeCommentReaction] 返回成功响应: commentId=${id}`);
@@ -2389,7 +2389,7 @@ export const getCommentReplies = async (req: Request, res: Response) => {
           WHERE comment_id IN (${replyIds.map(() => '?').join(',')}) AND user_id = ?
         `,
         ...replyIds,
-        req.user.id
+        req.user!.id
       ));
       likedReplies.forEach(r => likedMap.set(r.commentId, true));
 

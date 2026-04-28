@@ -3,6 +3,7 @@ import { ttsService } from './tts.service';
 import { avatarService } from './avatar.service';
 import { interviewConductor } from './interview-conductor.service';
 import { aiInterviewService } from './ai-interview.service';
+import { qwen3TTSClient } from './qwen3-tts-service-client';
 import { InterviewSession, InterviewRound, InterviewState, ResponseAnalysis } from '../models/interviewFlow';
 import { prisma } from '../lib/prisma';
 
@@ -26,6 +27,19 @@ function rehydrateQuestionHasAnswer(q: {
  */
 export class InterviewFlowService {
   private sessions = new Map<string, InterviewSession>();
+
+  private async sendToAvatarAndTTS(sessionId: string, userId: string, text: string, clearPrevious: boolean = true) {
+    if (clearPrevious) {
+      qwen3TTSClient.clearSynthesis(sessionId);
+    }
+    qwen3TTSClient.synthesize(sessionId, text, true);
+
+    try {
+      await avatarService.sendTextToAvatar(sessionId, userId, text);
+    } catch (err: any) {
+      console.warn(`[InterviewFlow] sendTextToAvatar 跳过: ${err?.message || err}`);
+    }
+  }
 
   private toQuestionIndex(round: InterviewRound): number {
     return Math.max(0, round.roundNumber - 1);
@@ -280,7 +294,7 @@ export class InterviewFlowService {
       isFirstTime
     );
 
-    await avatarService.sendTextToAvatar(sessionId, userId, openingResult.opening);
+    await this.sendToAvatarAndTTS(sessionId, userId, openingResult.opening);
 
     return sessionId;
   }
@@ -308,7 +322,7 @@ export class InterviewFlowService {
     for (const text of introduction) {
       const session = this.sessions.get(sessionId);
       if (session) {
-        await avatarService.sendTextToAvatar(sessionId, session.userId, text);
+        await this.sendToAvatarAndTTS(sessionId, session.userId, text, false);
       }
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
@@ -326,7 +340,7 @@ export class InterviewFlowService {
     for (const text of welcome) {
       const session = this.sessions.get(sessionId);
       if (session) {
-        await avatarService.sendTextToAvatar(sessionId, session.userId, text);
+        await this.sendToAvatarAndTTS(sessionId, session.userId, text, false);
       }
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
@@ -353,7 +367,7 @@ export class InterviewFlowService {
 背景：${session.userInfo.background}
 如果信息有误，请告诉我需要修改的地方。`;
 
-    await avatarService.sendTextToAvatar(sessionId, session.userId, confirmation);
+    await this.sendToAvatarAndTTS(sessionId, session.userId, confirmation);
     await new Promise(resolve => setTimeout(resolve, 3000));
 
     return session.userInfo;
@@ -619,14 +633,8 @@ export class InterviewFlowService {
     session.currentRound = nextRound.roundNumber;
     await this.persistRoundStarted(session, nextRound);
 
-    // Web 嵌入式数字人侧记一笔；失败不阻断流程（实时链路靠 Socket + Qwen3-TTS）
-    try {
-      await avatarService.sendTextToAvatar(sessionId, session.userId, nextRound.question);
-    } catch (err: any) {
-      console.warn(
-        `[InterviewFlow] sendTextToAvatar 跳过: ${err?.message || err}`
-      );
-    }
+    // Web 嵌入式数字人侧记一笔；同时通过 qwen3TTSClient 下发音频流到 App
+    await this.sendToAvatarAndTTS(sessionId, session.userId, nextRound.question);
 
     // 如果有音频文件，客户端会播放音频，这里不需要服务器端播放
     // if (nextRound.audioUrl) {
@@ -806,7 +814,7 @@ export class InterviewFlowService {
 
     // 生成并发送结束语
     const closingResult = await deepseekService.generateClosing(summary);
-    await avatarService.sendTextToAvatar(sessionId, session.userId, closingResult.closing);
+    await this.sendToAvatarAndTTS(sessionId, session.userId, closingResult.closing);
 
     // 停止数字人生命周期
     await avatarService.stopAvatarInstance(sessionId, session.userId);

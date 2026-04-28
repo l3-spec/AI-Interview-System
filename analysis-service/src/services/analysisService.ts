@@ -513,7 +513,7 @@ export class AnalysisService {
                 questions,
                 {
                     jobCategory,
-                    jobRequirements: session.jobRequirements || ''
+                    jobRequirements: (session as any).jobRequirements || ''
                 }
             );
 
@@ -649,7 +649,7 @@ export class AnalysisService {
                     learningScore: 0,
                     analysisStatus: 'FAILED',
                     analysisError: error instanceof Error ? error.message : '未知错误'
-                }
+                } as any
             });
 
             throw error;
@@ -2008,7 +2008,7 @@ ${qaText}
             voiceprint: insights?.voiceprint || null,
             insights,
             analysisStatus: report.analysisStatus,
-            generatedAt: report.generatedAt.toISOString()
+            generatedAt: report.generatedAt ? report.generatedAt.toISOString() : new Date().toISOString()
         };
     }
 

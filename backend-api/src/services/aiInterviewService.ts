@@ -344,8 +344,21 @@ class AIInterviewService {
   }
 
   private async queueAnalysisIfNeeded(sessionId: string, priority = 0): Promise<void> {
-    const { analysisQueue } = await import('../jobs/analysisQueue');
-    await analysisQueue.enqueueAnalysis(sessionId, priority);
+    await prisma.aIInterviewAnalysisReport.upsert({
+      where: { sessionId },
+      update: { analysisStatus: 'PENDING' },
+      create: {
+        sessionId,
+        overallScore: 0,
+        communicationScore: 0,
+        technicalScore: 0,
+        problemSolvingNewScore: 0,
+        collaborationResponsibilityScore: 0,
+        adaptabilityScore: 0,
+        learningScore: 0,
+        analysisStatus: 'PENDING'
+      } as any
+    });
   }
 
   /**

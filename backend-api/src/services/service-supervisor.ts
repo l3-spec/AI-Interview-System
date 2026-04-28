@@ -68,6 +68,15 @@ export class ServiceSupervisor {
         healthEndpoint: '/health',
         env: { PORT: '3004' },
       },
+      {
+        name: 'analysis-service',
+        cwd: path.join(this.projectRoot, 'analysis-service'),
+        command: 'npm',
+        args: ['run', 'start'],
+        port: 3005,
+        healthEndpoint: '/health',
+        env: { PORT: '3005' },
+      },
     ];
 
     for (const config of configs) {
