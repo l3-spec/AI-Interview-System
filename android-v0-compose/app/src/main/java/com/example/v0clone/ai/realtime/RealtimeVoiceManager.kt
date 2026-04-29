@@ -480,7 +480,6 @@ class RealtimeVoiceManager(private val context: Context) {
                 Log.i(TAG, "✅ WebSocket连接成功: $serverUrl, SocketID: ${newSocket.id()}")
                 _connectionState.value = ConnectionState.CONNECTED
                 joinSession(sessionId, userId, jobPosition, background)
-                showToast("AI面试官已上线")
             }
             newSocket.on(Socket.EVENT_DISCONNECT) {
                 Log.w(TAG, "❌ WebSocket连接断开: $serverUrl")

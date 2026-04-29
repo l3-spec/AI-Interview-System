@@ -644,12 +644,14 @@ private fun BottomBar(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // 重置按钮
+            val resetEnabled = selectionCount > 0
             Surface(
-                onClick = onReset,
+                onClick = { if (resetEnabled) onReset() },
+                enabled = resetEnabled,
                 modifier = Modifier
                     .weight(1f)
                     .height(44.dp),
-                color = Color(0xFFF4F5F8),
+                color = if (resetEnabled) AccentOrange else Color(0xFFF4F5F8),
                 shape = RoundedCornerShape(40.dp),
                 shadowElevation = 0.dp
             ) {
@@ -659,7 +661,7 @@ private fun BottomBar(
                 ) {
                     Text(
                         text = "重置",
-                        color = Color(0xFF8C929A),
+                        color = if (resetEnabled) Color.White else Color(0xFF8C929A),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium
                     )

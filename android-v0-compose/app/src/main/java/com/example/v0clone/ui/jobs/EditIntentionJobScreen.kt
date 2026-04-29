@@ -638,25 +638,26 @@ private fun BottomBar(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            val resetEnabled = selectionCount > 0
             Surface(
                 modifier = Modifier
                     .weight(1f)
                     .height(44.dp),
-                color = Color(0xFFF5F5F5),
+                color = if (resetEnabled) AccentOrange else Color(0xFFF5F5F5),
                 shape = RoundedCornerShape(40.dp),
                 shadowElevation = 0.dp
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onReset() }
+                        .clickable(enabled = resetEnabled) { onReset() }
                         .padding(vertical = 10.dp),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = "重置",
-                        color = SidebarInactive,
+                        color = if (resetEnabled) Color.White else SidebarInactive,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium
                     )

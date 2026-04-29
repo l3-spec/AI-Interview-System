@@ -37,17 +37,6 @@ fun InterviewEndScreen(
     onNavigateHome: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val countdown = remember { mutableIntStateOf(3) }
-
-    LaunchedEffect(countdown.intValue) {
-        if (countdown.intValue > 0) {
-            delay(1000)
-            countdown.intValue -= 1
-        } else {
-            onNavigateHome()
-        }
-    }
-
     // 🎨 UI 交付 - Light Theme
     val starLinkOrange = Color(0xFFFF6B00)
     val starLinkBlue = Color(0xFFE2F5FF)
@@ -208,14 +197,7 @@ fun InterviewEndScreen(
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
-
-                Text(
-                    text = "${countdown.intValue}s",
-                    color = Color.LightGray,
-                    fontSize = 13.sp
-                )
             }
         }
     }
 }
-
