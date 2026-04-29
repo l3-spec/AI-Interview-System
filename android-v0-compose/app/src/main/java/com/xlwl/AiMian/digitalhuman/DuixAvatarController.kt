@@ -18,6 +18,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -76,6 +77,9 @@ class DuixAvatarController(
 
     private var duixEngine: DUIX? = null
     private var duixRenderer: DUIXRenderer? = null
+    
+    private var isReleased = false
+    private val engineLock = Any()
 
     init {
         // 创建 DUiX TextureView
@@ -102,46 +106,53 @@ class DuixAvatarController(
                 val view = _textureView.value ?: return@launch
                 val renderer = duixRenderer ?: return@launch
                 
-                duixEngine = DUIX(activity, defaultModelId, renderer, object : Callback {
-                    override fun onEvent(event: String, message: String?, extra: Any?) {
-                        when (event) {
-                            Constant.CALLBACK_EVENT_INIT_READY -> {
-                                Log.i(TAG, "DUiX Engine Ready!")
-                                _isReady.value = true
-                                _statusMessage.value = "准备就绪，可以对话"
-                                
-                                // 接管语音播放
-                                realtimeVoiceManager.setDuixAudioSink { wavPath ->
-                                    Log.d(TAG, "Sink received audio: $wavPath")
-                                    // duixEngine?.playAudio(wavPath)
+                synchronized(engineLock) {
+                    if (isReleased) {
+                        Log.w(TAG, "Session start cancelled: Already released")
+                        return@launch
+                    }
+                    
+                    duixEngine = DUIX(activity, defaultModelId, renderer, object : Callback {
+                        override fun onEvent(event: String, message: String?, extra: Any?) {
+                            when (event) {
+                                Constant.CALLBACK_EVENT_INIT_READY -> {
+                                    Log.i(TAG, "DUiX Engine Ready!")
+                                    _isReady.value = true
+                                    _statusMessage.value = "准备就绪，可以对话"
+                                    
+                                    // 接管语音播放
+                                    realtimeVoiceManager.setDuixAudioSink { wavPath ->
+                                        Log.d(TAG, "Sink received audio: $wavPath")
+                                        // duixEngine?.playAudio(wavPath)
+                                    }
+                                    
+                                    activity.runOnUiThread {
+                                        onSessionReady?.invoke()
+                                    }
                                 }
-                                
-                                activity.runOnUiThread {
-                                    onSessionReady?.invoke()
+                                Constant.CALLBACK_EVENT_INIT_ERROR -> {
+                                    Log.e(TAG, "DUiX Engine Error: $message")
+                                    _statusMessage.value = "渲染错误: $message"
+                                    activity.runOnUiThread {
+                                        onError?.invoke(message ?: "未知错误")
+                                    }
                                 }
-                            }
-                            Constant.CALLBACK_EVENT_INIT_ERROR -> {
-                                Log.e(TAG, "DUiX Engine Error: $message")
-                                _statusMessage.value = "渲染错误: $message"
-                                activity.runOnUiThread {
-                                    onError?.invoke(message ?: "未知错误")
+                                Constant.CALLBACK_EVENT_AUDIO_PLAY_START -> {
+                                    Log.d(TAG, "数字人开始播报口型")
                                 }
-                            }
-                            Constant.CALLBACK_EVENT_AUDIO_PLAY_START -> {
-                                Log.d(TAG, "数字人开始播报口型")
-                            }
-                            Constant.CALLBACK_EVENT_AUDIO_PLAY_END -> {
-                                Log.d(TAG, "数字人结束播报口型")
-                            }
-                            else -> {
-                                Log.d(TAG, "event: $event, msg: $message")
+                                Constant.CALLBACK_EVENT_AUDIO_PLAY_END -> {
+                                    Log.d(TAG, "数字人结束播报口型")
+                                }
+                                else -> {
+                                    Log.d(TAG, "event: $event, msg: $message")
+                                }
                             }
                         }
-                    }
-                })
-
-                // Init and Load
-                duixEngine?.init()
+                    })
+    
+                    // Init and Load
+                    duixEngine?.init()
+                }
                 
             } catch (e: Exception) {
                 Log.e(TAG, "startSession failed", e)
@@ -302,20 +313,44 @@ class DuixAvatarController(
     override fun onTtsPlayback(audioPath: String?, text: String?) {
         if (audioPath == null) return
         Log.i(TAG, "onTtsPlayback: Driving digital human with audio file -> $audioPath")
-        duixEngine?.playAudio(audioPath)
+        synchronized(engineLock) {
+            if (!isReleased) {
+                duixEngine?.playAudio(audioPath)
+            }
+        }
     }
 
     fun release() {
-        Log.i(TAG, "release()")
+        try {
+            scope.cancel()
+        } catch (_: Exception) {}
+        
+        synchronized(engineLock) {
+            if (isReleased) {
+                Log.d(TAG, "Already released, skipping...")
+                return
+            }
+            isReleased = true
+        }
+        
+        Log.i(TAG, "release() starting...")
         _isReady.value = false
         realtimeVoiceManager.setDuixAudioSink(null)
-        duixEngine?.release()
-        duixEngine = null
+        
+        synchronized(engineLock) {
+            duixEngine?.release()
+            duixEngine = null
+        }
+        Log.i(TAG, "release() finished.")
     }
 
     fun interrupt() {
         Log.i(TAG, "interrupt()")
-        duixEngine?.stopAudio()
+        synchronized(engineLock) {
+            if (!isReleased) {
+                duixEngine?.stopAudio()
+            }
+        }
     }
 
     override fun interruptPlayback() {
@@ -324,18 +359,29 @@ class DuixAvatarController(
 
     override fun startPush() {
         Log.d(TAG, "startPush()")
-        duixEngine?.startPush()
+        synchronized(engineLock) {
+            if (!isReleased) {
+                duixEngine?.startPush()
+            }
+        }
     }
 
     override fun pushPcm(buffer: ByteArray) {
         if (buffer.isNotEmpty()) {
-            // Log.v(TAG, "pushPcm: ${buffer.size} bytes") // Use Verbose for high frequency data
-            duixEngine?.pushPcm(buffer)
+            synchronized(engineLock) {
+                if (!isReleased) {
+                    duixEngine?.pushPcm(buffer)
+                }
+            }
         }
     }
 
     override fun stopPush() {
         Log.d(TAG, "stopPush()")
-        duixEngine?.stopPush()
+        synchronized(engineLock) {
+            if (!isReleased) {
+                duixEngine?.stopPush()
+            }
+        }
     }
 }

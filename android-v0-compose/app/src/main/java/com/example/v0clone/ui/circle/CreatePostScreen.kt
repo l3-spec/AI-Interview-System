@@ -61,8 +61,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -92,8 +90,12 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.outlined.Keyboard
+import androidx.compose.material.icons.outlined.Backspace
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavBackStackEntry
 import coil.compose.AsyncImage
@@ -151,7 +153,7 @@ data class SelectedImage(
  * 富文本内容块 - 支持文本和图片混合
  */
 sealed class ContentBlock {
-    data class TextBlock(val text: String) : ContentBlock()
+    data class TextBlock(val value: TextFieldValue) : ContentBlock()
     data class ImageBlock(
         val images: List<SelectedImage>, // 1个或2个图片
         val layout: ImageLayout = ImageLayout.Single // 布局类型
@@ -177,14 +179,12 @@ fun CreatePostRoute(
         factory = CreatePostViewModel.provideFactory(repository)
     )
     val uiState by viewModel.uiState.collectAsState()
-    val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(uiState.error) {
         uiState.error?.let { message ->
-            coroutineScope.launch {
-                snackbarHostState.showSnackbar(message)
-            }
+            android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
             viewModel.clearError()
         }
     }
@@ -199,7 +199,6 @@ fun CreatePostRoute(
 
     CreatePostScreen(
         uiState = uiState,
-        snackbarHostState = snackbarHostState,
         onBack = onBack,
         onPublish = { title, content, tags, files ->
             viewModel.publish(title, content, tags, files)
@@ -211,7 +210,6 @@ fun CreatePostRoute(
 @Composable
 private fun CreatePostScreen(
     uiState: CreatePostUiState,
-    snackbarHostState: SnackbarHostState,
     onBack: () -> Unit,
     onPublish: (String, String, List<String>, List<File>) -> Unit
 ) {
@@ -219,9 +217,13 @@ private fun CreatePostScreen(
     val resolver = rememberUpdatedState(newValue = context.contentResolver)
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
-    var title by rememberSaveable { mutableStateOf("") }
+    var title by rememberSaveable(stateSaver = TextFieldValue.Saver) { 
+        mutableStateOf(TextFieldValue("")) 
+    }
     // 使用富文本内容块列表替代纯文本
-    val contentBlocks = remember { mutableStateListOf<ContentBlock>(ContentBlock.TextBlock("")) }
+    val contentBlocks = remember { 
+        mutableStateListOf<ContentBlock>(ContentBlock.TextBlock(TextFieldValue(""))) 
+    }
     val selectedTags = remember { mutableStateListOf<String>() }
     var showTagDialog by remember { mutableStateOf(false) }
     var tagInput by rememberSaveable { mutableStateOf("") }
@@ -267,23 +269,33 @@ private fun CreatePostScreen(
         return insertIndex
     }
 
-    fun updateCurrentTextBlock(transform: (String) -> String) {
+    fun updateCurrentTextBlock(transform: (TextFieldValue) -> TextFieldValue) {
         val targetIndex = ensureCurrentTextBlock()
         val currentBlock = contentBlocks[targetIndex] as ContentBlock.TextBlock
-        contentBlocks[targetIndex] = ContentBlock.TextBlock(transform(currentBlock.text))
+        contentBlocks[targetIndex] = ContentBlock.TextBlock(transform(currentBlock.value))
     }
 
     fun togglePanel(panel: EditorPanel) {
         val nextPanel = if (activePanel == panel) EditorPanel.None else panel
+        val wasEmoji = activePanel == EditorPanel.Emoji
         activePanel = nextPanel
-        if (nextPanel == EditorPanel.None) return
+        
+        if (nextPanel == EditorPanel.None) {
+            // 如果从表情面板切换回来，尝试恢复焦点并弹出输入法
+            if (wasEmoji) {
+                // 这里我们假设当前索引对应的块需要恢复焦点
+                // 注意：焦点恢复可能需要一点延迟或在下一个组合周期
+            }
+            return
+        }
         keyboardController?.hide()
-        focusManager.clearFocus(force = false)
+        // 不要清除焦点，这样输入法隐藏后，文本框依然保持“聚焦”状态，方便后续输入
     }
 
     fun applyTextPreset(preset: TextPreset) {
         updateCurrentTextBlock { current ->
-            val stripped = current
+            val text = current.text
+            val stripped = text
                 .lineSequence()
                 .joinToString("\n") { line ->
                     line.trimStart()
@@ -295,26 +307,65 @@ private fun CreatePostScreen(
                 }
                 .trimStart()
 
-            when (preset) {
+            val newText = when (preset) {
                 TextPreset.Title -> if (stripped.isBlank()) "# " else "# $stripped"
                 TextPreset.Subtitle -> if (stripped.isBlank()) "## " else "## $stripped"
                 TextPreset.Body -> stripped
                 TextPreset.Quote -> if (stripped.isBlank()) "> " else "> $stripped"
             }
+            TextFieldValue(newText, selection = TextRange(newText.length))
         }
     }
 
     fun insertEmoji(emoji: String) {
-        updateCurrentTextBlock { current -> current + emoji }
+        updateCurrentTextBlock { current ->
+            val text = current.text
+            val selection = current.selection
+            val newText = StringBuilder(text).insert(selection.start, emoji).toString()
+            TextFieldValue(
+                text = newText,
+                selection = TextRange(selection.start + emoji.length)
+            )
+        }
+    }
+
+    fun deleteLastChar() {
+        updateCurrentTextBlock { current ->
+            val text = current.text
+            val selection = current.selection
+            if (selection.start == 0 && selection.end == 0) return@updateCurrentTextBlock current
+            
+            val newText: String
+            val newSelection: TextRange
+            
+            if (!selection.collapsed) {
+                // 如果有选中区域，删除选中区域
+                newText = StringBuilder(text).delete(selection.start, selection.end).toString()
+                newSelection = TextRange(selection.start)
+            } else {
+                // 删除光标前的一个字符（考虑代理对）
+                val before = text.substring(0, selection.start)
+                if (before.isEmpty()) return@updateCurrentTextBlock current
+                
+                val lastCodePoint = java.lang.Character.codePointBefore(before, before.length)
+                val charCount = java.lang.Character.charCount(lastCodePoint)
+                newText = StringBuilder(text).delete(selection.start - charCount, selection.start).toString()
+                newSelection = TextRange(selection.start - charCount)
+            }
+            
+            TextFieldValue(newText, selection = newSelection)
+        }
     }
 
     fun insertBulletListItem() {
         updateCurrentTextBlock { current ->
-            when {
-                current.isBlank() -> "• "
-                current.endsWith("\n") -> current + "• "
-                else -> "$current\n• "
+            val text = current.text
+            val newText = when {
+                text.isBlank() -> "• "
+                text.endsWith("\n") -> text + "• "
+                else -> "$text\n• "
             }
+            TextFieldValue(newText, selection = TextRange(newText.length))
         }
     }
 
@@ -344,29 +395,6 @@ private fun CreatePostScreen(
         currentBlockIndex = insertIndex + 1
     }
 
-    // ── 一键排版逻辑 ──
-    fun formatContent() {
-        // 1. 修整标题
-        title = title.trim()
-        
-        // 2. 遍历并修整文本块
-        for (i in contentBlocks.indices) {
-            val block = contentBlocks[i]
-            if (block is ContentBlock.TextBlock) {
-                // 去掉多余的首尾空行，将内部连续多于2个的回车收缩为1个
-                val formattedText = block.text.trim()
-                    .replace(Regex("\\n{3,}"), "\n\n")
-                contentBlocks[i] = ContentBlock.TextBlock(formattedText)
-            }
-        }
-        
-        // 3. 删除末尾空文本块（保留至少一个）
-        while (contentBlocks.size > 1 && 
-               contentBlocks.last() is ContentBlock.TextBlock && 
-               (contentBlocks.last() as ContentBlock.TextBlock).text.isEmpty()) {
-            contentBlocks.removeAt(contentBlocks.size - 1)
-        }
-    }
 
     // 插入双图块
     fun insertDoubleImageBlock(image1: SelectedImage, image2: SelectedImage) {
@@ -438,7 +466,7 @@ private fun CreatePostScreen(
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
         val capacity = MAX_IMAGES - currentImageCount
         if (capacity <= 0) {
-            showTransientMessage(snackbarHostState, "最多只能添加${MAX_IMAGES}张图片")
+            android.widget.Toast.makeText(context, "最多只能添加${MAX_IMAGES}张图片", android.widget.Toast.LENGTH_SHORT).show()
             return@rememberLauncherForActivityResult
         }
         val toProcess = uris.take(capacity)
@@ -449,7 +477,7 @@ private fun CreatePostScreen(
             if (file != null) {
                 processedImages.add(SelectedImage(uri = uri, file = file))
             } else {
-                showTransientMessage(snackbarHostState, "选择图片失败，请重试")
+                android.widget.Toast.makeText(context, "选择图片失败，请重试", android.widget.Toast.LENGTH_SHORT).show()
             }
         }
         if (processedImages.isNotEmpty()) {
@@ -470,24 +498,24 @@ private fun CreatePostScreen(
     fun blocksToText(): String {
         return contentBlocks.joinToString("\n\n") { block ->
             when (block) {
-                is ContentBlock.TextBlock -> block.text
+                is ContentBlock.TextBlock -> block.value.text
                 is ContentBlock.ImageBlock -> "[图片]"
             }
         }
     }
 
     fun submitPost() {
-        if (title.isBlank()) {
-            showTransientMessage(snackbarHostState, "请输入帖子标题")
+        if (title.text.isBlank()) {
+            android.widget.Toast.makeText(context, "请输入帖子标题", android.widget.Toast.LENGTH_SHORT).show()
             return
         }
         val contentText = blocksToText().trim()
         if (contentText.isBlank() || contentText == "[图片]") {
-            showTransientMessage(snackbarHostState, "请输入帖子内容")
+            android.widget.Toast.makeText(context, "请输入帖子内容", android.widget.Toast.LENGTH_SHORT).show()
             return
         }
         onPublish(
-            title.trim(),
+            title.text.trim(),
             contentText,
             selectedTags.map(String::trim),
             getAllImageFiles()
@@ -509,13 +537,10 @@ private fun CreatePostScreen(
         modifier = Modifier.fillMaxSize(),
         containerColor = Color.White,
         contentWindowInsets = WindowInsets(0), // 禁用默认插入，完全手动控制，去掉空隙
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             // ── 顶栏：← 写长文  [一键排版] ──
             LongArticleTopBar(
-                onBack = onBack,
-                isPublishing = uiState.isPublishing,
-                onLayoutClick = { formatContent() } // 绑定一键排版
+                onBack = onBack
             )
         }
     ) { innerPadding ->
@@ -534,7 +559,7 @@ private fun CreatePostScreen(
                 // ── 标题输入 ──
                 LongArticleTitleInput(
                     title = title,
-                    onTitleChange = { if (it.length <= TITLE_MAX_LENGTH) title = it },
+                    onTitleChange = { if (it.text.length <= TITLE_MAX_LENGTH) title = it },
                     onFocusChanged = { isFocused ->
                         if (isFocused) closeKeyboardPanels()
                     }
@@ -546,13 +571,13 @@ private fun CreatePostScreen(
                     currentBlockIndex = currentBlockIndex,
                     onBlockIndexChange = {
                         currentBlockIndex = it
-                        closeKeyboardPanels()
+                        onBlockIndexChange(index)
                     },
-                    onTextChange = { index, text ->
+                    onValueChange = { index, value ->
                         if (index < contentBlocks.size) {
                             val block = contentBlocks[index]
                             if (block is ContentBlock.TextBlock) {
-                                contentBlocks[index] = ContentBlock.TextBlock(text)
+                                contentBlocks[index] = ContentBlock.TextBlock(value)
                             }
                         }
                     },
@@ -598,7 +623,7 @@ private fun CreatePostScreen(
                     keyboardController?.hide()
                     val remainingCapacity = MAX_IMAGES - currentImageCount
                     if (remainingCapacity <= 0) {
-                        showTransientMessage(snackbarHostState, "最多只能添加${MAX_IMAGES}张图片")
+                        android.widget.Toast.makeText(context, "最多只能添加${MAX_IMAGES}张图片", android.widget.Toast.LENGTH_SHORT).show()
                     } else {
                         imagePickerLauncher.launch(
                             PickVisualMediaRequest(
@@ -614,7 +639,8 @@ private fun CreatePostScreen(
                     submitPost()
                 },
                 onPresetSelected = { preset -> applyTextPreset(preset) },
-                onEmojiSelected = { emoji -> insertEmoji(emoji) }
+                onEmojiSelected = { emoji -> insertEmoji(emoji) },
+                onBackspace = { deleteLastChar() }
             )
         }
     }
@@ -790,9 +816,7 @@ private fun CreatePostScreen(
 // ═══════════════════════════════════════════════════════════════
 @Composable
 private fun LongArticleTopBar(
-    onBack: () -> Unit,
-    isPublishing: Boolean,
-    onLayoutClick: () -> Unit
+    onBack: () -> Unit
 ) {
     Surface(
         color = Color.White,
@@ -826,26 +850,9 @@ private fun LongArticleTopBar(
                 color = Color(0xFF1A1A1A),
                 fontSize = 17.sp,
                 fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).padding(end = 44.dp), // 居中对齐处理
                 textAlign = TextAlign.Center
             )
-
-            // 一键排版按钮
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = AccentPink,
-                modifier = Modifier
-                    .padding(end = 8.dp)
-                    .clickable(onClick = onLayoutClick) // 点击执行排版
-            ) {
-                Text(
-                    text = if (isPublishing) "发布中..." else "一键排版",
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                )
-            }
         }
     }
 }
@@ -855,8 +862,8 @@ private fun LongArticleTopBar(
 // ═══════════════════════════════════════════════════════════════
 @Composable
 private fun LongArticleTitleInput(
-    title: String,
-    onTitleChange: (String) -> Unit,
+    title: TextFieldValue,
+    onTitleChange: (TextFieldValue) -> Unit,
     onFocusChanged: (Boolean) -> Unit
 ) {
     BasicTextField(
@@ -875,7 +882,7 @@ private fun LongArticleTitleInput(
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 4.dp)
             ) {
-                if (title.isEmpty()) {
+                if (title.text.isEmpty()) {
                     Text(
                         text = "输入标题",
                         color = TitlePlaceholderColor,
@@ -901,7 +908,7 @@ private fun LongArticleBodyEditor(
     contentBlocks: List<ContentBlock>,
     currentBlockIndex: Int,
     onBlockIndexChange: (Int) -> Unit,
-    onTextChange: (Int, String) -> Unit,
+    onValueChange: (Int, TextFieldValue) -> Unit,
     onRemoveImage: (Int) -> Unit
 ) {
     Column(
@@ -918,10 +925,10 @@ private fun LongArticleBodyEditor(
                 when (block) {
                     is ContentBlock.TextBlock -> {
                         LongArticleTextBlock(
-                            text = block.text,
+                            value = block.value,
                             isFocused = index == currentBlockIndex,
-                            showIndicator = index == 0 && contentBlocks.size == 1 && block.text.isEmpty(),
-                            onTextChange = { onTextChange(index, it) },
+                            showIndicator = index == 0 && contentBlocks.size == 1 && block.value.text.isEmpty(),
+                            onValueChange = { onValueChange(index, it) },
                             onFocusChange = { if (it) onBlockIndexChange(index) },
                             modifier = Modifier.padding(vertical = 1.dp)
                         )
@@ -973,10 +980,10 @@ private fun BodyPlaceholderWithIndicator() {
  */
 @Composable
 private fun LongArticleTextBlock(
-    text: String,
+    value: TextFieldValue,
     isFocused: Boolean,
     showIndicator: Boolean,
-    onTextChange: (String) -> Unit,
+    onValueChange: (TextFieldValue) -> Unit,
     onFocusChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -992,7 +999,7 @@ private fun LongArticleTextBlock(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.Top
     ) {
-        if (showIndicator && text.isEmpty()) {
+        if (showIndicator && value.text.isEmpty()) {
             // 红色竖线指示器（仅空状态展示）
             Box(
                 modifier = Modifier
@@ -1004,8 +1011,8 @@ private fun LongArticleTextBlock(
         }
 
         BasicTextField(
-            value = text,
-            onValueChange = onTextChange,
+            value = value,
+            onValueChange = onValueChange,
             textStyle = TextStyle(
                 fontSize = 15.sp,
                 color = Color(0xFF1A1A1A),
@@ -1018,7 +1025,7 @@ private fun LongArticleTextBlock(
                 .focusRequester(focusRequester)
                 .onFocusChanged { onFocusChange(it.isFocused) },
             decorationBox = { inner ->
-                if (text.isEmpty() && showIndicator) {
+                if (value.text.isEmpty() && showIndicator) {
                     Text(
                         text = "粘贴到这里或输入文字，内容将自动保存",
                         color = BodyPlaceholderColor,
@@ -1046,7 +1053,8 @@ private fun EditorBottomDock(
     onImageClick: () -> Unit,
     onDoneClick: () -> Unit,
     onPresetSelected: (TextPreset) -> Unit,
-    onEmojiSelected: (String) -> Unit
+    onEmojiSelected: (String) -> Unit,
+    onBackspace: () -> Unit
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -1056,7 +1064,10 @@ private fun EditorBottomDock(
         Column(modifier = Modifier.fillMaxWidth()) {
             when (activePanel) {
                 EditorPanel.Format -> FormatPresetPanel(onPresetSelected = onPresetSelected)
-                EditorPanel.Emoji -> EmojiPickerPanel(onEmojiSelected = onEmojiSelected)
+                EditorPanel.Emoji -> EmojiPickerPanel(
+                    onEmojiSelected = onEmojiSelected,
+                    onBackspace = onBackspace
+                )
                 EditorPanel.None -> Unit
             }
 
@@ -1091,7 +1102,7 @@ private fun EditorBottomDock(
                         onClick = onBookmarkClick
                     )
                     ToolbarIconButton(
-                        icon = Icons.Outlined.EmojiEmotions,
+                        icon = if (activePanel == EditorPanel.Emoji) Icons.Outlined.Keyboard else Icons.Outlined.EmojiEmotions,
                         contentDescription = "表情",
                         isActive = activePanel == EditorPanel.Emoji,
                         onClick = onEmojiClick
@@ -1103,14 +1114,21 @@ private fun EditorBottomDock(
                     )
                 }
 
-                // "完成" 按钮
+                // "收起" 或 "完成" 按钮
+                val isPanelOpen = activePanel != EditorPanel.None
                 Text(
-                    text = "完成",
+                    text = if (isPanelOpen) "收起" else "完成",
                     color = ToolbarIconColor,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier
-                        .clickable(onClick = onDoneClick)
+                        .clickable {
+                            if (isPanelOpen) {
+                                onDoneClick() // 这里重用 onDoneClick 逻辑来关闭面板
+                            } else {
+                                onDoneClick() // 正常完成逻辑
+                            }
+                        }
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 )
             }
@@ -1172,42 +1190,61 @@ private fun FormatPresetPanel(
 
 @Composable
 private fun EmojiPickerPanel(
-    onEmojiSelected: (String) -> Unit
+    onEmojiSelected: (String) -> Unit,
+    onBackspace: () -> Unit
 ) {
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(EmojiPanelBackground)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .height(260.dp) // 固定高度，模拟键盘高度
+            .background(Color(0xFFF7F7F7)) // 浅灰色背景，类似截图
     ) {
-        Text(
-            text = "最近使用",
-            color = Color.White.copy(alpha = 0.86f),
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Medium
-        )
-
-        EmojiGridRow(
-            emojis = RecentEmojiList,
-            onEmojiSelected = onEmojiSelected
-        )
-
-        Text(
-            text = "常用表情",
-            color = Color.White.copy(alpha = 0.86f),
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Medium
-        )
-
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
-            EmojiList.forEach { emoji ->
-                EmojiCell(
-                    emoji = emoji,
-                    onClick = { onEmojiSelected(emoji) }
+            Text(
+                text = "通用表情",
+                color = Color.Gray,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                EmojiList.forEach { emoji ->
+                    Text(
+                        text = emoji,
+                        fontSize = 28.sp,
+                        modifier = Modifier.clickable { onEmojiSelected(emoji) }
+                    )
+                }
+            }
+        }
+
+        // 退格按钮 - 悬浮在右下角，类似截图
+        Surface(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp)
+                .size(44.dp, 36.dp),
+            shape = RoundedCornerShape(8.dp),
+            color = Color.White,
+            shadowElevation = 2.dp,
+            onClick = onBackspace
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Outlined.Backspace,
+                    contentDescription = "退格",
+                    tint = Color.Gray,
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
@@ -1432,11 +1469,6 @@ private fun ImageThumbnail(
 // ═══════════════════════════════════════════════════════════════
 //  工具函数
 // ═══════════════════════════════════════════════════════════════
-private fun showTransientMessage(snackbarHostState: SnackbarHostState, message: String) {
-    CoroutineScope(Dispatchers.Main).launch {
-        snackbarHostState.showSnackbar(message)
-    }
-}
 
 private fun formatTag(raw: String): String {
     val trimmed = raw.trim()

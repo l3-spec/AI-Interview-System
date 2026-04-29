@@ -248,13 +248,17 @@ fun DuixAvatarInterviewScreen(
     DisposableEffect(lifecycleOwner) {
          val observer = LifecycleEventObserver { _, event ->
              when (event) {
-                 Lifecycle.Event.ON_DESTROY -> avatarController?.release()
+                 Lifecycle.Event.ON_DESTROY -> {
+                     realtimeVoiceManager.setDigitalHumanController(null)
+                     avatarController?.release()
+                 }
                  else -> {}
              }
          }
          lifecycleOwner.lifecycle.addObserver(observer)
          onDispose { 
              lifecycleOwner.lifecycle.removeObserver(observer)
+             realtimeVoiceManager.setDigitalHumanController(null)
              avatarController?.release()
          }
     }
@@ -369,7 +373,7 @@ fun DuixAvatarInterviewScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(
                     onClick = {
-                        avatarController?.release()
+                        // release() will be handled by DisposableEffect onDispose
                         onBack()
                     },
                     modifier = Modifier

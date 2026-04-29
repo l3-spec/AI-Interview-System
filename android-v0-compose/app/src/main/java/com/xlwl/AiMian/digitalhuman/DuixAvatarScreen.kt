@@ -24,16 +24,8 @@ fun DuixAvatarScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val renderView by controller.textureView.collectAsState()
 
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_DESTROY -> controller.release()
-                else -> {}
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
+    // Lifecycle management is handled by the parent (e.g., DuixAvatarInterviewScreen)
+    // to avoid double-release or releasing while the controller is still needed.
 
     AndroidView(
         factory = { ctx -> FrameLayout(ctx) },
