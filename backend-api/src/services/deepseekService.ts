@@ -70,6 +70,8 @@ export class DeepseekService {
   private maxTokens: number;
   private temperature: number;
   private isEnabled: boolean;
+  private reasonerModel: string;
+  private flashModel: string;
   /** 常规对话/分析类请求 HTTP 超时（毫秒） */
   private readonly defaultTimeoutMs: number;
   /** 整卷面试生成等长输出，易超过 30s，单独放宽 */
@@ -88,6 +90,9 @@ export class DeepseekService {
       this.apiUrl = process.env.LLM_API_URL || process.env.DEEPSEEK_API_URL || 'https://api.deepseek.com/v1/chat/completions';
       this.model = process.env.LLM_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-chat';
     }
+
+    this.reasonerModel = process.env.DEEPSEEK_REASONER_MODEL || 'deepseek-v4-pro';
+    this.flashModel = process.env.DEEPSEEK_FLASH_MODEL || 'deepseek-v4-flash';
 
     this.maxTokens = parseInt(process.env.LLM_MAX_TOKENS || process.env.DEEPSEEK_MAX_TOKENS || process.env.VOLCENGINE_MAX_TOKENS || '2000');
     this.temperature = parseFloat(process.env.LLM_TEMPERATURE || process.env.DEEPSEEK_TEMPERATURE || process.env.VOLCENGINE_TEMPERATURE || '0.7');
@@ -278,8 +283,12 @@ export class DeepseekService {
       }
 
       // 调用 Deepseek API（整卷题目生成耗时常 >30s，必须用长超时，勿受 DEEPSEEK_TIMEOUT_MS=15s 等过短配置影响）
+      // 使用 Reasoner 模型并开启思考模式
       const response = await this.callDeepseekAPI(builtPrompt, {
         timeoutMs: this.longGenerationTimeoutMs,
+        model: this.reasonerModel,
+        enableThinking: true,
+        reasoningEffort: 'high'
       });
 
       // 解析返回的问题
@@ -422,27 +431,48 @@ export class DeepseekService {
   /**
    * 调用 Deepseek API
    * @param options.timeoutMs 覆盖默认超时（整卷面试生成等请用更长超时，避免 Axios stream aborted）
+   * @param options.model 覆盖默认模型
+   * @param options.enableThinking 是否启用思考模式 (DeepSeek-V4 Pro 特色)
    */
   private async callDeepseekAPI(
     prompt: string,
-    options?: { timeoutMs?: number }
+    options?: { 
+      timeoutMs?: number; 
+      model?: string; 
+      enableThinking?: boolean;
+      reasoningEffort?: 'high' | 'max';
+    }
   ): Promise<DeepseekResponse> {
-    const requestData = {
-      model: this.model,
+    const selectedModel = options?.model || this.model;
+    const requestData: any = {
+      model: selectedModel,
       messages: [
         {
           role: 'user',
           content: prompt,
         },
       ],
-      max_tokens: this.maxTokens,
-      temperature: this.temperature,
       stream: false,
     };
 
+    // 思考模式处理 (DeepSeek-V4-Pro / Reasoner)
+    if (options?.enableThinking && this.providerName !== 'volcengine') {
+      requestData.extra_body = {
+        thinking: { type: 'enabled' }
+      };
+      // 默认思考强度为 high
+      requestData.reasoning_effort = options.reasoningEffort || 'high';
+      
+      // 思考模式下，通常忽略 temperature 等参数，或由模型自行决定
+      console.log(`[Deepseek] 启用思考模式: ${selectedModel}, 强度: ${requestData.reasoning_effort}`);
+    } else {
+      requestData.max_tokens = this.maxTokens;
+      requestData.temperature = this.temperature;
+    }
+
     const logTag = this.providerName === 'volcengine' ? '[豆包]' : '[Deepseek]';
     try {
-      console.log(`${logTag} 请求报文:`, JSON.stringify(requestData, null, 2));
+      console.log(`${logTag} 请求报文 (Model: ${selectedModel}):`, JSON.stringify(requestData, null, 2));
     } catch (error) {
       console.warn(`${logTag} 请求报文记录失败:`, error);
     }
@@ -470,6 +500,12 @@ export class DeepseekService {
 
     const responseContent = responseData?.choices?.[0]?.message?.content ?? '';
     try {
+      // 如果有思维链内容，也打印出来（DeepSeek R1/V4-Pro 特有）
+      const reasoningContent = (responseData?.choices?.[0]?.message as any)?.reasoning_content;
+      if (reasoningContent) {
+        console.log(`${logTag} 思维链内容:`, reasoningContent);
+      }
+      
       console.log(`${logTag} 返回内容:`, responseContent);
       if (responseData?.usage) {
         console.log(`${logTag} Token 用量:`, responseData.usage);
@@ -600,6 +636,7 @@ export class DeepseekService {
     try {
       const response = await this.callDeepseekAPI(prompt, {
         timeoutMs: this.longGenerationTimeoutMs,
+        model: this.reasonerModel
       });
       const content = response.choices[0]?.message?.content || '';
       return { content };
@@ -633,7 +670,9 @@ export class DeepseekService {
     }
 
     try {
-      const response = await this.callDeepseekAPI(prompt);
+      const response = await this.callDeepseekAPI(prompt, {
+        model: this.flashModel
+      });
       const content = response.choices[0]?.message?.content || '';
       return { opening: content.trim() };
     } catch (error) {
@@ -658,7 +697,9 @@ export class DeepseekService {
     }
 
     try {
-      const response = await this.callDeepseekAPI(prompt);
+      const response = await this.callDeepseekAPI(prompt, {
+        model: this.flashModel
+      });
       const content = response.choices[0]?.message?.content || '';
 
       // 尝试解析JSON
@@ -733,7 +774,9 @@ ${candidateLastAnswer.slice(0, 1200)}
     }
 
     try {
-      const response = await this.callDeepseekAPI(prompt);
+      const response = await this.callDeepseekAPI(prompt, {
+        model: this.flashModel
+      });
       const content = (response.choices[0]?.message?.content || '').trim();
       if (content.length < 12) {
         return preparedQuestion;
@@ -754,7 +797,9 @@ ${candidateLastAnswer.slice(0, 1200)}
     }
 
     try {
-      const response = await this.callDeepseekAPI(prompt);
+      const response = await this.callDeepseekAPI(prompt, {
+        model: this.flashModel
+      });
       const content = response.choices[0]?.message?.content || '';
       return { question: content.trim() };
     } catch (error) {
@@ -772,7 +817,10 @@ ${candidateLastAnswer.slice(0, 1200)}
     }
 
     try {
-      const response = await this.callDeepseekAPI(prompt);
+      const response = await this.callDeepseekAPI(prompt, {
+        model: this.reasonerModel,
+        enableThinking: false // 总结阶段可根据需求决定是否开启思考
+      });
       const content = response.choices[0]?.message?.content || '';
       return { summary: content.trim() };
     } catch (error) {
@@ -804,7 +852,9 @@ ${candidateLastAnswer.slice(0, 1200)}
     }
 
     try {
-      const response = await this.callDeepseekAPI(prompt);
+      const response = await this.callDeepseekAPI(prompt, {
+        model: this.flashModel
+      });
       const content = response.choices[0]?.message?.content || '';
       return { closing: content.trim() };
     } catch (error) {
@@ -868,8 +918,9 @@ ${candidateLastAnswer.slice(0, 1200)}
         },
       ];
 
-      const response = await axios.post(this.apiUrl, {
-        model: this.model,
+      // generateResponse 目前是直接调用 axios.post，为了保持多轮消息结构兼容，手动指定模型为 flashModel
+      const responseRaw = await axios.post(this.apiUrl, {
+        model: this.flashModel,
         messages,
         max_tokens: 500,
         temperature: 0.7,
@@ -882,7 +933,7 @@ ${candidateLastAnswer.slice(0, 1200)}
         timeout: 30000,
       });
 
-      const content = response.data?.choices?.[0]?.message?.content || '';
+      const content = responseRaw.data?.choices?.[0]?.message?.content || '';
       return content.trim();
 
     } catch (error: any) {
@@ -958,7 +1009,7 @@ ${candidateLastAnswer.slice(0, 1200)}
       const response = await axios.post(
         this.apiUrl,
         {
-          model: this.model,
+          model: this.flashModel,
           messages,
           max_tokens: 1000,
           temperature: 0.3,
@@ -1020,7 +1071,7 @@ ${candidateLastAnswer.slice(0, 1200)}
       const response = await axios.post(
         this.apiUrl,
         {
-          model: options?.model || this.model,
+          model: options?.model || this.flashModel,
           messages,
           max_tokens: options?.maxTokens || 2000,
           temperature: options?.temperature ?? 0.7,

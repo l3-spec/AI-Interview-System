@@ -6,7 +6,9 @@ import path from 'path';
 // OpenAI-compatible LLM API 配置
 const LLM_API_URL = process.env.LLM_API_URL || process.env.DEEPSEEK_API_URL || 'https://api.deepseek.com/v1/chat/completions';
 const LLM_API_KEY = process.env.LLM_API_KEY || process.env.DEEPSEEK_API_KEY || '';
-const LLM_MODEL = process.env.LLM_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+const LLM_MODEL_REASONER = process.env.DEEPSEEK_REASONER_MODEL || 'deepseek-v4-pro';
+const LLM_MODEL_FLASH = process.env.DEEPSEEK_FLASH_MODEL || 'deepseek-v4-flash';
+const LLM_MODEL = process.env.LLM_MODEL || process.env.DEEPSEEK_MODEL || LLM_MODEL_FLASH;
 
 // TTS服务配置 - 推荐使用Azure Cognitive Services
 const AZURE_TTS_KEY = process.env.AZURE_TTS_KEY || '';
@@ -28,7 +30,7 @@ export class AIService {
       const response = await axios.post(
         LLM_API_URL,
         {
-          model: LLM_MODEL,
+          model: LLM_MODEL_REASONER,
           messages: [
             {
               role: 'system',
@@ -39,8 +41,10 @@ export class AIService {
               content: prompt
             }
           ],
-          max_tokens: 2000,
-          temperature: 0.7
+          extra_body: {
+            thinking: { type: 'enabled' }
+          },
+          reasoning_effort: 'high'
         },
         {
           headers: {
@@ -276,7 +280,7 @@ export class AIService {
       const response = await axios.post(
         LLM_API_URL,
         {
-          model: LLM_MODEL,
+          model: LLM_MODEL_FLASH,
           messages: [
             {
               role: 'system',

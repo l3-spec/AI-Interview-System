@@ -264,7 +264,7 @@ private fun CreatePostScreen(
             return insertIndex
         }
 
-        contentBlocks.add(insertIndex, ContentBlock.TextBlock(""))
+        contentBlocks.add(insertIndex, ContentBlock.TextBlock(TextFieldValue("")))
         currentBlockIndex = insertIndex
         return insertIndex
     }
@@ -389,7 +389,7 @@ private fun CreatePostScreen(
         // 在图片块后添加新的文本块（如果不存在或下一个不是文本块）
         if (insertIndex + 1 >= contentBlocks.size ||
             contentBlocks[insertIndex + 1] !is ContentBlock.TextBlock) {
-            contentBlocks.add(insertIndex + 1, ContentBlock.TextBlock(""))
+            contentBlocks.add(insertIndex + 1, ContentBlock.TextBlock(TextFieldValue("")))
         }
         // 更新当前块索引到新创建的文本块
         currentBlockIndex = insertIndex + 1
@@ -413,7 +413,7 @@ private fun CreatePostScreen(
 
         if (insertIndex + 1 >= contentBlocks.size ||
             contentBlocks[insertIndex + 1] !is ContentBlock.TextBlock) {
-            contentBlocks.add(insertIndex + 1, ContentBlock.TextBlock(""))
+            contentBlocks.add(insertIndex + 1, ContentBlock.TextBlock(TextFieldValue("")))
         }
         currentBlockIndex = insertIndex + 1
     }
@@ -427,7 +427,7 @@ private fun CreatePostScreen(
             contentBlocks.removeAt(blockIndex)
             // 如果删除后列表为空，添加一个空文本块
             if (contentBlocks.isEmpty()) {
-                contentBlocks.add(ContentBlock.TextBlock(""))
+                contentBlocks.add(ContentBlock.TextBlock(TextFieldValue("")))
                 currentBlockIndex = 0
             } else {
                 // 调整当前块索引
@@ -439,7 +439,9 @@ private fun CreatePostScreen(
                     val prev = contentBlocks[blockIndex - 1] as? ContentBlock.TextBlock
                     val next = contentBlocks[blockIndex] as? ContentBlock.TextBlock
                     if (prev != null && next != null) {
-                        contentBlocks[blockIndex - 1] = ContentBlock.TextBlock(prev.text + "\n\n" + next.text)
+                        contentBlocks[blockIndex - 1] = ContentBlock.TextBlock(
+                            TextFieldValue(prev.value.text + "\n\n" + next.value.text)
+                        )
                         contentBlocks.removeAt(blockIndex)
                         if (currentBlockIndex >= blockIndex) {
                             currentBlockIndex = blockIndex - 1
@@ -571,7 +573,6 @@ private fun CreatePostScreen(
                     currentBlockIndex = currentBlockIndex,
                     onBlockIndexChange = {
                         currentBlockIndex = it
-                        onBlockIndexChange(index)
                     },
                     onValueChange = { index, value ->
                         if (index < contentBlocks.size) {
