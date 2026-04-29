@@ -201,7 +201,6 @@ fun AiJobSelectionScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(bottom = navPadding.calculateBottomPadding())
         ) {
             TopSection(
                 searchQuery = searchQuery,
@@ -216,14 +215,14 @@ fun AiJobSelectionScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(bottom = navPadding.calculateBottomPadding() + 12.dp)
             ) {
                 CategorySidebar(
                     categories = categories,
                     activeCategoryId = activeCategoryId,
                     onSelectCategory = { categoryId ->
                         activeCategoryId = categoryId
-                    }
+                    },
+                    paddingValues = navPadding
                 )
 
                 Spacer(modifier = Modifier.width(16.dp))
@@ -265,7 +264,10 @@ fun AiJobSelectionScreen(
                                 columns = GridCells.Fixed(2),
                                 verticalArrangement = Arrangement.spacedBy(12.dp),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                contentPadding = PaddingValues(bottom = 16.dp, end = 12.dp)
+                                contentPadding = PaddingValues(
+                                    bottom = navPadding.calculateBottomPadding() + 16.dp,
+                                    end = 12.dp
+                                )
                             ) {
                                 items(filteredPositions, key = { it.id }) { position ->
                                     val isSelected = selectedPositions.any { it.id == position.id }
@@ -479,7 +481,8 @@ private fun SelectedPositionChips(
 private fun CategorySidebar(
     categories: List<JobDictionaryCategory>,
     activeCategoryId: String?,
-    onSelectCategory: (String) -> Unit
+    onSelectCategory: (String) -> Unit,
+    paddingValues: PaddingValues
 ) {
     Surface(
         modifier = Modifier
@@ -487,12 +490,12 @@ private fun CategorySidebar(
             .fillMaxHeight(),
         color = SidebarBackground,
         shadowElevation = 0.dp,
-        shape = RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp)
+        shape = RoundedCornerShape(topEnd = 8.dp, bottomEnd = 0.dp)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(0.dp)
+                contentPadding = PaddingValues(bottom = paddingValues.calculateBottomPadding())
             ) {
                 items(categories, key = { it.id }) { category ->
                     CategoryItem(

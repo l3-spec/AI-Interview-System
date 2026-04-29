@@ -124,7 +124,18 @@ public class RenderThread extends Thread {
                 } else {
                     scrfdncnn.initMunet(info.getUnetparam(), info.getUnetbin(), info.getUnetmsk());
                 }
-                scrfdncnn.initWenet(info.getWenetfn());
+                String wenetFn = info.getWenetfn();
+                if (!TextUtils.isEmpty(wenetFn)) {
+                    File wenetFile = new File(wenetFn);
+                    if (wenetFile.exists() && wenetFile.canRead()) {
+                        Logger.d("Initializing Wenet with: " + wenetFn);
+                        scrfdncnn.initWenet(wenetFn);
+                    } else {
+                        Logger.e("Wenet model file not found or not readable: " + wenetFn);
+                    }
+                } else {
+                    Logger.e("Wenet model path is empty");
+                }
                 mModelInfo = info;
                 Logger.d("分辨率: " + mModelInfo.getWidth() + "x" + mModelInfo.getHeight());
                 rawBuffer = ByteBuffer.allocate(mModelInfo.getWidth() * mModelInfo.getHeight() * 3);

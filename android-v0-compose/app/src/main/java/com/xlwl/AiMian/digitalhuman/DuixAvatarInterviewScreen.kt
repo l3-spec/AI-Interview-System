@@ -327,7 +327,7 @@ fun DuixAvatarInterviewScreen(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .zIndex(5f)
-                    .padding(bottom = 100.dp)
+                    .padding(bottom = 40.dp)
                     .background(
                         Brush.verticalGradient(
                             listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))
@@ -412,7 +412,7 @@ fun DuixAvatarInterviewScreen(
             Row(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(bottom = 100.dp, end = 24.dp)
+                    .padding(bottom = 40.dp, end = 24.dp)
                     .zIndex(20f),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -1095,12 +1095,12 @@ private fun InterviewerTwoLineSubtitle(
     Text(
         text = "面试官: $windowed",
         color = Color.White,
-        fontSize = 17.sp,
-        lineHeight = 24.sp,
+        fontSize = 16.sp,
+        lineHeight = 22.sp,
         maxLines = 2,
         overflow = TextOverflow.Clip,
         textAlign = TextAlign.Center,
-        fontWeight = FontWeight.Bold,
+        fontWeight = FontWeight.Normal,
         modifier = modifier
     )
 }
@@ -1109,13 +1109,13 @@ private fun InterviewerTwoLineSubtitle(
 private fun subtitleWindowForProgress(full: String, progress: Float, maxChars: Int = 44): String {
     if (full.isEmpty()) return full
     val p = progress.coerceIn(0f, 1f)
-    if (full.length <= maxChars) return full
-    val readIdx = ((full.length - 1) * p).roundToInt().coerceIn(0, full.lastIndex)
-    val half = maxChars / 2
-    var end = (readIdx + half).coerceAtMost(full.length)
-    var start = (readIdx - half).coerceAtLeast(0)
-    if (end - start < maxChars) start = (end - maxChars).coerceAtLeast(0)
-    if (end - start < maxChars) end = (start + maxChars).coerceAtMost(full.length)
+    // 根据进度计算当前读到的字符索引
+    val readIdx = (full.length * p).roundToInt().coerceIn(0, full.length)
+    
+    // 我们希望显示的窗口始终以 readIdx 结尾，这样字幕看起来是在“随着说的内容滚动”
+    val end = readIdx
+    val start = (end - maxChars).coerceAtLeast(0)
+    
     return full.substring(start, end)
 }
 

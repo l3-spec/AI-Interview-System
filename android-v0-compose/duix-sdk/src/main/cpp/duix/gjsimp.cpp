@@ -1,5 +1,6 @@
 #include "gjsimp.h"
 #include <stdlib.h>
+#include <unistd.h>
 #include <pthread.h>
 #include "dhwenet.h"
 #include "wenetai.h"
@@ -130,6 +131,12 @@ int dhduix_initPcmex(dhduix_t* dg,int maxsize,int minoff ,int minblock ,int maxb
 }
 
 int dhduix_initWenet(dhduix_t* dg,char* fnwenet){
+  if (!dg || !fnwenet) {
+    return -1;
+  }
+  if (access(fnwenet, F_OK) != 0) {
+    return -2;
+  }
   dg->wenetfn = strdup(fnwenet);
 
   std::string fnonnx(fnwenet);
@@ -162,8 +169,8 @@ int dhduix_initWenet(dhduix_t* dg,char* fnwenet){
   }else{
     dg->weai_common = bwenet;
   }
-  awenet->test();
-  bwenet->test();
+  if (awenet) awenet->test();
+  if (bwenet) bwenet->test();
   return awenet?0:-1;
 }
 

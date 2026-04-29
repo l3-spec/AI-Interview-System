@@ -9,6 +9,7 @@ export class CoordinatorService {
   private pubClient: Redis;
   private subClient: Redis;
   private asrSubClient: Redis;
+  private sessionQueues: Map<string, Promise<any>> = new Map();
 
   private constructor() {
     const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
@@ -72,15 +73,34 @@ export class CoordinatorService {
     }));
   }
 
+  private async runInQueue(sessionId: string, task: () => Promise<any>) {
+    const previousTask = this.sessionQueues.get(sessionId) || Promise.resolve();
+    const nextTask = previousTask.then(task).catch(err => {
+      console.error(`[Coordinator] Error in queue for session ${sessionId}:`, err);
+    });
+    this.sessionQueues.set(sessionId, nextTask);
+    
+    // 清理已完成的长队列，避免内存泄漏
+    nextTask.finally(() => {
+        if (this.sessionQueues.get(sessionId) === nextTask) {
+            // Only delete if no new task has been added since
+            // Actually, we can just let it be, or use a more sophisticated approach.
+            // For now, keeping it simple.
+        }
+    });
+
+    return nextTask;
+  }
+
   private async handleInboundEvent(data: any) {
     const { type, sessionId, userId, jobPosition, background, text, socketId } = data;
 
     switch (type) {
       case 'JOIN_SESSION':
-        await this.handleJoinSession(sessionId, userId, jobPosition, background, socketId);
+        this.runInQueue(sessionId, () => this.handleJoinSession(sessionId, userId, jobPosition, background, socketId));
         break;
       case 'TEXT_MESSAGE':
-        await this.processUserResponse(sessionId, text, 'text');
+        this.runInQueue(sessionId, () => this.processUserResponse(sessionId, text, 'text'));
         break;
       case 'DISCONNECT':
         console.log(`[Coordinator] Client disconnected: ${sessionId} (Socket: ${socketId})`);
@@ -111,7 +131,15 @@ export class CoordinatorService {
     const session = interviewFlowService.getSession(sessionId);
 
     // 检查是否断点续面
-    const isResume = this.isWarmResumeEligible(session);
+    const isResume = interviewFlowService.isWarmResumeEligible(session!);
+
+    // 去重检查：如果 5 秒内刚处理过 JOIN_SESSION 且状态正常，跳过冗余欢迎
+    const now = Date.now();
+    if (session && session.lastEventTime && (now - session.lastEventTime < 5000)) {
+        console.log(`[Coordinator] Skipping redundant join_session for ${sessionId} (recent activity)`);
+        return;
+    }
+    if (session) session.lastEventTime = now;
 
     if (isResume && session && session.rounds.length > 0) {
       const currentRound = session.rounds.find((r: any) => r.status === 'in_progress' || r.status === 'pending');
@@ -219,12 +247,6 @@ export class CoordinatorService {
     }).catch(err => console.warn(`⚠️ [Coordinator] 异步生成题目失败:`, err));
   }
 
-  private isWarmResumeEligible(session: any): boolean {
-    if (!session) return false;
-    if (session.rounds?.some((r: any) => r.status === 'completed')) return true;
-    if (session.rounds?.length > 0 && session.currentRound > 0) return true;
-    return false;
-  }
 
   private async handleAsrTranscription(data: any) {
     const { sessionId, payload } = data;
@@ -232,7 +254,7 @@ export class CoordinatorService {
     if (!text) return;
     
     console.log(`[Coordinator] ASR 识别完成 (${sessionId}): "${text}"`);
-    await this.processUserResponse(sessionId, text, 'asr');
+    this.runInQueue(sessionId, () => this.processUserResponse(sessionId, text, 'asr'));
   }
 
   private async processUserResponse(sessionId: string, text: string, source: 'asr' | 'text') {

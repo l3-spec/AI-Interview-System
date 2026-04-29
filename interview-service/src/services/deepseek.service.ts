@@ -658,31 +658,49 @@ export class DeepseekService {
     }
 
     try {
-      const response = await this.callDeepseekAPI(prompt);
-      const content = response.choices[0]?.message?.content || '';
+      const messages = [
+        {
+          role: 'system',
+          content: `你是一位专业的面试评估专家。请分析面试问答并以JSON格式返回结果。
+要求输出必须是合法的JSON对象，包含以下字段：
+- score: 数字 (0-100)
+- feedback: 字符串，对回答的简短评价
+- needsFollowup: 布尔值，是否需要进一步追问
+- strengths: 字符串数组，回答的优点
+- weaknesses: 字符串数组，回答的不足
+- suggestions: 字符串数组，改进建议`
+        },
+        { role: 'user', content: prompt }
+      ];
+
+      const content = await this.chatCompletion(messages, {
+        response_format: { type: 'json_object' },
+        temperature: 0.3 // 降低随机性以获得更稳定的JSON
+      });
 
       // 尝试解析JSON
       try {
-        // 提取JSON部分（如果DeepSeek返回了Markdown代码块）
+        // 提取JSON部分（如果DeepSeek还是返回了Markdown代码块，尽管请求了json_object）
         const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/) || content.match(/\{[\s\S]*\}/);
         const jsonStr = jsonMatch ? jsonMatch[0].replace(/```json|```/g, '') : content;
 
         const result = JSON.parse(jsonStr);
         return {
-          score: result.score || 0,
-          feedback: result.feedback || '',
-          needsFollowup: result.needsFollowup || false,
-          strengths: result.strengths || [],
-          weaknesses: result.weaknesses || [],
-          suggestions: result.suggestions || []
+          score: typeof result.score === 'number' ? result.score : 70,
+          feedback: result.feedback || '回答已收到',
+          needsFollowup: !!result.needsFollowup,
+          strengths: Array.isArray(result.strengths) ? result.strengths : [],
+          weaknesses: Array.isArray(result.weaknesses) ? result.weaknesses : [],
+          suggestions: Array.isArray(result.suggestions) ? result.suggestions : []
         };
       } catch (e) {
         console.warn('解析分析结果JSON失败，尝试文本解析:', e);
         // 简单的文本解析回退
+        const looksLikeFollowup = content.includes("追问") || content.includes("深入") || content.includes("细节");
         return {
           score: 70,
-          feedback: content.slice(0, 100),
-          needsFollowup: content.includes("追问") || content.includes("深入"),
+          feedback: content.slice(0, 200),
+          needsFollowup: looksLikeFollowup,
           strengths: [],
           weaknesses: [],
           suggestions: []

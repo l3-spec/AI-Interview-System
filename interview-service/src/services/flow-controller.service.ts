@@ -158,13 +158,14 @@ export class InterviewFlowService {
       }
     };
 
+    this.sessions.set(sessionId, session);
+
     try {
       await this.tryRehydrateFromPrisma(session, userId);
     } catch (err: any) {
       console.warn(`[InterviewFlow] tryRehydrateFromPrisma 跳过: ${err?.message || err}`);
     }
 
-    this.sessions.set(sessionId, session);
     console.log(`✅ InterviewFlowService: 成功为会话 ${sessionId} 初始化职位 [${targetJob}]`);
 
     // 与 avatar.service 注册同源 sessionId/userId；重启后 Map 为空时 ensureActiveSession 会惰性重建。
@@ -656,21 +657,38 @@ export class InterviewFlowService {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('Session not found');
 
-    const currentRound = session.rounds.find(r => r.status === 'in_progress');
-    let analysisResult;
+    if (session.isProcessing) {
+      console.warn(`[InterviewFlow] Session ${sessionId} is already processing, skipping duplicate response.`);
+      return { isCompleted: false };
+    }
 
-    if (currentRound) {
+    session.isProcessing = true;
+    try {
+      const currentRound = session.rounds.find(r => r.status === 'in_progress');
+      let analysisResult;
+
+      if (currentRound) {
       currentRound.userResponse = response;
       currentRound.status = 'completed';
       await this.persistRoundAnswer(session, currentRound, response);
 
       // AI分析用户回答
       const prompt = `
-问题：${currentRound.question}
-回答：${response}
-历史对话数：${currentRound.followupCount || 0}
+请分析候选人对以下面试问题的回答：
 
-请分析回答质量，并判断是否需要追问。如果回答太简略或不清楚，且追问次数未超过2次，建议追问。
+【面试问题】
+${currentRound.question}
+
+【候选人回答】
+${response}
+
+【历史追问次数】
+${currentRound.followupCount || 0}
+
+分析要求：
+1. 评估回答的完整性、专业度和逻辑性。
+2. 判断是否需要追问。如果回答太简略、偏离主题或未触及核心要点，且追问次数未超过2次，请设置 needsFollowup 为 true。
+3. 提供具体的评分和反馈。
       `.trim();
 
       analysisResult = await deepseekService.analyzeResponse(prompt);
@@ -749,12 +767,15 @@ export class InterviewFlowService {
       }
     }
 
-    return {
-      nextRound,
-      isCompleted: !nextRound,
-      feedback: analysisResult?.feedback,
-      score: analysisResult?.score
-    };
+      return {
+        nextRound,
+        isCompleted: !nextRound,
+        feedback: analysisResult?.feedback,
+        score: analysisResult?.score
+      };
+    } finally {
+      session.isProcessing = false;
+    }
   }
 
   /**

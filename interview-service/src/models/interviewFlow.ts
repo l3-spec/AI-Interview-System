@@ -15,6 +15,10 @@ export interface InterviewSession {
     status: string;
     currentQuestion: number;
   };
+  /** 并发控制：当前是否正在处理某个业务逻辑 */
+  isProcessing?: boolean;
+  /** 上次处理事件的时间戳：用于去重 */
+  lastEventTime?: number;
 }
 
 export interface UserInfo {
