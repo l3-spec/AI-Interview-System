@@ -134,6 +134,18 @@ export class TTSSessionManager {
         });
       },
 
+      onTranscriptDelta: (text, audioTime, responseId) => {
+        // 下发增量文本及其音频时间戳（用于客户端实现 KTV 字幕同步）
+        this.sendToClient(sessionId, {
+          type: 'tts.transcript_delta',
+          sessionId,
+          text,
+          audioTime,
+          responseId,
+          timestamp: Date.now(),
+        });
+      },
+
       onResponseDone: (responseId) => {
         this.sendToClient(sessionId, {
           type: 'tts.response_done',

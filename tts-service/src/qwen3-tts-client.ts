@@ -34,6 +34,8 @@ export interface TTSEventCallbacks {
   onSessionCreated: (sessionInfo: any) => void;
   /** 收到音频数据块（Base64 编码） */
   onAudioDelta: (audioBase64: string, responseId?: string) => void;
+  /** 收到增量文本翻译/转写（用于 KTV 字幕同步） */
+  onTranscriptDelta: (text: string, audioTime?: number, responseId?: string) => void;
   /** 单次响应完成（对应一段文本的合成完成） */
   onResponseDone: (responseId?: string) => void;
   /** 整个会话结束 */
@@ -307,6 +309,8 @@ export class Qwen3TTSClient {
     const safeVoice = this.config.voice;
 
     const sessionConfig: any = {
+      modalities: ['text', 'audio'],
+      incremental_output: true,
       mode: this.config.mode,
       voice: safeVoice,
       response_format: this.config.responseFormat,
@@ -328,7 +332,7 @@ export class Qwen3TTSClient {
 
     this.send(event);
     logger.info(
-      `[Qwen3-TTS] session.update 已发送: voice="${safeVoice}", language_type="${this.config.language}", mode=${this.config.mode}`,
+      `[Qwen3-TTS] session.update 已发送: ${JSON.stringify(sessionConfig)}`,
     );
   }
 
@@ -370,6 +374,16 @@ export class Qwen3TTSClient {
           }
           this.callbacks.onAudioDelta(data.delta || '', this.currentResponseId || undefined);
           break;
+        
+        case 'response.audio_transcript.delta':
+          // 核心：接收增量文本时间戳（KTV 字幕效果）
+          logger.info(`[Qwen3-TTS] 收到增量文本: "${data.delta}" audio_time=${data.audio_time}ms`);
+          this.callbacks.onTranscriptDelta(
+            data.delta || '', 
+            data.audio_time, 
+            this.currentResponseId || undefined
+          );
+          break;
 
         case 'response.audio.done':
           logger.debug('[Qwen3-TTS] 音频生成完成');
@@ -400,7 +414,7 @@ export class Qwen3TTSClient {
           break;
 
         default:
-          logger.debug(`[Qwen3-TTS] 未处理事件: ${eventType}`);
+          logger.info(`[Qwen3-TTS] 未处理事件: ${eventType} - ${JSON.stringify(data)}`);
       }
     } catch (err: any) {
       logger.error(`[Qwen3-TTS] 解析消息失败: ${err.message}`);

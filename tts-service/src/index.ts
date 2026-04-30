@@ -11,6 +11,7 @@ import { logger } from './logger';
 
 const app = express();
 const PORT = parseInt(process.env.TTS_SERVICE_PORT || '3003', 10);
+logger.info('DEBUG: TTS SERVICE STARTING VERSION 2.0');
 
 const corsOrigins = (process.env.CORS_ORIGINS || '*').split(',').map(s => s.trim());
 app.use(cors({ origin: corsOrigins.length === 1 && corsOrigins[0] === '*' ? true : corsOrigins }));
