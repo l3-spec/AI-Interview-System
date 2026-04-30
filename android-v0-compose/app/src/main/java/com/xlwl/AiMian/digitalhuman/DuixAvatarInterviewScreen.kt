@@ -42,8 +42,10 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
@@ -71,6 +73,8 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.platform.LocalDensity
 import kotlin.math.PI
 import kotlin.math.cos
@@ -264,6 +268,15 @@ fun DuixAvatarInterviewScreen(
     }
 
     var isCameraMaximized by remember { mutableStateOf(false) }
+    var pipOffset by remember { mutableStateOf(Offset.Zero) }
+
+    // 加载保存的 PIP 位置
+    LaunchedEffect(Unit) {
+        val prefs = context.getSharedPreferences("duix_pip_prefs", Context.MODE_PRIVATE)
+        val x = prefs.getFloat("pip_x", 0f)
+        val y = prefs.getFloat("pip_y", 0f)
+        pipOffset = Offset(x, y)
+    }
 
     Box(
         modifier = Modifier
@@ -274,9 +287,24 @@ fun DuixAvatarInterviewScreen(
             .padding(top = 60.dp, end = 20.dp)
             .size(110.dp, 160.dp)
             .align(Alignment.TopEnd)
+            .offset { IntOffset(pipOffset.x.roundToInt(), pipOffset.y.roundToInt()) }
             .clip(RoundedCornerShape(12.dp))
             .pointerInput(Unit) {
                 detectTapGestures(onDoubleTap = { isCameraMaximized = !isCameraMaximized })
+            }
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragEnd = {
+                        val prefs = context.getSharedPreferences("duix_pip_prefs", Context.MODE_PRIVATE)
+                        prefs.edit()
+                            .putFloat("pip_x", pipOffset.x)
+                            .putFloat("pip_y", pipOffset.y)
+                            .apply()
+                    }
+                ) { change, dragAmount ->
+                    change.consume()
+                    pipOffset += dragAmount
+                }
             }
             .zIndex(10f)
 
@@ -284,13 +312,13 @@ fun DuixAvatarInterviewScreen(
             .fillMaxSize()
             .graphicsLayer(
                 scaleX = 1.0f,
-                scaleY = 1.14f
+                scaleY = 1.3f
             )
             .zIndex(1f)
 
         // Remote Avatar Video
         Box(
-            modifier = if (isCameraMaximized) PIP_MODIFIER else MAX_MODIFIER.offset(y = (-50).dp)
+            modifier = if (isCameraMaximized) PIP_MODIFIER else MAX_MODIFIER
         ) {
             if (avatarController != null) {
                 DuixAvatarScreen(
@@ -327,12 +355,7 @@ fun DuixAvatarInterviewScreen(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .zIndex(5f)
-                    .padding(bottom = 40.dp)
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))
-                        )
-                    )
+                    .padding(bottom = 60.dp)
                     .padding(horizontal = 24.dp, vertical = 20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -347,7 +370,14 @@ fun DuixAvatarInterviewScreen(
                         overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.Center,
                         fontWeight = FontWeight.Normal,
-                        modifier = Modifier.padding(bottom = 8.dp)
+                        modifier = Modifier.padding(bottom = 8.dp),
+                        style = TextStyle(
+                            shadow = Shadow(
+                                color = Color.Black.copy(alpha = 0.8f),
+                                offset = Offset(2f, 2f),
+                                blurRadius = 4f
+                            )
+                        )
                     )
                 }
                 
@@ -1101,7 +1131,14 @@ private fun InterviewerTwoLineSubtitle(
         overflow = TextOverflow.Clip,
         textAlign = TextAlign.Center,
         fontWeight = FontWeight.Normal,
-        modifier = modifier
+        modifier = modifier,
+        style = TextStyle(
+            shadow = Shadow(
+                color = Color.Black.copy(alpha = 0.8f),
+                offset = Offset(2f, 2f),
+                blurRadius = 4f
+            )
+        )
     )
 }
 
