@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { authApi } from '../services/api';
 
+import utalentLogo from '../assets/utalent-logo.png';
+
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('superadmin@aiinterview.com');
   const [password, setPassword] = useState('superadmin123');
@@ -54,6 +56,13 @@ const LoginPage: React.FC = () => {
         boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
       }}>
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+          <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'center' }}>
+            <img 
+              src={utalentLogo} 
+              alt="U-Talent Logo" 
+              style={{ width: 64, height: 64, borderRadius: 16 }} 
+            />
+          </div>
           <h1 style={{ 
             fontSize: '24px', 
             fontWeight: 'bold',

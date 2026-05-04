@@ -8,6 +8,8 @@ import FirstLaunchPrivacyModal, {
   setPrivacyFirstLaunchConsent
 } from '../components/FirstLaunchPrivacyModal';
 
+import logoImage from '../assets/company-logo.png';
+
 const { Title, Text } = Typography;
 
 interface LoginPageProps {
@@ -78,15 +80,12 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
       >
         {/* 头部信息 */}
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div style={{ 
-            fontSize: '48px', 
-            marginBottom: '16px',
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text'
-          }}>
-            🤖
+          <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'center' }}>
+            <img 
+              src={logoImage} 
+              alt="U-Talent Logo" 
+              style={{ width: 80, height: 80, borderRadius: 20, boxShadow: '0 8px 16px rgba(0,0,0,0.1)' }} 
+            />
           </div>
           <Title level={2} style={{ margin: 0, color: '#333' }}>
             U-Talent
