@@ -14,7 +14,7 @@ export class FayWebSocketServer {
 
   private setupSocketHandlers() {
     this.io.on('connection', (socket) => {
-      console.log('🔗 客户端已连接:', socket.id);
+      console.log('🔗 [FayGateway] 客户端已连接:', socket.id);
 
       socket.on('join_interview', (data) => {
         console.log('🎯 加入面试会话:', data);

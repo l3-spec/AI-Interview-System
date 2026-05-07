@@ -94,15 +94,46 @@ fun SplashScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // ===== Logo 图标 =====
-            Image(
-                painter = painterResource(id = R.drawable.ic_splash_logo_new_png),
-                contentDescription = "U-Talent 柚汀教育科技 Logo",
+            // ===== Logo 品牌组合 (U-Talent + 柚汀教育科技) =====
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
-                    .size(195.dp, 143.dp)
-                    .alpha(alphaAnim),
-                contentScale = androidx.compose.ui.layout.ContentScale.Fit
-            )
+                    .alpha(alphaAnim)
+                    .padding(bottom = 40.dp)
+            ) {
+                // U-Talent 文字部分
+                val brandText = buildAnnotatedString {
+                    withStyle(style = SpanStyle(
+                        color = Color(0xFFEC7C38),
+                        fontWeight = FontWeight.Bold
+                    )) {
+                        append("U")
+                    }
+                    withStyle(style = SpanStyle(
+                        color = Color(0xFF00ADC1),
+                        fontWeight = FontWeight.Bold
+                    )) {
+                        append("-Talent.")
+                    }
+                }
+                
+                Text(
+                    text = brandText,
+                    fontSize = 42.sp,
+                    letterSpacing = (-1).sp
+                )
+                
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                // 柚汀教育科技 中文部分
+                Text(
+                    text = "柚 汀 教 育 科 技",
+                    color = Color(0xFF00ADC1),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = 4.sp
+                )
+            }
         }
     }
 }

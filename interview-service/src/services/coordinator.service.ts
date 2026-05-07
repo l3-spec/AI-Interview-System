@@ -174,41 +174,24 @@ export class CoordinatorService {
         const jobPosText = jobPosition || '这个职位';
         const resumeText = `欢迎回来，我们继续${jobPosText}的面试。现在是第${resumeRoundNum}题，请听题：`;
         const combinedText = `${resumeText} ${currentRound.question}`;
-        
-        let ttsMode = 'client';
-        if (currentRound.audioUrl) {
-          ttsMode = 'server';
-        } else {
-          const scene = interviewConductor.inferScene(currentRound.question, { isFollowUp: (currentRound.followupCount || 0) > 0 });
-          ttsMode = await this.synthesizeQwen3TtsSegments(sessionId, combinedText, scene);
-        }
-        
-        // 发送客户端UI状态
+
+        // 续面时必须只有一个播报出口：把续面提示和题干合并成一条 TTS。
+        // 旧逻辑在已有 audioUrl 时不触发 Qwen3 synthesize，却仍下发 qwen3_streaming，App 会一直等不到音频。
+        const scene = interviewConductor.inferScene(currentRound.question, { isFollowUp: (currentRound.followupCount || 0) > 0 });
+        const ttsMode = await this.synthesizeQwen3TtsSegments(sessionId, combinedText, scene);
+
         this.emitToGateway(sessionId, 'voice_response', {
           audioUrl: null,
-          text: resumeText,
+          text: combinedText,
           sessionId,
           duration: 0,
-          ttsMode: 'qwen3_streaming',
-          isWelcome: true,
+          ttsMode,
+          questionIndex: currentRound.roundNumber,
           isResume: true,
           progress: { current: resumeRoundNum, total: totalRounds, completed: completedRounds },
           state: 'playing'
         });
-
-        this.persistAvatarVoice(sessionId, resumeText);
-
-        // 立即发送本题题目（UI更新）
-        this.emitToGateway(sessionId, 'voice_response', {
-          audioUrl: currentRound.audioUrl || null,
-          text: currentRound.question,
-          sessionId,
-          duration: currentRound.duration || 0,
-          ttsMode,
-          questionIndex: currentRound.roundNumber,
-          state: 'playing'
-        });
-        this.persistAvatarVoice(sessionId, currentRound.question, currentRound.roundNumber);
+        this.persistAvatarVoice(sessionId, combinedText, currentRound.roundNumber);
 
         return;
       }

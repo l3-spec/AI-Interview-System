@@ -229,7 +229,7 @@ class AIInterviewService {
 
   /**
    * 仅当 id 在 jobs 表存在时返回，用于写入 AIInterviewSession.jobId，避免 P2003 外键错误。
-   * 客户端可能传入字典位 id、过期 id 等非法 jobId，此时不关联岗位，仅依赖 jobTarget 等文字字段。
+   * 客户端可能传入职岗字典 position id，此时不关联 jobs 外键，仅依赖 jobTarget/jobCategory/jobSubCategory 等文字字段。
    */
   private async resolveJobIdForSession(jobId?: string): Promise<string | undefined> {
     if (typeof jobId !== 'string' || jobId.trim().length === 0) {
@@ -238,9 +238,19 @@ class AIInterviewService {
     const id = jobId.trim();
     const row = await prisma.job.findUnique({ where: { id }, select: { id: true } });
     if (!row) {
-      console.warn(
-        `[AIInterviewService] jobId 在 jobs 表中不存在，将不写入会话的 job 外键: ${id}`
-      );
+      const dictionaryPosition = await prisma.jobDictionaryPosition.findUnique({
+        where: { id },
+        select: { id: true, name: true },
+      });
+      if (dictionaryPosition) {
+        console.log(
+          `[AIInterviewService] 收到职岗字典 positionId=${id} (${dictionaryPosition.name})，不写入 jobs 外键，改用岗位文字信息创建面试`
+        );
+      } else {
+        console.log(
+          `[AIInterviewService] 请求 jobId=${id} 不是 jobs 外键，也不是职岗字典 positionId；不写入会话 job 外键`
+        );
+      }
       return undefined;
     }
     return id;

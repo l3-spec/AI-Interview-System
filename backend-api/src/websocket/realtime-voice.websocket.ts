@@ -47,7 +47,7 @@ export class RealtimeVoiceWebSocketServer {
 
   private setupSocketHandlers() {
     this.io.on('connection', (socket) => {
-      console.log('🔗 客户端已连接:', socket.id);
+      console.log('🔗 [RealtimeGateway] 客户端已连接:', socket.id);
 
       socket.on('disconnect', (reason) => {
         let sid = '';
