@@ -10,6 +10,7 @@ export class CoordinatorService {
   private subClient: Redis;
   private asrSubClient: Redis;
   private sessionQueues: Map<string, Promise<any>> = new Map();
+  private sessionPrepareTasks: Map<string, Promise<any>> = new Map();
 
   private constructor() {
     const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
@@ -102,11 +103,24 @@ export class CoordinatorService {
       case 'TEXT_MESSAGE':
         this.runInQueue(sessionId, () => this.processUserResponse(sessionId, text, 'text'));
         break;
+      case 'PLAYBACK_DONE':
+        this.runInQueue(sessionId, async () => {
+          const session = interviewFlowService.getSession(sessionId);
+          if (session && session.runtimePhase === 'speaking') {
+            session.runtimePhase = 'listening';
+          }
+        });
+        break;
       case 'DISCONNECT':
         console.log(`[Coordinator] Client disconnected: ${sessionId} (Socket: ${socketId})`);
         break;
       case 'INTERRUPT':
-        // TTS clear was already handled by Gateway, nothing more needed here
+        {
+          const session = interviewFlowService.getSession(sessionId);
+          if (session) {
+            session.runtimePhase = 'listening';
+          }
+        }
         break;
       case 'VIDEO_FRAME':
         // Potential logic to handle video analysis tracking
@@ -155,6 +169,7 @@ export class CoordinatorService {
             currentRound.status = 'in_progress';
             session.currentRound = currentRound.roundNumber;
         }
+        session.runtimePhase = 'speaking';
 
         const jobPosText = jobPosition || '这个职位';
         const resumeText = `欢迎回来，我们继续${jobPosText}的面试。现在是第${resumeRoundNum}题，请听题：`;
@@ -204,6 +219,7 @@ export class CoordinatorService {
     const welcomeText = `让我陪您一起完成这个面试流程。请简单介绍一下您自己，并说明为什么想要应聘「${jobPosText}」。`;
 
     console.log(`🎤 [Coordinator] 发送初始欢迎问题: ${sessionId}`);
+    if (session) session.runtimePhase = 'speaking';
     
     // 使用 Qwen3-TTS 合成欢迎语
     const ttsHealth = await qwen3TTSClient.checkHealth();
@@ -237,14 +253,19 @@ export class CoordinatorService {
     }
     this.persistAvatarVoice(sessionId, welcomeText);
 
-    // 异步生成后续题目
-    interviewFlowService.startInterviewPhase(sessionId).then((res: any) => {
+    // 异步生成后续题目，但不要自动开始/播报第一题；第一题必须等候选人回答欢迎问题后再由主控推进。
+    const prepareTask = interviewFlowService.startInterviewPhase(sessionId, { autoStart: false }).then((res: any) => {
       console.log(`✅ [Coordinator] 面试回合准备就绪 (${sessionId})`);
-      if (res.nextRound && !isResume) {
-        // 第一题生成好了，下发
-        this.emitRoundVoiceResponse(sessionId, res.nextRound);
+      return res;
+    }).catch(err => {
+      console.warn(`⚠️ [Coordinator] 异步生成题目失败:`, err);
+      throw err;
+    }).finally(() => {
+      if (this.sessionPrepareTasks.get(sessionId) === prepareTask) {
+        this.sessionPrepareTasks.delete(sessionId);
       }
-    }).catch(err => console.warn(`⚠️ [Coordinator] 异步生成题目失败:`, err));
+    });
+    this.sessionPrepareTasks.set(sessionId, prepareTask);
   }
 
 
@@ -259,15 +280,59 @@ export class CoordinatorService {
 
   private async processUserResponse(sessionId: string, text: string, source: 'asr' | 'text') {
     if (!text.trim()) return;
+
+    const session = interviewFlowService.getSession(sessionId);
+    const normalizedForDedupe = text.replace(/\s+/g, '').trim();
+    const candidateTextKey = `${normalizedForDedupe.length}:${normalizedForDedupe.slice(0, 80)}`;
+    const now = Date.now();
+    if (
+      session?.lastCandidateTextKey === candidateTextKey &&
+      session.lastCandidateTextAt &&
+      now - session.lastCandidateTextAt < 8000
+    ) {
+      console.log(`[Coordinator] 跳过近重复候选人输入 (${source}) session=${sessionId}: "${text}"`);
+      return;
+    }
+    if (session) {
+      if (source === 'asr' && session.runtimePhase === 'speaking') {
+        console.log(`[Coordinator] 丢弃播报期间 ASR final，疑似回声/尾包 session=${sessionId}: "${text}"`);
+        return;
+      }
+      session.lastCandidateTextKey = candidateTextKey;
+      session.lastCandidateTextAt = now;
+      if (session.runtimePhase === 'speaking') {
+        // 客户端已在播报完成后才恢复 ASR；文本到达即视为进入收音阶段，兼容未上报 playback_done 的旧客户端。
+        session.runtimePhase = 'listening';
+      }
+    }
+
+    const prepareTask = this.sessionPrepareTasks.get(sessionId);
+    if (prepareTask) {
+      await prepareTask.catch(() => undefined);
+    }
+
+    const readySession = interviewFlowService.getSession(sessionId);
+    if (!readySession || readySession.rounds.length === 0) {
+      const waitText = '题目还在准备中，请您稍等片刻。';
+      this.emitToGateway(sessionId, 'voice_response', {
+        text: waitText,
+        sessionId,
+        ttsMode: await this.synthesizeQwen3TtsSegments(sessionId, waitText, 'transition'),
+        state: 'playing'
+      });
+      if (readySession) readySession.runtimePhase = 'speaking';
+      this.persistAvatarVoice(sessionId, waitText);
+      return;
+    }
     
     // UI 回显
     this.emitToGateway(sessionId, 'asr_partial', { text, isFinal: true, sessionId });
 
     // 处理用户记录
-    const session = interviewFlowService.getSession(sessionId);
+    const currentSession = interviewFlowService.getSession(sessionId);
     let questionIndex = null;
-    if (session) {
-      const currentRound = session.rounds.find((r: any) => r.status === 'in_progress');
+    if (currentSession) {
+      const currentRound = currentSession.rounds.find((r: any) => r.status === 'in_progress');
       if (currentRound) questionIndex = Math.max(0, currentRound.roundNumber - 1);
     }
     
@@ -303,7 +368,7 @@ export class CoordinatorService {
 
     // 调用业务逻辑
     try {
-      const result = await interviewFlowService.processUserResponse(sessionId, text);
+      const result = await interviewFlowService.processUserResponse(sessionId, text, { speakNextRound: false });
       if (result.isCompleted) {
          const closingText = '面试已全部完成，感谢您的配合，我们会尽快生成本次面试报告，请留意通知。';
          this.emitToGateway(sessionId, 'voice_response', {
@@ -353,6 +418,8 @@ export class CoordinatorService {
       questionIndex: round.roundNumber,
       state: 'playing'
     });
+    const session = interviewFlowService.getSession(sessionId);
+    if (session) session.runtimePhase = 'speaking';
     this.persistAvatarVoice(sessionId, round.question, round.roundNumber);
   }
 

@@ -134,6 +134,16 @@ export class RealtimeVoiceWebSocketServer {
             sessionId: data.sessionId
          }));
       });
+
+      socket.on('playback_done', (data: { sessionId: string; speechId?: string; questionIndex?: number }) => {
+         if (!data?.sessionId) return;
+         this.pubClient.publish('interview:events:inbound', JSON.stringify({
+            type: 'PLAYBACK_DONE',
+            sessionId: data.sessionId,
+            speechId: data.speechId,
+            questionIndex: data.questionIndex
+         }));
+      });
       
       // Video analysis logic
       socket.on('video_frame', (data) => {

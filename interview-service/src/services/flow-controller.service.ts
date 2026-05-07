@@ -122,6 +122,23 @@ export class InterviewFlowService {
       console.warn(`[InterviewFlow] 持久化微调题干失败: ${err?.message || err}`);
     }
   }
+
+  private async markNextRoundInProgress(session: InterviewSession): Promise<InterviewRound | null> {
+    const nextRound = session.rounds.find(r => r.status === 'pending');
+    if (!nextRound) {
+      session.state = InterviewState.COMPLETED;
+      session.runtimePhase = 'completed';
+      await this.persistInterviewCompleted(session);
+      return null;
+    }
+
+    nextRound.status = 'in_progress';
+    session.state = InterviewState.IN_PROGRESS;
+    session.currentRound = nextRound.roundNumber;
+    session.runtimePhase = 'speaking';
+    await this.persistRoundStarted(session, nextRound);
+    return nextRound;
+  }
   
   /**
    * 初始化会话（由外部提供sessionId）
@@ -377,9 +394,10 @@ export class InterviewFlowService {
   /**
    * 第二阶段：AI生成面试内容
    */
-  async startInterviewPhase(sessionId: string) {
+  async startInterviewPhase(sessionId: string, options: { autoStart?: boolean } = {}) {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('Session not found');
+    const autoStart = options.autoStart !== false;
 
     if (session.rounds.length === 0) {
       try {
@@ -407,6 +425,13 @@ export class InterviewFlowService {
         };
       }
 
+      if (!autoStart) {
+        return {
+          totalRounds: session.rounds.length,
+          nextRound: session.rounds.find(r => r.status === 'pending') || session.rounds[session.rounds.length - 1],
+        };
+      }
+
       await this.startNextRound(sessionId);
       const cur =
         session.rounds.find(r => r.status === 'in_progress') ||
@@ -428,8 +453,9 @@ export class InterviewFlowService {
     session.rounds = interviewRounds;
     session.state = InterviewState.READY;
 
-    // 3. 开始第一轮面试
-    await this.startNextRound(sessionId);
+    if (autoStart) {
+      await this.startNextRound(sessionId);
+    }
 
     return {
       totalRounds: interviewRounds.length,
@@ -623,19 +649,14 @@ export class InterviewFlowService {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('Session not found');
 
-    const nextRound = session.rounds.find(r => r.status === 'pending');
+    const nextRound = await this.markNextRoundInProgress(session);
     if (!nextRound) {
-      session.state = InterviewState.COMPLETED;
-      await this.persistInterviewCompleted(session);
       return null;
     }
 
-    nextRound.status = 'in_progress';
-    session.currentRound = nextRound.roundNumber;
-    await this.persistRoundStarted(session, nextRound);
-
     // Web 嵌入式数字人侧记一笔；同时通过 qwen3TTSClient 下发音频流到 App
     await this.sendToAvatarAndTTS(sessionId, session.userId, nextRound.question);
+    session.runtimePhase = 'listening';
 
     // 如果有音频文件，客户端会播放音频，这里不需要服务器端播放
     // if (nextRound.audioUrl) {
@@ -648,7 +669,7 @@ export class InterviewFlowService {
   /**
    * 处理用户回答
    */
-  async processUserResponse(sessionId: string, response: string): Promise<{
+  async processUserResponse(sessionId: string, response: string, options: { speakNextRound?: boolean } = {}): Promise<{
     nextRound?: InterviewRound | null; // Changed to allow null
     isCompleted: boolean;
     feedback?: string;
@@ -656,6 +677,7 @@ export class InterviewFlowService {
   }> {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('Session not found');
+    const speakNextRound = options.speakNextRound !== false;
 
     if (session.isProcessing) {
       console.warn(`[InterviewFlow] Session ${sessionId} is already processing, skipping duplicate response.`);
@@ -663,6 +685,7 @@ export class InterviewFlowService {
     }
 
     session.isProcessing = true;
+    session.runtimePhase = 'processing';
     try {
       const currentRound = session.rounds.find(r => r.status === 'in_progress');
       let analysisResult;
@@ -739,8 +762,8 @@ ${currentRound.followupCount || 0}
       }
     }
 
-    // 开始下一轮（或者是刚才插入的追问）
-    const nextRound = await this.startNextRound(sessionId);
+    // 开始下一轮（或者是刚才插入的追问）；实时链路中由 coordinator 统一播报，避免双 TTS。
+    const nextRound = await this.markNextRoundInProgress(session);
 
     // 进入「下一道主题题」时，用上一轮回答轻量润色预生成题干（追问回合 roundNumber 不变，不触发）
     if (
@@ -765,6 +788,11 @@ ${currentRound.followupCount || 0}
       } catch (e) {
         console.warn('[InterviewFlow] 下一题上下文润色跳过:', e);
       }
+    }
+
+    if (nextRound && speakNextRound) {
+      await this.sendToAvatarAndTTS(sessionId, session.userId, nextRound.question);
+      session.runtimePhase = 'listening';
     }
 
       return {

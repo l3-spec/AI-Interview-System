@@ -19,6 +19,11 @@ export interface InterviewSession {
   isProcessing?: boolean;
   /** 上次处理事件的时间戳：用于去重 */
   lastEventTime?: number;
+  /** 实时面试运行期相位：用于服务端掌控谁该说话、谁该听 */
+  runtimePhase?: 'preparing' | 'speaking' | 'listening' | 'processing' | 'completed';
+  /** 最近一次已接收候选人文本，用于 ASR/客户端双入口近重复去重 */
+  lastCandidateTextKey?: string;
+  lastCandidateTextAt?: number;
 }
 
 export interface UserInfo {

@@ -605,7 +605,11 @@ class RealtimeVoiceManager(private val context: Context) {
                                 }
                                 
                                 Log.i(TAG, "🎙️ [FLOW] Qwen3 TTS 播报结束")
+                                val wasSpeaking = _isDigitalHumanSpeaking.value
                                 _isDigitalHumanSpeaking.value = false
+                                if (wasSpeaking) {
+                                    notifyPlaybackDone("qwen3-tts")
+                                }
                                 if (!_interviewCompleted.value && vadEnabled) {
                                     scheduleResumeListeningAfterSpeakerPlayback()
                                 }
@@ -652,7 +656,8 @@ class RealtimeVoiceManager(private val context: Context) {
                             withContext(Dispatchers.Main) {
                                 _partialTranscript.value = result.text
                             }
-                            submitUserText(result.text)
+                            // Qwen3 ASR final 已由 asr-service 通过 Redis 发布给 interview-service。
+                            // 客户端只更新字幕，不再回发 text_message，避免同一句回答从 ASR Redis 和 Socket 双入口推进两次。
                         }
                     }
                     // 监听部分识别 → 更新字幕
@@ -1555,6 +1560,7 @@ class RealtimeVoiceManager(private val context: Context) {
                     this@RealtimeVoiceManager._isDigitalHumanSpeaking.value = false
                     this@RealtimeVoiceManager.awaitingTtsPlayback = false
                     this@RealtimeVoiceManager.activeAudioHash = null
+                    this@RealtimeVoiceManager.notifyPlaybackDone("media-player")
                     releaseVisualizer()
                     // 重置数字人嘴型
                     digitalHumanController?.updateMouthOpenness(0f)
@@ -2028,6 +2034,17 @@ class RealtimeVoiceManager(private val context: Context) {
             background?.let { put("background", it) }
         }
         socket?.emit("join_session", payload)
+    }
+
+    private fun notifyPlaybackDone(reason: String) {
+        val sessionId = currentSessionId ?: return
+        val payload = JSONObject().apply {
+            put("sessionId", sessionId)
+            put("reason", reason)
+            _currentQuestionIndex.value?.let { put("questionIndex", it) }
+        }
+        Log.d(TAG, "上报播报完成 playback_done - sessionId=$sessionId, reason=$reason")
+        socket?.emit("playback_done", payload)
     }
 
     fun submitUserText(text: String) {
