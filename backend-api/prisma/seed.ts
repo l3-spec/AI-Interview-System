@@ -157,213 +157,793 @@ const companies: CompanySeed[] = [
     highlights: ['端到端工业数字化方案', '领先的机器人控制系统', '多行业落地案例'],
     culture: ['工程师文化', '持续创新', '长期主义'],
     locations: ['深圳总部', '苏州制造中心', '成都算法研究院']
+  },
+  {
+    email: 'hr@cofco.com',
+    password: 'cofco123456',
+    name: '中粮集团',
+    description: '中国领先的农产品与食品领域多元化产品和服务供应商，世界500强企业，业务涵盖粮油、糖酒、茶叶、乳品等多个板块。',
+    industry: '食品/粮油',
+    scale: '10000人以上',
+    address: '北京市朝阳区朝阳门南大街8号',
+    website: 'https://www.cofco.com',
+    logo: 'https://images.unsplash.com/photo-1574182245530-967d9b3831af?w=200&h=200&fit=crop&q=80',
+    contact: '010-85016688',
+    tagline: '产业链好产品',
+    focusArea: '全产业链食品与农产品',
+    themeColors: ['#D97706', '#FCD34D'],
+    stats: [
+      { label: '世界500强排名', value: '第91位' },
+      { label: '全球布局国家', value: '140+' },
+      { label: '年营收', value: '超6000亿', accent: '#D97706' }
+    ],
+    highlights: ['全产业链布局', '世界500强', '国际化运营'],
+    culture: ['诚信', '专业', '创新', '共赢'],
+    locations: ['北京总部', '全国各区域']
+  },
+  {
+    email: 'hr@anhua-ins.com',
+    password: 'anhua123456',
+    name: '安华保险',
+    description: '全国性股份制财产保险公司，专注于农业保险与财产保险，服务网络覆盖全国主要省市。',
+    industry: '保险',
+    scale: '1000-5000人',
+    address: '北京市西城区金融街',
+    website: 'https://www.ahic.com.cn',
+    logo: 'https://images.unsplash.com/photo-1559526324-593bc07701c7?w=200&h=200&fit=crop&q=80',
+    contact: '010-66008888',
+    tagline: '安行天下，华泽万家',
+    focusArea: '农业保险与财产保险',
+    themeColors: ['#2563EB', '#93C5FD'],
+    stats: [
+      { label: '服务省份', value: '25+' },
+      { label: '承保农户', value: '千万级' },
+      { label: '保费规模', value: '百亿级', accent: '#2563EB' }
+    ],
+    highlights: ['农业保险先行者', '全国服务网络', '科技赋能理赔'],
+    culture: ['服务三农', '稳健经营', '科技驱动'],
+    locations: ['北京总部', '长春', '全国各省']
+  },
+  {
+    email: 'hr@cic-pni.com',
+    password: 'zhonghua123456',
+    name: '中华联合财险',
+    description: '全国性财产保险公司，始创于1986年，业务涵盖车险、农险、企财险等全险种，连续多年保费收入超500亿。',
+    industry: '保险',
+    scale: '5000-10000人',
+    address: '北京市丰台区金泽东路2号',
+    website: 'https://www.cic-pn.com',
+    logo: 'https://images.unsplash.com/photo-1559526324-593bc07701c7?w=200&h=200&fit=crop&q=80',
+    contact: '010-83998888',
+    tagline: '中华保险，中华情',
+    focusArea: '财产保险全险种经营',
+    themeColors: ['#DC2626', '#FCA5A5'],
+    stats: [
+      { label: '成立年份', value: '1986年' },
+      { label: '年保费收入', value: '500亿+' },
+      { label: '分支机构', value: '2500+', accent: '#DC2626' }
+    ],
+    highlights: ['老牌险企', '全险种覆盖', '三农服务深度'],
+    culture: ['稳健', '专业', '责任', '创新'],
+    locations: ['北京总部', '乌鲁木齐', '全国各省市']
+  },
+  {
+    email: 'hr@cweme.com',
+    password: 'shuihuanjing123',
+    name: '中国水环境',
+    description: '专注水环境综合治理与水生态修复的国家级平台企业，业务涵盖流域治理、城镇水务、海绵城市建设等。',
+    industry: '环保/水处理',
+    scale: '1000-5000人',
+    address: '北京市海淀区复兴路',
+    website: 'https://www.cweme.com',
+    logo: 'https://images.unsplash.com/photo-1497440001374-1aeb52da9b28?w=200&h=200&fit=crop&q=80',
+    contact: '010-51890088',
+    tagline: '治水兴邦，利泽民生',
+    focusArea: '水环境综合治理与生态修复',
+    themeColors: ['#0EA5E9', '#7DD3FC'],
+    stats: [
+      { label: '治理流域面积', value: '5万+km²' },
+      { label: '城镇水务项目', value: '200+' },
+      { label: '出水达标率', value: '99.5%', accent: '#0EA5E9' }
+    ],
+    highlights: ['国家级水环境平台', '全流域治理能力', '海绵城市先行者'],
+    culture: ['绿水青山', '科技治水', '责任担当'],
+    locations: ['北京总部', '贵阳', '武汉']
+  },
+  {
+    email: 'hr@tuyou.com',
+    password: 'tuyou123456',
+    name: '在线途游',
+    description: '国内领先的休闲游戏与社交娱乐平台，自研多款亿级用户手游，覆盖棋牌、休闲、中重度等多个品类。',
+    industry: '游戏/互联网',
+    scale: '500-1000人',
+    address: '北京市朝阳区望京SOHO',
+    website: 'https://www.tuyou.com',
+    logo: 'https://images.unsplash.com/photo-1617804697620-81a0bf7ebaf2?w=200&h=200&fit=crop&q=80',
+    contact: '010-56781234',
+    tagline: '游戏创造快乐',
+    focusArea: '休闲游戏研发与运营',
+    themeColors: ['#A855F7', '#E9D5FF'],
+    stats: [
+      { label: '累计注册用户', value: '5亿+' },
+      { label: '月活用户', value: '8000万+' },
+      { label: '畅销游戏', value: '20+', accent: '#A855F7' }
+    ],
+    highlights: ['亿级用户产品', '自研游戏引擎', '全球化发行'],
+    culture: ['快乐创造', '敏捷迭代', '用户至上'],
+    locations: ['北京总部', '上海']
+  },
+  {
+    email: 'hr@bnrs.com',
+    password: 'bainian123456',
+    name: '百年人寿',
+    description: '全国性人寿保险公司，提供寿险、健康险、意外险等全方位保障产品，致力于为亿万家庭提供全生命周期风险保障。',
+    industry: '人寿保险',
+    scale: '5000-10000人',
+    address: '大连市中山区人民路23号',
+    website: 'https://www.aeonlife.com.cn',
+    logo: 'https://images.unsplash.com/photo-1559526324-593bc07701c7?w=200&h=200&fit=crop&q=80',
+    contact: '0411-39869999',
+    tagline: '百年人寿，百爱人生',
+    focusArea: '人寿保险与健康保障',
+    themeColors: ['#059669', '#6EE7B7'],
+    stats: [
+      { label: '省级分公司', value: '35+' },
+      { label: '服务客户', value: '2000万+' },
+      { label: '总资产', value: '超3000亿', accent: '#059669' }
+    ],
+    highlights: ['全生命周期保障', '科技赋能理赔', '全国服务网络'],
+    culture: ['百年匠心', '客户至上', '科技赋能'],
+    locations: ['大连总部', '北京', '全国各省市']
+  },
+  {
+    email: 'hr@boe-property.com',
+    password: 'boeprop123456',
+    name: '京东方物业',
+    description: '京东方科技集团旗下专业物业管理与园区运营服务商，负责京东方全国产业园及写字楼的物业管理与智慧运营。',
+    industry: '物业管理',
+    scale: '1000-3000人',
+    address: '北京市经济技术开发区京东方科技园',
+    website: 'https://www.boe.com',
+    logo: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=200&h=200&fit=crop&q=80',
+    contact: '010-67856666',
+    tagline: '智慧物业，品质运营',
+    focusArea: '产业园区物业管理与智慧运营',
+    themeColors: ['#475569', '#94A3B8'],
+    stats: [
+      { label: '管理园区', value: '15+' },
+      { label: '服务面积', value: '500万+m²' },
+      { label: '客户满意度', value: '96%', accent: '#475569' }
+    ],
+    highlights: ['京东方集团背景', '智慧园区解决方案', '全国化布局'],
+    culture: ['品质为本', '智慧运营', '服务创造价值'],
+    locations: ['北京总部', '成都', '合肥', '武汉']
+  },
+  {
+    email: 'hr@sinopec-bj.com',
+    password: 'sinopec123456',
+    name: '中石化北分',
+    description: '中国石化集团在北京地区的核心经营单位，承担首都地区成品油供应、化工产品销售及新能源业务拓展。',
+    industry: '石油化工',
+    scale: '5000-10000人',
+    address: '北京市朝阳区安立路66号',
+    website: 'https://www.sinopec.com',
+    logo: 'https://images.unsplash.com/photo-1518770660419-4da79acd7a8d?w=200&h=200&fit=crop&q=80',
+    contact: '010-84889999',
+    tagline: '为美好生活加油',
+    focusArea: '成品油销售与新能源拓展',
+    themeColors: ['#1D4ED8', '#93C5FD'],
+    stats: [
+      { label: '加油站网络', value: '500+座' },
+      { label: '年供油量', value: '千万吨级' },
+      { label: '充换电站', value: '100+座', accent: '#1D4ED8' }
+    ],
+    highlights: ['首都能源保障主力', '新能源转型加速', '央企平台'],
+    culture: ['责任担当', '安全第一', '绿色转型'],
+    locations: ['北京']
+  },
+  {
+    email: 'hr@citic-health.com',
+    password: 'citichealth123',
+    name: '中信医疗健康产业',
+    description: '中信集团旗下医疗健康产业投资运营平台，涵盖医院投资管理、健康管理、医药流通等全产业链业务。',
+    industry: '医疗健康',
+    scale: '3000-5000人',
+    address: '北京市朝阳区建国外大街1号',
+    website: 'https://www.citic.com',
+    logo: 'https://images.unsplash.com/photo-1576091160399-46ba6fe7a9d2?w=200&h=200&fit=crop&q=80',
+    contact: '010-65886666',
+    tagline: '中信健康，健康中国',
+    focusArea: '医疗投资管理与健康产业运营',
+    themeColors: ['#DC2626', '#FCA5A5'],
+    stats: [
+      { label: '投资管理医院', value: '30+' },
+      { label: '健康管理会员', value: '100万+' },
+      { label: '医药流通网络', value: '全国覆盖', accent: '#DC2626' }
+    ],
+    highlights: ['中信集团背景', '医疗全产业链', '全国化布局'],
+    culture: ['专业', '创新', '责任', '协同'],
+    locations: ['北京总部', '广州', '杭州']
+  },
+  {
+    email: 'hr@cmbc.com',
+    password: 'cmbc123456',
+    name: '民生银行',
+    description: '全国性股份制商业银行，中国首家全国性民营银行，致力于为民企、小微企业和高端个人客户提供优质金融服务。',
+    industry: '银行',
+    scale: '10000人以上',
+    address: '北京市西城区复兴门内大街2号',
+    website: 'https://www.cmbc.com.cn',
+    logo: 'https://images.unsplash.com/photo-1559526324-593bc07701c7?w=200&h=200&fit=crop&q=80',
+    contact: '010-57096666',
+    tagline: '服务大众，情系民生',
+    focusArea: '公司银行与零售金融服务',
+    themeColors: ['#1E293B', '#64748B'],
+    stats: [
+      { label: '世界500强', value: '连续入选' },
+      { label: '网点数量', value: '2500+' },
+      { label: '总资产', value: '超7万亿', accent: '#1E293B' }
+    ],
+    highlights: ['全国性股份制银行', '民企服务标杆', '数字化转型领先'],
+    culture: ['合规经营', '科技驱动', '客户至上'],
+    locations: ['北京总部', '全国各省市']
+  },
+  {
+    email: 'hr@chinaunicom-bj.com',
+    password: 'unicom123456',
+    name: '联通北分',
+    description: '中国联通在北京地区的核心运营分公司，提供5G通信、宽带接入、云计算及企业数字化解决方案。',
+    industry: '通信',
+    scale: '5000-10000人',
+    address: '北京市西城区西单北大街甲133号',
+    website: 'https://www.chinaunicom.com',
+    logo: 'https://images.unsplash.com/photo-1563986768609-322da1354592?w=200&h=200&fit=crop&q=80',
+    contact: '010-66501111',
+    tagline: '创新与智慧同行',
+    focusArea: '5G通信与企业数字化解决方案',
+    themeColors: ['#EA580C', '#FDBA74'],
+    stats: [
+      { label: '5G基站', value: '3万+座' },
+      { label: '宽带用户', value: '500万+' },
+      { label: '企业客户', value: '10万+', accent: '#EA580C' }
+    ],
+    highlights: ['首都5G主力运营商', '企业数字化专家', '央企平台'],
+    culture: ['创新驱动', '客户为本', '合作共赢'],
+    locations: ['北京']
   }
 ];
 
 const jobs: JobSeed[] = [
   {
-    id: 'job-senior-fe',
-    companyEmail: 'company@aiinterview.com',
+    id: 'job-utalent-fe-sr',
+    companyEmail: 'admin@test.com',
     title: '资深前端开发工程师',
-    description: '负责U-Talent前端应用的规划、开发与性能优化，打造极致的候选人面试体验。',
+    description: '负责 U-Talent 平台的架构设计与核心功能开发，打造极致的招聘管理体验。',
     responsibilities: [
-      '主导前端架构设计与关键功能开发，提升系统稳定性与扩展性',
-      '与产品、设计协同，迭代核心业务流程与互动体验',
-      '建设组件库与工程化体系，推动团队开发效率提升',
-      '关注性能优化及前端监控体系建设'
+      '主导前端架构设计与核心功能开发',
+      '优化系统性能与用户交互体验',
+      '制定前端开发规范并指导初级工程师'
     ],
     requirements: [
-      '5年以上前端开发经验，熟悉React/TypeScript技术栈',
-      '具备大型复杂前端项目架构经验，对微前端、可观测性有实践',
-      '熟悉Web性能优化方法，对前端工程化工具链有深入理解',
-      '具备良好的沟通协作能力和跨团队推动能力'
+      '5年以上前端开发经验，精通 React/TypeScript',
+      '深入理解 Web 性能优化与浏览器工作原理',
+      '具备大型 SaaS 产品开发经验者优先'
     ],
-    salaryMin: 35,
-    salaryMax: 45,
+    salaryMin: 30,
+    salaryMax: 50,
     salaryCurrency: 'CNY',
-    location: '北京 · 海淀',
-    experience: '5-8年',
-    education: '本科及以上',
-    skills: ['React', 'TypeScript', 'Node.js', '微前端', '性能优化'],
-    benefits: ['六险二金', '年度体检', '弹性工作制', '无限零食与下午茶'],
+    location: '上海 · 徐汇',
+    experience: '5-10年',
+    education: '本科',
+    skills: ['React', 'TypeScript', 'Next.js', '性能优化'],
+    benefits: ['五险一金', '年度奖金', '带薪年假', '弹性办公'],
     type: 'FULL_TIME',
     status: 'ACTIVE',
     isPublished: true,
-    category: '产品技术中心',
+    category: '技术部',
     level: 'SENIOR',
-    highlights: ['技术氛围浓厚', 'AI产品快速迭代', '发展空间大'],
+    highlights: ['核心团队', '技术驱动', '扁平管理'],
     badgeColor: '#6366F1',
     dictionaryPositionCode: 'FRONTEND_ENGINEER'
   },
   {
-    id: 'job-backend-lead',
-    companyEmail: 'company@aiinterview.com',
-    title: '后端技术负责人',
-    description: '负责U-Talent平台的后端架构与服务治理，支撑业务持续快速增长。',
+    id: 'job-utalent-be-sr',
+    companyEmail: 'admin@test.com',
+    title: '后端技术专家',
+    description: '负责高性能微服务架构的设计与维护，支撑 AI 面试业务的高并发需求。',
     responsibilities: [
-      '负责核心服务的架构设计与演进，保障系统高可用与高性能',
-      '建设服务治理体系，搭建监控告警、自动化测试与部署流程',
-      '带领团队完成关键项目落地，培养后端工程师成长',
-      '与AI算法团队协同，设计高并发音视频处理方案'
+      '设计并实现高可用的微服务架构',
+      '优化数据库性能与分布式系统稳定性',
+      '攻克 AI 数字人交互过程中的高并发技术难题'
     ],
     requirements: [
-      '7年以上后端研发经验，熟悉Node.js或Java微服务架构',
-      '具备海量数据或高并发系统设计经验',
-      '熟悉云原生技术栈，了解容器编排、服务网格等技术',
-      '有团队管理或技术带队经验，具备Owner意识'
+      '7年以上后端研发经验，精通 Go 或 Java',
+      '熟悉分布式系统原理，掌握 Redis、Kafka 等中间件',
+      '具备云原生或 Kubernetes 实践经验'
     ],
     salaryMin: 40,
-    salaryMax: 55,
+    salaryMax: 70,
     salaryCurrency: 'CNY',
-    location: '北京 · 远程灵活',
+    location: '上海 · 张江',
     experience: '7年以上',
-    education: '本科及以上',
-    skills: ['Node.js', '微服务架构', 'MySQL', 'Redis', 'Kubernetes'],
-    benefits: ['股票期权', '年度旅游', '技术培训基金', '健康保险'],
+    education: '本科',
+    skills: ['Go', 'Microservices', 'MySQL', 'K8s'],
+    benefits: ['股票期权', '年度调薪', '五险一金', '健康体检'],
     type: 'FULL_TIME',
     status: 'ACTIVE',
     isPublished: true,
-    category: '产品技术中心',
+    category: '技术部',
     level: 'LEAD',
-    highlights: ['技术决策权', '核心业务线', '弹性办公'],
+    highlights: ['千万级并发', '前沿技术', '大牛云集'],
     badgeColor: '#F97316',
     dictionaryPositionCode: 'BACKEND_ENGINEER'
   },
   {
-    id: 'job-ai-product',
-    companyEmail: 'talent@brightai.com',
-    title: 'AI产品经理',
-    description: '主导AI招聘产品的规划与落地，构建面向企业客户的智能人才管理解决方案。',
+    id: 'job-utalent-pm-ai',
+    companyEmail: 'admin@test.com',
+    title: 'AI 产品经理',
+    description: '主导 AI 数字人面试系统的功能定义与用户体验优化，将 AI 能力转化为商业价值。',
     responsibilities: [
-      '洞察客户需求与行业趋势，制定产品路线图与迭代计划',
-      '与算法、研发、运营协同，推动AI功能落地与体验优化',
-      '设计核心流程与交互原型，输出高质量PRD与原型',
-      '追踪数据指标与用户反馈，指导产品策略持续优化'
+      '深入挖掘企业招聘场景下的 AI 需求',
+      '撰写高质量 PRD，推动算法与研发团队落地',
+      '持续跟进用户反馈，迭代 AI 数字人交互逻辑'
     ],
     requirements: [
-      '5年以上ToB产品经验，对招聘或人力资源领域有深入理解',
-      '具备AI或数据类产品规划与落地经验',
-      '逻辑清晰、善于沟通协调，能推动跨团队协作',
-      '具备数据驱动思维，能独立完成业务分析与策略制定'
+      '3年以上 ToB 产品经理经验，熟悉 AI/NLP 领域',
+      '优秀的逻辑分析能力与数据驱动思维',
+      '出色的沟通协调与跨部门协作能力'
     ],
-    salaryMin: 30,
+    salaryMin: 25,
     salaryMax: 45,
     salaryCurrency: 'CNY',
-    location: '上海 · 张江',
-    experience: '5-8年',
-    education: '本科及以上',
-    skills: ['产品规划', '数据分析', 'AI应用', '项目管理'],
-    benefits: ['年度奖金', '下午茶补贴', '人才公寓', '成长导师制'],
+    location: '北京 · 海淀',
+    experience: '3-5年',
+    education: '本科',
+    skills: ['产品规划', 'AI 逻辑', '用户调研'],
+    benefits: ['绩效奖金', '餐补', '通讯补贴', '带薪年假'],
     type: 'FULL_TIME',
     status: 'ACTIVE',
     isPublished: true,
-    category: '智慧招聘事业部',
-    level: 'SENIOR',
-    highlights: ['面向头部企业客户', '高成长业务', '跨部门协作紧密'],
+    category: '产品部',
+    level: 'MIDDLE',
+    highlights: ['核心产品线', '行业先锋', '快速成长期'],
     badgeColor: '#0EA5E9',
     dictionaryPositionCode: 'PRODUCT_MANAGER'
   },
   {
-    id: 'job-data-analyst',
-    companyEmail: 'talent@brightai.com',
-    title: '高级数据分析师',
-    description: '深入挖掘海量招聘与面试数据，输出数据洞察与策略建议，驱动产品与业务增长。',
+    id: 'job-utalent-ui-sr',
+    companyEmail: 'admin@test.com',
+    title: '资深 UI/UX 设计师',
+    description: '负责系统全平台的视觉规范定义与交互设计，打造专业且富有美感的企业级产品。',
     responsibilities: [
-      '构建招聘漏斗与用户行为分析模型，监控核心业务指标',
-      '设计并实现AB实验，评估功能与策略效果',
-      '与产品、运营、销售密切协作，提供数据支持',
-      '沉淀数据体系与分析方法论，建设数据资产'
+      '定义并维护系统的全链路设计规范',
+      '交付高保真原型与交互文档，确保还原度',
+      '主导用户体验评估，持续优化产品易用性'
     ],
     requirements: [
-      '精通SQL/Python及常用数据分析工具',
-      '具备扎实的统计学基础与商业敏感度',
-      '3年以上互联网或SaaS数据分析经验',
-      '善于将复杂数据洞察转化为清晰的业务建议'
+      '4年以上 UI/UX 设计经验，有成功 SaaS 产品案例',
+      '精通 Figma、Sketch、C4D 等设计工具',
+      '对 B 端产品交互设计有深刻理解'
     ],
-    salaryMin: 28,
-    salaryMax: 38,
+    salaryMin: 20,
+    salaryMax: 35,
     salaryCurrency: 'CNY',
-    location: '上海 · 浦东',
+    location: '杭州 · 西湖',
     experience: '3-5年',
-    education: '本科及以上',
-    skills: ['SQL', 'Python', 'Tableau', '统计分析'],
-    benefits: ['年度体检', '专业培训基金', '弹性工作', '团建活动'],
+    education: '本科',
+    skills: ['UI设计', '交互设计', '设计系统'],
+    benefits: ['下午茶', '年度旅游', '弹性工时', '五险一金'],
     type: 'FULL_TIME',
     status: 'ACTIVE',
     isPublished: true,
-    category: '数据与智能中心',
-    level: 'MIDDLE',
-    highlights: ['数据驱动文化', '紧贴业务决策', '成长体系完善'],
-    badgeColor: '#38BDF8',
-    dictionaryPositionCode: 'DATA_ANALYST'
+    category: '设计部',
+    level: 'SENIOR',
+    highlights: ['设计驱动', '美学追求', '开放氛围'],
+    badgeColor: '#8B5CF6',
+    dictionaryPositionCode: 'UI_DESIGNER'
   },
   {
-    id: 'job-robotics-architect',
-    companyEmail: 'hr@nova-robotics.com',
-    title: '机器人系统架构师',
-    description: '负责机器人操作系统与控制平台的总体架构设计，打造高可靠的智能制造底座。',
+    id: 'job-utalent-hr-mgr',
+    companyEmail: 'admin@test.com',
+    title: '人力资源经理',
+    description: '负责公司人才招聘体系搭建与组织文化建设，助力团队高速扩张。',
     responsibilities: [
-      '负责机器人控制系统架构设计与核心模块实现',
-      '主导系统性能优化与稳定性建设，支撑大规模部署',
-      '指导团队完成关键技术课题攻关，沉淀技术方案',
-      '与产品、实施团队协作，确保项目按期高质量交付'
+      '制定年度招聘计划，管理招聘全流程',
+      '优化员工激励机制与绩效评估体系',
+      '打造并推广公司雇主品牌与组织文化'
     ],
     requirements: [
-      '8年以上机器人或工业控制系统研发经验',
-      '精通C++/Python，熟悉ROS、实时操作系统与运动控制',
-      '有复杂系统架构设计经验，能平衡性能与可维护性',
-      '具备跨团队沟通协调与项目推动能力'
+      '5年以上 HR 工作经验，具备科技行业招聘背景',
+      '熟悉国家劳动法律法规，具备优秀的应变能力',
+      '卓越的人际沟通与团队管理能力'
+    ],
+    salaryMin: 18,
+    salaryMax: 30,
+    salaryCurrency: 'CNY',
+    location: '上海 · 徐汇',
+    experience: '5-8年',
+    education: '本科',
+    skills: ['人才招聘', '绩效管理', '雇主品牌'],
+    benefits: ['全额社保', '节日礼品', '职业培训', '生日会'],
+    type: 'FULL_TIME',
+    status: 'ACTIVE',
+    isPublished: true,
+    category: '人事部',
+    level: 'MANAGER',
+    highlights: ['核心管理岗位', '直接汇报CEO', '发展空间大'],
+    badgeColor: '#EC4899',
+    dictionaryPositionCode: 'HR_GENERALIST'
+  },
+  {
+    id: 'job-utalent-sales-dir',
+    companyEmail: 'admin@test.com',
+    title: '销售总监',
+    description: '负责 U-Talent 产品的市场拓展与大客户维护，带领团队达成业绩目标。',
+    responsibilities: [
+      '制定并执行公司销售战略与年度业绩指标',
+      '管理并培养销售团队，优化销售漏斗转化',
+      '建立并维护与头部标杆客户的长期战略合作关系'
+    ],
+    requirements: [
+      '8年以上 B2B 软件或 SaaS 销售经验',
+      '卓越的商务谈判技巧与大客户管理能力',
+      '有成功的销售团队管理经验者优先'
     ],
     salaryMin: 45,
+    salaryMax: 80,
+    salaryCurrency: 'CNY',
+    location: '上海 · 静安',
+    experience: '8年以上',
+    education: '本科',
+    skills: ['销售管理', '市场拓展', '商务谈判'],
+    benefits: ['高额提成', '交通补助', '期权激励', '高端体检'],
+    type: 'FULL_TIME',
+    status: 'ACTIVE',
+    isPublished: true,
+    category: '销售部',
+    level: 'DIRECTOR',
+    highlights: ['业务增长引擎', '行业影响力', '高额回报'],
+    badgeColor: '#10B981',
+    dictionaryPositionCode: 'SALES_REP'
+  },
+  {
+    id: 'job-utalent-data-sr',
+    companyEmail: 'admin@test.com',
+    title: '高级数据科学家',
+    description: '利用机器学习算法深入挖掘面试数据，持续提升 AI 评估的准确度与公正性。',
+    responsibilities: [
+      '研发并优化能力素质评估算法模型',
+      '主导音视频多模态特征挖掘与融合',
+      '通过数据实验验证并优化 AI 面试策略'
+    ],
+    requirements: [
+      '硕士及以上学历，数学、统计学或计算机相关专业',
+      '4年以上机器学习或数据科学经验',
+      '精通 Python、PyTorch/TensorFlow 等框架'
+    ],
+    salaryMin: 35,
     salaryMax: 60,
     salaryCurrency: 'CNY',
     location: '深圳 · 南山',
-    experience: '8年以上',
-    education: '硕士及以上',
-    skills: ['C++', 'ROS', '运动控制', '系统架构'],
-    benefits: ['人才安居计划', '科研激励奖金', '补充医疗保险', '企业年金'],
+    experience: '4-6年',
+    education: '硕士',
+    skills: ['机器学习', '深度学习', '多模态分析'],
+    benefits: ['落户指标', '科研津贴', '安居补助', '五险一金'],
     type: 'FULL_TIME',
     status: 'ACTIVE',
     isPublished: true,
-    category: '智能制造事业群',
-    level: 'LEAD',
-    highlights: ['重量级技术项目', '多学科协作', '行业标杆客户'],
-    badgeColor: '#10B981',
-    dictionaryPositionCode: 'HARDWARE_ENGINEER'
+    category: '技术部',
+    level: 'SENIOR',
+    highlights: ['前沿AI实验室', '核心算法岗', '技术挑战高'],
+    badgeColor: '#3B82F6',
+    dictionaryPositionCode: 'DATA_ANALYST'
   },
   {
-    id: 'job-ops-manager',
-    companyEmail: 'hr@nova-robotics.com',
-    title: '智能制造项目运营经理',
-    description: '统筹智能制造项目交付运营，确保项目闭环与客户成功，打造标杆项目经验。',
+    id: 'job-utalent-ops-mgr',
+    companyEmail: 'admin@test.com',
+    title: '运营经理',
+    description: '负责平台用户增长策略执行与内容社区运营，提升用户活跃度。',
     responsibilities: [
-      '负责项目运营策略制定，确保交付进度与质量达成',
-      '建设客户成功体系，沉淀实施经验与最佳实践',
-      '分析项目数据与成本结构，持续优化运营效率',
-      '协调研发、供应链、售后等团队，推动问题闭环'
+      '策划并执行线上线下营销活动，驱动用户增长',
+      '管理内容社区，建立创作者生态',
+      '通过用户数据分析持续优化运营路径'
     ],
     requirements: [
-      '5年以上项目运营或交付管理经验，了解智能制造行业',
-      '具备跨团队沟通协调与风险控制能力',
-      '数据驱动思维，能通过指标体系指导运营优化',
-      '具备客户导向意识和强执行力'
+      '3年以上互联网运营经验，有成功增长项目经历',
+      '优秀的内容策划能力与敏锐的数据分析意识',
+      '具备强烈的目标感与执行力'
     ],
-    salaryMin: 32,
-    salaryMax: 42,
+    salaryMin: 15,
+    salaryMax: 28,
     salaryCurrency: 'CNY',
-    location: '深圳 · 南山',
-    experience: '5-8年',
-    education: '本科及以上',
-    skills: ['项目管理', '数据分析', '客户成功', '跨部门协作'],
-    benefits: ['专项奖金', '交通补贴', '年度旅游', '带薪病假'],
+    location: '广州 · 天河',
+    experience: '3-5年',
+    education: '本科',
+    skills: ['用户增长', '内容运营', '社区建设'],
+    benefits: ['绩效奖金', '下午茶', '年度体检', '带薪年假'],
     type: 'FULL_TIME',
     status: 'ACTIVE',
     isPublished: true,
-    category: '智能制造事业群',
-    level: 'SENIOR',
-    highlights: ['核心交付团队', '客户面对面', '晋升空间大'],
-    badgeColor: '#14B8A6',
+    category: '运营部',
+    level: 'MANAGER',
+    highlights: ['创意空间大', '用户规模增长', '团队氛围好'],
+    badgeColor: '#F59E0B',
     dictionaryPositionCode: 'OPERATIONS_MANAGER'
+  },
+  // ---- 中粮集团 ----
+  {
+    id: 'job-cofco-supply-chain',
+    companyEmail: 'hr@cofco.com',
+    title: '供应链管理专家',
+    description: '统筹粮油全产业链的供应链规划与优化，保障从田间到餐桌的高效运转。',
+    responsibilities: ['制定全产业链供应链战略与计划', '优化仓储物流网络布局与运输路径', '推动供应链数字化升级与数据驱动决策'],
+    requirements: ['5年以上供应链管理经验，食品/快消行业优先', '精通SAP/ERP系统，具备数据分析能力', '优秀的跨部门协调与供应商管理能力'],
+    salaryMin: 25,
+    salaryMax: 45,
+    salaryCurrency: 'CNY',
+    location: '北京 · 朝阳',
+    experience: '5-8年',
+    education: '本科',
+    skills: ['供应链管理', 'ERP', '数据分析', '项目管理'],
+    benefits: ['央企待遇', '五险二金', '年度体检', '带薪年假'],
+    type: 'FULL_TIME',
+    status: 'ACTIVE',
+    isPublished: true,
+    category: '供应链部',
+    level: 'SENIOR',
+    highlights: ['世界500强平台', '全产业链视野', '国际化发展'],
+    badgeColor: '#D97706',
+    dictionaryPositionCode: 'OPERATIONS_MANAGER'
+  },
+  // ---- 安华保险 ----
+  {
+    id: 'job-anhua-ins-tech',
+    companyEmail: 'hr@anhua-ins.com',
+    title: '保险科技开发工程师',
+    description: '开发农业保险科技平台，实现遥感定损、智能理赔等数字化保险服务。',
+    responsibilities: ['开发农险科技平台核心功能模块', '对接遥感与气象数据实现智能定损', '优化理赔流程提升服务效率'],
+    requirements: ['3年以上Java/Python开发经验', '熟悉保险业务流程或有金融科技经验', '了解遥感/GIS数据处理优先'],
+    salaryMin: 20,
+    salaryMax: 38,
+    salaryCurrency: 'CNY',
+    location: '北京 · 西城',
+    experience: '3-5年',
+    education: '本科',
+    skills: ['Java', 'Python', '保险科技', 'GIS'],
+    benefits: ['五险一金', '补充医疗', '年度奖金', '带薪年假'],
+    type: 'FULL_TIME',
+    status: 'ACTIVE',
+    isPublished: true,
+    category: '科技部',
+    level: 'MIDDLE',
+    highlights: ['农险科技前沿', '全国服务网络', '行业深耕'],
+    badgeColor: '#2563EB',
+    dictionaryPositionCode: 'BACKEND_ENGINEER'
+  },
+  // ---- 中华联合财险 ----
+  {
+    id: 'job-zhonghua-actuary',
+    companyEmail: 'hr@cic-pni.com',
+    title: '精算师',
+    description: '负责车险与农险产品定价与准备金评估，为业务决策提供精算支持。',
+    responsibilities: ['开发与维护定价模型', '进行准备金评估与偿付能力分析', '为新产品开发提供精算建议'],
+    requirements: ['精算或统计学相关专业硕士', '通过SOA/CAA部分科目', '3年以上财产险精算经验'],
+    salaryMin: 30,
+    salaryMax: 55,
+    salaryCurrency: 'CNY',
+    location: '北京 · 丰台',
+    experience: '3-5年',
+    education: '硕士',
+    skills: ['精算建模', '定价分析', 'Python/R', '偿付能力'],
+    benefits: ['五险一金', '补充医疗', '年度奖金', '精算考试补贴'],
+    type: 'FULL_TIME',
+    status: 'ACTIVE',
+    isPublished: true,
+    category: '精算部',
+    level: 'SENIOR',
+    highlights: ['老牌险企平台', '全险种经验', '专业成长'],
+    badgeColor: '#DC2626',
+    dictionaryPositionCode: 'FINANCIAL_ANALYST'
+  },
+  // ---- 中国水环境 ----
+  {
+    id: 'job-cweme-water-eng',
+    companyEmail: 'hr@cweme.com',
+    title: '水环境治理工程师',
+    description: '负责流域综合治理与城镇水务项目的技术方案设计与实施，守护碧水清流。',
+    responsibilities: ['编制流域治理与水生态修复技术方案', '跟踪项目实施进度并解决技术难题', '开展水处理工艺优化与新技术研发'],
+    requirements: ['环境工程/给排水相关专业硕士', '3年以上水处理或流域治理经验', '熟练使用CAD/MIKE等工程软件'],
+    salaryMin: 18,
+    salaryMax: 35,
+    salaryCurrency: 'CNY',
+    location: '北京 · 海淀',
+    experience: '3-5年',
+    education: '硕士',
+    skills: ['水处理工程', '流域治理', 'CAD', '生态修复'],
+    benefits: ['五险一金', '项目奖金', '年度体检', '带薪年假'],
+    type: 'FULL_TIME',
+    status: 'ACTIVE',
+    isPublished: true,
+    category: '技术部',
+    level: 'MIDDLE',
+    highlights: ['国家级平台', '绿水青山使命', '技术前沿'],
+    badgeColor: '#0EA5E9',
+    dictionaryPositionCode: 'PROCESS_ENGINEER'
+  },
+  // ---- 在线途游 ----
+  {
+    id: 'job-tuyou-game-server',
+    companyEmail: 'hr@tuyou.com',
+    title: '游戏服务端开发工程师',
+    description: '开发高并发休闲游戏服务端，支撑亿级用户流畅体验。',
+    responsibilities: ['设计并实现高并发游戏服务端架构', '优化网络协议与数据同步机制', '保障服务端稳定性与低延迟'],
+    requirements: ['3年以上游戏服务端开发经验', '精通C++/Go，熟悉Redis/MQ', '有棋牌或休闲游戏项目经验优先'],
+    salaryMin: 25,
+    salaryMax: 50,
+    salaryCurrency: 'CNY',
+    location: '北京 · 望京',
+    experience: '3-5年',
+    education: '本科',
+    skills: ['C++', 'Go', 'Redis', '高并发'],
+    benefits: ['游戏行业氛围', '五险一金', '年度奖金', '下午茶'],
+    type: 'FULL_TIME',
+    status: 'ACTIVE',
+    isPublished: true,
+    category: '技术部',
+    level: 'SENIOR',
+    highlights: ['亿级用户产品', '高并发挑战', '快乐工作'],
+    badgeColor: '#A855F7',
+    dictionaryPositionCode: 'BACKEND_ENGINEER'
+  },
+  // ---- 百年人寿 ----
+  {
+    id: 'job-bnrs-digital-mgr',
+    companyEmail: 'hr@bnrs.com',
+    title: '数字化转型项目经理',
+    description: '推动公司核心业务系统的数字化转型，提升运营效率与客户体验。',
+    responsibilities: ['制定数字化转型路线图并推动落地', '协调业务部门与技术团队需求对齐', '管理项目进度、质量与风险'],
+    requirements: ['5年以上IT项目管理经验', '有金融/保险行业数字化转型经验', 'PMP/PRINCE2认证优先'],
+    salaryMin: 25,
+    salaryMax: 45,
+    salaryCurrency: 'CNY',
+    location: '大连 · 中山',
+    experience: '5-8年',
+    education: '本科',
+    skills: ['项目管理', '数字化转型', '保险业务', '敏捷'],
+    benefits: ['五险一金', '补充医疗', '年度奖金', '带薪年假'],
+    type: 'FULL_TIME',
+    status: 'ACTIVE',
+    isPublished: true,
+    category: '科技部',
+    level: 'MANAGER',
+    highlights: ['保险科技前沿', '全国性平台', '成长空间大'],
+    badgeColor: '#059669',
+    dictionaryPositionCode: 'PRODUCT_MANAGER'
+  },
+  // ---- 京东方物业 ----
+  {
+    id: 'job-boe-smart-pm',
+    companyEmail: 'hr@boe-property.com',
+    title: '智慧园区产品经理',
+    description: '规划京东方智慧园区管理平台，整合IoT、能耗、安防等子系统，实现园区一体化智慧运营。',
+    responsibilities: ['定义智慧园区产品功能与演进路线', '整合IoT、能耗管理、安防监控等子系统', '推动平台上线与园区复制推广'],
+    requirements: ['3年以上ToB产品经理经验', '有智慧园区/IoT/物业管理产品经验', '具备技术理解力与跨团队协调能力'],
+    salaryMin: 20,
+    salaryMax: 38,
+    salaryCurrency: 'CNY',
+    location: '北京 · 亦庄',
+    experience: '3-5年',
+    education: '本科',
+    skills: ['产品规划', '智慧园区', 'IoT', 'B端产品'],
+    benefits: ['京东方集团福利', '五险一金', '年度奖金', '带薪年假'],
+    type: 'FULL_TIME',
+    status: 'ACTIVE',
+    isPublished: true,
+    category: '产品部',
+    level: 'MIDDLE',
+    highlights: ['京东方集团背景', '智慧园区赛道', '多城市布局'],
+    badgeColor: '#475569',
+    dictionaryPositionCode: 'PRODUCT_MANAGER'
+  },
+  // ---- 中石化北分 ----
+  {
+    id: 'job-sinopec-new-energy',
+    companyEmail: 'hr@sinopec-bj.com',
+    title: '新能源业务开发经理',
+    description: '负责中石化北分新能源业务（充换电、氢能）的市场拓展与项目落地。',
+    responsibilities: ['制定新能源业务发展规划与市场策略', '拓展充换电站及氢能站点选址与建设', '建立并维护政府与合作伙伴关系'],
+    requirements: ['5年以上能源行业或新能源开发经验', '熟悉充换电/氢能产业政策与市场', '卓越的商务谈判与项目推进能力'],
+    salaryMin: 25,
+    salaryMax: 45,
+    salaryCurrency: 'CNY',
+    location: '北京 · 朝阳',
+    experience: '5-8年',
+    education: '本科',
+    skills: ['新能源', '商务拓展', '项目管理', '政策研究'],
+    benefits: ['央企待遇', '五险二金', '年度奖金', '补充医疗'],
+    type: 'FULL_TIME',
+    status: 'ACTIVE',
+    isPublished: true,
+    category: '新能源部',
+    level: 'MANAGER',
+    highlights: ['央企新能源转型', '充换电/氢能赛道', '稳定发展'],
+    badgeColor: '#1D4ED8',
+    dictionaryPositionCode: 'BD_MANAGER'
+  },
+  // ---- 中信医疗健康产业 ----
+  {
+    id: 'job-citic-health-informatics',
+    companyEmail: 'hr@citic-health.com',
+    title: '医疗信息化架构师',
+    description: '设计中信医疗集团级医院信息系统架构，推动旗下医院互联互通与智慧医疗建设。',
+    responsibilities: ['规划集团级HIS/EMR系统架构', '推动多院区数据互联互通与标准化', '引入AI辅助诊疗与智慧病房方案'],
+    requirements: ['5年以上医疗信息化经验', '精通HIS/EMR/LIS/PACS系统架构', '有集团型医院信息化建设经验'],
+    salaryMin: 30,
+    salaryMax: 55,
+    salaryCurrency: 'CNY',
+    location: '北京 · 朝阳',
+    experience: '5-10年',
+    education: '本科',
+    skills: ['医疗信息化', 'HIS/EMR', '系统架构', '数据标准'],
+    benefits: ['中信集团福利', '五险一金', '年度奖金', '补充医疗'],
+    type: 'FULL_TIME',
+    status: 'ACTIVE',
+    isPublished: true,
+    category: '信息技术部',
+    level: 'LEAD',
+    highlights: ['中信集团背景', '30+医院场景', '智慧医疗前沿'],
+    badgeColor: '#DC2626',
+    dictionaryPositionCode: 'BACKEND_ENGINEER'
+  },
+  // ---- 民生银行 ----
+  {
+    id: 'job-cmbc-fintech-dev',
+    companyEmail: 'hr@cmbc.com',
+    title: '金融科技开发工程师',
+    description: '参与民生银行核心金融科技平台开发，涵盖智能风控、开放银行与数字人民币等前沿领域。',
+    responsibilities: ['开发智能风控与反欺诈系统', '建设开放银行API平台', '参与数字人民币应用场景研发'],
+    requirements: ['3年以上Java开发经验，有金融科技背景', '精通Spring Cloud微服务架构', '了解分布式数据库与消息中间件'],
+    salaryMin: 28,
+    salaryMax: 50,
+    salaryCurrency: 'CNY',
+    location: '北京 · 西城',
+    experience: '3-5年',
+    education: '本科',
+    skills: ['Java', 'Spring Cloud', '金融科技', '微服务'],
+    benefits: ['银行体系薪资', '六险二金', '年度奖金', '带薪年假'],
+    type: 'FULL_TIME',
+    status: 'ACTIVE',
+    isPublished: true,
+    category: '科技部',
+    level: 'SENIOR',
+    highlights: ['股份制银行平台', '金融科技前沿', '数字化转型'],
+    badgeColor: '#1E293B',
+    dictionaryPositionCode: 'BACKEND_ENGINEER'
+  },
+  // ---- 联通北分 ----
+  {
+    id: 'job-unicom-5g-solution',
+    companyEmail: 'hr@chinaunicom-bj.com',
+    title: '5G行业解决方案架构师',
+    description: '为政企客户设计5G+行业数字化解决方案，推动5G在制造、医疗、教育等领域的创新应用。',
+    responsibilities: ['设计5G+行业应用解决方案', '支撑售前技术交流与方案编写', '推动5G行业专网与边缘计算项目落地'],
+    requirements: ['5年以上通信/IT解决方案经验', '熟悉5G网络架构与边缘计算', '有政企客户项目经验优先'],
+    salaryMin: 25,
+    salaryMax: 50,
+    salaryCurrency: 'CNY',
+    location: '北京 · 西城',
+    experience: '5-8年',
+    education: '本科',
+    skills: ['5G', '边缘计算', '解决方案', '政企市场'],
+    benefits: ['央企待遇', '五险二金', '年度奖金', '通信补贴'],
+    type: 'FULL_TIME',
+    status: 'ACTIVE',
+    isPublished: true,
+    category: '政企事业部',
+    level: 'SENIOR',
+    highlights: ['5G+行业创新', '央企平台', '政企市场深耕'],
+    badgeColor: '#EA580C',
+    dictionaryPositionCode: 'ARCHITECT'
   }
 ];
 
@@ -791,6 +1371,72 @@ async function seedCompanyShowcases(companyMap: Record<string, string>) {
       role: '智能制造先锋',
       hiringCount: 5,
       sortOrder: 3,
+    },
+    {
+      companyEmail: 'hr@cofco.com',
+      role: '世界500强粮油',
+      hiringCount: 1,
+      sortOrder: 4,
+    },
+    {
+      companyEmail: 'hr@anhua-ins.com',
+      role: '农业保险领先',
+      hiringCount: 1,
+      sortOrder: 5,
+    },
+    {
+      companyEmail: 'hr@cic-pni.com',
+      role: '老牌财产险企',
+      hiringCount: 1,
+      sortOrder: 6,
+    },
+    {
+      companyEmail: 'hr@cweme.com',
+      role: '水环境治理',
+      hiringCount: 1,
+      sortOrder: 7,
+    },
+    {
+      companyEmail: 'hr@tuyou.com',
+      role: '休闲游戏平台',
+      hiringCount: 1,
+      sortOrder: 8,
+    },
+    {
+      companyEmail: 'hr@bnrs.com',
+      role: '人寿保险标杆',
+      hiringCount: 1,
+      sortOrder: 9,
+    },
+    {
+      companyEmail: 'hr@boe-property.com',
+      role: '智慧园区运营',
+      hiringCount: 1,
+      sortOrder: 10,
+    },
+    {
+      companyEmail: 'hr@sinopec-bj.com',
+      role: '央企新能源转型',
+      hiringCount: 1,
+      sortOrder: 11,
+    },
+    {
+      companyEmail: 'hr@citic-health.com',
+      role: '医疗健康产业',
+      hiringCount: 1,
+      sortOrder: 12,
+    },
+    {
+      companyEmail: 'hr@cmbc.com',
+      role: '股份制银行',
+      hiringCount: 1,
+      sortOrder: 13,
+    },
+    {
+      companyEmail: 'hr@chinaunicom-bj.com',
+      role: '5G通信运营商',
+      hiringCount: 1,
+      sortOrder: 14,
     },
   ];
 
@@ -1233,6 +1879,135 @@ async function seedUserCommunityPosts() {
   }
 }
 
+async function seedInterviewsForUTalent(companyMap: Record<string, string>) {
+  const companyId = companyMap['admin@test.com'];
+  if (!companyId) return;
+
+  const uTalentJobs = await prisma.job.findMany({
+    where: { companyId }
+  });
+
+  if (uTalentJobs.length === 0) return;
+
+  console.log('🌱 开始生成 U-Talent 演示数据...');
+
+  // 0. 清理旧数据，确保结果可预测且不重复累加
+  await prisma.interview.deleteMany({ where: { companyId } });
+  console.log('🧹 已清理 U-Talent 旧面试数据');
+
+  // 1. 创建候选人 (30)
+  const candidates = [];
+  const candidateNames = [
+    '张伟', '王芳', '李娜', '刘强', '陈思', '杨幂', '黄渤', '周迅', '胡歌', '赵薇',
+    '徐峥', '唐嫣', '范冰冰', '吴亦凡', '鹿晗', '张艺兴', '迪丽热巴', '易烊千玺', '王源', '王俊凯',
+    '孙俪', '邓超', '杨洋', '佟丽娅', '沈腾', '马丽', '黄晓明', 'Angelababy', '郑爽', '古力娜扎'
+  ];
+
+  for (let i = 0; i < candidateNames.length; i++) {
+    const email = `candidate${i}@example.com`;
+    const password = await bcrypt.hash('123456', 12);
+    const user = await prisma.user.upsert({
+      where: { email },
+      update: {
+        name: candidateNames[i],
+        phone: `138000000${i.toString().padStart(2, '0')}`,
+        gender: i % 2 === 0 ? 'MALE' : 'FEMALE',
+        age: 22 + (i % 10),
+        education: i % 3 === 0 ? '硕士' : '本科',
+        experience: `${(i % 5) + 1}年经验`,
+        skills: JSON.stringify(['JavaScript', 'React', 'Node.js', 'Problem Solving'].slice(0, (i % 4) + 1)),
+        isActive: true,
+        isVerified: true
+      },
+      create: {
+        email,
+        password,
+        name: candidateNames[i],
+        phone: `138000000${i.toString().padStart(2, '0')}`,
+        gender: i % 2 === 0 ? 'MALE' : 'FEMALE',
+        age: 22 + (i % 10),
+        education: i % 3 === 0 ? '硕士' : '本科',
+        experience: `${(i % 5) + 1}年经验`,
+        skills: JSON.stringify(['JavaScript', 'React', 'Node.js', 'Problem Solving'].slice(0, (i % 4) + 1)),
+        isActive: true,
+        isVerified: true
+      }
+    });
+    candidates.push(user);
+  }
+
+  // 2. 创建面试 (80)
+  let interviewCount = 0;
+  const totalInterviewsToCreate = 80;
+  
+  for (let i = 0; i < totalInterviewsToCreate; i++) {
+    const job = uTalentJobs[i % uTalentJobs.length];
+    const candidate = candidates[i % candidates.length];
+    
+    // 状态分布：25 Pending, 45 Completed, 5 Ongoing, 5 Cancelled
+    let status = 'PENDING';
+    if (i >= 25 && i < 70) status = 'COMPLETED';
+    else if (i >= 70 && i < 75) status = 'ONGOING';
+    else if (i >= 75) status = 'CANCELLED';
+
+    // 评分逻辑：10分制，大部分及格(6.5-9.5)，一部分不及格(4.0-5.8)
+    const isFailed = (i + (i % 3)) % 4 === 0; // 约25%的不及格率
+    const score = status === 'COMPLETED' ? (isFailed ? 4.0 + (i % 1.9) : 6.5 + (i % 3.0)) : null;
+    
+    // 结果逻辑：根据分数自动决定，或者手动设置 reviewing
+    let result = 'pending';
+    if (status === 'COMPLETED') {
+        if (i % 7 === 0) result = 'reviewing';
+        else result = (score && score >= 6.0) ? 'passed' : 'failed';
+    }
+
+    const interview = await prisma.interview.create({
+      data: {
+        userId: candidate.id,
+        jobId: job.id,
+        companyId,
+        status,
+        startTime: status === 'COMPLETED' ? new Date(Date.now() - (i % 30) * 24 * 3600 * 1000) : new Date(Date.now() + (i % 7) * 24 * 3600 * 1000),
+        duration: status === 'COMPLETED' ? 30 + (i % 20) : null,
+        score,
+        feedback: status === 'COMPLETED' ? (isFailed ? `候选人 ${candidate.name} 在专业技能测试中表现欠佳，需进一步提升。` : `候选人 ${candidate.name} 在面试中表现稳定，展现了较好的专业素养。`) : null,
+        recording: status === 'COMPLETED' ? `https://example.com/recordings/${i}.mp4` : null,
+      }
+    });
+
+    if (status === 'COMPLETED') {
+      await prisma.interviewReport.create({
+        data: {
+          interviewId: interview.id,
+          overallScore: score || 0,
+          summary: `该候选人在 ${job.title} 岗位的面试中，对核心技术点的理解非常深刻，沟通顺畅。`
+        }
+      });
+
+      await prisma.question.createMany({
+        data: [
+          { interviewId: interview.id, content: '请描述你在项目中遇到的最大技术挑战。', type: 'TECHNICAL', score: 8.5, duration: 180, answer: '我在处理...' },
+          { interviewId: interview.id, content: '你如何处理团队协作中的冲突？', type: 'BEHAVIOR', score: 7.5, duration: 120, answer: '我认为...' }
+        ]
+      });
+    }
+
+    // 创建申请记录
+    await prisma.jobApplication.create({
+      data: {
+        jobId: job.id,
+        userId: candidate.id,
+        status: status === 'COMPLETED' ? (i % 2 === 0 ? 'ACCEPTED' : 'REJECTED') : 'PENDING',
+        message: '期待加入贵公司'
+      }
+    });
+
+    interviewCount++;
+  }
+
+  console.log(`✅ 已为 U-Talent 生成 ${uTalentJobs.length} 个职位，${candidates.length} 个候选人，${interviewCount} 条面试记录。`);
+}
+
 async function main() {
   console.log('🌱 开始初始化 Prisma 种子数据...');
 
@@ -1263,6 +2038,8 @@ async function main() {
 
     await seedPromotedJobs();
     console.log('✅ 首页推广职位已准备');
+
+    await seedInterviewsForUTalent(companyMap);
 
     console.log('🎉 数据库假数据初始化完成！');
   } catch (error) {

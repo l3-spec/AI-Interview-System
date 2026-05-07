@@ -288,6 +288,16 @@ export interface InterviewListResponse {
   total: number;
   page: number;
   pageSize: number;
+  stats?: {
+    totalInterviews: number;
+    completedInterviews: number;
+    passedInterviews: number;
+    pendingInterviews: number;
+    reviewingInterviews: number;
+    passRate: number;
+    averageScore: number;
+    departmentStats: Record<string, { total: number; completed: number; passed: number }>;
+  };
 }
 
 export interface CandidateListResponse {

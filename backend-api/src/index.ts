@@ -52,6 +52,12 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // 日志中间件
 app.use(requestLogger);
+app.use((req, res, next) => {
+  if (req.url.startsWith('/api') || req.url === '/health') {
+    console.log(`[GlobalDebug] Received request: ${req.method} ${req.url}`);
+  }
+  next();
+});
 
 // 限流中间件
 app.use(rateLimiter);

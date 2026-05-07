@@ -32,7 +32,7 @@ plugins {
 //val defaultApiHost = "10.0.1.33"
 //val defaultApiHost = "192.168.124.111"
 //val defaultApiHost = "192.168.10.84"
-val defaultApiHost = "10.0.1.12"
+val defaultApiHost = "10.0.1.22"
 val defaultApiPort = 3001
 val defaultApiPath = "api"
 

@@ -12,36 +12,53 @@ import { Interview } from '../types/interview';
 
 interface Props {
   interviews: Interview[];
+  stats?: {
+    totalInterviews: number;
+    completedInterviews: number;
+    passedInterviews: number;
+    pendingInterviews: number;
+    reviewingInterviews: number;
+    passRate: number;
+    averageScore: number;
+    departmentStats: Record<string, { total: number; completed: number; passed: number }>;
+  };
   style?: React.CSSProperties;
 }
 
-const InterviewStatsCards: React.FC<Props> = ({ interviews, style }) => {
+const InterviewStatsCards: React.FC<Props> = ({ interviews, stats, style }) => {
   // 计算统计数据
-  const totalInterviews = interviews.length;
-  const completedInterviews = interviews.filter(item => item.status === 'completed').length;
-  const passedInterviews = interviews.filter(item => item.result === 'passed').length;
-  const pendingInterviews = interviews.filter(item => item.status === 'pending' || item.status === 'scheduled').length;
-  const reviewingInterviews = interviews.filter(item => item.result === 'reviewing').length;
+  const totalInterviews = stats ? stats.totalInterviews : interviews.length;
+  const completedInterviews = stats ? stats.completedInterviews : interviews.filter(item => item.status?.toLowerCase() === 'completed').length;
+  const passedInterviews = stats ? stats.passedInterviews : interviews.filter(item => item.result?.toLowerCase() === 'passed').length;
+  const pendingInterviews = stats ? stats.pendingInterviews : interviews.filter(item => {
+    const s = item.status?.toLowerCase();
+    return s === 'pending' || s === 'scheduled';
+  }).length;
+  const reviewingInterviews = stats ? stats.reviewingInterviews : interviews.filter(item => item.result?.toLowerCase() === 'reviewing').length;
   
   // 计算通过率
-  const passRate = completedInterviews > 0 ? (passedInterviews / completedInterviews) * 100 : 0;
+  const passRate = stats ? stats.passRate : (completedInterviews > 0 ? (passedInterviews / completedInterviews) * 100 : 0);
   
   // 计算平均分
-  const completedWithScore = interviews.filter(item => item.status === 'completed' && item.score > 0);
-  const averageScore = completedWithScore.length > 0 
+  const completedWithScore = interviews.filter(item => item.status?.toLowerCase() === 'completed' && item.score > 0);
+  const averageScore = stats ? stats.averageScore : (completedWithScore.length > 0 
     ? completedWithScore.reduce((sum, item) => sum + item.score, 0) / completedWithScore.length 
-    : 0;
+    : 0);
+
+  const completedCountForAvg = stats ? stats.completedInterviews : completedWithScore.length;
 
   // 按部门统计
-  const departmentStats = interviews.reduce((acc, interview) => {
-    const dept = interview.department;
+  const departmentStats = stats ? stats.departmentStats : interviews.reduce((acc, interview) => {
+    const dept = interview.department || '未分配';
     if (!acc[dept]) {
       acc[dept] = { total: 0, completed: 0, passed: 0 };
     }
     acc[dept].total++;
-    if (interview.status === 'completed') {
+    const s = interview.status?.toLowerCase();
+    const r = interview.result?.toLowerCase();
+    if (s === 'completed') {
       acc[dept].completed++;
-      if (interview.result === 'passed') {
+      if (r === 'passed') {
         acc[dept].passed++;
       }
     }
@@ -149,7 +166,7 @@ const InterviewStatsCards: React.FC<Props> = ({ interviews, style }) => {
                 / 10.0
               </div>
               <div style={{ fontSize: '12px', color: '#999' }}>
-                基于 {completedWithScore.length} 次已完成面试
+                基于 {completedCountForAvg} 次已完成面试
               </div>
             </div>
           </Card>

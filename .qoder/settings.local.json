@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd /Users/linxiong/Documents/GitHub/AI-Interview-System/backend-api && npx tsc --noEmit prisma/seed.ts 2>&1 | head -20)",
+      "Bash(cd /Users/linxiong/Documents/GitHub/AI-Interview-System/backend-api && grep -c \"email:.*@.*\\\\.com\\\\|email:.*@.*\\\\.cn\\\\|email:.*@.*\\\\.ai\\\\|email:.*@.*\\\\.io\" prisma/seed.ts | head -1; echo \"---\"; grep \"email:\" prisma/seed.ts | grep -E \"^\\\\s+email:\" | wc -l)",
+      "Bash(grep -n \"email:\" /Users/linxiong/Documents/GitHub/AI-Interview-System/backend-api/prisma/seed.ts | grep -v \"companyEmail\\\\|testUserEmail\\\\|admin\\\\.\\\\|user\\\\.\\\\|circle\\\\.\\\\|candidate\" | head -20)",
+      "Bash(grep -c \"^  {\" /Users/linxiong/Documents/GitHub/AI-Interview-System/backend-api/prisma/seed.ts 2>/dev/null; echo \"---\"; grep \"name:\" /Users/linxiong/Documents/GitHub/AI-Interview-System/backend-api/prisma/seed.ts | grep -E \"^\\\\s+name:\" | head -20)",
+      "Bash(cd /Users/linxiong/Documents/GitHub/AI-Interview-System/backend-api && grep -A5 '\"prisma\"' package.json | head -10; echo \"---\"; grep '\"seed\"' package.json)",
+      "Bash(npm run seed 2>&1)",
+      "Bash(pwd && npm run seed 2>&1)"
+    ]
+  }
+}

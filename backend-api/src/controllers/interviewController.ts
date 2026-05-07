@@ -695,6 +695,9 @@ const mapRowToInterview = (row: MockInterviewRow): InterviewView => {
 
   const interviewDate = toIsoString(row.interview_date);
 
+  const status = normalizeStatus(row.status);
+  const score = toScore(row.score);
+
   return {
     id: row.id,
     candidateId: row.candidate_id,
@@ -702,12 +705,12 @@ const mapRowToInterview = (row: MockInterviewRow): InterviewView => {
     jobId: row.job_id,
     jobTitle: row.job_title,
     department: row.department || '',
-    status: row.status,
+    status,
     interviewDate,
     duration: toNumber(row.duration, 0),
     videoUrl: (toMediaUrl(row.video_url) ?? row.video_url) || undefined,
-    score: toScore(row.score),
-    result: row.result,
+    score,
+    result: deriveResultFromStatus(status, score),
     createdAt: toIsoString(row.created_at),
     updatedAt: toIsoString(row.updated_at)
   };
@@ -774,9 +777,9 @@ const mapUserToCandidateView = (user: any): CandidateView => ({
 
 const normalizeStatus = (status?: string | null): string => {
   if (!status) {
-    return 'PENDING';
+    return 'pending';
   }
-  return status.toUpperCase();
+  return status.toLowerCase();
 };
 
 const deriveResultFromStatus = (status: string, score?: number): string => {
@@ -784,17 +787,17 @@ const deriveResultFromStatus = (status: string, score?: number): string => {
   const hasScore = typeof score === 'number' && !Number.isNaN(score);
   if (normalizedStatus === 'COMPLETED') {
     if (hasScore) {
-      return score >= 60 ? 'PASSED' : 'FAILED';
+      return score >= 60 ? 'passed' : 'failed';
     }
-    return 'REVIEWING';
+    return 'reviewing';
   }
   if (normalizedStatus === 'CANCELLED') {
-    return 'WITHDRAWN';
+    return 'withdrawn';
   }
   if (normalizedStatus === 'ONGOING') {
-    return 'REVIEWING';
+    return 'reviewing';
   }
-  return 'PENDING';
+  return 'pending';
 };
 
 const mapPrismaInterviewToView = (interview: any): InterviewView => {
@@ -964,9 +967,10 @@ const mapQuestionToView = (question: any): QuestionView => ({
 const fetchInterviewsFromDatabase = async (
   filters: InterviewFilters,
   pageNumber: number,
-  pageSizeNumber: number
+  pageSizeNumber: number,
+  companyId?: string
 ) => {
-  const where: Prisma.InterviewWhereInput = {};
+  const where: Prisma.InterviewWhereInput = companyId ? { companyId } : {};
 
   if (filters.status?.length) {
     where.status = {
@@ -997,7 +1001,8 @@ const fetchInterviewsFromDatabase = async (
 
   const skip = (pageNumber - 1) * pageSizeNumber;
 
-  const [records, total] = await Promise.all([
+  // 使用更高效的聚合查询
+  const [records, total, statusCounts, avgScoreResult, deptCounts] = await Promise.all([
     prisma.interview.findMany({
       where,
       include: {
@@ -1012,12 +1017,107 @@ const fetchInterviewsFromDatabase = async (
       skip,
       take: pageSizeNumber
     }),
-    prisma.interview.count({ where })
+    prisma.interview.count({ where }),
+    prisma.interview.groupBy({
+      by: ['status'],
+      where,
+      _count: true
+    }),
+    prisma.interview.aggregate({
+      where: {
+        ...where,
+        status: 'COMPLETED',
+        OR: [
+          { score: { gt: 0 } },
+          { report: { overallScore: { gt: 0 } } }
+        ]
+      },
+      _avg: {
+        score: true
+      },
+      _count: {
+        id: true
+      }
+    }),
+    prisma.interview.findMany({
+      where,
+      select: {
+        id: true,
+        status: true,
+        score: true,
+        job: {
+          select: {
+            category: true
+          }
+        },
+        report: {
+          select: {
+            overallScore: true
+          }
+        }
+      }
+    })
   ]);
+
+  // 处理统计结果
+  const stats = {
+    totalInterviews: total,
+    completedInterviews: 0,
+    passedInterviews: 0,
+    pendingInterviews: 0,
+    reviewingInterviews: 0,
+    passRate: 0,
+    averageScore: avgScoreResult._avg.score || 0,
+    departmentStats: {} as Record<string, { total: number; completed: number; passed: number }>
+  };
+
+  // 部门统计与核心指标计算
+  (deptCounts as any[]).forEach(i => {
+    const s = i.status ? String(i.status).toUpperCase() : '';
+    const dept = i.job?.category || '未分配';
+    const scoreValue = i.score || i.report?.overallScore || 0;
+
+    if (!stats.departmentStats[dept]) {
+      stats.departmentStats[dept] = { total: 0, completed: 0, passed: 0 };
+    }
+    stats.departmentStats[dept].total++;
+
+    if (s === 'PENDING') {
+      stats.pendingInterviews++;
+    } else if (s === 'ONGOING') {
+      stats.reviewingInterviews++;
+    } else if (s === 'COMPLETED') {
+      stats.completedInterviews++;
+      stats.departmentStats[dept].completed++;
+      
+      // 使用 10 分制标准 (6.0 分及格)
+      if (scoreValue >= 6.0) {
+        stats.passedInterviews++;
+        stats.departmentStats[dept].passed++;
+      }
+      
+      // 如果已完成但没有分数，也归类为评估中
+      if (!scoreValue) {
+        stats.reviewingInterviews++;
+      }
+    }
+  });
+
+  if (stats.completedInterviews > 0) {
+    stats.passRate = Math.round((stats.passedInterviews / stats.completedInterviews) * 100);
+    
+    // 确保平均分在 10 分制标准内 (如果是 100 分制则除以 10)
+    if (stats.averageScore > 10) {
+      stats.averageScore = Number((stats.averageScore / 10).toFixed(1));
+    } else {
+      stats.averageScore = Number(stats.averageScore.toFixed(1));
+    }
+  }
 
   return {
     items: records.map(mapPrismaInterviewToView),
-    total
+    total,
+    stats
   };
 };
 
@@ -1159,8 +1259,27 @@ export const getInterviews = async (req: Request, res: Response) => {
   const filters = parseFilters(rawFilters);
   const pageNumber = Math.max(Number(page) || 1, 1);
   const pageSizeNumber = Math.max(Number(pageSize) || 10, 1);
+  const companyId = (req as any).user?.id;
+  console.log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
+  console.log(`[GetInterviewsDebug] CALLING getInterviews for ${companyId}`);
+  console.log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
 
   try {
+    // 优先从数据库获取真实数据
+    const result = await fetchInterviewsFromDatabase(filters, pageNumber, pageSizeNumber, companyId);
+    console.log(`[GetInterviewsDebug] result.total = ${result.total}`);
+    if (result.total > 0) {
+      return res.json({
+        success: true,
+        data: result.items,
+        total: result.total,
+        stats: result.stats,
+        page: pageNumber,
+        pageSize: pageSizeNumber
+      });
+    }
+
+    // 如果数据库为空，尝试获取 Mock 数据（保持向后兼容）
     const rows = await prisma.$queryRaw<MockInterviewRow[]>`
       SELECT
         i.id,
@@ -1195,6 +1314,40 @@ export const getInterviews = async (req: Request, res: Response) => {
     const interviews = rows.map(mapRowToInterview);
     const filtered = applyFilters(interviews, filters);
 
+    // 计算统计数据 (Mock 数据路径)
+    const stats = {
+      totalInterviews: filtered.length,
+      completedInterviews: filtered.filter(i => i.status.toLowerCase() === 'completed').length,
+      passedInterviews: filtered.filter(i => i.result.toLowerCase() === 'passed').length,
+      pendingInterviews: filtered.filter(i => i.status.toLowerCase() === 'pending').length,
+      reviewingInterviews: filtered.filter(i => i.result.toLowerCase() === 'reviewing').length,
+      passRate: 0,
+      averageScore: 0,
+      departmentStats: {} as Record<string, { total: number; completed: number; passed: number }>
+    };
+
+    const completed = filtered.filter(i => i.status === 'completed');
+    if (completed.length > 0) {
+      stats.passRate = Math.round((stats.passedInterviews / completed.length) * 100);
+      const scores = completed.map(i => i.score).filter(s => s > 0);
+      if (scores.length > 0) {
+        const rawAvg = scores.reduce((a, b) => a + b, 0) / scores.length;
+        stats.averageScore = rawAvg > 10 ? Number((rawAvg / 10).toFixed(1)) : Number(rawAvg.toFixed(1));
+      }
+    }
+
+    filtered.forEach(i => {
+      const dept = i.department || '未分配';
+      if (!stats.departmentStats[dept]) {
+        stats.departmentStats[dept] = { total: 0, completed: 0, passed: 0 };
+      }
+      stats.departmentStats[dept].total++;
+      if (i.status === 'completed') {
+        stats.departmentStats[dept].completed++;
+        if (i.result === 'passed') stats.departmentStats[dept].passed++;
+      }
+    });
+
     const startIndex = (pageNumber - 1) * pageSizeNumber;
     const paginated = filtered.slice(startIndex, startIndex + pageSizeNumber);
 
@@ -1202,6 +1355,7 @@ export const getInterviews = async (req: Request, res: Response) => {
       success: true,
       data: paginated,
       total: filtered.length,
+      stats,
       page: pageNumber,
       pageSize: pageSizeNumber
     });
@@ -1213,6 +1367,7 @@ export const getInterviews = async (req: Request, res: Response) => {
           success: true,
           data: result.items,
           total: result.total,
+          stats: result.stats,
           page: pageNumber,
           pageSize: pageSizeNumber
         });
@@ -1231,6 +1386,16 @@ export const getInterviewDetail = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
+    // 优先从真实数据库查询
+    const dbDetail = await fetchInterviewDetailFromDatabase(id);
+    if (dbDetail) {
+      return res.json({
+        success: true,
+        ...dbDetail
+      });
+    }
+
+    // 否则查询 Mock 数据
     const rows = await prisma.$queryRaw<MockInterviewRow[]>`
       SELECT
         i.id,

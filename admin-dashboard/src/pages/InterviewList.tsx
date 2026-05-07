@@ -58,6 +58,7 @@ const InterviewList: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [total, setTotal] = useState(0);
+  const [stats, setStats] = useState<any>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(12);
   const [viewMode, setViewMode] = useState<'table' | 'card'>('table');
@@ -122,6 +123,9 @@ const InterviewList: React.FC = () => {
       const response: InterviewListResponse = await interviewApi.getList(params);
       setInterviews(response.data);
       setTotal(response.total);
+      if (response.stats) {
+        setStats(response.stats);
+      }
     } catch (error) {
       console.error('获取面试数据失败:', error);
       message.error('获取面试数据失败');
@@ -369,6 +373,7 @@ const InterviewList: React.FC = () => {
       <div data-tour="stats">
         <InterviewStatsCards 
           interviews={interviews} 
+          stats={stats}
           style={{ marginBottom: '16px' }}
         />
       </div>
