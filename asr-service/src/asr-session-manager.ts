@@ -1,6 +1,6 @@
 import WebSocket from 'ws';
 import { v4 as uuidv4 } from 'uuid';
-import { Qwen3ASRClient, Qwen3ASRConfig } from './qwen3-asr-client';
+import { ASREventCallbacks, Qwen3ASRClient, Qwen3ASRConfig } from './qwen3-asr-client';
 import { RedisEventBus } from './redis-event-bus';
 import { logger } from './logger';
 
@@ -75,10 +75,14 @@ export class ASRSessionManager {
       `[ASR-Manager] createSession: sessionId=${sessionId} lang=${asrConfig.language} format=${asrConfig.inputFormat} model(env)=${process.env.QWEN_ASR_MODEL ?? 'default'}`,
     );
 
+    let asrClient: Qwen3ASRClient;
+
     // 创建 Qwen3-ASR 客户端，注册回调 → 将识别结果转发给客户端 WebSocket
-    const asrClient = new Qwen3ASRClient(asrConfig, {
+    const callbacks: ASREventCallbacks = {
       onSessionCreated: (sessionInfo) => {
-        this.sendToClient(sessionId, {
+        const session = this.getCurrentSession(sessionId, asrClient);
+        if (!session) return;
+        this.sendToSession(session, {
           type: 'asr.session_created',
           sessionId,
           dashscopeSessionId: sessionInfo?.id,
@@ -86,7 +90,9 @@ export class ASRSessionManager {
       },
 
       onSpeechStarted: () => {
-        this.sendToClient(sessionId, {
+        const session = this.getCurrentSession(sessionId, asrClient);
+        if (!session) return;
+        this.sendToSession(session, {
           type: 'asr.speech_started',
           sessionId,
           timestamp: Date.now(),
@@ -96,7 +102,9 @@ export class ASRSessionManager {
       },
 
       onSpeechStopped: () => {
-        this.sendToClient(sessionId, {
+        const session = this.getCurrentSession(sessionId, asrClient);
+        if (!session) return;
+        this.sendToSession(session, {
           type: 'asr.speech_stopped',
           sessionId,
           timestamp: Date.now(),
@@ -106,7 +114,9 @@ export class ASRSessionManager {
 
       onTranscriptionText: (text, stash) => {
         // 中间结果（流式部分文本）→ 客户端可用于实时字幕
-        this.sendToClient(sessionId, {
+        const session = this.getCurrentSession(sessionId, asrClient);
+        if (!session) return;
+        this.sendToSession(session, {
           type: 'asr.transcription_partial',
           sessionId,
           text,
@@ -118,7 +128,9 @@ export class ASRSessionManager {
 
       onTranscriptionCompleted: (transcript) => {
         // 最终识别结果 → 转发给客户端 + 通过 Redis 发布给 backend-api
-        this.sendToClient(sessionId, {
+        const session = this.getCurrentSession(sessionId, asrClient);
+        if (!session) return;
+        this.sendToSession(session, {
           type: 'asr.transcription_final',
           sessionId,
           text: transcript,
@@ -129,24 +141,28 @@ export class ASRSessionManager {
       },
 
       onSessionFinished: () => {
-        this.sendToClient(sessionId, {
+        const session = this.getCurrentSession(sessionId, asrClient);
+        if (!session) return;
+        this.sendToSession(session, {
           type: 'asr.session_finished',
           sessionId,
         });
-        const session = this.sessions.get(sessionId);
-        if (session) {
-          session.state = 'closed';
-        }
+        session.state = 'closed';
+        this.sessions.delete(sessionId);
       },
 
       onError: (error) => {
-        this.sendToClient(sessionId, {
+        const session = this.getCurrentSession(sessionId, asrClient);
+        if (!session) return;
+        this.sendToSession(session, {
           type: 'asr.error',
           sessionId,
           error,
         });
       },
-    });
+    };
+
+    asrClient = new Qwen3ASRClient(asrConfig, callbacks);
 
     const session: ASRSession = {
       sessionId,
@@ -244,6 +260,23 @@ export class ASRSessionManager {
   private sendToClient(sessionId: string, data: any): void {
     const session = this.sessions.get(sessionId);
     if (!session || session.clientWs.readyState !== WebSocket.OPEN) return;
+
+    this.sendToSession(session, data);
+  }
+
+  /**
+   * 只允许创建该回调的 ASR 客户端修改自己的会话，避免旧连接延迟回调污染新会话。
+   */
+  private getCurrentSession(sessionId: string, asrClient: Qwen3ASRClient): ASRSession | null {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.asrClient !== asrClient) {
+      return null;
+    }
+    return session;
+  }
+
+  private sendToSession(session: ASRSession, data: any): void {
+    if (session.clientWs.readyState !== WebSocket.OPEN) return;
 
     try {
       session.clientWs.send(JSON.stringify(data));

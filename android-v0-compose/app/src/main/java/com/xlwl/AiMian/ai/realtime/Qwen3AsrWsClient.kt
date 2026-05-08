@@ -166,7 +166,8 @@ class Qwen3AsrWsClient(
 
     fun disconnect() {
         try {
-            finishSession()
+            // 普通断开/重连只关闭 WebSocket，由 asr-service 的 close handler 清理 DashScope。
+            // 不默认发送 session.finish，避免播放间隙刷新 ASR 时把服务端会话误判为一次正常识别结束。
             webSocket?.close(1000, "client disconnect")
         } catch (e: Exception) {
             Log.w(TAG, "断开连接异常: ${e.message}")
