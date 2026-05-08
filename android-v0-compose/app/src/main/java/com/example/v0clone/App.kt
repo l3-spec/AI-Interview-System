@@ -106,6 +106,8 @@ fun V0App() {
                     currentRoute == Routes.AI -> true
                     currentRoute == Routes.CIRCLE -> true
                     currentRoute == Routes.PROFILE -> true
+                    currentRoute == Routes.LOGIN -> true
+                    currentRoute == Routes.REGISTER -> true
                     currentRoute == Routes.JOB_SELECTION -> true
                     currentRoute == Routes.EDIT_INTENTION -> true
                     currentRoute == Routes.PROFILE_RESUME_REPORT -> true

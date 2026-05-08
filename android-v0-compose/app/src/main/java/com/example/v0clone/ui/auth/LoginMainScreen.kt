@@ -157,10 +157,10 @@ fun LoginMainScreen(
         ) {
             AuthBrandLockup(
                 modifier = Modifier
-                    .size(width = 195.dp, height = 143.dp)
+                    .size(width = 240.dp, height = 180.dp)
             )
 
-            Spacer(modifier = Modifier.height(217.dp))
+            Spacer(modifier = Modifier.height(180.dp))
 
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,

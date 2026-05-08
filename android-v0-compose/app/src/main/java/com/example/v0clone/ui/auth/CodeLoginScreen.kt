@@ -178,7 +178,7 @@ fun CodeLoginScreen(
         val bottomInset = navPadding.calculateBottomPadding()
         val keyboardHeight = 290.dp
         val cardHeight = 416.dp + bottomInset
-        val brandLockupHeight = 143.dp
+        val brandLockupHeight = 180.dp
         val brandTop = 90.dp
         val desiredGap = 120.dp
         val cardBottomOffset = if (showKeyboard) keyboardHeight else 0.dp

@@ -26,6 +26,9 @@ export class RealtimeVoiceWebSocketServer {
   }
 
   private setupRedisSubscriptions() {
+    const redisTarget = `${(redisConnection as any).host || 'localhost'}:${(redisConnection as any).port || 6379}/${(redisConnection as any).db ?? 0}`;
+    console.log(`[Gateway] Redis connection target: ${redisTarget}`);
+
     this.subClient.subscribe('interview:events:outbound', (err) => {
       if (err) console.error('[Gateway] Redis subscription error:', err);
     });
@@ -45,6 +48,24 @@ export class RealtimeVoiceWebSocketServer {
     });
   }
 
+  private publishInbound(event: Record<string, any>) {
+    this.pubClient
+      .publish('interview:events:inbound', JSON.stringify(event))
+      .then((receivers) => {
+        const type = event.type || 'UNKNOWN';
+        const sessionId = event.sessionId || 'unknown';
+        console.log(`[Gateway] Published inbound ${type} session=${sessionId}, receivers=${receivers}`);
+        if (receivers === 0) {
+          console.warn(
+            `[Gateway] Redis publish delivered to 0 subscribers for ${type}; interview-service may be on a different REDIS_URL/db or not subscribed yet.`
+          );
+        }
+      })
+      .catch((err) => {
+        console.error('[Gateway] Failed to publish inbound event:', err);
+      });
+  }
+
   private setupSocketHandlers() {
     this.io.on('connection', (socket) => {
       console.log('🔗 [RealtimeGateway] 客户端已连接:', socket.id);
@@ -58,12 +79,12 @@ export class RealtimeVoiceWebSocketServer {
            }
         }
         if (sid) {
-           this.pubClient.publish('interview:events:inbound', JSON.stringify({
+           this.publishInbound({
               type: 'DISCONNECT',
               sessionId: sid,
               socketId: socket.id,
               reason: typeof reason === 'string' ? reason : 'unknown'
-           }));
+           });
         }
       });
 
@@ -88,14 +109,14 @@ export class RealtimeVoiceWebSocketServer {
           socket.emit('session_joined', { sessionId, status: 'success', state: 'preparing' });
 
           // 转发至 interview-service
-          this.pubClient.publish('interview:events:inbound', JSON.stringify({
+          this.publishInbound({
              type: 'JOIN_SESSION',
              sessionId,
              userId,
              jobPosition,
              background,
              socketId: socket.id
-          }));
+          });
         } catch (error: any) {
           console.error('[Gateway] 加入会话失败:', error);
           socket.emit('error', { message: error.message });
@@ -120,39 +141,39 @@ export class RealtimeVoiceWebSocketServer {
         if (!text || !text.trim()) return;
 
         console.log(`[Gateway] 收到文本 (${sessionId}): ${text}`);
-        this.pubClient.publish('interview:events:inbound', JSON.stringify({
+        this.publishInbound({
            type: 'TEXT_MESSAGE',
            sessionId,
            text,
            source: 'text'
-        }));
+        });
       });
 
       socket.on('stop_tts', (data: { sessionId: string }) => {
-         this.pubClient.publish('interview:events:inbound', JSON.stringify({
+         this.publishInbound({
             type: 'STOP_TTS',
             sessionId: data.sessionId
-         }));
+         });
       });
 
       socket.on('playback_done', (data: { sessionId: string; speechId?: string; questionIndex?: number }) => {
          if (!data?.sessionId) return;
-         this.pubClient.publish('interview:events:inbound', JSON.stringify({
+         this.publishInbound({
             type: 'PLAYBACK_DONE',
             sessionId: data.sessionId,
             speechId: data.speechId,
             questionIndex: data.questionIndex
-         }));
+         });
       });
       
       // Video analysis logic
       socket.on('video_frame', (data) => {
          // Pass to video analysis service if present, or ignore
-         this.pubClient.publish('interview:events:inbound', JSON.stringify({
+         this.publishInbound({
             type: 'VIDEO_FRAME',
             sessionId: data.sessionId,
             timestamp: data.timestamp
-         }));
+         });
       });
 
       socket.on('get_qwen3_config', async (data: { sessionId?: string }) => {
@@ -208,10 +229,10 @@ export class RealtimeVoiceWebSocketServer {
           }
           if (sessionId) {
             qwen3TTSClient.clearSynthesis(sessionId);
-            this.pubClient.publish('interview:events:inbound', JSON.stringify({
+            this.publishInbound({
               type: 'INTERRUPT',
               sessionId
-            }));
+            });
             console.log(`🛑 用户打断数字人说话 (Session: ${sessionId})`);
           }
           socket.emit('interrupted', { success: true });

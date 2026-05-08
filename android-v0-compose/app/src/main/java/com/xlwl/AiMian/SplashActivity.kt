@@ -94,42 +94,28 @@ fun SplashScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // ===== Logo 品牌组合 (U-Talent + 柚汀教育科技) =====
+            // ===== Logo 品牌组合 (图标 + 副标题) =====
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
                     .alpha(alphaAnim)
                     .padding(bottom = 40.dp)
             ) {
-                // U-Talent 文字部分
-                val brandText = buildAnnotatedString {
-                    withStyle(style = SpanStyle(
-                        color = Color(0xFFEC7C38),
-                        fontWeight = FontWeight.Bold
-                    )) {
-                        append("U")
-                    }
-                    withStyle(style = SpanStyle(
-                        color = Color(0xFF00ADC1),
-                        fontWeight = FontWeight.Bold
-                    )) {
-                        append("-Talent.")
-                    }
-                }
-                
-                Text(
-                    text = brandText,
-                    fontSize = 42.sp,
-                    letterSpacing = (-1).sp
+                // 显著放大后的 U 图标 (移除了 -Talent 文字)
+                Image(
+                    painter = painterResource(id = R.drawable.splash_icon),
+                    contentDescription = "U-Talent Logo",
+                    modifier = Modifier.size(120.dp),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Fit
                 )
                 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(16.dp))
                 
                 // 柚汀教育科技 中文部分
                 Text(
                     text = "柚 汀 教 育 科 技",
-                    color = Color(0xFF00ADC1),
-                    fontSize = 14.sp,
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontSize = 18.sp,
                     fontWeight = FontWeight.Medium,
                     letterSpacing = 4.sp
                 )

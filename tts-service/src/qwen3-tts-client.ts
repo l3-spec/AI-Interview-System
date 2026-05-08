@@ -175,12 +175,14 @@ export class Qwen3TTSClient {
       });
 
       this.ws.on('open', () => {
-        clearTimeout(timeout);
         logger.info(`[Qwen3-TTS] DashScope WebSocket 连接成功 (model=${modelName})`);
         this.isConnected = true;
         this.reconnectAttempts = 0;
-        
-        // 注意：这里不再立即调用此处的 resolve，因为我们要等待 session.created
+
+        // DashScope Realtime 协议要求连接建立后先发送 session.update，
+        // 服务端随后返回 session.created / session.updated。
+        this.sendSessionUpdate();
+        // 注意：这里不立即 resolve，等待 session.updated 确认配置已被服务端接受。
       });
 
       this.ws.on('message', (data) => {
@@ -188,17 +190,16 @@ export class Qwen3TTSClient {
         // 预检消息以确认会话建立或捕获早期错误
         try {
           const json = JSON.parse(raw);
-          if (json.type === 'session.created' && !settled) {
+          if (json.type === 'session.created') {
             this.sessionId = json.session?.id;
-            // 会话建立成功，如果是初始连接，则尝试发送 session.update（如果需要）
-            // 注意：某些模型要求在 session.created 后再发送 update
-            this.sendSessionUpdate();
-            
+          } else if (json.type === 'session.updated' && !settled) {
+            clearTimeout(timeout);
             settled = true;
             resolve();
           } else if (json.type === 'error' && !settled) {
             const errMsg = json.error?.message || json.message || JSON.stringify(json);
             logger.error(`[Qwen3-TTS] 会话建立前收到错误: ${errMsg}`);
+            clearTimeout(timeout);
             settled = true;
             reject(new Error(`DashScope TTS 握手失败: ${errMsg}`));
           }
@@ -208,6 +209,7 @@ export class Qwen3TTSClient {
       });
 
       this.ws.on('close', (code, reason) => {
+        clearTimeout(timeout);
         const reasonStr = reason.toString();
         logger.info(`[Qwen3-TTS] DashScope 连接关闭: code=${code}, reason=${reasonStr}`);
         const wasConnected = this.isConnected;
@@ -246,6 +248,12 @@ export class Qwen3TTSClient {
           return;
         }
 
+        if (!settled) {
+          settled = true;
+          reject(new Error(`DashScope 连接在会话配置完成前关闭 (code=${code}): ${reasonStr}`));
+          return;
+        }
+
         // 其他非正常关闭 → 尝试自动重连
         if (wasConnected && code !== 1000 && this.reconnectAttempts < this.MAX_RECONNECT) {
           this.reconnectAttempts++;
@@ -273,19 +281,23 @@ export class Qwen3TTSClient {
         clearTimeout(timeout);
         const details = err.code ? ` (code=${err.code})` : '';
         logger.error(`[Qwen3-TTS] DashScope WebSocket 错误: ${err.message}${details}`);
-        
-        // 核心优化：如果连接刚建立就断开（通常是由于 Quota 导致的 payload 126 错误）
-        // 此时 connect() 已经 resolve 了，所以我们需要标记全局索引进行轮换，让下一次会话跳过此模型
-        if (this.isConnected && (Date.now() - (this.connectTime || 0) < 5000)) {
+
+        const isInvalidControlPayload =
+          err.code === 'WS_ERR_INVALID_CONTROL_PAYLOAD_LENGTH' ||
+          (typeof err.message === 'string' && err.message.includes('invalid payload length 126'));
+
+        // 连接刚建立就被关闭且不是协议帧解析错误时，才按模型/额度类失败轮换。
+        // invalid control payload 是 DashScope 返回了超长 close reason，真实原因通常在参数校验。
+        if (!isInvalidControlPayload && this.isConnected && (Date.now() - (this.connectTime || 0) < 5000)) {
           logger.warn(`[Qwen3-TTS] 检测到模型 ${modelName} 疑似额度耗尽（短时间内断开），将全局轮换至下一个模型`);
           Qwen3TTSClient.globalModelIndex = (Qwen3TTSClient.globalModelIndex + 1) % this.models.length;
           Qwen3TTSClient.lastGlobalFailureAt = Date.now();
         }
         
         // 针对 WS_ERR_INVALID_CONTROL_PAYLOAD_LENGTH 错误提供专门的排查建议
-        if (err.message && err.message.includes('invalid payload length 126')) {
-          logger.error('[Qwen3-TTS] 诊断：检测到协议违规 (126)。这通常是因为发送了不支持的参数（如 voice 音色名错误）或模型额度超限导致的异常关闭。');
-          logger.error(`[Qwen3-TTS] 请检查 .env 或客户端传入的参数。当前请求音色: "${this.config.voice}"`);
+        if (isInvalidControlPayload) {
+          logger.error('[Qwen3-TTS] 诊断：DashScope 返回了超长关闭原因，ws 无法解析真实错误。通常是 session.update 参数不被服务端接受。');
+          logger.error(`[Qwen3-TTS] 请检查 .env 或客户端传入参数。当前 voice="${this.config.voice}", language_type="${this.config.language}"`);
         }
         
         logger.error(`[Qwen3-TTS] 连接参数: url=${url}, model=${modelName}`);
@@ -315,7 +327,7 @@ export class Qwen3TTSClient {
       voice: safeVoice,
       response_format: this.config.responseFormat,
       sample_rate: this.config.sampleRate,
-      language: this.config.language,
+      language_type: this.config.language,
     };
 
     // 如果使用 instruct 模型且配置了指令

@@ -5,13 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -45,15 +39,28 @@ import androidx.compose.foundation.shape.CircleShape
 
 @Composable
 fun AuthBrandLockup(modifier: Modifier = Modifier) {
-    Box(
+    Column(
         modifier = modifier,
-        contentAlignment = Alignment.Center
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
+        // 显著放大后的 U 图标 (移除了 -Talent 文字)
         Image(
-            painter = painterResource(id = R.drawable.ic_splash_logo_new_png),
-            contentDescription = "U-Talent 柚汀教育科技 Logo",
-            modifier = Modifier.fillMaxSize(),
+            painter = painterResource(id = R.drawable.splash_icon),
+            contentDescription = "U-Talent Logo",
+            modifier = Modifier.size(120.dp),
             contentScale = ContentScale.Fit
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // 柚汀教育科技 中文部分
+        Text(
+            text = "柚 汀 教 育 科 技",
+            color = Color.White.copy(alpha = 0.85f),
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Medium,
+            letterSpacing = 4.sp
         )
     }
 }

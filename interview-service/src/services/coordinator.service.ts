@@ -1,4 +1,5 @@
 import Redis from 'ioredis';
+import { redisConnection } from '../config/redis';
 import { qwen3TTSClient } from './qwen3-tts-service-client';
 import { interviewFlowService } from './flow-controller.service';
 import { prisma } from '../lib/prisma';
@@ -13,10 +14,11 @@ export class CoordinatorService {
   private sessionPrepareTasks: Map<string, Promise<any>> = new Map();
 
   private constructor() {
-    const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-    this.pubClient = new Redis(redisUrl);
-    this.subClient = new Redis(redisUrl);
-    this.asrSubClient = new Redis(redisUrl);
+    this.pubClient = new Redis(redisConnection);
+    this.subClient = new Redis(redisConnection);
+    this.asrSubClient = new Redis(redisConnection);
+    const redisTarget = `${redisConnection.host || 'localhost'}:${redisConnection.port || 6379}/${redisConnection.db ?? 0}`;
+    console.log(`[Coordinator] Redis connection target: ${redisTarget}`);
 
     this.setupSubscriptions();
   }
@@ -67,11 +69,23 @@ export class CoordinatorService {
   }
 
   private emitToGateway(sessionId: string, type: string, payload: any) {
-    this.pubClient.publish('interview:events:outbound', JSON.stringify({
-      type,
-      sessionId,
-      payload
-    }));
+    this.pubClient
+      .publish('interview:events:outbound', JSON.stringify({
+        type,
+        sessionId,
+        payload
+      }))
+      .then((receivers) => {
+        console.log(`[Coordinator] Published outbound ${type} session=${sessionId}, receivers=${receivers}`);
+        if (receivers === 0) {
+          console.warn(
+            `[Coordinator] Outbound ${type} delivered to 0 subscribers; backend-api gateway may be on a different REDIS_URL/db.`
+          );
+        }
+      })
+      .catch((err) => {
+        console.error(`[Coordinator] Failed to publish outbound ${type}:`, err);
+      });
   }
 
   private async runInQueue(sessionId: string, task: () => Promise<any>) {
@@ -408,10 +422,21 @@ export class CoordinatorService {
 
   private async synthesizeQwen3TtsSegments(sessionId: string, responseText: string, scene?: InterviewScene): Promise<'qwen3_streaming' | 'client'> {
     try {
-      const ttsHealth = await qwen3TTSClient.checkHealth();
-      if (!ttsHealth || ttsHealth.status !== 'ok') return 'client';
+      const healthTimeoutMs = Number(process.env.TTS_HEALTH_TIMEOUT_MS || 1200);
+      const ttsHealth = await Promise.race([
+        qwen3TTSClient.checkHealth(),
+        new Promise<null>(resolve => setTimeout(() => resolve(null), healthTimeoutMs)),
+      ]);
+
+      if (!qwen3TTSClient.connected && (!ttsHealth || ttsHealth.status !== 'ok')) {
+        console.warn(`[Coordinator] TTS unavailable for session=${sessionId}; fallback to client mode`);
+        return 'client';
+      }
 
       const segments = interviewConductor['parseEmotionSegments'](responseText, scene);
+      console.log(
+        `[Coordinator] Dispatching Qwen3 TTS session=${sessionId}, segments=${segments.length}, textLen=${responseText.length}, redis=${qwen3TTSClient.connected ? 'connected' : 'http-fallback'}`
+      );
       for (const segment of segments) {
         if (segment.text.trim()) {
           qwen3TTSClient.synthesize(sessionId, segment.text, false);
@@ -419,7 +444,8 @@ export class CoordinatorService {
       }
       qwen3TTSClient.commitText(sessionId);
       return 'qwen3_streaming';
-    } catch {
+    } catch (err: any) {
+      console.warn(`[Coordinator] Qwen3 TTS dispatch failed session=${sessionId}: ${err?.message || err}`);
       return 'client';
     }
   }
