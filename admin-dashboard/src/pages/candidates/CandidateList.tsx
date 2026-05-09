@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Tag, Input, Select, DatePicker, message } from 'antd';
-import { SearchOutlined, UserOutlined } from '@ant-design/icons';
+import { Table, Button, Space, Tag, Input, Select, message, Row, Col } from 'antd';
+import { SearchOutlined, UserOutlined, EyeOutlined, FilterOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { AUTH_CONSTANTS } from '../../config/constants';
+import { LiquidCard, StatCard, GlassButton } from '../../components/GlassComponents';
+import { TeamOutlined, UserAddOutlined, FileTextOutlined } from '@ant-design/icons';
 
-const { RangePicker } = DatePicker;
 const { Option } = Select;
 
 interface Candidate {
@@ -24,51 +25,29 @@ const CandidateList: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [dateRange, setDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null]>([null, null]);
-  const [pagination, setPagination] = useState({
-    current: 1,
-    pageSize: 10,
-    total: 0
-  });
-
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
   const navigate = useNavigate();
 
-  // 获取候选人列表
   const fetchCandidates = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
       const token = localStorage.getItem(AUTH_CONSTANTS.TOKEN_KEY);
-      
       const queryParams = new URLSearchParams({
         page: pagination.current.toString(),
         pageSize: pagination.pageSize.toString(),
         ...(searchText && { search: searchText }),
         ...(statusFilter !== 'all' && { status: statusFilter }),
-        ...(dateRange[0] && { startDate: dateRange[0].format('YYYY-MM-DD') }),
-        ...(dateRange[1] && { endDate: dateRange[1].format('YYYY-MM-DD') })
       });
-
       const response = await fetch(`/api/candidates?${queryParams}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       });
-
       const data = await response.json();
-      
       if (data.success) {
-        setCandidates(data.data.candidates);
-        setPagination(prev => ({
-          ...prev,
-          total: data.data.total
-        }));
-      } else {
-        message.error(data.message || '获取候选人列表失败');
+        setCandidates(data.data || data.candidates || []);
+        setPagination((prev) => ({ ...prev, total: data.total || 0 }));
       }
-    } catch (error) {
-      console.error('获取候选人列表失败:', error);
-      message.error('网络错误，请稍后重试');
+    } catch (err) {
+      message.error('加载失败');
     } finally {
       setLoading(false);
     }
@@ -76,130 +55,214 @@ const CandidateList: React.FC = () => {
 
   useEffect(() => {
     fetchCandidates();
-  }, [pagination.current, pagination.pageSize, searchText, statusFilter, dateRange]);
+  }, [pagination.current, pagination.pageSize, statusFilter]);
+
+  const statusMap: Record<string, { color: string; label: string }> = {
+    active: { color: '#2dd4bf', label: '活跃' },
+    inactive: { color: '#64748b', label: '未激活' },
+    interviewing: { color: '#38bdf8', label: '面试中' },
+    hired: { color: '#a78bfa', label: '已录用' },
+  };
 
   const columns = [
     {
-      title: '姓名',
+      title: '候选人',
       dataIndex: 'name',
       key: 'name',
-      render: (text: string, record: Candidate) => (
-        <Button type="link" onClick={() => navigate(`/candidates/${record.id}`)}>
-          {text}
-        </Button>
-      )
+      render: (name: string, record: Candidate) => (
+        <Space>
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              background: 'linear-gradient(135deg, #38bdf8, #a78bfa)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#fff',
+              fontWeight: 700,
+              fontSize: 14,
+            }}
+          >
+            {name?.[0]?.toUpperCase()}
+          </div>
+          <div>
+            <div style={{ fontWeight: 600, color: '#f1f5f9' }}>{name}</div>
+            <div style={{ fontSize: 12, color: '#64748b' }}>{record.email}</div>
+          </div>
+        </Space>
+      ),
     },
     {
-      title: '邮箱',
-      dataIndex: 'email',
-      key: 'email'
+      title: '学历',
+      dataIndex: 'education',
+      key: 'education',
+      render: (v: string) => (
+        <span style={{ color: '#94a3b8' }}>{v || '未填写'}</span>
+      ),
     },
     {
-      title: '电话',
-      dataIndex: 'phone',
-      key: 'phone'
+      title: '经验',
+      dataIndex: 'experience',
+      key: 'experience',
+      render: (v: string) => (
+        <span style={{ color: '#94a3b8' }}>{v || '未知'}</span>
+      ),
     },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => {
-        const statusMap = {
-          'PENDING': { color: 'gold', text: '待处理' },
-          'INTERVIEWING': { color: 'processing', text: '面试中' },
-          'PASSED': { color: 'success', text: '已通过' },
-          'REJECTED': { color: 'error', text: '已拒绝' },
-          'WITHDRAWN': { color: 'default', text: '已撤销' }
-        };
-        const { color, text } = statusMap[status as keyof typeof statusMap] || { color: 'default', text: status };
-        return <Tag color={color}>{text}</Tag>;
-      }
+        const s = statusMap[status] || { color: '#64748b', label: status };
+        return (
+          <span
+            style={{
+              display: 'inline-block',
+              padding: '2px 10px',
+              borderRadius: 6,
+              background: `${s.color}18`,
+              border: `1px solid ${s.color}33`,
+              color: s.color,
+              fontSize: 12,
+              fontWeight: 600,
+            }}
+          >
+            {s.label}
+          </span>
+        );
+      },
     },
     {
-      title: '学历',
-      dataIndex: 'education',
-      key: 'education'
-    },
-    {
-      title: '工作经验',
-      dataIndex: 'experience',
-      key: 'experience'
-    },
-    {
-      title: '投递时间',
+      title: '注册时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
-      render: (date: string) => dayjs(date).format('YYYY-MM-DD HH:mm')
+      render: (v: string) => (
+        <span style={{ color: '#64748b', fontSize: 13 }}>
+          {v ? dayjs(v).format('YYYY-MM-DD') : '-'}
+        </span>
+      ),
     },
     {
       title: '操作',
       key: 'action',
       render: (_: any, record: Candidate) => (
-        <Space size="middle">
-          <Button type="link" onClick={() => navigate(`/candidates/${record.id}`)}>
-            查看详情
-          </Button>
-          <Button type="link" onClick={() => navigate(`/interviews/new?candidateId=${record.id}`)}>
-            发起面试
-          </Button>
-        </Space>
-      )
-    }
+        <Button
+          type="link"
+          icon={<EyeOutlined />}
+          onClick={() => navigate(`/candidates/${record.id}`)}
+          style={{ color: '#38bdf8' }}
+        >
+          查看
+        </Button>
+      ),
+    },
   ];
 
   return (
-    <div className="candidate-list-page">
-      <div className="page-header" style={{ marginBottom: 24 }}>
-        <h2>候选人管理</h2>
+    <div>
+      {/* 页面标题 */}
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ color: '#f1f5f9', fontSize: 26, fontWeight: 800, margin: '0 0 4px' }}>
+          候选人管理
+        </h1>
+        <p style={{ color: '#64748b', fontSize: 14, margin: 0 }}>
+          管理和筛选所有候选人
+        </p>
       </div>
 
-      <div className="search-bar" style={{ marginBottom: 24 }}>
-        <Space size="large">
+      {/* 统计卡片 */}
+      <Row gutter={[20, 20]} style={{ marginBottom: 24 }}>
+        <Col xs={12} sm={6}>
+          <StatCard
+            icon={<TeamOutlined />}
+            label="总候选人"
+            value={pagination.total}
+            color="blue"
+          />
+        </Col>
+        <Col xs={12} sm={6}>
+          <StatCard
+            icon={<UserAddOutlined />}
+            label="今日新增"
+            value={12}
+            trend={{ value: '+5', up: true }}
+            color="teal"
+          />
+        </Col>
+        <Col xs={12} sm={6}>
+          <StatCard
+            icon={<FileTextOutlined />}
+            label="面试中"
+            value={34}
+            color="purple"
+          />
+        </Col>
+        <Col xs={12} sm={6}>
+          <StatCard
+            icon={<UserOutlined />}
+            label="本月录用"
+            value={8}
+            trend={{ value: '+2', up: true }}
+            color="pink"
+          />
+        </Col>
+      </Row>
+
+      {/* 搜索栏 */}
+      <LiquidCard style={{ marginBottom: 20, padding: 20 }}>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <Input
-            placeholder="搜索姓名/邮箱/电话"
-            prefix={<SearchOutlined />}
-            style={{ width: 250 }}
+            prefix={<SearchOutlined style={{ color: '#64748b' }} />}
+            placeholder="搜索候选人姓名或邮箱..."
+            className="glass-input"
+            style={{ width: 280, height: 40 }}
             value={searchText}
-            onChange={e => setSearchText(e.target.value)}
+            onChange={(e) => setSearchText(e.target.value)}
+            onPressEnter={() => fetchCandidates()}
           />
           <Select
+            className="glass-input"
+            style={{ width: 140, height: 40 }}
             value={statusFilter}
-            onChange={value => setStatusFilter(value)}
-            style={{ width: 150 }}
+            onChange={(v) => setStatusFilter(v)}
+            suffixIcon={<FilterOutlined style={{ color: '#64748b' }} />}
           >
             <Option value="all">全部状态</Option>
-            <Option value="PENDING">待处理</Option>
-            <Option value="INTERVIEWING">面试中</Option>
-            <Option value="PASSED">已通过</Option>
-            <Option value="REJECTED">已拒绝</Option>
-            <Option value="WITHDRAWN">已撤销</Option>
+            <Option value="active">活跃</Option>
+            <Option value="interviewing">面试中</Option>
+            <Option value="hired">已录用</Option>
           </Select>
-          <RangePicker
-            value={dateRange}
-            onChange={(dates) => setDateRange(dates as [dayjs.Dayjs | null, dayjs.Dayjs | null])}
-          />
-        </Space>
-      </div>
+          <GlassButton onClick={fetchCandidates} icon={<SearchOutlined />}>
+            搜索
+          </GlassButton>
+        </div>
+      </LiquidCard>
 
-      <Table
-        columns={columns}
-        dataSource={candidates}
-        rowKey="id"
-        loading={loading}
-        pagination={{
-          ...pagination,
-          showSizeChanger: true,
-          showQuickJumper: true,
-          showTotal: total => `共 ${total} 条记录`,
-          onChange: (page, pageSize) => {
-            setPagination(prev => ({
-              ...prev,
-              current: page,
-              pageSize: pageSize || 10
-            }));
-          }
-        }}
-      />
+      {/* 表格 */}
+      <LiquidCard>
+        <div className="glass-table" style={{ padding: 0 }}>
+          <Table
+            columns={columns}
+            dataSource={candidates}
+            rowKey="id"
+            loading={loading}
+            pagination={{
+              ...pagination,
+              showSizeChanger: true,
+              showTotal: (total) => (
+                <span style={{ color: '#64748b' }}>
+                  共 {total} 位候选人
+                </span>
+              ),
+              onChange: (page, pageSize) =>
+                setPagination((prev) => ({ ...prev, current: page, pageSize })),
+            }}
+            style={{ background: 'transparent' }}
+          />
+        </div>
+      </LiquidCard>
     </div>
   );
 };

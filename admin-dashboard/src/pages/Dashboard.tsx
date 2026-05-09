@@ -1,292 +1,395 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Row, 
-  Col, 
-  Card, 
-  Statistic, 
-  Typography, 
-  Space,
-  Table,
-  Tag,
-  Progress,
-  Button,
-  Avatar,
-  message
-} from 'antd';
+import { Row, Col, Button } from 'antd';
 import {
   TeamOutlined,
   BankOutlined,
-  CalendarOutlined,
-  TrophyOutlined,
   RiseOutlined,
   UserOutlined,
   ExclamationCircleOutlined,
   FileTextOutlined,
-  CheckCircleOutlined
+  ThunderboltOutlined,
+  TrophyOutlined,
+  VideoCameraOutlined,
 } from '@ant-design/icons';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
   ResponsiveContainer,
   PieChart,
   Pie,
   Cell,
   LineChart,
-  Line
+  Line,
+  AreaChart,
+  Area,
 } from 'recharts';
-import { DashboardStats, Interview } from '../types/interview';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  LiquidCard,
+  StatCard,
+  ChartCard,
+  GlassButton,
+  WelcomeBanner,
+} from '../components/GlassComponents';
+import type { DashboardStats } from '../types/interview';
 
-const { Title, Text } = Typography;
+const PIE_COLORS = ['#38bdf8', '#a78bfa', '#2dd4bf', '#f472b6'];
+const GRADIENT_ID = 'chartGradient';
+const GRADIENT_ID2 = 'chartGradient2';
 
 const DashboardContent: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [recentInterviews, setRecentInterviews] = useState<Interview[]>([]);
   const { user } = useAuth();
 
-  // 加载统计数据
   useEffect(() => {
-    const loadDashboardData = async () => {
-      setLoading(true);
-      try {
-        // 模拟数据加载
-        setStats({
-          users: 1000,
-          interviews: 500,
-          completionRate: "85%",
-          totalJobs: 50,
-          activeJobs: 30,
-          totalCandidates: 2000,
-          totalInterviews: 1500,
-          passedInterviews: 1200,
-          interviewPassRate: 80
-        });
-        setLoading(false);
-      } catch (error) {
-        console.error('加载仪表板数据失败:', error);
-        message.error('加载数据失败');
-        setLoading(false);
-      }
-    };
-
-    loadDashboardData();
+    const timer = setTimeout(() => {
+      setStats({
+        users: 1280,
+        interviews: 1560,
+        completionRate: '87.5',
+        totalJobs: 52,
+        activeJobs: 30,
+        totalCandidates: 2480,
+        totalInterviews: 1540,
+        passedInterviews: 1280,
+        interviewPassRate: 83.1,
+      });
+      setLoading(false);
+    }, 600);
+    return () => clearTimeout(timer);
   }, []);
 
-  // 面试状态分布数据
-  const interviewStatusData = [
-    { name: '待面试', value: 30, color: '#faad14' },
-    { name: '已完成', value: 50, color: '#52c41a' },
-    { name: '已通过', value: 40, color: '#1890ff' },
-    { name: '未通过', value: 10, color: '#ff4d4f' }
+  const statusData = [
+    { name: '待面试', value: 320, color: PIE_COLORS[0] },
+    { name: '进行中', value: 180, color: PIE_COLORS[1] },
+    { name: '已通过', value: 420, color: PIE_COLORS[2] },
+    { name: '未通过', value: 80, color: PIE_COLORS[3] },
   ];
 
-  // 职岗热度数据
-  const jobHeatData = [
-    { name: '前端开发', candidates: 120, interviews: 80, hires: 30 },
-    { name: '后端开发', candidates: 150, interviews: 100, hires: 40 },
-    { name: '产品经理', candidates: 80, interviews: 50, hires: 20 },
-    { name: 'UI设计师', candidates: 60, interviews: 40, hires: 15 },
-    { name: '测试工程师', candidates: 90, interviews: 60, hires: 25 }
+  const heatData = [
+    { name: '前端', candidates: 320, interviews: 210 },
+    { name: '后端', candidates: 280, interviews: 190 },
+    { name: '产品', candidates: 150, interviews: 95 },
+    { name: '设计', candidates: 120, interviews: 80 },
+    { name: '数开', candidates: 90, interviews: 55 },
+    { name: '运维', candidates: 60, interviews: 40 },
   ];
 
-  // 月度趋势数据
-  const monthlyTrendData = [
-    { month: '1月', interviews: 45, candidates: 89 },
-    { month: '2月', interviews: 52, candidates: 96 },
-    { month: '3月', interviews: 61, candidates: 108 },
-    { month: '4月', interviews: 58, candidates: 112 },
-    { month: '5月', interviews: 67, candidates: 125 },
-    { month: '6月', interviews: 74, candidates: 138 }
+  const trendData = [
+    { month: '1月', interviews: 145, candidates: 289 },
+    { month: '2月', interviews: 152, candidates: 296 },
+    { month: '3月', interviews: 161, candidates: 308 },
+    { month: '4月', interviews: 158, candidates: 312 },
+    { month: '5月', interviews: 167, candidates: 325 },
+    { month: '6月', interviews: 174, candidates: 338 },
   ];
 
   if (loading) {
-    return <div>加载中...</div>;
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 120 }}>
+        <div style={{ textAlign: 'center' }}>
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 12,
+              border: '2px solid rgba(56,189,248,0.3)',
+              borderTopColor: '#38bdf8',
+              animation: 'spin 1s linear infinite',
+              margin: '0 auto 16px',
+            }}
+          />
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          <p style={{ color: '#94a3b8' }}>正在加载数据...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div>
-      {/* 欢迎信息 */}
-      <Card style={{ marginBottom: '24px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none' }}>
-        <div style={{ color: 'white' }}>
-          <Title level={2} style={{ color: 'white', marginBottom: '8px' }}>
-            欢迎回来，{user?.name || '企业用户'}！
-          </Title>
-          <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: '16px' }}>
-            今天是 {new Date().toLocaleDateString('zh-CN', { 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric',
-              weekday: 'long'
-            })}，继续您的招聘工作吧
-          </Text>
-        </div>
-      </Card>
+      {/* Welcome Banner */}
+      <WelcomeBanner
+        badge="ELITE · 精英控制中心"
+        title={`欢迎回来，${user?.name || '合作伙伴'}`}
+        subtitle={`系统就绪 · ${new Date().toLocaleDateString('zh-CN', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          weekday: 'long',
+        })}`}
+      />
 
-      {/* 统计卡片 */}
-      <Row gutter={[16, 16]}>
+      {/* 核心统计 */}
+      <Row gutter={[20, 20]} style={{ marginBottom: 28 }}>
         <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="在招职位"
-              value={stats?.totalJobs || 0}
-              prefix={<FileTextOutlined />}
-              valueStyle={{ color: '#1890ff' }}
-            />
-          </Card>
+          <StatCard
+            icon={<FileTextOutlined />}
+            label="在招职位"
+            value={stats?.totalJobs ?? '-'}
+            trend={{ value: '+12% 较上月', up: true }}
+            color="blue"
+          />
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="候选人"
-              value={stats?.totalCandidates || 0}
-              prefix={<UserOutlined />}
-              valueStyle={{ color: '#52c41a' }}
-            />
-          </Card>
+          <StatCard
+            icon={<TeamOutlined />}
+            label="总候选人"
+            value={(stats?.totalCandidates ?? 0).toLocaleString()}
+            trend={{ value: '+8.5% 较上月', up: true }}
+            color="purple"
+          />
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="面试场次"
-              value={stats?.totalInterviews || 0}
-              prefix={<TeamOutlined />}
-              valueStyle={{ color: '#722ed1' }}
-            />
-          </Card>
+          <StatCard
+            icon={<ThunderboltOutlined />}
+            label="面试场次"
+            value={(stats?.totalInterviews ?? 0).toLocaleString()}
+            trend={{ value: '+15% 较上月', up: true }}
+            color="teal"
+          />
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="通过率"
-              value={stats?.interviewPassRate?.toFixed(1) || 0}
-              precision={1}
-              suffix="%"
-              prefix={<CheckCircleOutlined />}
-              valueStyle={{ color: '#fa8c16' }}
-            />
-          </Card>
+          <StatCard
+            icon={<TrophyOutlined />}
+            label="平均通过率"
+            value={`${stats?.interviewPassRate ?? 0}%`}
+            trend={{ value: '-2.1% 较上月', up: false }}
+            color="pink"
+          />
         </Col>
       </Row>
 
-      <Row gutter={16} style={{ marginBottom: '24px' }}>
-        {/* 职岗招聘热度 */}
-        <Col span={12}>
-          <Card title="职岗招聘热度" extra={<Button type="link">查看更多</Button>}>
+      {/* 图表区 */}
+      <Row gutter={[20, 20]} style={{ marginBottom: 28 }}>
+        <Col xs={24} lg={16}>
+          <ChartCard title="📈 招聘趋势">
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={jobHeatData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="candidates" fill="#8884d8" name="候选人" />
-                <Bar dataKey="interviews" fill="#82ca9d" name="面试" />
-                <Bar dataKey="hires" fill="#ffc658" name="录用" />
-              </BarChart>
+              <AreaChart data={trendData}>
+                <defs>
+                  <linearGradient id={GRADIENT_ID} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#38bdf8" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id={GRADIENT_ID2} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#a78bfa" stopOpacity={0.25} />
+                    <stop offset="100%" stopColor="#a78bfa" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="rgba(255,255,255,0.04)" strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="month"
+                  stroke="#64748b"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  stroke="#64748b"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: 'rgba(15,23,41,0.9)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 12,
+                    backdropFilter: 'blur(20px)',
+                    color: '#f1f5f9',
+                  }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="candidates"
+                  stroke="#38bdf8"
+                  strokeWidth={2.5}
+                  fill={`url(#${GRADIENT_ID})`}
+                  dot={false}
+                  activeDot={{ r: 6, fill: '#38bdf8', strokeWidth: 0 }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="interviews"
+                  stroke="#a78bfa"
+                  strokeWidth={2.5}
+                  fill={`url(#${GRADIENT_ID2})`}
+                  dot={false}
+                  activeDot={{ r: 6, fill: '#a78bfa', strokeWidth: 0 }}
+                />
+              </AreaChart>
             </ResponsiveContainer>
-          </Card>
+          </ChartCard>
         </Col>
-
-        {/* 面试状态分布 */}
-        <Col span={12}>
-          <Card title="面试状态分布">
+        <Col xs={24} lg={8}>
+          <ChartCard title="🎯 面试状态分布">
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
-                  data={interviewStatusData}
+                  data={statusData}
                   cx="50%"
                   cy="50%"
-                  outerRadius={80}
+                  innerRadius={55}
+                  outerRadius={90}
+                  paddingAngle={3}
                   dataKey="value"
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                 >
-                  {interviewStatusData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  {statusData.map((_, idx) => (
+                    <Cell key={idx} fill={PIE_COLORS[idx]} stroke="transparent" />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip
+                  contentStyle={{
+                    background: 'rgba(15,23,41,0.9)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 12,
+                    color: '#f1f5f9',
+                  }}
+                />
               </PieChart>
             </ResponsiveContainer>
-          </Card>
+            {/* Legend */}
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 16, flexWrap: 'wrap' }}>
+              {statusData.map((d, i) => (
+                <div key={d.name} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 2,
+                      background: PIE_COLORS[i],
+                    }}
+                  />
+                  <span style={{ color: '#94a3b8', fontSize: 12 }}>
+                    {d.name} {d.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </ChartCard>
         </Col>
       </Row>
 
-      <Row gutter={16}>
-        {/* 月度趋势 */}
-        <Col span={16}>
-          <Card title="招聘月度趋势" extra={<Button type="link">查看详细报告</Button>}>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={monthlyTrendData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip />
-                <Line 
-                  type="monotone" 
-                  dataKey="interviews" 
-                  stroke="#8884d8" 
+      {/* 热力图 + 快捷操作 */}
+      <Row gutter={[20, 20]}>
+        <Col xs={24} lg={18}>
+          <ChartCard title="🔥 岗位热度">
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={heatData} barGap={6}>
+                <CartesianGrid stroke="rgba(255,255,255,0.04)" strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="name"
+                  stroke="#64748b"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  stroke="#64748b"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: 'rgba(15,23,41,0.9)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 12,
+                    color: '#f1f5f9',
+                  }}
+                />
+                <Bar
+                  dataKey="candidates"
+                  fill="#38bdf8"
+                  radius={[6, 6, 0, 0]}
+                  name="候选人"
+                />
+                <Bar
+                  dataKey="interviews"
+                  fill="#a78bfa"
+                  radius={[6, 6, 0, 0]}
                   name="面试数"
-                  strokeWidth={2}
                 />
-                <Line 
-                  type="monotone" 
-                  dataKey="candidates" 
-                  stroke="#82ca9d" 
-                  name="候选人数"
-                  strokeWidth={2}
-                />
-              </LineChart>
+              </BarChart>
             </ResponsiveContainer>
-          </Card>
+          </ChartCard>
         </Col>
 
-        {/* 快捷操作 */}
-        <Col span={8}>
-          <Card title="快捷操作">
-            <Space direction="vertical" style={{ width: '100%' }}>
-              <Button type="primary" block icon={<BankOutlined />}>
-                创建新职岗
-              </Button>
-              <Button block icon={<TeamOutlined />}>
-                查看候选人
-              </Button>
-              <Button block icon={<CalendarOutlined />}>
-                安排面试
-              </Button>
-              <Button block icon={<RiseOutlined />}>
-                查看报告
-              </Button>
-            </Space>
-          </Card>
-
-          {/* 认证状态提醒 */}
-          {!user?.isVerified && (
-            <Card 
-              title="认证提醒" 
-              style={{ marginTop: '16px' }}
-              styles={{ body: { padding: '16px' } }}
-            >
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ marginBottom: '12px', color: '#faad14' }}>
-                  <ExclamationCircleOutlined style={{ fontSize: '24px' }} />
+        <Col xs={24} lg={6}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {/* 快捷操作 */}
+            <LiquidCard>
+              <div style={{ padding: 24 }}>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 800,
+                    color: '#64748b',
+                    textTransform: 'uppercase',
+                    letterSpacing: 1.5,
+                    marginBottom: 20,
+                  }}
+                >
+                  快捷操作
                 </div>
-                <Text>您还未完成企业实名认证</Text>
-                <div style={{ marginTop: '12px' }}>
-                  <Button type="primary" size="small">
-                    立即认证
-                  </Button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <GlassButton
+                    variant="primary"
+                    icon={<BankOutlined />}
+                    onClick={() => (window.location.href = '/jobs/create')}
+                  >
+                    创建新职位
+                  </GlassButton>
+                  <GlassButton
+                    icon={<TeamOutlined />}
+                    onClick={() => (window.location.href = '/candidates')}
+                  >
+                    候选人管理
+                  </GlassButton>
+                  <GlassButton
+                    icon={<VideoCameraOutlined />}
+                    onClick={() => (window.location.href = '/ai-interview-communication')}
+                  >
+                    AI 面试间
+                  </GlassButton>
                 </div>
               </div>
-            </Card>
-          )}
+            </LiquidCard>
+
+            {/* 认证提示 */}
+            {!user?.isVerified && (
+              <LiquidCard>
+                <div style={{ padding: 24 }}>
+                  <ExclamationCircleOutlined
+                    style={{ fontSize: 28, color: '#fbbf24', marginBottom: 12 }}
+                  />
+                  <div style={{ color: '#f1f5f9', fontWeight: 700, marginBottom: 6 }}>
+                    需要实名认证
+                  </div>
+                  <div
+                    style={{ fontSize: 13, color: '#94a3b8', marginBottom: 16, lineHeight: 1.6 }}
+                  >
+                    完成企业认证以解锁更多高级功能
+                  </div>
+                  <GlassButton
+                    variant="primary"
+                    onClick={() => (window.location.href = '/company/verification')}
+                  >
+                    立即认证
+                  </GlassButton>
+                </div>
+              </LiquidCard>
+            )}
+          </div>
         </Col>
       </Row>
     </div>
   );
 };
 
-export default DashboardContent; 
+export default DashboardContent;

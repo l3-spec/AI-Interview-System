@@ -21,6 +21,7 @@ import {
   Empty,
   Badge
 } from 'antd';
+import { LiquidCard } from '../components/GlassComponents';
 import {
   SearchOutlined,
   FilterOutlined,
@@ -262,7 +263,7 @@ const InterviewList: React.FC = () => {
       render: (score) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Rate disabled value={Math.round(score / 2)} style={{ fontSize: '14px' }} />
-          <span style={{ fontWeight: 'bold', color: '#1890ff' }}>{score.toFixed(1)}</span>
+          <span style={{ fontWeight: 'bold', color: 'var(--primary)' }}>{score.toFixed(1)}</span>
         </div>
       ),
       sorter: true
@@ -357,12 +358,12 @@ const InterviewList: React.FC = () => {
               </Button>
               <FeatureGuide />
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} data-tour="view-mode">
-                <BarsOutlined style={{ color: viewMode === 'table' ? '#1890ff' : '#999' }} />
+                <BarsOutlined style={{ color: viewMode === 'table' ? 'var(--primary)' : '#999' }} />
                 <Switch
                   checked={viewMode === 'card'}
                   onChange={(checked) => setViewMode(checked ? 'card' : 'table')}
                 />
-                <AppstoreOutlined style={{ color: viewMode === 'card' ? '#1890ff' : '#999' }} />
+                <AppstoreOutlined style={{ color: viewMode === 'card' ? 'var(--primary)' : '#999' }} />
               </div>
             </Space>
           </Col>

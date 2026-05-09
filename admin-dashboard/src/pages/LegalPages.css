@@ -244,7 +244,7 @@
 }
 
 .legal-page__table a {
-  color: #2563eb;
+  color: var(--primary);
   word-break: break-all;
 }
 

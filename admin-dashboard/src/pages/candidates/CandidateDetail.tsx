@@ -190,7 +190,7 @@ const CandidateDetail: React.FC = () => {
     const score = typeof rawValue === 'number' && Number.isFinite(rawValue) ? rawValue : 0;
     const percent = Math.round((score / 10) * 100);
 
-    const color = score >= 8 ? '#52c41a' : score >= 6 ? '#1890ff' : score >= 4 ? '#faad14' : '#ff4d4f';
+    const color = score >= 8 ? '#52c41a' : score >= 6 ? 'var(--primary)' : score >= 4 ? '#faad14' : '#ff4d4f';
 
     return {
       ...dimension,
@@ -285,7 +285,7 @@ const CandidateDetail: React.FC = () => {
 
                 <Space direction="vertical" size={4}>
                   <Space size={12}>
-                    <MailOutlined style={{ color: '#1890ff' }} />
+                    <MailOutlined style={{ color: 'var(--primary)' }} />
                     <Text>{candidate.email || '暂无邮箱'}</Text>
                   </Space>
                   <Space size={12}>
@@ -486,7 +486,7 @@ const CandidateDetail: React.FC = () => {
           <Card title="候选人档案" style={{ marginBottom: 24 }}>
             <Space direction="vertical" size={12} style={{ width: '100%' }}>
               <Space>
-                <MailOutlined style={{ color: '#1890ff' }} />
+                <MailOutlined style={{ color: 'var(--primary)' }} />
                 <Text>{candidate.email || '暂无邮箱'}</Text>
               </Space>
               <Space>
@@ -523,7 +523,7 @@ const CandidateDetail: React.FC = () => {
               </List.Item>
               <List.Item>
                 <List.Item.Meta
-                  avatar={<TeamOutlined style={{ color: '#1890ff' }} />}
+                  avatar={<TeamOutlined style={{ color: 'var(--primary)' }} />}
                   title="发送能力报告"
                   description="向业务团队分享候选人的六维能力评估，评估业务匹配度。"
                 />

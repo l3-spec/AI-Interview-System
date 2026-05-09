@@ -207,7 +207,7 @@ const InterviewDetailModal: React.FC<Props> = ({
                     <Descriptions.Item label="面试评分" span={2}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <Rate disabled value={Math.round(interview.score / 2)} />
-                        <Text strong style={{ fontSize: '18px', color: '#1890ff' }}>
+                        <Text strong style={{ fontSize: '18px', color: 'var(--primary)' }}>
                           {interview.score.toFixed(1)}/10
                         </Text>
                       </div>
@@ -357,7 +357,7 @@ const InterviewDetailModal: React.FC<Props> = ({
                             {Object.entries(qa.dimensionScores).map(([key, score]) => {
                               const dimensionMap: Record<string, { label: string; color: string }> = {
                                 // 新6维度
-                                professionalAbilityScore: { label: '专业能力 💡', color: '#1890ff' },
+                                professionalAbilityScore: { label: '专业能力 💡', color: 'var(--primary)' },
                                 learningGrowthScore: { label: '学习成长 📈', color: '#fa8c16' },
                                 communicationCollaborationScore: { label: '沟通协作 🤝', color: '#52c41a' },
                                 problemSolvingScore: { label: '问题解决 🧩', color: '#722ed1' },

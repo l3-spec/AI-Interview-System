@@ -204,7 +204,7 @@ const CandidateManagement: React.FC = () => {
       render: (record: Candidate) => (
         <div>
           <div style={{ marginBottom: '4px' }}>
-            <MailOutlined style={{ marginRight: '4px', color: '#1890ff' }} />
+            <MailOutlined style={{ marginRight: '4px', color: 'var(--primary)' }} />
             <Text copyable style={{ fontSize: '12px' }}>{record.email}</Text>
           </div>
           <div>
@@ -314,7 +314,7 @@ const CandidateManagement: React.FC = () => {
               title="待面试"
               value={156}
               prefix={<CalendarOutlined />}
-              valueStyle={{ color: '#1890ff' }}
+              valueStyle={{ color: 'var(--primary)' }}
             />
           </Card>
         </Col>
