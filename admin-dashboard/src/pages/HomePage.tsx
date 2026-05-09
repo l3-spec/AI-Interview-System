@@ -40,9 +40,9 @@ const HomePage: React.FC = () => {
   ];
 
   const partnerCompanies = [
-    '中粮集团', '百年人寿', '民生银行', '安华保险', '外交人事局', 
-    '联通北分', '中华联合财险', '京东方物业', '中化学生态环境', 
-    '中国水环境', '中石化北分', '当代置业', '在线途游', 
+    '中粮集团', '百年人寿', '民生银行', '安华保险', '外交人事局',
+    '联通北分', '中华联合财险', '京东方物业', '中化学生态环境',
+    '中国水环境', '中石化北分', '当代置业', '在线途游',
     '中信医疗健康产业', '优路教育'
   ];
 
@@ -108,7 +108,7 @@ const HomePage: React.FC = () => {
   return (
     <div className="quantum-home">
       <BackgroundBlobs />
-      
+
       <header className={`quantum-nav ${isScrolled ? 'scrolled' : ''}`}>
         <div className="container nav-inner">
           <div className="brand">
@@ -136,7 +136,7 @@ const HomePage: React.FC = () => {
                 Quantum Intelligence 3.0
               </div>
               <h1 className="hero-title">
-                开启 <br/>
+                开启 <br />
                 <span className="gradient-text-liquid">招聘新纪元</span>
               </h1>
               <p className="hero-description">
@@ -150,7 +150,7 @@ const HomePage: React.FC = () => {
                   技术白皮书
                 </GlassButton>
               </div>
-              
+
               <div className="client-trust">
                 <p>Top Tier 行业领军企业信赖</p>
                 <div className="client-logos">
@@ -161,7 +161,7 @@ const HomePage: React.FC = () => {
                 </div>
               </div>
             </div>
-            
+
             <div className="hero-visual">
               <div className="quantum-sphere-wrap">
                 <div className="quantum-sphere">
@@ -209,7 +209,7 @@ const HomePage: React.FC = () => {
                   </div>
                 </div>
               </GlassCard>
-              
+
               <div className="bento-column">
                 <GlassCard className="bento-box small-box">
                   <div className="box-content">
@@ -226,7 +226,7 @@ const HomePage: React.FC = () => {
                   </div>
                 </GlassCard>
               </div>
-              
+
               <GlassCard className="bento-box feature-box">
                 <div className="box-content">
                   <div className="box-icon">🌐</div>
@@ -244,7 +244,7 @@ const HomePage: React.FC = () => {
               <h2 className="gradient-text-liquid">标杆客户的共同选择</h2>
               <p>不仅仅是工具，更是企业人才战略的数字化加速器。</p>
             </div>
-            
+
             <div className="proof-grid">
               {caseStudies.map((item, i) => (
                 <GlassCard key={item.name} className="proof-card" style={{ animationDelay: `${i * 0.2}s` }}>
@@ -381,7 +381,8 @@ const HomePage: React.FC = () => {
         onDisagree={() => setShowPrivacyGateModal(false)}
       />
 
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         .quantum-home { min-height: 100vh; position: relative; color: var(--text-main); }
         .container { max-width: var(--container-max); margin: 0 auto; padding: 0 40px; }
         
@@ -403,7 +404,7 @@ const HomePage: React.FC = () => {
         .nav-inner { display: flex; justify-content: space-between; align-items: center; }
         
         .brand { position: relative; display: flex; align-items: center; }
-        .brand-logo-full { height: 96px; width: auto; transition: all 0.5s var(--ease-out-expo); z-index: 2; filter: drop-shadow(0 0 20px rgba(56, 189, 248, 0.15)); }
+        .brand-logo-full { height: 140px; width: auto; transition: all 0.5s var(--ease-out-expo); z-index: 2; filter: drop-shadow(0 0 20px rgba(56, 189, 248, 0.15)); }
         .brand-halo { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 140px; height: 80px; background: radial-gradient(circle, var(--glow-primary) 0%, transparent 70%); opacity: 0; transition: opacity 0.5s; z-index: 1; }
         .brand:hover .brand-halo { opacity: 0.3; }
         .quantum-nav.scrolled .brand-logo-full { height: 56px; }
@@ -509,7 +510,7 @@ const HomePage: React.FC = () => {
         /* Footer */
         .quantum-footer { padding: 120px 0 60px; border-top: 1px solid var(--glass-border); }
         .footer-content { display: flex; justify-content: space-between; align-items: flex-start; }
-        .footer-logo { height: 60px; margin-bottom: 32px; }
+        .footer-logo { height: 150px; margin-bottom: 32px; }
         .footer-info p { font-size: 15px; font-weight: 700; color: var(--text-primary); margin-bottom: 12px; }
         .copyright { font-size: 13px; color: var(--text-muted); }
         
