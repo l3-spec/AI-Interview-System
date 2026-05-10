@@ -367,12 +367,12 @@ export const retryAnalysisTask = async (req: Request, res: Response) => {
                 overallScore: 0,
                 communicationScore: 0,
                 technicalScore: 0,
-                problemSolvingNewScore: 0,
-                collaborationResponsibilityScore: 0,
+                problemSolvingScore: 0,
+                teamworkScore: 0,
                 adaptabilityScore: 0,
                 learningScore: 0,
                 analysisStatus: 'PENDING'
-            } as any
+            }
         });
 
         return { status: 200, body: { success: true, message: '分析任务已加入队列' } };

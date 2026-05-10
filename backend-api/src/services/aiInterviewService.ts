@@ -362,12 +362,12 @@ class AIInterviewService {
         overallScore: 0,
         communicationScore: 0,
         technicalScore: 0,
-        problemSolvingNewScore: 0,
-        collaborationResponsibilityScore: 0,
+        problemSolvingScore: 0,
+        teamworkScore: 0,
         adaptabilityScore: 0,
         learningScore: 0,
         analysisStatus: 'PENDING'
-      } as any
+      }
     });
   }
 

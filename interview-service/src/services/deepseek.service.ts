@@ -18,6 +18,7 @@ interface DeepseekResponse {
     message: {
       role: string;
       content: string;
+      reasoning_content?: string;
     };
     finish_reason: string;
   }>;
@@ -67,6 +68,7 @@ export class DeepseekService {
   private apiKey: string;
   private apiUrl: string;
   private model: string;
+  private thinkingModel: string;
   private maxTokens: number;
   private temperature: number;
   private isEnabled: boolean;
@@ -86,10 +88,11 @@ export class DeepseekService {
     } else {
       this.apiKey = process.env.LLM_API_KEY || process.env.DEEPSEEK_API_KEY || '';
       this.apiUrl = process.env.LLM_API_URL || process.env.DEEPSEEK_API_URL || 'https://api.deepseek.com/v1/chat/completions';
-      this.model = process.env.LLM_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+      this.model = process.env.LLM_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
+      this.thinkingModel = process.env.DEEPSEEK_THINKING_MODEL || 'deepseek-v4-pro';
     }
-
-    this.maxTokens = parseInt(process.env.LLM_MAX_TOKENS || process.env.DEEPSEEK_MAX_TOKENS || process.env.VOLCENGINE_MAX_TOKENS || '2000');
+    
+    this.maxTokens = parseInt(process.env.LLM_MAX_TOKENS || process.env.DEEPSEEK_MAX_TOKENS || process.env.VOLCENGINE_MAX_TOKENS || '4096');
     this.temperature = parseFloat(process.env.LLM_TEMPERATURE || process.env.DEEPSEEK_TEMPERATURE || process.env.VOLCENGINE_TEMPERATURE || '0.7');
 
     this.defaultTimeoutMs = Math.max(
@@ -425,10 +428,13 @@ export class DeepseekService {
    */
   private async callDeepseekAPI(
     prompt: string,
-    options?: { timeoutMs?: number }
+    options?: { timeoutMs?: number; isThinking?: boolean; reasoningEffort?: 'high' | 'max' }
   ): Promise<DeepseekResponse> {
-    const requestData = {
-      model: this.model,
+    const isThinking = options?.isThinking ?? false;
+    const model = isThinking ? this.thinkingModel : this.model;
+
+    const requestData: any = {
+      model: model,
       messages: [
         {
           role: 'user',
@@ -436,9 +442,20 @@ export class DeepseekService {
         },
       ],
       max_tokens: this.maxTokens,
-      temperature: this.temperature,
+      temperature: isThinking ? undefined : this.temperature,
       stream: false,
     };
+
+    if (isThinking) {
+      requestData.extra_body = {
+        thinking: {
+          type: "enabled"
+        }
+      };
+      if (options?.reasoningEffort) {
+        requestData.reasoning_effort = options.reasoningEffort;
+      }
+    }
 
     const logTag = this.providerName === 'volcengine' ? '[豆包]' : '[Deepseek]';
     try {
@@ -469,7 +486,12 @@ export class DeepseekService {
     const responseData: DeepseekResponse = response.data;
 
     const responseContent = responseData?.choices?.[0]?.message?.content ?? '';
+    const reasoningContent = responseData?.choices?.[0]?.message?.reasoning_content ?? '';
+    
     try {
+      if (reasoningContent) {
+        console.log(`${logTag} 思维链内容:`, reasoningContent);
+      }
       console.log(`${logTag} 返回内容:`, responseContent);
       if (responseData?.usage) {
         console.log(`${logTag} Token 用量:`, responseData.usage);
@@ -675,7 +697,8 @@ export class DeepseekService {
 
       const content = await this.chatCompletion(messages, {
         response_format: { type: 'json_object' },
-        temperature: 0.3 // 降低随机性以获得更稳定的JSON
+        isThinking: true,
+        reasoning_effort: 'high'
       });
 
       // 尝试解析JSON
@@ -1059,6 +1082,53 @@ ${candidateLastAnswer.slice(0, 1200)}
       console.error('chatCompletion 失败:', error.message);
       return '{}';
     }
+  }
+  /**
+   * 基础对话补全支持
+   */
+  async chatCompletion(messages: any[], options: { 
+    response_format?: any; 
+    temperature?: number; 
+    isThinking?: boolean;
+    reasoning_effort?: 'high' | 'max';
+  } = {}): Promise<string> {
+    if (!this.isEnabled) return 'Mock response';
+    
+    const isThinking = options.isThinking ?? false;
+    const model = isThinking ? this.thinkingModel : this.model;
+
+    const requestData: any = {
+      model,
+      messages,
+      max_tokens: this.maxTokens,
+      temperature: isThinking ? undefined : (options.temperature ?? this.temperature),
+      response_format: options.response_format,
+    };
+
+    if (isThinking) {
+      requestData.extra_body = {
+        thinking: {
+          type: "enabled"
+        }
+      };
+      if (options.reasoning_effort) {
+        requestData.reasoning_effort = options.reasoning_effort;
+      }
+    }
+
+    const response = await axios.post(this.apiUrl, requestData, {
+      headers: {
+        'Authorization': `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: this.defaultTimeoutMs,
+    });
+
+    const choice = response.data?.choices?.[0]?.message;
+    if (choice?.reasoning_content) {
+      console.log(`[Deepseek] 思维链: ${choice.reasoning_content}`);
+    }
+    return choice?.content || '';
   }
 }
 
