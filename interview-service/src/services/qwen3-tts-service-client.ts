@@ -1,4 +1,4 @@
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 
 /**
  * Qwen3 TTS 微服务客户端

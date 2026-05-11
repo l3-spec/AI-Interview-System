@@ -67,6 +67,7 @@ export class Qwen3TTSClient {
   private readonly MAX_RECONNECT = 3;
   private firstAudioTime: number | null = null;
   private connectTime: number | null = null;
+  private responseStartTime: number | null = null;
 
   constructor(config: Qwen3TTSConfig, callbacks: TTSEventCallbacks) {
     this.apiKey = process.env.DASHSCOPE_API_KEY || '';
@@ -374,6 +375,7 @@ export class Qwen3TTSClient {
         case 'response.created':
           this.currentResponseId = data.response?.id;
           this.firstAudioTime = null; // 重置首包计时
+          this.responseStartTime = Date.now(); // 记录响应开始时间，用于精准统计首包延迟
           logger.debug(`[Qwen3-TTS] 响应已创建: ${this.currentResponseId}`);
           break;
 
@@ -381,8 +383,10 @@ export class Qwen3TTSClient {
           // 核心：接收流式音频数据块
           if (!this.firstAudioTime) {
             this.firstAudioTime = Date.now();
-            const latency = this.connectTime ? this.firstAudioTime - this.connectTime : 0;
-            logger.info(`[Qwen3-TTS] 首包音频延迟: ${latency}ms`);
+            // 优先计算从文本提交/响应创建到首包的延迟（最精准的业务感知延迟）
+            const refTime = this.responseStartTime || this.connectTime || this.firstAudioTime;
+            const latency = this.firstAudioTime - refTime;
+            logger.info(`[Qwen3-TTS] 首包音频延迟: ${latency}ms (响应ID: ${this.currentResponseId || 'N/A'})`);
           }
           this.callbacks.onAudioDelta(data.delta || '', this.currentResponseId || undefined);
           break;

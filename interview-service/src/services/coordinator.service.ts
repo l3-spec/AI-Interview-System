@@ -1,26 +1,29 @@
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import { redisConnection } from '../config/redis';
-import { qwen3TTSClient } from './qwen3-tts-service-client';
+import { redisStreamService } from './redis-stream.service';
+import { serviceDiscoveryService } from './service-discovery.service';
+import { v4 as uuidv4 } from 'uuid';
 import { interviewFlowService } from './flow-controller.service';
-import { prisma } from '../lib/prisma';
-import { InterviewScene, interviewConductor } from './interview-conductor.service';
+import { qwen3TTSClient } from './qwen3-tts-service-client';
+import { interviewConductor } from './interview-conductor.service';
 
 export class CoordinatorService {
   private static instance: CoordinatorService;
   private pubClient: Redis;
-  private subClient: Redis;
-  private asrSubClient: Redis;
+  private workerId: string;
+  private streamRunning: boolean = false;
   private sessionQueues: Map<string, Promise<any>> = new Map();
   private sessionPrepareTasks: Map<string, Promise<any>> = new Map();
 
   private constructor() {
+    this.workerId = `worker-${uuidv4().slice(0, 8)}`;
     this.pubClient = new Redis(redisConnection);
-    this.subClient = new Redis(redisConnection);
-    this.asrSubClient = new Redis(redisConnection);
     const redisTarget = `${redisConnection.host || 'localhost'}:${redisConnection.port || 6379}/${redisConnection.db ?? 0}`;
-    console.log(`[Coordinator] Redis connection target: ${redisTarget}`);
+    console.log(`[Coordinator ${this.workerId}] Redis connection target: ${redisTarget}`);
 
+    this.startStreamConsumer();
     this.setupSubscriptions();
+    this.startHeartbeat();
   }
 
   static getInstance(): CoordinatorService {
@@ -30,31 +33,51 @@ export class CoordinatorService {
     return CoordinatorService.instance;
   }
 
-  private setupSubscriptions() {
-    // 订阅来自 backend-api 网关的事件
-    this.subClient.subscribe('interview:events:inbound', (err) => {
-      if (err) console.error('[Coordinator] Failed to subscribe to inbound events:', err);
-      else console.log('[Coordinator] Subscribed to interview:events:inbound');
-    });
+  private startHeartbeat() {
+    setInterval(() => {
+      serviceDiscoveryService.heartbeat({
+        id: this.workerId,
+        type: 'interview',
+        url: '', // Business logic doesn't have a public URL
+        load: this.sessionQueues.size,
+        lastSeen: Date.now()
+      });
+    }, 5000);
+  }
 
-    this.subClient.on('message', async (channel, message) => {
-      if (channel === 'interview:events:inbound') {
-        try {
-          const data = JSON.parse(message);
+  private async startStreamConsumer() {
+    const streamName = 'interview:inbound_stream';
+    const groupName = 'interview_service_group';
+    
+    await redisStreamService.createConsumerGroup(streamName, groupName);
+    this.streamRunning = true;
+    
+    console.log(`[Coordinator ${this.workerId}] Listening to stream: ${streamName}`);
+    
+    while (this.streamRunning) {
+      try {
+        const messages = await redisStreamService.readGroup(streamName, groupName, this.workerId, 5);
+        
+        for (const { id, data } of messages) {
           await this.handleInboundEvent(data);
-        } catch (e) {
-          console.error('[Coordinator] Error handling inbound message:', e);
+          await redisStreamService.ack(streamName, groupName, id);
         }
+      } catch (err) {
+        console.error('[Coordinator] Error in stream consumer loop:', err);
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
-    });
+    }
+  }
 
-    // 订阅来自 asr-service 的转写完成事件
-    this.asrSubClient.subscribe('asr:events', (err) => {
+  private setupSubscriptions() {
+    // Keep ASR subscription as it might be broadcast from asr-service
+    const asrSubClient = new Redis(redisConnection);
+    asrSubClient.subscribe('asr:events', (err) => {
       if (err) console.error('[Coordinator] Failed to subscribe to ASR events:', err);
       else console.log('[Coordinator] Subscribed to asr:events');
     });
 
-    this.asrSubClient.on('message', async (channel, message) => {
+    asrSubClient.on('message', async (channel, message) => {
       if (channel === 'asr:events') {
         try {
           const data = JSON.parse(message);
@@ -69,18 +92,19 @@ export class CoordinatorService {
   }
 
   private emitToGateway(sessionId: string, type: string, payload: any) {
+    const channel = `interview:events:outbound:session:${sessionId}`;
+    
     this.pubClient
-      .publish('interview:events:outbound', JSON.stringify({
+      .publish(channel, JSON.stringify({
         type,
         sessionId,
         payload
       }))
       .then((receivers) => {
-        console.log(`[Coordinator] Published outbound ${type} session=${sessionId}, receivers=${receivers}`);
+        console.log(`[Coordinator] Published ${type} to ${channel}, receivers=${receivers}`);
         if (receivers === 0) {
-          console.warn(
-            `[Coordinator] Outbound ${type} delivered to 0 subscribers; backend-api gateway may be on a different REDIS_URL/db.`
-          );
+          // If no one is listening on the session channel, fallback to broadcast for legacy or debug
+          this.pubClient.publish('interview:events:outbound:broadcast', JSON.stringify({ type, sessionId, payload }));
         }
       })
       .catch((err) => {
@@ -108,11 +132,17 @@ export class CoordinatorService {
   }
 
   private async handleInboundEvent(data: any) {
-    const { type, sessionId, userId, jobPosition, background, text, socketId } = data;
+    const { type, sessionId, userId, jobPosition, background, text, socketId, gatewayId } = data;
+
+    // Cache gatewayId for this session if available
+    const session = interviewFlowService.getSession(sessionId);
+    if (session && gatewayId) {
+      (session as any).gatewayId = gatewayId;
+    }
 
     switch (type) {
       case 'JOIN_SESSION':
-        this.runInQueue(sessionId, () => this.handleJoinSession(sessionId, userId, jobPosition, background, socketId));
+        this.runInQueue(sessionId, () => this.handleJoinSession(sessionId, userId, jobPosition, background, socketId, gatewayId));
         break;
       case 'TEXT_MESSAGE':
         this.runInQueue(sessionId, () => this.processUserResponse(sessionId, text, 'text'));
@@ -126,7 +156,7 @@ export class CoordinatorService {
         });
         break;
       case 'DISCONNECT':
-        console.log(`[Coordinator] Client disconnected: ${sessionId} (Socket: ${socketId})`);
+        console.log(`[Coordinator] Client disconnected: ${sessionId} (Gateway: ${gatewayId}, Socket: ${socketId})`);
         break;
       case 'INTERRUPT':
         {
@@ -144,7 +174,7 @@ export class CoordinatorService {
     }
   }
 
-  private async handleJoinSession(sessionId: string, userId?: string, jobPosition?: string, background?: string, socketId?: string) {
+  private async handleJoinSession(sessionId: string, userId?: string, jobPosition?: string, background?: string, socketId?: string, gatewayId?: string) {
     console.log(`[Coordinator] Handling join_session for ${sessionId}`);
     
     // 初始化面试流服务
@@ -194,17 +224,17 @@ export class CoordinatorService {
         const scene = interviewConductor.inferScene(currentRound.question, { isFollowUp: (currentRound.followupCount || 0) > 0 });
         const ttsMode = await this.synthesizeQwen3TtsSegments(sessionId, combinedText, scene);
 
-        this.emitToGateway(sessionId, 'voice_response', {
-          audioUrl: null,
-          text: combinedText,
-          sessionId,
-          duration: 0,
-          ttsMode,
-          questionIndex: currentRound.roundNumber,
-          isResume: true,
-          progress: { current: resumeRoundNum, total: totalRounds, completed: completedRounds },
-          state: 'playing'
-        });
+      this.emitToGateway(sessionId, 'voice_response', {
+        audioUrl: null,
+        text: combinedText,
+        sessionId,
+        duration: 0,
+        ttsMode,
+        questionIndex: currentRound.roundNumber,
+        isResume: true,
+        progress: { current: resumeRoundNum, total: totalRounds, completed: completedRounds },
+        state: 'playing'
+      }, gatewayId);
         this.persistAvatarVoice(sessionId, combinedText, currentRound.roundNumber);
 
         return;
@@ -227,27 +257,27 @@ export class CoordinatorService {
       }
       qwen3TTSClient.commitText(sessionId);
 
-      this.emitToGateway(sessionId, 'voice_response', {
-        audioUrl: null,
-        text: welcomeText,
-        sessionId,
-        duration: 0,
-        ttsMode: 'qwen3_streaming',
-        isWelcome: true,
-        state: 'playing'
-      });
-    } else {
-      // 降级为客户端发声
-      this.emitToGateway(sessionId, 'voice_response', {
-        audioUrl: null,
-        text: welcomeText,
-        sessionId,
-        duration: 0,
-        ttsMode: 'client',
-        isWelcome: true,
-        state: 'playing'
-      });
-    }
+        this.emitToGateway(sessionId, 'voice_response', {
+          audioUrl: null,
+          text: welcomeText,
+          sessionId,
+          duration: 0,
+          ttsMode: 'qwen3_streaming',
+          isWelcome: true,
+          state: 'playing'
+        }, gatewayId);
+      } else {
+        // 降级为客户端发声
+        this.emitToGateway(sessionId, 'voice_response', {
+          audioUrl: null,
+          text: welcomeText,
+          sessionId,
+          duration: 0,
+          ttsMode: 'client',
+          isWelcome: true,
+          state: 'playing'
+        }, gatewayId);
+      }
     this.persistAvatarVoice(sessionId, welcomeText);
 
     // 异步生成后续题目，但不要自动开始/播报第一题；第一题必须等候选人回答欢迎问题后再由主控推进。
@@ -316,14 +346,14 @@ export class CoordinatorService {
         sessionId,
         ttsMode: await this.synthesizeQwen3TtsSegments(sessionId, waitText, 'transition'),
         state: 'playing'
-      });
+      }, session?.gatewayId as string);
       if (readySession) readySession.runtimePhase = 'speaking';
       this.persistAvatarVoice(sessionId, waitText);
       return;
     }
     
     // UI 回显
-    this.emitToGateway(sessionId, 'asr_partial', { text, isFinal: true, sessionId });
+    this.emitToGateway(sessionId, 'asr_partial', { text, isFinal: true, sessionId }, session?.gatewayId as string);
 
     // 处理用户记录
     const currentSession = interviewFlowService.getSession(sessionId);
@@ -341,7 +371,7 @@ export class CoordinatorService {
         sequence: turnMeta.sequence,
         turnId: turnMeta.id,
         questionIndex,
-      });
+      }, session?.gatewayId as string);
     }
 
     // 检查结束意图
@@ -358,7 +388,7 @@ export class CoordinatorService {
          isCompleted: true,
          status: 'completed',
          state: 'playing'
-       });
+       }, session?.gatewayId as string);
        this.persistAvatarVoice(sessionId, closingText);
        return;
     }
@@ -375,7 +405,7 @@ export class CoordinatorService {
            isCompleted: true,
            status: 'completed',
            state: 'playing'
-         });
+         }, session?.gatewayId as string);
          this.persistAvatarVoice(sessionId, closingText);
       } else if (result.nextRound) {
          await this.emitRoundVoiceResponse(sessionId, result.nextRound);
@@ -398,6 +428,7 @@ export class CoordinatorService {
   }
 
   private async emitRoundVoiceResponse(sessionId: string, round: any) {
+    const session = interviewFlowService.getSession(sessionId);
     let ttsMode = 'client';
     if (round.audioUrl) {
       ttsMode = 'server';
@@ -414,8 +445,8 @@ export class CoordinatorService {
       ttsMode,
       questionIndex: round.roundNumber,
       state: 'playing'
-    });
-    const session = interviewFlowService.getSession(sessionId);
+    }, session?.gatewayId);
+    
     if (session) session.runtimePhase = 'speaking';
     this.persistAvatarVoice(sessionId, round.question, round.roundNumber);
   }

@@ -73,6 +73,15 @@ export class TTSSessionManager {
 
   setRedisBus(bus: RedisEventBus) {
     this.redisBus = bus;
+    
+    // Handle outbound events from interview-service
+    this.redisBus.onOutboundEvent((sessionId, type, payload) => {
+      this.sendToClient(sessionId, {
+        type,
+        sessionId,
+        payload
+      });
+    });
   }
 
   /**
@@ -86,7 +95,11 @@ export class TTSSessionManager {
     }
 
     const resolvedVoice = (options.voice || process.env.TTS_VOICE || 'Cherry').trim();
-    const resolvedLang = (options.language || process.env.TTS_LANGUAGE || 'Chinese').trim();
+    let resolvedLang = (options.language || process.env.TTS_LANGUAGE || 'zh').trim();
+    
+    // Map human readable names to ISO codes expected by DashScope
+    if (resolvedLang.toLowerCase() === 'chinese') resolvedLang = 'zh';
+    if (resolvedLang.toLowerCase() === 'english') resolvedLang = 'en';
 
     const ttsConfig: Qwen3TTSConfig = {
       voice: resolvedVoice,
@@ -192,6 +205,11 @@ export class TTSSessionManager {
     };
 
     this.sessions.set(sessionId, session);
+    
+    // Subscribe to session-specific outbound channel for signal proxying
+    if (this.redisBus) {
+      await this.redisBus.subscribeSession(sessionId);
+    }
     logger.info(
       `[TTS-Manager] 会话 ${sessionId} 已注册（DashScope 将在首次 append/commit 时按需连接，避免空闲超时）`,
     );
@@ -355,6 +373,9 @@ export class TTSSessionManager {
 
     session.ttsClient.close();
     session.state = 'closed';
+    if (this.redisBus) {
+      await this.redisBus.unsubscribeSession(sessionId);
+    }
     this.sessions.delete(sessionId);
     logger.info(`[TTS-Manager] 会话 ${sessionId} 已销毁`);
   }

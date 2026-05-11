@@ -7,7 +7,24 @@ import cors from 'cors';
 import { WebSocketServer } from 'ws';
 import { ASRSessionManager } from './asr-session-manager';
 import { RedisEventBus } from './redis-event-bus';
+import { serviceDiscoveryService } from './service-discovery.service';
+import { v4 as uuidv4 } from 'uuid';
 import { logger } from './logger';
+
+const serviceId = `asr-${uuidv4().slice(0, 8)}`;
+const SERVICE_URL = process.env.ASR_SERVICE_EXTERNAL_URL || `ws://localhost:${process.env.ASR_SERVICE_PORT || '3002'}/ws/asr`;
+
+function startHeartbeat() {
+  setInterval(() => {
+    serviceDiscoveryService.heartbeat({
+      id: serviceId,
+      type: 'asr',
+      url: SERVICE_URL,
+      load: ASRSessionManager.getInstance().getActiveSessionCount(),
+      lastSeen: Date.now()
+    });
+  }, 5000);
+}
 
 const app = express();
 const PORT = parseInt(process.env.ASR_SERVICE_PORT || '3002', 10);
@@ -168,11 +185,12 @@ const redisEventBus = new RedisEventBus();
 sessionManager.setRedisBus(redisEventBus);
 
 server.listen(PORT, () => {
-  logger.info(`🎙️ ASR 微服务已启动 - 端口: ${PORT}`);
-  logger.info(`   WebSocket 路径: ws://localhost:${PORT}/ws/asr`);
+  logger.info(`🎙️ ASR 微服务已启动 [${serviceId}] - 端口: ${PORT}`);
+  logger.info(`   WebSocket 路径: ${SERVICE_URL}`);
   logger.info(`   健康检查: http://localhost:${PORT}/health`);
   logger.info(`   ASR 模型: ${process.env.QWEN_ASR_MODEL || 'qwen3-asr-flash-realtime'}`);
-  logger.info(`   DashScope 地址: ${process.env.DASHSCOPE_WS_URL || 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime'}`);
+  
+  startHeartbeat();
 });
 
 // 优雅退出

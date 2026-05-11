@@ -16,6 +16,7 @@ export class RedisEventBus {
   private subscriber: Redis | null = null;
   private isConnected = false;
   private commandHandler: ((cmd: any) => void | Promise<void>) | null = null;
+  private outboundHandler: ((sessionId: string, type: string, payload: any) => void | Promise<void>) | null = null;
   /** 串行处理 Redis 指令，避免 synthesize 与 commit 并发导致 commit 先于 append 到达 DashScope */
   private commandChain: Promise<void> = Promise.resolve();
 
@@ -57,6 +58,10 @@ export class RedisEventBus {
           this.applyPlatformAiSettings(message);
           return;
         }
+        if (channel.startsWith('interview:events:outbound:session:')) {
+          this.handleOutboundEvent(channel, message);
+          return;
+        }
         this.handleCommand(channel, message);
       });
 
@@ -94,6 +99,24 @@ export class RedisEventBus {
     this.commandHandler = handler;
   }
 
+  onOutboundEvent(handler: (sessionId: string, type: string, payload: any) => void | Promise<void>): void {
+    this.outboundHandler = handler;
+  }
+
+  async subscribeSession(sessionId: string): Promise<void> {
+    if (!this.isConnected || !this.subscriber) return;
+    const channel = `interview:events:outbound:session:${sessionId}`;
+    await this.subscriber.subscribe(channel);
+    logger.info(`[Redis] Subscribed to session channel: ${channel}`);
+  }
+
+  async unsubscribeSession(sessionId: string): Promise<void> {
+    if (!this.isConnected || !this.subscriber) return;
+    const channel = `interview:events:outbound:session:${sessionId}`;
+    await this.subscriber.unsubscribe(channel);
+    logger.info(`[Redis] Unsubscribed from session channel: ${channel}`);
+  }
+
   publish(channel: string, data: any): void {
     if (!this.isConnected || !this.publisher) return;
 
@@ -128,6 +151,18 @@ export class RedisEventBus {
       }
     } catch (err: any) {
       logger.error(`[Redis] 处理指令失败: ${err.message}`);
+    }
+  }
+
+  private handleOutboundEvent(channel: string, message: string): void {
+    try {
+      const sessionId = channel.split(':').pop() || '';
+      const data = JSON.parse(message);
+      if (this.outboundHandler) {
+        this.outboundHandler(sessionId, data.type, data.payload);
+      }
+    } catch (err: any) {
+      logger.error(`[Redis] Failed to handle outbound event: ${err.message}`);
     }
   }
 

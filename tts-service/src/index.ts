@@ -7,7 +7,24 @@ import cors from 'cors';
 import { WebSocketServer } from 'ws';
 import { TTSSessionManager } from './tts-session-manager';
 import { RedisEventBus } from './redis-event-bus';
+import { serviceDiscoveryService } from './service-discovery.service';
+import { v4 as uuidv4 } from 'uuid';
 import { logger } from './logger';
+
+const serviceId = `tts-${uuidv4().slice(0, 8)}`;
+const SERVICE_URL = process.env.TTS_SERVICE_EXTERNAL_URL || `ws://localhost:${process.env.TTS_SERVICE_PORT || '3003'}/ws/tts`;
+
+function startHeartbeat() {
+  setInterval(() => {
+    serviceDiscoveryService.heartbeat({
+      id: serviceId,
+      type: 'tts',
+      url: SERVICE_URL,
+      load: TTSSessionManager.getInstance().getActiveSessionCount(),
+      lastSeen: Date.now()
+    });
+  }, 5000);
+}
 
 const app = express();
 const PORT = parseInt(process.env.TTS_SERVICE_PORT || '3003', 10);
@@ -234,13 +251,11 @@ redisEventBus.onCommand(async (cmd) => {
 });
 
 server.listen(PORT, () => {
-  logger.info(`🔊 TTS 微服务已启动 - 端口: ${PORT}`);
-  logger.info(`   WebSocket 路径: ws://localhost:${PORT}/ws/tts`);
+  logger.info(`🔊 TTS 微服务已启动 [${serviceId}] - 端口: ${PORT}`);
+  logger.info(`   WebSocket 路径: ${SERVICE_URL}`);
   logger.info(`   健康检查: http://localhost:${PORT}/health`);
-  logger.info(`[TTS-Startup] TTS 模型列表: ${process.env.QWEN_TTS_MODEL || 'qwen3-tts-flash-realtime'}`);
-  logger.info(`[TTS-Startup] 默认音色: ${process.env.TTS_VOICE || 'Cherry'}`);
-  logger.info(`   合成模式: ${process.env.TTS_MODE || 'server_commit'} (双轨混合流式)`);
-  logger.info(`   DashScope 地址: ${process.env.DASHSCOPE_WS_URL || 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime'}`);
+  
+  startHeartbeat();
 });
 
 // 优雅退出

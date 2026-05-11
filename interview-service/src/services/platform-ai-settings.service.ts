@@ -1,4 +1,4 @@
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import { prisma } from '../lib/prisma';
 import { withRetry } from '../utils/prismaUtils';
 

@@ -10,6 +10,7 @@ import { rateLimiter } from './middleware/rateLimiter';
 import { setupSwagger } from './config/swagger';
 import routes from './routes';
 import voiceRoutes from './routes/voice.routes';
+import { GatewayController } from './controllers/gateway.controller';
 
 // 创建Express应用
 const app = express();
@@ -116,11 +117,10 @@ const io = new Server(httpServer, {
 });
 
 const fayWebSocket = new FayWebSocketServer(io);
-const realtimeVoiceWebSocket = new RealtimeVoiceWebSocketServer(io);
+// RealtimeVoiceWebSocketServer removed - using HTTPS Gateway instead
 
 // 附加到应用
 fayWebSocket.attachToApp(app);
-realtimeVoiceWebSocket.attachToApp(app);
 
 // 静态文件服务
 app.use('/uploads', express.static('uploads'));
@@ -135,6 +135,12 @@ app.use('/voice', voiceRoutes); // 兼容被反向代理去掉 /api 前缀的情
 console.log('[Route Registration] voiceRoutes 已注册到 /api/voice 和 /voice');
 app.use('/api', routes);
 app.use('/api/fay', fayRoutes); // Fay数字人API路由
+
+// HTTPS Gateway Routes
+app.post('/api/gateway/join', GatewayController.joinSession);
+app.post('/api/gateway/message', GatewayController.sendMessage);
+app.post('/api/gateway/interrupt', GatewayController.interrupt);
+app.get('/api/gateway/discover', GatewayController.discoverServices);
 
 // 数字人测试路由
 import digitalHumanTestRoutes from './routes/digital-human-test.routes';

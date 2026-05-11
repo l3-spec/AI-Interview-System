@@ -1,69 +1,82 @@
-/**
- * 实时语音交互WebSocket服务
- * 作为信令网关，将所有事件代理至 interview-service (通过 Redis Pub/Sub)
- */
-
-import { Server } from 'socket.io';
-import Redis from 'ioredis';
-import { redisConnection } from '../config/redis';
-import { qwen3ASRClient } from '../services/qwen3-asr-service-client';
-import { qwen3TTSClient } from '../services/qwen3-tts-service-client';
-import { getMergedPlatformAiConfig } from '../services/platformAiSettings.service';
+import { redisStreamService } from '../services/redis-stream.service';
+import { serviceDiscoveryService } from '../services/service-discovery.service';
+import { v4 as uuidv4 } from 'uuid';
 
 export class RealtimeVoiceWebSocketServer {
   private io: Server;
   private pubClient: Redis;
   private subClient: Redis;
+  private gatewayId: string;
   private sessions: Map<string, { sessionId: string; userId?: string; connectedAt: Date; socketId: string }> = new Map();
 
   constructor(io: Server) {
     this.io = io;
+    this.gatewayId = `gw-${uuidv4().slice(0, 8)}`;
     this.pubClient = new Redis(redisConnection);
     this.subClient = new Redis(redisConnection);
     
     this.setupRedisSubscriptions();
     this.setupSocketHandlers();
+    this.startHeartbeat();
+  }
+
+  private startHeartbeat() {
+    setInterval(() => {
+      serviceDiscoveryService.heartbeat({
+        id: this.gatewayId,
+        type: 'gateway',
+        url: '', // Not needed for gateway discovery by app in this setup
+        load: this.sessions.size,
+        lastSeen: Date.now()
+      });
+    }, 5000);
   }
 
   private setupRedisSubscriptions() {
     const redisTarget = `${(redisConnection as any).host || 'localhost'}:${(redisConnection as any).port || 6379}/${(redisConnection as any).db ?? 0}`;
-    console.log(`[Gateway] Redis connection target: ${redisTarget}`);
+    console.log(`[Gateway ${this.gatewayId}] Redis connection target: ${redisTarget}`);
 
-    this.subClient.subscribe('interview:events:outbound', (err) => {
-      if (err) console.error('[Gateway] Redis subscription error:', err);
+    // Subscribe to both general broadcast and private gateway channel
+    const channels = ['interview:events:outbound:broadcast', `interview:events:outbound:${this.gatewayId}`];
+    
+    channels.forEach(channel => {
+      this.subClient.subscribe(channel, (err) => {
+        if (err) console.error(`[Gateway] Redis subscription error for ${channel}:`, err);
+        else console.log(`[Gateway] Subscribed to ${channel}`);
+      });
     });
 
     this.subClient.on('message', (channel, message) => {
-      if (channel === 'interview:events:outbound') {
-        try {
-          const data = JSON.parse(message);
-          const { type, sessionId, payload } = data;
-          if (type && sessionId && payload) {
-             this.io.to(sessionId).emit(type, payload);
-          }
-        } catch (e) {
-          console.error('[Gateway] Failed to parse outbound message', e);
+      try {
+        const data = JSON.parse(message);
+        const { type, sessionId, payload } = data;
+        if (type && sessionId && payload) {
+           // We emit to the session room. If the socket is on this instance, it will receive it.
+           this.io.to(sessionId).emit(type, payload);
         }
+      } catch (e) {
+        console.error('[Gateway] Failed to parse outbound message', e);
       }
     });
   }
 
-  private publishInbound(event: Record<string, any>) {
-    this.pubClient
-      .publish('interview:events:inbound', JSON.stringify(event))
-      .then((receivers) => {
-        const type = event.type || 'UNKNOWN';
-        const sessionId = event.sessionId || 'unknown';
-        console.log(`[Gateway] Published inbound ${type} session=${sessionId}, receivers=${receivers}`);
-        if (receivers === 0) {
-          console.warn(
-            `[Gateway] Redis publish delivered to 0 subscribers for ${type}; interview-service may be on a different REDIS_URL/db or not subscribed yet.`
-          );
-        }
-      })
-      .catch((err) => {
-        console.error('[Gateway] Failed to publish inbound event:', err);
-      });
+  private async publishInbound(event: Record<string, any>) {
+    try {
+      const type = event.type || 'UNKNOWN';
+      const sessionId = event.sessionId || 'unknown';
+      
+      // Add gateway routing info
+      const enrichedEvent = {
+        ...event,
+        gatewayId: this.gatewayId,
+        timestamp: Date.now()
+      };
+
+      await redisStreamService.add('interview:inbound_stream', enrichedEvent);
+      console.log(`[Gateway] Streamed inbound ${type} session=${sessionId}`);
+    } catch (err) {
+      console.error('[Gateway] Failed to stream inbound event:', err);
+    }
   }
 
   private setupSocketHandlers() {
@@ -176,22 +189,44 @@ export class RealtimeVoiceWebSocketServer {
          });
       });
 
+      socket.on('get_service_config', async (data: { sessionId?: string }) => {
+        try {
+          // Dynamic service discovery
+          const bestAsr = await serviceDiscoveryService.getBestService('asr');
+          const bestTts = await serviceDiscoveryService.getBestService('tts');
+          
+          const ai = await getMergedPlatformAiConfig();
+
+          socket.emit('service_config', {
+            sessionId: data?.sessionId,
+            asr: {
+              wsUrl: bestAsr?.url || qwen3ASRClient.getWebSocketUrl(),
+              available: !!bestAsr,
+              model: ai.qwenAsrModel,
+            },
+            tts: {
+              wsUrl: bestTts?.url || qwen3TTSClient.getWebSocketUrl(),
+              available: !!bestTts,
+              model: ai.qwenTtsModel,
+              voice: ai.ttsVoice,
+            },
+          });
+        } catch (error: any) {
+          socket.emit('error', { message: `获取服务配置失败: ${error.message}` });
+        }
+      });
+
       socket.on('get_qwen3_config', async (data: { sessionId?: string }) => {
         try {
           const asrWsUrl = qwen3ASRClient.getWebSocketUrl();
           const ttsWsUrl = qwen3TTSClient.getWebSocketUrl();
           const ai = await getMergedPlatformAiConfig();
 
-          const [asrHealth, ttsHealth] = await Promise.all([
-            qwen3ASRClient.checkHealth(),
-            qwen3TTSClient.checkHealth(),
-          ]);
-
           socket.emit('qwen3_config', {
             sessionId: data?.sessionId,
             asr: {
               wsUrl: asrWsUrl,
-              available: asrHealth?.status === 'ok',
+              available: true,
               model: ai.qwenAsrModel,
               defaultConfig: {
                 language: 'zh',
@@ -202,7 +237,7 @@ export class RealtimeVoiceWebSocketServer {
             },
             tts: {
               wsUrl: ttsWsUrl,
-              available: ttsHealth?.status === 'ok',
+              available: true,
               model: ai.qwenTtsModel,
               defaultConfig: {
                 voice: ai.ttsVoice,
