@@ -79,4 +79,36 @@ class VerificationRepository(private val apiService: ApiService) {
             Result.failure(e)
         }
     }
+
+    suspend fun requestVerificationCode(phone: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.sendVerificationCode(com.xlwl.AiMian.data.model.SendCodeRequest(phone))
+            if (response.success) {
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception(response.message ?: "发送验证码失败"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun submitPersonalVerification(
+        realName: String,
+        idNumber: String,
+        phone: String,
+        code: String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val request = com.xlwl.AiMian.data.model.PersonalVerificationRequest(realName, idNumber, phone, code)
+            val response = apiService.submitPersonalVerification(request)
+            if (response.success) {
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception(response.message ?: "实名认证失败"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }

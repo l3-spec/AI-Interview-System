@@ -67,6 +67,9 @@ import com.xlwl.AiMian.data.repository.ContentRepository
 import com.xlwl.AiMian.ui.components.BannerCarousel
 import com.xlwl.AiMian.ui.components.BannerData
 import kotlinx.coroutines.launch
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material3.Icon
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 private val ProfilePageGradient = Brush.verticalGradient(
@@ -252,7 +255,13 @@ private fun LoggedInProfileContent(
             item {
                 HeaderWithDeliverySection(
                     user = user,
-                    onVerifyClick = { handleAction(Routes.PROFILE_VERIFICATION, "实名认证") },
+                    onVerifyClick = { 
+                        if (user?.isVerified == true) {
+                            Toast.makeText(context, "您已完成实名认证", Toast.LENGTH_SHORT).show()
+                        } else {
+                            handleAction(Routes.PROFILE_VERIFICATION, "实名认证")
+                        }
+                    },
                     onProfileDetailClick = { handleAction(Routes.PROFILE_PERSONAL_INFO, "个人资料") },
                     deliveryShortcuts = deliveryShortcuts,
                     deliveryStats = deliveryStats,
@@ -337,34 +346,80 @@ private fun HeaderWithDeliverySection(
                 ) {
                     ProfileAvatar(user = user, size = 48.dp)
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = user?.name?.takeIf { it.isNotBlank() } ?: "星链候选人",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF000000)
-                            ),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier.clickable(onClick = onVerifyClick)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = "实名认证",
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontSize = 12.sp,
-                                    color = Color(0xFF000000).copy(alpha = 0.5f)
+                                text = user?.name?.takeIf { it.isNotBlank() } ?: "星链候选人",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF000000)
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            
+                            if (user?.isVerified == true) {
+                                androidx.compose.material3.Surface(
+                                    modifier = Modifier.height(18.dp),
+                                    color = Color.White.copy(alpha = 0.3f),
+                                    shape = CircleShape,
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        width = 0.5.dp,
+                                        brush = Brush.linearGradient(
+                                            colors = listOf(
+                                                Color.White.copy(alpha = 0.6f),
+                                                Color(0xFFFF9A3C).copy(alpha = 0.4f)
+                                            )
+                                        )
+                                    )
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Verified,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(10.dp),
+                                            tint = Color(0xFFFF9A3C)
+                                        )
+                                        Text(
+                                            text = "已认证",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 9.sp,
+                                                letterSpacing = 0.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFFD35400)
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        if (user?.isVerified != true) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.clickable(onClick = onVerifyClick)
+                            ) {
+                                Text(
+                                    text = "实名认证",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF000000).copy(alpha = 0.5f)
+                                    )
                                 )
-                            )
-                            Image(
-                                painter = painterResource(id = R.drawable.ic_profile_chevron_small),
-                                contentDescription = "实名认证",
-                                modifier = Modifier.size(width = 5.dp, height = 9.dp),
-                                colorFilter = ColorFilter.tint(Color(0x80000000))
-                            )
+                                Image(
+                                    painter = painterResource(id = R.drawable.ic_profile_chevron_small),
+                                    contentDescription = "实名认证",
+                                    modifier = Modifier.size(width = 5.dp, height = 9.dp),
+                                    colorFilter = ColorFilter.tint(Color(0x80000000))
+                                )
+                            }
                         }
                     }
                 }

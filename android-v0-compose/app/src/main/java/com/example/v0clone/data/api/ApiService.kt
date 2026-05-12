@@ -455,4 +455,16 @@ interface ApiService {
      */
     @GET("region-dictionary/tree")
     suspend fun getRegionTree(): ApiResponse<List<RegionDictionaryItem>>
+
+    /**
+     * 发送实名认证验证码
+     */
+    @POST("auth/login/user/code")
+    suspend fun sendVerificationCode(@Body request: SendCodeRequest): ApiResponse<Unit>
+
+    /**
+     * 个人实名认证
+     */
+    @POST("verification/personal")
+    suspend fun submitPersonalVerification(@Body request: PersonalVerificationRequest): ApiResponse<Unit>
 }

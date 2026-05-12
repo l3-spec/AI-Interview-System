@@ -86,6 +86,7 @@ fun V0App() {
         currentRoute == Routes.INTERVIEW_COMPLETE ||
         currentRoute == Routes.EDIT_INTENTION ||
         currentRoute.startsWith(Routes.JOB_DETAIL) ||
+        currentRoute == Routes.PROFILE_VERIFICATION ||
         (currentRoute == Routes.PROFILE && token.isNullOrEmpty())
 
     val aiSelected = isAiRoute(currentRoute)

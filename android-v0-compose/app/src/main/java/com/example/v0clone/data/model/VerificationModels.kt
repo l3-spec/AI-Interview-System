@@ -32,3 +32,13 @@ enum class VerificationStatusType {
         }
     }
 }
+
+/**
+ * 个人实名认证请求
+ */
+data class PersonalVerificationRequest(
+    val realName: String,
+    val idNumber: String,
+    val phone: String,
+    val code: String
+)

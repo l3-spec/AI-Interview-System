@@ -4,7 +4,8 @@ import {
   getVerificationStatus,
   getVerificationList,
   reviewVerification,
-  getVerificationById
+  getVerificationById,
+  submitPersonalVerification
 } from '../controllers/verificationController';
 import { authenticateToken } from '../middleware/auth';
 import { upload } from '../middleware/upload';
@@ -144,4 +145,38 @@ router.post('/admin/:id/review', authenticateToken, reviewVerification);
  */
 router.get('/admin/:id', authenticateToken, getVerificationById);
 
-export default router; 
+/**
+ * @swagger
+ * /api/verification/personal:
+ *   post:
+ *     summary: 个人实名认证（运营商三要素）
+ *     tags: [实名认证]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - realName
+ *               - idNumber
+ *               - phone
+ *               - code
+ *             properties:
+ *               realName:
+ *                 type: string
+ *               idNumber:
+ *                 type: string
+ *               phone:
+ *                 type: string
+ *               code:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: 认证成功
+ */
+router.post('/personal', authenticateToken, submitPersonalVerification);
+
+export default router;

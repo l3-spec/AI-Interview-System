@@ -26,7 +26,8 @@ data class User(
     val region: String? = null,
     val signature: String? = null,
     val openToCompanies: Boolean = true,
-    val autoPublish: Boolean = true
+    val autoPublish: Boolean = true,
+    val isVerified: Boolean = false
 )
 
 data class UpdateProfileRequest(

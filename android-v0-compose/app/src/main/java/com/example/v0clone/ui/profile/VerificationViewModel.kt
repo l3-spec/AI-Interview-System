@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.xlwl.AiMian.data.model.VerificationInfo
+import com.xlwl.AiMian.data.model.User
 import com.xlwl.AiMian.data.repository.VerificationRepository
 import java.io.File
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -11,22 +12,29 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.firstOrNull
+import com.xlwl.AiMian.data.auth.AuthManager
 
 data class VerificationUiState(
     val isLoading: Boolean = true,
     val submitting: Boolean = false,
     val status: VerificationInfo? = null,
-    val legalPerson: String = "",
-    val registrationNumber: String = "",
+    val realName: String = "",
+    val idNumber: String = "",
+    val phoneNumber: String = "",
+    val verificationCode: String = "",
+    val isSendingCode: Boolean = false,
+    val countdown: Int = 0,
     val businessLicenseUrl: String? = null,
-    val localLicensePath: String? = null,
-    val localLicenseFile: File? = null,
     val error: String? = null,
-    val message: String? = null
+    val message: String? = null,
+    val isAgreed: Boolean = false,
+    val isSuccess: Boolean = false
 )
 
 class VerificationViewModel(
-    private val repository: VerificationRepository
+    private val repository: VerificationRepository,
+    private val authManager: AuthManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(VerificationUiState())
@@ -45,11 +53,8 @@ class VerificationViewModel(
                     it.copy(
                         isLoading = false,
                         status = info,
-                        legalPerson = info?.legalPerson.orEmpty(),
-                        registrationNumber = info?.registrationNumber.orEmpty(),
-                        businessLicenseUrl = info?.businessLicense,
-                        localLicenseFile = null,
-                        localLicensePath = null
+                        phoneNumber = info?.registrationNumber.orEmpty(), // Reuse field for phone
+                        businessLicenseUrl = info?.businessLicense
                     )
                 }
             }.onFailure { throwable ->
@@ -63,31 +68,59 @@ class VerificationViewModel(
         }
     }
 
-    fun updateLegalPerson(value: String) {
-        _uiState.update { it.copy(legalPerson = value) }
+    fun updateRealName(value: String) {
+        _uiState.update { it.copy(realName = value) }
     }
 
-    fun updateRegistrationNumber(value: String) {
-        _uiState.update { it.copy(registrationNumber = value) }
+    fun updateIdNumber(value: String) {
+        // Basic filtering for digits and 'X' for ID number
+        val filtered = value.uppercase().filter { it.isDigit() || it == 'X' }.take(18)
+        _uiState.update { it.copy(idNumber = filtered) }
     }
 
-    fun selectLicense(file: File, previewPath: String) {
-        _uiState.value.localLicenseFile?.takeIf { it != file }?.delete()
-        _uiState.update {
-            it.copy(
-                localLicenseFile = file,
-                localLicensePath = previewPath
-            )
-        }
+    fun updatePhoneNumber(value: String) {
+        // Only allow digits and limit to 11 characters
+        val filtered = value.filter { it.isDigit() }.take(11)
+        _uiState.update { it.copy(phoneNumber = filtered) }
     }
 
-    fun clearLocalLicense() {
-        _uiState.value.localLicenseFile?.delete()
-        _uiState.update {
-            it.copy(
-                localLicenseFile = null,
-                localLicensePath = null
-            )
+    fun updateVerificationCode(value: String) {
+        // Only allow digits and limit to 6 characters
+        val filtered = value.filter { it.isDigit() }.take(6)
+        _uiState.update { it.copy(verificationCode = filtered) }
+    }
+
+    fun toggleAgreement(value: Boolean) {
+        _uiState.update { it.copy(isAgreed = value) }
+    }
+
+    fun sendVerificationCode() {
+        val current = _uiState.value
+        if (current.isSendingCode || current.phoneNumber.length != 11) return
+        
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSendingCode = true, error = null) }
+            
+            val result = repository.requestVerificationCode(current.phoneNumber)
+            
+            result.onSuccess {
+                _uiState.update { it.copy(isSendingCode = false, countdown = 60) }
+                
+                // Start countdown
+                launch {
+                    for (i in 59 downTo 0) {
+                        _uiState.update { it.copy(countdown = i) }
+                        kotlinx.coroutines.delay(1000)
+                    }
+                }
+            }.onFailure { throwable ->
+                _uiState.update {
+                    it.copy(
+                        isSendingCode = false,
+                        error = throwable.message ?: "发送验证码失败"
+                    )
+                }
+            }
         }
     }
 
@@ -102,43 +135,64 @@ class VerificationViewModel(
     fun submit() {
         val current = _uiState.value
         if (current.submitting) return
-        val legalPerson = current.legalPerson.trim()
-        val registrationNumber = current.registrationNumber.trim()
-        if (legalPerson.isEmpty()) {
-            _uiState.update { it.copy(error = "请输入姓名") }
+        
+        val realName = current.realName.trim()
+        val idNumber = current.idNumber.trim()
+        val phoneNumber = current.phoneNumber.trim()
+        val verificationCode = current.verificationCode.trim()
+        
+        if (realName.isEmpty()) {
+            _uiState.update { it.copy(error = "请输入您的真实姓名") }
             return
         }
-        if (registrationNumber.isEmpty()) {
-            _uiState.update { it.copy(error = "请输入身份证号码") }
+        if (idNumber.length != 18) {
+            _uiState.update { it.copy(error = "请输入正确的18位身份证号码") }
+            return
+        }
+        if (phoneNumber.length != 11) {
+            _uiState.update { it.copy(error = "请输入正确的11位手机号码") }
+            return
+        }
+        if (verificationCode.length < 4) {
+            _uiState.update { it.copy(error = "请输入正确的验证码") }
+            return
+        }
+        if (!current.isAgreed) {
+            _uiState.update { it.copy(error = "请先阅读并同意用户协议和隐私政策") }
             return
         }
 
         viewModelScope.launch {
-            _uiState.update { it.copy(submitting = true, error = null, message = null) }
-            val result = repository.submitVerification(
-                legalPerson = legalPerson,
-                registrationNumber = registrationNumber,
-                businessLicenseFile = current.localLicenseFile,
-                existingLicenseUrl = current.businessLicenseUrl
+            _uiState.update { it.copy(submitting = true, error = null) }
+            
+            val result = repository.submitPersonalVerification(
+                current.realName,
+                current.idNumber,
+                current.phoneNumber,
+                current.verificationCode
             )
-            result.onSuccess { info ->
-                _uiState.update {
+            
+            result.onSuccess {
+                _uiState.update { 
                     it.copy(
                         submitting = false,
-                        status = info,
-                        legalPerson = info.legalPerson.orEmpty(),
-                        registrationNumber = info.registrationNumber.orEmpty(),
-                        businessLicenseUrl = info.businessLicense,
-                        localLicenseFile = null,
-                        localLicensePath = null,
-                        message = info.messageOrDefault()
+                        message = "实名认证成功",
+                        isSuccess = true
                     )
                 }
+                // 更新本地用户认证状态
+                viewModelScope.launch {
+                    authManager.userFlow.firstOrNull()?.let { user ->
+                        authManager.updateUser(user.copy(isVerified = true))
+                    }
+                }
+                // Refresh status to show approved view
+                loadStatus()
             }.onFailure { throwable ->
                 _uiState.update {
                     it.copy(
                         submitting = false,
-                        error = throwable.message ?: "提交认证失败，请稍后重试"
+                        error = throwable.message ?: "提交失败"
                     )
                 }
             }
@@ -156,17 +210,19 @@ class VerificationViewModel(
         } ?: "认证申请已提交，请等待审核"
 
     override fun onCleared() {
-        _uiState.value.localLicenseFile?.delete()
         super.onCleared()
     }
 
     companion object {
-        fun provideFactory(repository: VerificationRepository): ViewModelProvider.Factory =
+        fun provideFactory(
+            repository: VerificationRepository,
+            authManager: AuthManager
+        ): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
                     if (modelClass.isAssignableFrom(VerificationViewModel::class.java)) {
-                        return VerificationViewModel(repository) as T
+                        return VerificationViewModel(repository, authManager) as T
                     }
                     throw IllegalArgumentException("Unknown ViewModel class: $modelClass")
                 }

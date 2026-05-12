@@ -554,6 +554,7 @@ fun AppNavHost(navController: NavHostController) {
             } else {
                 VerificationRoute(
                     repository = verificationRepo,
+                    authManager = authManager,
                     onBack = { navController.popBackStack() }
                 )
             }

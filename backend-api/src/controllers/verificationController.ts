@@ -313,3 +313,84 @@ export const getVerificationById = async (req: Request, res: Response) => {
     });
   }
 }; 
+
+// 提交个人实名认证（运营商三要素验证）
+export const submitPersonalVerification = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    const { realName, idNumber, phone, code } = req.body;
+    console.log(`[PersonalVerification] Received request:`, { realName, idNumber, phone, code });
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: '未授权访问'
+      });
+    }
+
+    if (!realName || !idNumber || !phone || !code) {
+      console.log(`[PersonalVerification] Missing parameters:`, { 
+        realName: !!realName, 
+        idNumber: !!idNumber, 
+        phone: !!phone, 
+        code: !!code 
+      });
+      return res.status(400).json({
+        success: false,
+        message: '请填写完整的认证信息'
+      });
+    }
+
+    // 1. 验证短信验证码
+    const { loginCodeService } = require('../services/loginCodeService');
+    const isCodeValid = loginCodeService.verifyCode(phone, code);
+    console.log(`[PersonalVerification] Code validation for ${phone} with code ${code}: ${isCodeValid}`);
+    if (!isCodeValid) {
+      return res.status(400).json({
+        success: false,
+        message: '验证码错误或已失效'
+      });
+    }
+
+    // 2. 模拟请求运营商三要素接口
+    console.log(`[运营商验证] 正在向运营商发起三要素验证请求...`);
+    console.log(`[运营商验证] 姓名: ${realName}, 身份证号: ${idNumber}, 手机号: ${phone}`);
+    
+    // 模拟网络延迟
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // 这里可以接入真实的第三方接口（如阿里云、腾讯云三要素验证）
+    // 模拟验证结果
+    const isCarrierValid = true; 
+
+    if (!isCarrierValid) {
+      console.log(`[运营商验证] 验证失败：信息不匹配`);
+      return res.status(400).json({
+        success: false,
+        message: '运营商验证失败，请核对身份信息'
+      });
+    }
+
+    console.log(`[运营商验证] 验证通过！`);
+
+    // 3. 更新用户认证状态
+    await prisma.user.update({
+      where: { id: userId },
+      data: { isVerified: true }
+    });
+
+    res.json({
+      success: true,
+      message: '实名认证成功',
+      data: {
+        isVerified: true
+      }
+    });
+  } catch (error) {
+    console.error('个人实名认证失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '服务器错误'
+    });
+  }
+};
