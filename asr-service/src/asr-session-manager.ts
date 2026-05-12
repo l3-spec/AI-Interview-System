@@ -1,16 +1,17 @@
 import WebSocket from 'ws';
 import { v4 as uuidv4 } from 'uuid';
 import { ASREventCallbacks, Qwen3ASRClient, Qwen3ASRConfig } from './qwen3-asr-client';
+import { VolcASRClient, VolcASRConfig } from './volc-asr-client';
 import { RedisEventBus } from './redis-event-bus';
 import { logger } from './logger';
 
 /**
- * ASR 会话实体：管理一个客户端 WebSocket ↔ 一个 DashScope Qwen3-ASR 连接
+ * ASR 会话实体：管理一个客户端 WebSocket ↔ 一个 ASR 服务连接
  */
 interface ASRSession {
   sessionId: string;
   clientWs: WebSocket;
-  asrClient: Qwen3ASRClient;
+  asrClient: Qwen3ASRClient | VolcASRClient;
   createdAt: Date;
   /** 累计已发送的音频时长(ms)估算 */
   audioMs: number;
@@ -29,7 +30,7 @@ export interface CreateSessionOptions {
 /**
  * ASR 会话管理器（单例）
  * 负责管理所有活跃的 ASR 会话，每个会话维护：
- *   客户端 WebSocket ↔ ASR Service ↔ DashScope Qwen3-ASR WebSocket
+ *   客户端 WebSocket ↔ ASR Service ↔ ASR Provider (Volcengine/DashScope)
  */
 export class ASRSessionManager {
   private static instance: ASRSessionManager;
@@ -52,7 +53,7 @@ export class ASRSessionManager {
   /**
    * 创建新的 ASR 会话
    * 1. 为客户端分配 sessionId
-   * 2. 建立到 DashScope Qwen3-ASR 的 WebSocket 连接
+   * 2. 建立到 ASR 服务商的 WebSocket 连接
    * 3. 将两侧的数据流桥接起来
    */
   async createSession(clientWs: WebSocket, options: CreateSessionOptions): Promise<string> {
@@ -63,21 +64,20 @@ export class ASRSessionManager {
       await this.destroySession(sessionId);
     }
 
-    const asrConfig: Qwen3ASRConfig = {
-      language: options.language || 'zh',
-      sampleRate: options.sampleRate || 16000,
-      inputFormat: options.inputFormat || 'pcm',
-      vadMode: (options.vadMode as 'server_vad' | 'manual') || 'server_vad',
-      vadSilenceDurationMs: options.vadSilenceDurationMs || 500,
-    };
-    
+    const provider = process.env.ASR_PROVIDER || 'volcengine';
+    const language = options.language || process.env.ASR_LANGUAGE || 'zh';
+    const sampleRate = options.sampleRate || parseInt(process.env.ASR_SAMPLE_RATE || '16000', 10);
+    const inputFormat = options.inputFormat || process.env.ASR_INPUT_FORMAT || 'pcm';
+    const vadMode = (options.vadMode || process.env.ASR_VAD_MODE || 'server_vad') as 'server_vad' | 'manual';
+    const vadSilenceDurationMs = options.vadSilenceDurationMs || parseInt(process.env.ASR_VAD_SILENCE_DURATION_MS || '500', 10);
+
     logger.info(
-      `[ASR-Manager] createSession: sessionId=${sessionId} lang=${asrConfig.language} format=${asrConfig.inputFormat} model(env)=${process.env.QWEN_ASR_MODEL ?? 'default'}`,
+      `[ASR-Manager] createSession: sessionId=${sessionId} provider=${provider} lang=${language} format=${inputFormat}`,
     );
 
-    let asrClient: Qwen3ASRClient;
+    let asrClient: Qwen3ASRClient | VolcASRClient;
 
-    // 创建 Qwen3-ASR 客户端，注册回调 → 将识别结果转发给客户端 WebSocket
+    // 注册回调 → 将识别结果转发给客户端 WebSocket
     const callbacks: ASREventCallbacks = {
       onSessionCreated: (sessionInfo) => {
         const session = this.getCurrentSession(sessionId, asrClient);
@@ -85,7 +85,8 @@ export class ASRSessionManager {
         this.sendToSession(session, {
           type: 'asr.session_created',
           sessionId,
-          dashscopeSessionId: sessionInfo?.id,
+          providerSessionId: sessionInfo?.id,
+          provider,
         });
       },
 
@@ -162,7 +163,13 @@ export class ASRSessionManager {
       },
     };
 
-    asrClient = new Qwen3ASRClient(asrConfig, callbacks);
+    if (provider === 'volcengine') {
+      const volcConfig: VolcASRConfig = { language, sampleRate, inputFormat, vadMode, vadSilenceDurationMs };
+      asrClient = new VolcASRClient(volcConfig, callbacks);
+    } else {
+      const qwenConfig: Qwen3ASRConfig = { language, sampleRate, inputFormat, vadMode, vadSilenceDurationMs };
+      asrClient = new Qwen3ASRClient(qwenConfig, callbacks);
+    }
 
     const session: ASRSession = {
       sessionId,
@@ -178,15 +185,16 @@ export class ASRSessionManager {
     try {
       await asrClient.connect();
       session.state = 'active';
-      logger.info(`[ASR-Manager] 会话 ${sessionId} 已创建并激活`);
+      logger.info(`[ASR-Manager] 会话 ${sessionId} (${provider}) 已创建并激活`);
     } catch (err: any) {
       session.state = 'closed';
       this.sessions.delete(sessionId);
-      throw new Error(`建立 DashScope 连接失败: ${err.message}`);
+      throw new Error(`建立 ASR 连接失败 (${provider}): ${err.message}`);
     }
 
     return sessionId;
   }
+
 
   /**
    * 追加音频数据到指定会话
@@ -267,7 +275,7 @@ export class ASRSessionManager {
   /**
    * 只允许创建该回调的 ASR 客户端修改自己的会话，避免旧连接延迟回调污染新会话。
    */
-  private getCurrentSession(sessionId: string, asrClient: Qwen3ASRClient): ASRSession | null {
+  private getCurrentSession(sessionId: string, asrClient: Qwen3ASRClient | VolcASRClient): ASRSession | null {
     const session = this.sessions.get(sessionId);
     if (!session || session.asrClient !== asrClient) {
       return null;

@@ -33,7 +33,7 @@ export const LiquidCard: React.FC<{
   children: React.ReactNode;
   className?: string;
   style?: React.CSSProperties;
-  onClick?: () => void;
+  onClick?: (e: React.MouseEvent<HTMLDivElement>) => void;
   hoverable?: boolean;
 }> = ({ children, className = '', style, onClick, hoverable = true }) => {
   const { ref, position, opacity, handleMouseMove, handleMouseEnter, handleMouseLeave } = useMouseGlow();

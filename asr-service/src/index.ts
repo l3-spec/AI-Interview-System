@@ -40,7 +40,7 @@ app.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
     service: 'asr-service',
-    model: process.env.QWEN_ASR_MODEL || 'qwen3-asr-flash-realtime',
+    model: process.env.ASR_PROVIDER === 'volcengine' ? 'volcengine-streaming-asr' : (process.env.QWEN_ASR_MODEL || 'qwen3-asr-flash-realtime'),
     activeSessions: manager.getActiveSessionCount(),
     uptime: process.uptime(),
   });
@@ -188,7 +188,7 @@ server.listen(PORT, () => {
   logger.info(`🎙️ ASR 微服务已启动 [${serviceId}] - 端口: ${PORT}`);
   logger.info(`   WebSocket 路径: ${SERVICE_URL}`);
   logger.info(`   健康检查: http://localhost:${PORT}/health`);
-  logger.info(`   ASR 模型: ${process.env.QWEN_ASR_MODEL || 'qwen3-asr-flash-realtime'}`);
+  logger.info(`   ASR 模型: ${process.env.ASR_PROVIDER === 'volcengine' ? 'volcengine-streaming-asr' : (process.env.QWEN_ASR_MODEL || 'qwen3-asr-flash-realtime')}`);
   
   startHeartbeat();
 });

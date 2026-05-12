@@ -5,6 +5,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import FirstLaunchPrivacyModal, {
   hasPrivacyFirstLaunchConsent,
+  setPrivacyFirstLaunchConsent
 } from '../components/FirstLaunchPrivacyModal';
 import logoImage from '../assets/company-logo.png';
 
@@ -206,8 +207,9 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
       {/* 隐私弹窗 */}
       {showPrivacyGateModal && (
         <FirstLaunchPrivacyModal
-          visible={showPrivacyGateModal}
-          onAccept={() => setShowPrivacyGateModal(false)}
+          open={showPrivacyGateModal}
+          onAgree={() => { setPrivacyFirstLaunchConsent(); setShowPrivacyGateModal(false); }}
+          onDisagree={() => setShowPrivacyGateModal(false)}
         />
       )}
     </div>
