@@ -253,7 +253,7 @@ export class InterviewFlowService {
         audioUrl: q.audioUrl || undefined,
         duration: 0,
         expectedPoints: ['专业能力', '沟通表达', '逻辑思维'],
-        suggestedTime: 180,
+        suggestedTime: (q as any).timeLimit || 180,
         scoringCriteria: ['完整回答', '逻辑清晰', '专业深度'],
         status,
         userResponse: q.answerText || undefined,
@@ -589,7 +589,7 @@ export class InterviewFlowService {
       scoringCriteria: string[];
     }> = [];
 
-    const pushQuestion = (rawBlock: string) => {
+    const pushQuestion = (rawBlock: string, fullContent: string, matchIndex: number) => {
       const text = stripOuterBold(rawBlock);
       if (!/\[emotion:[^\]]+\]/.test(text)) {
         return;
@@ -603,31 +603,45 @@ export class InterviewFlowService {
         return;
       }
       dedupeKeys.add(key);
-      questions.push({ text, ...defaults });
+      
+      // Look ahead in the full content for suggested time
+      let suggestedTime = defaults.suggestedTime;
+      const lookaheadText = fullContent.slice(matchIndex, matchIndex + 500); // Look at the next 500 characters
+      const timeMatch = lookaheadText.match(/建议回答时间[^\d]*(\d+)/);
+      if (timeMatch && timeMatch[1]) {
+        const timeVal = parseInt(timeMatch[1], 10);
+        if (timeVal > 10 && timeVal <= 600) { // Reasonable bounds between 10 seconds and 10 minutes
+          suggestedTime = timeVal;
+        }
+      }
+      
+      questions.push({ text, ...defaults, suggestedTime });
     };
 
     // 1) 标准 Markdown：**[emotion:…] ……**（非贪婪到成对 **，可跨行）
     const boldBlocks = content.matchAll(/\*\*\s*\[emotion:[^\]]+\][\s\S]*?\*\*/g);
     for (const m of boldBlocks) {
-      pushQuestion(m[0]);
+      pushQuestion(m[0], content, m.index || 0);
     }
 
     // 2) 模型偶发省略闭合 **，或输出被 max_tokens 截断：从 **[emotion 起到行尾/文尾
     if (questions.length === 0) {
       const looseBlocks = content.matchAll(/\*\*\s*\[emotion:[^\]]+\][\s\S]*?(?=\n\s*\*\*\s*\[emotion:]|$)/g);
       for (const m of looseBlocks) {
-        pushQuestion(m[0].replace(/\s+$/, ''));
+        pushQuestion(m[0].replace(/\s+$/, ''), content, m.index || 0);
       }
     }
 
     // 3) 无 ** 包裹：以 [emotion: 分段
     if (questions.length === 0) {
       const parts = content.split(/(?=\[emotion:[^\]]+\])/);
+      let currentIndex = 0;
       for (const p of parts) {
         const t = p.trim();
         if (t.startsWith('[emotion:')) {
-          pushQuestion(t);
+          pushQuestion(t, content, currentIndex);
         }
+        currentIndex += p.length;
       }
     }
 

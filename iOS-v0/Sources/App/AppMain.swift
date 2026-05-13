@@ -8,7 +8,7 @@ struct AIInterviewApp: App {
     WindowGroup {
       RootView()
         .environmentObject(appState)
-        .preferredColorScheme(.dark) // 默认深色模式，对齐 Android
+        .preferredColorScheme(.light) // 浅色模式，对齐 Android 浅色主题 (BackgroundLight #E3F4FB)
     }
   }
 }

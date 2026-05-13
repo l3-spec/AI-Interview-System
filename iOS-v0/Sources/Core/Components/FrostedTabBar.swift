@@ -1,26 +1,73 @@
 import SwiftUI
 
-/// 毛玻璃底栏 - 对齐 Android FrostedGlassBottomBar
-/// 参照 Android：深色半透明底栏，有圆角，无缺口（简洁设计），左右下有间距
+/// 毛玻璃底栏 - 严格对齐 Android `FrostedGlassBottomBar`
+/// - 浅色渐变 F8F8F8→FFFFFF 叠加 .ultraThinMaterial
+/// - 顶部两角圆角 24
+/// - 中心留 72pt 给 AI 入口按钮
 struct FrostedTabBar: View {
   let selected: AppTab
   let onSelect: (AppTab) -> Void
+  /// 安全区底部 inset（对齐 Android bottomInset）
+  var bottomInset: CGFloat = 0
 
   var body: some View {
+    ZStack(alignment: .top) {
+      background
+      tabs
+    }
+    .frame(height: 72 + bottomInset)
+    .frame(maxWidth: .infinity)
+  }
+
+  /// 背景层：毛玻璃 + 浅色渐变 + 顶圆角 + 白色边框 + 阴影
+  private var background: some View {
+    UnevenRoundedRectangle(
+      topLeadingRadius: 24,
+      bottomLeadingRadius: 0,
+      bottomTrailingRadius: 0,
+      topTrailingRadius: 24,
+      style: .continuous
+    )
+    .fill(.ultraThinMaterial)
+    .overlay(
+      UnevenRoundedRectangle(
+        topLeadingRadius: 24,
+        bottomLeadingRadius: 0,
+        bottomTrailingRadius: 0,
+        topTrailingRadius: 24,
+        style: .continuous
+      )
+      .fill(
+        LinearGradient(
+          colors: [AppColor.bottomBarGradientStart, AppColor.bottomBarGradientEnd],
+          startPoint: .top,
+          endPoint: .bottom
+        )
+      )
+    )
+    .overlay(
+      UnevenRoundedRectangle(
+        topLeadingRadius: 24,
+        bottomLeadingRadius: 0,
+        bottomTrailingRadius: 0,
+        topTrailingRadius: 24,
+        style: .continuous
+      )
+      .stroke(AppColor.bottomBarBorder, lineWidth: 1)
+    )
+    .shadow(color: Color.black.opacity(0.08), radius: 10, x: 0, y: -2)
+  }
+
+  /// 标签按钮行 - 对齐 Android：左2 / 空 72pt / 右2
+  private var tabs: some View {
     HStack(spacing: 0) {
-      // 左侧两个按钮
       TabItem(icon: "house.fill", title: "首页", isSelected: selected == .home) {
         onSelect(.home)
       }
       TabItem(icon: "briefcase.fill", title: "职岗", isSelected: selected == .jobs) {
         onSelect(.jobs)
       }
-      
-      // 中间留空（AI面按钮位置，68dp 宽度）
-      Spacer()
-        .frame(width: 68)
-      
-      // 右侧两个按钮
+      Spacer().frame(width: 72)
       TabItem(icon: "bubble.left.and.bubble.right.fill", title: "职圈", isSelected: selected == .circle) {
         onSelect(.circle)
       }
@@ -28,33 +75,9 @@ struct FrostedTabBar: View {
         onSelect(.profile)
       }
     }
-    .padding(.horizontal, 16)
-    .padding(.vertical, 6)
-    .frame(height: 86)
-    .background(
-      // 底栏背景（简洁圆角矩形，无缺口）
-      RoundedRectangle(cornerRadius: 24, style: .continuous)
-        .fill(
-          LinearGradient(
-            colors: [
-              AppColor.bottomBarBackground,
-              Color(red: 0.18, green: 0.18, blue: 0.18).opacity(0.7)
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-          )
-        )
-        .overlay(
-          RoundedRectangle(cornerRadius: 24, style: .continuous)
-            .stroke(AppColor.bottomBarBorder, lineWidth: 1)
-        )
-        .background(
-          // 轻微模糊效果（iOS 17+）
-          RoundedRectangle(cornerRadius: 24, style: .continuous)
-            .fill(.ultraThinMaterial)
-        )
-    )
-    .padding(.horizontal, 12)
+    .padding(.horizontal, 24)
+    .padding(.top, 10)
+    .padding(.bottom, 10 + bottomInset)
   }
 }
 
@@ -68,15 +91,14 @@ private struct TabItem: View {
     Button(action: action) {
       VStack(spacing: 4) {
         Image(systemName: icon)
-          .font(.system(size: 24, weight: .regular))
+          .font(.system(size: 22, weight: .regular))
           .foregroundStyle(isSelected ? AppColor.bottomBarSelected : AppColor.bottomBarUnselected)
         Text(title)
-          .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
+          .font(.system(size: 10, weight: .semibold))
           .foregroundStyle(isSelected ? AppColor.bottomBarSelected : AppColor.bottomBarUnselected)
       }
-      .padding(.vertical, 6)
-      .padding(.horizontal, 8)
       .frame(maxWidth: .infinity)
+      .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
   }

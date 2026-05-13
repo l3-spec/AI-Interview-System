@@ -1,0 +1,96 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"jsonFile" : "directory-.-Debug-f5ebdc15457944623624.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.6.0"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4
+					]
+				}
+			],
+			"name" : "Debug",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "gjmywrt",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "dhcore::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-dhcore-Debug-0a04925d24702533fb59.json",
+					"name" : "dhcore",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "dhmfcc::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-dhmfcc-Debug-8b0c9618f1176b47cf60.json",
+					"name" : "dhmfcc",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "dhunet::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-dhunet-Debug-dd31e3e28cd0ffa51082.json",
+					"name" : "dhunet",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "duixtest::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-duixtest-Debug-ec289d0536f03eacf281.json",
+					"name" : "duixtest",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "gjduix::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-gjduix-Debug-bd921c612f67aa5e334d.json",
+					"name" : "gjduix",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/.cxx/RelWithDebInfo/1n2w1g2w/arm64-v8a",
+		"source" : "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 3
+	}
+}

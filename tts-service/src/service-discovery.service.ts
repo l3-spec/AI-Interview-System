@@ -16,6 +16,7 @@ export class ServiceDiscoveryService {
 
   private constructor() {
     this.redis = new Redis(redisConnection);
+    this.redis.on('error', (err) => console.error(`[ServiceDiscovery] Redis Error: ${err.message}`));
   }
 
   public static getInstance(): ServiceDiscoveryService {

@@ -4,8 +4,12 @@ import { gunzipSync, inflateSync } from 'zlib';
 import { logger } from './logger';
 
 /**
- * 火山引擎 ASR 客户端
- * 基于 Bytedance OpenSpeech 协议 (v2)
+ * 火山引擎 ASR 客户端 (V2 协议)
+ * 参考文档: https://www.volcengine.com/docs/6561/80818
+ * 
+ * 鉴权说明: 
+ * 1. 在 WebSocket 建立连接时，需在 Header 中添加 Authorization: Bearer;<token>
+ * 2. 在握手 JSON 中，也需包含 app.token
  */
 export interface VolcASRConfig {
   language: string;
@@ -45,13 +49,14 @@ export class VolcASRClient {
   private reqId: string;
   private isConnected = false;
   private awaitingHandshake = false;
-  private sequence = 1;
 
   private readonly ENDPOINT = process.env.VOLC_ASR_ADDRESS || 'wss://openspeech.bytedance.com/api/v2/asr';
 
   constructor(config: VolcASRConfig, callbacks: ASREventCallbacks) {
     this.appId = process.env.VOLC_APP_ID || '';
-    this.token = process.env.VOLC_TOKEN || '';
+    // 如果 token 以 Bearer; 开头，去掉它以便后续统一处理
+    const rawToken = process.env.VOLC_TOKEN || '';
+    this.token = rawToken.replace(/^Bearer;/i, '').trim();
     this.cluster = process.env.VOLC_CLUSTER || 'volcengine_streaming_common';
     this.config = config;
     this.callbacks = callbacks;
@@ -64,24 +69,34 @@ export class VolcASRClient {
 
   async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      logger.info(`[Volc-ASR] 正在连接火山引擎: ${this.ENDPOINT}`);
+      logger.info(`[Volc-ASR-V2] 正在连接: ${this.ENDPOINT}`);
       
       const headers = {
-        'Authorization': this.token.startsWith('Bearer;') ? this.token : `Bearer;${this.token}`,
+        'Authorization': `Bearer;${this.token}`,
+        'User-Agent': 'ai-interview-asr-service/volcengine-v2',
       };
 
-      this.ws = new WebSocket(this.ENDPOINT, { headers });
+      try {
+        this.ws = new WebSocket(this.ENDPOINT, { 
+          headers,
+          handshakeTimeout: 10000, // 10s 握手超时
+        });
+      } catch (err: any) {
+        return reject(new Error(`创建 WebSocket 失败: ${err.message}`));
+      }
+      
       this.awaitingHandshake = true;
 
       const timeout = setTimeout(() => {
         if (this.awaitingHandshake) {
+          logger.error('[Volc-ASR-V2] 连接超时 (10s)');
           this.close();
-          reject(new Error('火山引擎 ASR 连接超时'));
+          reject(new Error('火山引擎 V2 ASR 连接超时 (10s)，请检查网络或 Token 是否正确'));
         }
-      }, 10000);
+      }, 15000); // 稍微加长总超时
 
       this.ws.on('open', () => {
-        logger.info('[Volc-ASR] WebSocket 已打开，发送握手协议...');
+        logger.info('[Volc-ASR-V2] WebSocket 已打开，发送握手请求...');
         try {
           const handshake = this.createHandshakePayload();
           this.ws?.send(handshake);
@@ -93,14 +108,19 @@ export class VolcASRClient {
 
       this.ws.on('message', (data) => {
         try {
-          const message = this.parseServerMessage(data as Buffer);
+          const buffer = data as Buffer;
+          const message = this.parseServerMessage(buffer);
           const decodedPayload = this.decodePayloadBuffer(message);
           const payloadText = decodedPayload.toString('utf8');
 
-          if (message.messageType === 0x0f) { // Error
-            const errorPayload = JSON.parse(payloadText);
-            const errMsg = errorPayload?.message || '火山引擎 ASR 服务端错误';
-            logger.error(`[Volc-ASR] 收到错误消息: ${errMsg}`);
+          if (message.messageType === 0x0f) { // Error Response
+            let errMsg = payloadText;
+            try {
+              const errorPayload = JSON.parse(payloadText);
+              errMsg = errorPayload?.message || errorPayload?.error_msg || JSON.stringify(errorPayload);
+            } catch (e) {}
+            
+            logger.error(`[Volc-ASR-V2] 收到服务端错误: ${errMsg}`);
             if (this.awaitingHandshake) {
               clearTimeout(timeout);
               this.awaitingHandshake = false;
@@ -111,34 +131,53 @@ export class VolcASRClient {
             return;
           }
 
-          if (message.messageType === 0x09) { // Full Response
-            const payload = JSON.parse(payloadText);
+          if (message.messageType === 0x09) { // Full Server Response
+            let payload: any;
+            try {
+              payload = JSON.parse(payloadText);
+            } catch (e) {
+              logger.warn(`[Volc-ASR-V2] 无法解析 JSON 响应: ${payloadText.slice(0, 100)}`);
+              return;
+            }
             
             if (this.awaitingHandshake) {
-              clearTimeout(timeout);
-              this.awaitingHandshake = false;
-              this.isConnected = true;
-              this.sessionId = this.reqId; // 火山引擎使用 reqId 跟踪
-              logger.info(`[Volc-ASR] 握手成功, sessionId=${this.sessionId}`);
-              this.callbacks.onSessionCreated({ id: this.sessionId });
-              resolve();
+              if (payload.code === 1000 || payload.message === 'Success') {
+                clearTimeout(timeout);
+                this.awaitingHandshake = false;
+                this.isConnected = true;
+                this.sessionId = this.reqId;
+                logger.info(`[Volc-ASR-V2] 握手成功, sessionId=${this.sessionId}`);
+                this.callbacks.onSessionCreated({ id: this.sessionId });
+                resolve();
+              } else {
+                const errMsg = payload.message || `握手失败 (code=${payload.code})`;
+                this.handleHandshakeError(errMsg, timeout, reject);
+                return;
+              }
             }
 
             this.handleResponse(payload);
           }
         } catch (err: any) {
-          logger.error(`[Volc-ASR] 解析消息失败: ${err.message}`);
+          logger.error(`[Volc-ASR-V2] 处理消息失败: ${err.message}`);
         }
       });
 
       this.ws.on('close', (code, reason) => {
-        logger.info(`[Volc-ASR] 连接已关闭: code=${code}, reason=${reason}`);
+        const reasonStr = reason?.toString() || '';
+        logger.info(`[Volc-ASR-V2] 连接已关闭: code=${code}, reason=${reasonStr}`);
         this.isConnected = false;
-        this.callbacks.onSessionFinished();
+        if (this.awaitingHandshake) {
+          clearTimeout(timeout);
+          this.awaitingHandshake = false;
+          reject(new Error(`火山引擎 ASR 连接被关闭: code=${code} ${reasonStr}`));
+        } else {
+          this.callbacks.onSessionFinished();
+        }
       });
 
       this.ws.on('error', (err) => {
-        logger.error(`[Volc-ASR] WebSocket 错误: ${err.message}`);
+        logger.error(`[Volc-ASR-V2] WebSocket 错误: ${err.message}`);
         if (this.awaitingHandshake) {
           clearTimeout(timeout);
           reject(err);
@@ -149,9 +188,14 @@ export class VolcASRClient {
     });
   }
 
+  private handleHandshakeError(errMsg: string, timeout: NodeJS.Timeout, reject: (err: Error) => void): void {
+    clearTimeout(timeout);
+    this.awaitingHandshake = false;
+    this.close();
+    reject(new Error(errMsg));
+  }
+
   private handleResponse(payload: any): void {
-    // 火山引擎响应结构解析
-    // sequence < 0 表示最终结果
     const sequence = payload.sequence ?? 0;
     const isFinal = sequence < 0;
     const resultText = payload.result?.[0]?.text ?? payload.text ?? '';
@@ -165,6 +209,7 @@ export class VolcASRClient {
 
     if (resultText) {
       if (isFinal) {
+        logger.info(`[Volc-ASR-V2] 识别完成: "${resultText}"`);
         this.callbacks.onTranscriptionCompleted(resultText);
       } else {
         this.callbacks.onTranscriptionText(resultText);
@@ -186,12 +231,11 @@ export class VolcASRClient {
   }
 
   commitAudio(): void {
-    // 手动提交，火山引擎协议中通过 isFinal 标志位处理
     if (!this.isConnected || !this.ws) return;
     
     const header = this.buildHeader({
       messageType: 0x02,
-      isFinal: true,
+      isFinal: true, // NEG_SEQUENCE 标志
     });
     const message = this.encodeMessage(header, Buffer.alloc(0));
     this.ws.send(message);
@@ -203,13 +247,15 @@ export class VolcASRClient {
 
   close(): void {
     if (this.ws) {
-      this.ws.close();
+      try {
+        this.ws.close();
+      } catch (e) {}
       this.ws = null;
     }
     this.isConnected = false;
   }
 
-  // --- 火山引擎协议助手方法 ---
+  // --- 助手方法 ---
 
   private buildHeader(options: { messageType: number; isFinal?: boolean; serialization?: number; compression?: number }): Buffer {
     const protocolVersion = 0b0001;
@@ -237,7 +283,7 @@ export class VolcASRClient {
     const payload = {
       app: {
         appid: this.appId,
-        token: this.token.startsWith('Bearer;') ? this.token.split(';')[1] : this.token,
+        token: this.token,
         cluster: this.cluster,
       },
       user: {
@@ -257,7 +303,8 @@ export class VolcASRClient {
         sequence: 1,
         nbest: 1,
         show_utterances: true,
-        vad_signal: true,
+        // 根据 rtc-asr.service.ts, vad_signal 为 false 可能更稳定
+        vad_signal: false,
       },
     };
 

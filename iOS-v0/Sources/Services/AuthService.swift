@@ -12,6 +12,11 @@ final class AuthService {
     try await client.post("auth/login/user/code", body: SendCodeRequest(phone: phone))
   }
 
+  /// 设备快捷登录 - 对齐 Android deviceLogin
+  func deviceLogin(deviceId: String) async throws -> LoginData {
+    try await client.post("auth/login/user/device", body: SendCodeRequest(phone: deviceId))
+  }
+
   func login(phone: String, code: String) async throws -> LoginData {
     try await client.post("auth/login/user", body: LoginRequest(phone: phone, code: code))
   }

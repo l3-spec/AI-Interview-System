@@ -170,6 +170,7 @@ export async function publishPlatformAiPatch(cfg: MergedPlatformAiConfig): Promi
 
   try {
     const r = new Redis(redisUrl, { maxRetriesPerRequest: 2, lazyConnect: true });
+    r.on('error', () => { /* ignore errors for short-lived pub */ });
     await r.connect();
     await r.publish('platform:ai_settings', JSON.stringify(patch));
     r.disconnect();

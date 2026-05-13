@@ -22,6 +22,9 @@ final class AppState: ObservableObject {
   let messagingService: MessagingService
   let assessmentService: AssessmentService
   let appUpdateService: AppUpdateService
+  let verificationService: VerificationService
+  let userService: UserService
+  let runtimeConfigService: RuntimeConfigService
 
   private let authStore = AuthStore()
 
@@ -39,6 +42,9 @@ final class AppState: ObservableObject {
     self.messagingService = MessagingService(client: client)
     self.assessmentService = AssessmentService(client: client)
     self.appUpdateService = AppUpdateService(client: client)
+    self.verificationService = VerificationService(client: client)
+    self.userService = UserService(client: client)
+    self.runtimeConfigService = RuntimeConfigService(client: client)
 
     self.authToken = authStore.loadToken()
     self.currentUser = authStore.loadUser()

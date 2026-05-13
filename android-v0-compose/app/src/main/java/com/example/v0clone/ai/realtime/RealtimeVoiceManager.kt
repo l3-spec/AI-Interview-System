@@ -379,6 +379,9 @@ class RealtimeVoiceManager(private val context: Context) {
     private val _currentQuestionIndex = MutableStateFlow<Int?>(null)
     val currentQuestionIndex: StateFlow<Int?> = _currentQuestionIndex.asStateFlow()
 
+    private val _timeLimit = MutableStateFlow<Int?>(null)
+    val timeLimit: StateFlow<Int?> = _timeLimit.asStateFlow()
+
     private val _errors = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val errors: SharedFlow<String> = _errors.asSharedFlow()
 
@@ -1216,6 +1219,7 @@ class RealtimeVoiceManager(private val context: Context) {
                 )
             }
             val questionIndex = data.optInt("questionIndex", -1)
+            val timeLimitValue = data.optInt("timeLimit", -1)
             val willSpeak = text.isNotBlank() || !audioUrl.isNullOrBlank()
             val isCompletedFlag = data.optBoolean("isCompleted", false) ||
                 data.optString("status").equals("completed", ignoreCase = true) ||
@@ -1277,6 +1281,12 @@ class RealtimeVoiceManager(private val context: Context) {
             if (questionIndex > 0) {
                 Log.i(TAG, "收到题目索引更新: $questionIndex")
                 _currentQuestionIndex.value = questionIndex
+            }
+            
+            if (timeLimitValue > 0) {
+                _timeLimit.value = timeLimitValue
+            } else {
+                _timeLimit.value = null
             }
 
             val completionHint = isCompletedFlag || completionKeywords.any { keyword ->

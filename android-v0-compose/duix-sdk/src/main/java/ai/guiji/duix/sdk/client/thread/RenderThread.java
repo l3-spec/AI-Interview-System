@@ -129,7 +129,10 @@ public class RenderThread extends Thread {
                     File wenetFile = new File(wenetFn);
                     if (wenetFile.exists() && wenetFile.canRead()) {
                         Logger.d("Initializing Wenet with: " + wenetFn);
-                        scrfdncnn.initWenet(wenetFn);
+                        int rst = scrfdncnn.initWenet(wenetFn);
+                        if (rst != 0) {
+                            Logger.e("Wenet initialization failed with code: " + rst);
+                        }
                     } else {
                         Logger.e("Wenet model file not found or not readable: " + wenetFn);
                     }

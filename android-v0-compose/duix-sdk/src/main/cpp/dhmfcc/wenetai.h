@@ -11,9 +11,9 @@ class WeAI{
     int dimin = 321;
     int dimout = 78;
     int dimlen = 1;
-    int64_t sizein = 321*80*sizeof(float);
-    int64_t sizeout = 78*256*sizeof(float);
-    int64_t sizelen = sizeof(int32_t);
+    int64_t countin = 321*80;
+    int64_t countout = 78*256;
+    int64_t countlen = 1;
     float* bufin = NULL;
     float* bufout = NULL;
     int32_t buflen[1]; 
@@ -22,10 +22,12 @@ class WeAI{
     int64_t shapeout[3]={1,78,256};
     const char* names_in[2]={"speech","speech_lengths"};
     const char* names_out[1]={"encoder_out"};
+    bool is_valid = false;
 
     virtual int dorun(float* mel,int melcnt,float* bnf,int bnfcnt);
   public:
     WeAI(int melcnt,int bnfcnt,int trd=4);
+    virtual bool isValid() const { return is_valid; }
     int run(float* mel,int melcnt,float* bnf,int bnfcnt);
     int test();
     virtual ~WeAI();

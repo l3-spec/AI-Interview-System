@@ -1,0 +1,7 @@
+/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/.cxx/RelWithDebInfo/1n2w1g2w/arm64-v8a/CMakeFiles/dhcore.dir
+/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/.cxx/RelWithDebInfo/1n2w1g2w/arm64-v8a/CMakeFiles/dhmfcc.dir
+/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/.cxx/RelWithDebInfo/1n2w1g2w/arm64-v8a/CMakeFiles/dhunet.dir
+/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/.cxx/RelWithDebInfo/1n2w1g2w/arm64-v8a/CMakeFiles/gjduix.dir
+/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/.cxx/RelWithDebInfo/1n2w1g2w/arm64-v8a/CMakeFiles/duixtest.dir
+/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/.cxx/RelWithDebInfo/1n2w1g2w/arm64-v8a/CMakeFiles/edit_cache.dir
+/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/.cxx/RelWithDebInfo/1n2w1g2w/arm64-v8a/CMakeFiles/rebuild_cache.dir

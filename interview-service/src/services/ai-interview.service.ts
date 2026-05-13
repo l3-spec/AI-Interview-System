@@ -470,6 +470,7 @@ class AIInterviewService {
               audioPath: question.audioPath || undefined,
               videoUrl: question.videoUrl || undefined,
               status: questionStatus,
+              timeLimit: (question as any).timeLimit || Math.round((plannedDurationMinutes * 60) / reusedQuestions.length),
             },
           });
 
@@ -558,6 +559,7 @@ class AIInterviewService {
 
       // 3. 保存问题占位，并标记为 PREPARING
       const sessionQuestions: SessionQuestion[] = [];
+      const timeLimitPerQuestion = Math.round((estimatedDurationMinutes * 60) / generatedQuestions.length);
       for (let i = 0; i < generatedQuestions.length; i++) {
         const question = generatedQuestions[i];
 
@@ -576,6 +578,7 @@ class AIInterviewService {
             questionIndex: i,
             questionText: question,
             status: 'PREPARING',
+            timeLimit: timeLimitPerQuestion,
           },
         });
       }

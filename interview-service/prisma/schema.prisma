@@ -423,6 +423,7 @@ model AIInterviewQuestion {
   answerDuration  Int? // 回答时长(秒)
   videoUrl        String?   @db.Text // 题目视频URL（数字人）
   status          String? // PREPARING | READY | FAILED
+  timeLimit       Int? // 回答时间限制(秒)
   createdAt       DateTime  @default(now())
   answeredAt      DateTime? // 回答时间
 

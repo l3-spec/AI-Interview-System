@@ -29,16 +29,20 @@ export class RedisEventBus {
 
     try {
       this.publisher = new Redis(redisUrl, {
-        maxRetriesPerRequest: 3,
+        maxRetriesPerRequest: null, // Allow queuing commands during reconnection
         retryStrategy: (times) => Math.min(times * 200, 3000),
         lazyConnect: true,
       });
 
       this.subscriber = new Redis(redisUrl, {
-        maxRetriesPerRequest: 3,
+        maxRetriesPerRequest: null,
         retryStrategy: (times) => Math.min(times * 200, 3000),
         lazyConnect: true,
       });
+
+      // Handle Redis errors to prevent "Unhandled error event"
+      this.publisher.on('error', (err) => logger.error(`[Redis Publisher] Error: ${err.message}`));
+      this.subscriber.on('error', (err) => logger.error(`[Redis Subscriber] Error: ${err.message}`));
 
       this.init();
     } catch (err: any) {

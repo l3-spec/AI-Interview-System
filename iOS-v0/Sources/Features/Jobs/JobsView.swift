@@ -1,18 +1,67 @@
 import SwiftUI
 
+// MARK: - 排序枚举
+enum JobSort: String {
+  case recommended = "recommended"
+  case latest = "latest"
+}
+
+// MARK: - ViewModel
 @MainActor
 final class JobsViewModel: ObservableObject {
+  // 数据
   @Published var jobs: [JobSummary] = []
-  @Published var isLoading = false
-  @Published var isLoadingMore = false
-  @Published var hasMore = true
+  @Published var banners: [Banner] = []
+  @Published var currentBannerIndex: Int = 0
+  @Published var preferredPositions: [JobPreferencePosition] = []
+
+  // 状态
+  @Published var isLoading: Bool = false
+  @Published var isPaginating: Bool = false
+  @Published var isPreferenceLoading: Bool = false
+  @Published var hasMore: Bool = true
   @Published var page: Int = 1
-  @Published var query: String = ""
-  @Published var location: String = ""
+
+  // 筛选
+  @Published var searchInput: String = ""
+  @Published var keyword: String = ""
+  @Published var sort: JobSort = .recommended
+  @Published var cityLabel: String = "城市"
+  @Published var city: String? = nil
   @Published var onlyRemote: Bool = false
-  @Published var selectedPositionIds: Set<String> = []
-  @Published var selectedPositionNames: [String: String] = [:]
+
   @Published var error: String?
+
+  private var bannerTimerTask: Task<Void, Never>?
+
+  deinit {
+    bannerTimerTask?.cancel()
+  }
+
+  func onAppear(using appState: AppState) async {
+    if !appState.sharedJobKeyword.isEmpty && keyword.isEmpty {
+      searchInput = appState.sharedJobKeyword
+      keyword = appState.sharedJobKeyword
+    }
+    startBannerAutoScroll()
+    async let bannersTask: Void = loadBanners(using: appState)
+    async let prefsTask: Void = loadPreferences(using: appState, initial: true)
+    async let jobsTask: Void = load(using: appState)
+    _ = await (bannersTask, prefsTask, jobsTask)
+  }
+
+  func startBannerAutoScroll() {
+    bannerTimerTask?.cancel()
+    bannerTimerTask = Task { [weak self] in
+      while !Task.isCancelled {
+        try? await Task.sleep(nanoseconds: 3_000_000_000)
+        await MainActor.run {
+          guard let self = self, !self.banners.isEmpty else { return }
+          self.currentBannerIndex = (self.currentBannerIndex + 1) % self.banners.count
+        }
+      }
+    }
+  }
 
   func load(using appState: AppState) async {
     guard !isLoading else { return }
@@ -21,11 +70,12 @@ final class JobsViewModel: ObservableObject {
     do {
       let response = try await appState.jobsService.getPublicJobs(
         page: 1,
-        pageSize: 30,
-        keyword: query.isEmpty ? nil : query,
-        location: location.isEmpty ? nil : location,
-        remoteOnly: onlyRemote,
-        dictionaryPositionIds: selectedPositionIds.isEmpty ? nil : selectedPositionIds.joined(separator: ",")
+        pageSize: 20,
+        keyword: keyword.isEmpty ? nil : keyword,
+        location: city,
+        remoteOnly: onlyRemote ? true : nil,
+        sort: sort.rawValue,
+        dictionaryPositionIds: positionIdsQuery()
       )
       jobs = response.data ?? []
       hasMore = response.hasMore ?? false
@@ -37,408 +87,397 @@ final class JobsViewModel: ObservableObject {
   }
 
   func loadMore(using appState: AppState) async {
-    guard hasMore, !isLoading, !isLoadingMore else { return }
-    isLoadingMore = true
-    defer { isLoadingMore = false }
+    guard hasMore, !isLoading, !isPaginating else { return }
+    isPaginating = true
+    defer { isPaginating = false }
     do {
-      let nextPage = page + 1
+      let next = page + 1
       let response = try await appState.jobsService.getPublicJobs(
-        page: nextPage,
-        pageSize: 30,
-        keyword: query.isEmpty ? nil : query,
-        location: location.isEmpty ? nil : location,
-        remoteOnly: onlyRemote,
-        dictionaryPositionIds: selectedPositionIds.isEmpty ? nil : selectedPositionIds.joined(separator: ",")
+        page: next,
+        pageSize: 20,
+        keyword: keyword.isEmpty ? nil : keyword,
+        location: city,
+        remoteOnly: onlyRemote ? true : nil,
+        sort: sort.rawValue,
+        dictionaryPositionIds: positionIdsQuery()
       )
       jobs.append(contentsOf: response.data ?? [])
       hasMore = response.hasMore ?? false
-      page = response.page ?? nextPage
+      page = response.page ?? next
     } catch {
       self.error = error.localizedDescription
     }
   }
 
-  func syncPreferences(using appState: AppState) async {
+  func submitSearch(using appState: AppState) {
+    keyword = searchInput.trimmingCharacters(in: .whitespacesAndNewlines)
+    Task { await load(using: appState) }
+  }
+
+  func clearSearch(using appState: AppState) {
+    searchInput = ""
+    keyword = ""
+    Task { await load(using: appState) }
+  }
+
+  func changeSort(_ next: JobSort, using appState: AppState) {
+    guard sort != next else { return }
+    sort = next
+    Task { await load(using: appState) }
+  }
+
+  func applyCity(_ value: String?, using appState: AppState) {
+    city = value
+    cityLabel = (value?.isEmpty == false) ? (value ?? "城市") : "城市"
+    Task { await load(using: appState) }
+  }
+
+  func applyRemote(_ value: Bool, using appState: AppState) {
+    onlyRemote = value
+    Task { await load(using: appState) }
+  }
+
+  func loadBanners(using appState: AppState) async {
+    do {
+      banners = try await appState.contentService.getBanners()
+    } catch {
+      // 轮播为非关键数据，静默失败
+    }
+  }
+
+  func loadPreferences(using appState: AppState, initial: Bool) async {
+    guard appState.isLoggedIn else { return }
+    isPreferenceLoading = true
+    defer { isPreferenceLoading = false }
     do {
       let prefs = try await appState.jobsService.getPreferences()
-      selectedPositionIds = Set(prefs.positions.map { $0.id })
-      selectedPositionNames = prefs.positions.reduce(into: [:]) { partialResult, position in
-        partialResult[position.id] = position.name
+      preferredPositions = prefs.positions
+      if initial && !preferredPositions.isEmpty {
+        await load(using: appState)
       }
-      await load(using: appState)
     } catch {
-      self.error = error.localizedDescription
+      // 偏好失败不阻塞列表
     }
+  }
+
+  func removePreferred(id: String, using appState: AppState) {
+    guard !isPreferenceLoading else { return }
+    let snapshot = preferredPositions
+    let updated = snapshot.filter { $0.id != id }
+    preferredPositions = updated
+    isPreferenceLoading = true
+    Task { [weak self] in
+      guard let self = self else { return }
+      defer { Task { @MainActor in self.isPreferenceLoading = false } }
+      do {
+        let saved = try await appState.jobsService.updatePreferences(positionIds: updated.map { $0.id })
+        await MainActor.run {
+          self.preferredPositions = saved.positions
+        }
+        await self.load(using: appState)
+      } catch {
+        await MainActor.run {
+          self.preferredPositions = snapshot
+        }
+      }
+    }
+  }
+
+  private func positionIdsQuery() -> String? {
+    let ids = preferredPositions.map { $0.id }
+    return ids.isEmpty ? nil : ids.joined(separator: ",")
   }
 }
 
-@MainActor
-final class JobDetailViewModel: ObservableObject {
-  @Published var detail: JobDetail?
-  @Published var isLoading = false
-  @Published var error: String?
-  private let id: String
-
-  init(id: String) {
-    self.id = id
-  }
-
-  func load(using appState: AppState) async {
-    guard !isLoading else { return }
-    isLoading = true
-    defer { isLoading = false }
-    do {
-      detail = try await appState.jobsService.getJobDetail(id: id)
-      error = nil
-    } catch {
-      self.error = error.localizedDescription
-    }
-  }
-}
-
+// MARK: - 主视图
 struct JobsView: View {
   @EnvironmentObject private var appState: AppState
   @StateObject private var viewModel = JobsViewModel()
   @State private var showPreferences = false
+  @State private var showCityPicker = false
+
+  private let gradientTop = Color(hex: 0x00ADC1)
+  private let gradientBottom = Color(hex: 0xE3F4FB)
+  private let pageBackground = Color(hex: 0xEBEBEB)
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      searchBar
-      filterBar
+    ZStack(alignment: .top) {
+      pageBackground.ignoresSafeArea()
+      LinearGradient(
+        colors: [gradientTop, gradientBottom],
+        startPoint: .top,
+        endPoint: .bottom
+      )
+      .frame(height: 520)
+      .ignoresSafeArea(edges: .top)
 
-      if viewModel.isLoading && viewModel.jobs.isEmpty {
-        ProgressView()
-          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-      } else {
-        ScrollView {
-          LazyVStack(spacing: 14) {
-            ForEach(viewModel.jobs) { job in
-              NavigationLink(value: job.id) {
-                JobRow(job: job)
-              }
-              .buttonStyle(.plain)
-              .onAppear {
-                Task { await viewModel.loadMore(using: appState) }
-              }
-            }
-            if viewModel.isLoadingMore {
-              ProgressView()
-                .padding(.vertical, 12)
-            } else if !viewModel.hasMore {
-              Text("没有更多岗位了")
-                .font(AppFont.caption(12))
-                .foregroundStyle(AppColor.textSecondary)
-                .padding(.vertical, 12)
-            }
+      ScrollView {
+        VStack(spacing: 12) {
+          header
+          if !viewModel.banners.isEmpty {
+            bannerCarousel
+              .padding(.horizontal, 12)
           }
-          .padding(.horizontal, 16)
-          .padding(.bottom, 24)
+          listSection
+            .padding(.horizontal, 12)
         }
+        .padding(.bottom, 68)
       }
-      if let error = viewModel.error {
-        Text(error)
-          .foregroundStyle(.red)
-          .font(AppFont.caption(12))
-          .padding(.horizontal, 16)
-      }
+      .refreshable { await viewModel.load(using: appState) }
     }
-    .background(AppColor.backgroundGradient.ignoresSafeArea())
+#if os(iOS)
+    .navigationBarHidden(true)
+#endif
     .navigationDestination(for: String.self) { id in
       JobDetailView(jobId: id)
     }
-    .task {
-      if !appState.sharedJobKeyword.isEmpty {
-        viewModel.query = appState.sharedJobKeyword
-      }
-      await viewModel.load(using: appState)
-    }
-    .refreshable {
-      await viewModel.load(using: appState)
-    }
+    .task { await viewModel.onAppear(using: appState) }
     .sheet(isPresented: $showPreferences) {
       JobPreferencesView()
         .environmentObject(appState)
     }
-    .onChange(of: viewModel.query) { newValue in
-      appState.sharedJobKeyword = newValue
-    }
-  }
-
-  private var searchBar: some View {
-    HStack {
-      Image(systemName: "magnifyingglass")
-        .foregroundStyle(AppColor.textSecondary)
-      TextField("搜索岗位/关键词", text: $viewModel.query)
-#if os(iOS)
-        .textInputAutocapitalization(.never)
-#endif
-        .onSubmit {
-          Task { await viewModel.load(using: appState) }
-        }
-      Button {
-        Task { await viewModel.load(using: appState) }
-      } label: {
-        Image(systemName: "arrow.clockwise")
+    .sheet(isPresented: $showCityPicker) {
+      CityPickerSheet(
+        currentCity: viewModel.city,
+        onlyRemote: viewModel.onlyRemote
+      ) { city, remote in
+        viewModel.applyCity(city, using: appState)
+        viewModel.applyRemote(remote, using: appState)
+        showCityPicker = false
       }
     }
-    .padding()
-    .background(AppColor.card)
-    .clipShape(RoundedRectangle(cornerRadius: 14))
-    .overlay(RoundedRectangle(cornerRadius: 14).stroke(AppColor.outline, lineWidth: 1))
-    .padding(.horizontal, 16)
-    .padding(.top, 12)
   }
 
-  private var filterBar: some View {
-    ScrollView(.horizontal, showsIndicators: false) {
-      HStack(spacing: 10) {
-        Toggle(isOn: $viewModel.onlyRemote) {
-          Text("远程/弹性")
-            .font(AppFont.body(13))
-        }
-        .toggleStyle(.switch)
-        .onChange(of: viewModel.onlyRemote) { _ in
-          Task { await viewModel.load(using: appState) }
-        }
+  // MARK: 头部区域
+  private var header: some View {
+    VStack(spacing: 14) {
+      // 标题 + 搜索
+      HStack(spacing: 20) {
+        Text("职岗")
+          .font(.system(size: 24, weight: .semibold, design: .rounded))
+          .foregroundStyle(Color.black)
+        searchField
+      }
+      .padding(.horizontal, 12)
+      .padding(.top, 10)
 
+      // 意向卡
+      intentionCard
+        .padding(.horizontal, 16)
+    }
+    .padding(.bottom, 14)
+  }
+
+  private var searchField: some View {
+    HStack(spacing: 10) {
+      Image(systemName: "magnifyingglass")
+        .font(.system(size: 12))
+        .foregroundStyle(AppColor.textTertiary)
+      TextField("搜索", text: $viewModel.searchInput)
+        .font(.system(size: 14))
+        .foregroundStyle(AppColor.textPrimary)
+#if os(iOS)
+        .textInputAutocapitalization(.never)
+        .submitLabel(.search)
+#endif
+        .onSubmit { viewModel.submitSearch(using: appState) }
+      if !viewModel.searchInput.isEmpty {
+        Button {
+          viewModel.clearSearch(using: appState)
+        } label: {
+          Image(systemName: "xmark.circle.fill")
+            .font(.system(size: 14))
+            .foregroundStyle(AppColor.textTertiary)
+        }
+        .buttonStyle(.plain)
+      }
+    }
+    .padding(.horizontal, 20)
+    .frame(height: 32)
+    .background(Color.white)
+    .clipShape(RoundedRectangle(cornerRadius: 8))
+  }
+
+  private var intentionCard: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack {
+        Text(intentionTitle)
+          .font(.system(size: 24, weight: .semibold, design: .rounded))
+          .foregroundStyle(Color.black)
+          .lineLimit(1)
+        Spacer()
         Button {
           showPreferences = true
         } label: {
-          PillTag("岗位意向", foreground: AppColor.accent, background: AppColor.accent.opacity(0.12))
+          Image(systemName: "square.and.pencil")
+            .font(.system(size: 18, weight: .semibold))
+            .foregroundStyle(AppColor.primaryOrange)
         }
         .buttonStyle(.plain)
-
-        Button {
-          Task { await viewModel.syncPreferences(using: appState) }
-        } label: {
-          PillTag("同步偏好", foreground: AppColor.textPrimary, background: AppColor.outline)
-        }
-        .buttonStyle(.plain)
-
-        ForEach(Array(viewModel.selectedPositionIds), id: \.self) { id in
-          PillTag(viewModel.selectedPositionNames[id] ?? "偏好 \(id.prefix(4))", foreground: AppColor.textSecondary, background: AppColor.outline)
+        if viewModel.isPreferenceLoading {
+          ProgressView()
+            .scaleEffect(0.7)
+            .tint(AppColor.primaryOrange)
         }
       }
-      .padding(.horizontal, 16)
-    }
-  }
-}
 
-struct JobRow: View {
-  let job: JobSummary
+      if viewModel.preferredPositions.count > 1 {
+        preferenceChips
+      }
 
-  var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
       HStack {
-        VStack(alignment: .leading, spacing: 4) {
-          Text(job.title)
-            .font(AppFont.title(16))
-            .foregroundStyle(AppColor.textPrimary)
-          Text(job.companyName)
-            .font(AppFont.caption(12))
-            .foregroundStyle(AppColor.textSecondary)
+        HStack(spacing: 22) {
+          sortTab("推荐", active: viewModel.sort == .recommended) {
+            viewModel.changeSort(.recommended, using: appState)
+          }
+          sortTab("最新", active: viewModel.sort == .latest) {
+            viewModel.changeSort(.latest, using: appState)
+          }
         }
         Spacer()
-        if let salary = job.salary {
-          Text(salary)
-            .font(AppFont.caption(12))
-            .foregroundStyle(AppColor.accent)
+        HStack(spacing: 18) {
+          filterPill(viewModel.cityLabel) { showCityPicker = true }
+          filterPill("筛选") { showCityPicker = true }
         }
       }
-      HStack(spacing: 8) {
-        if let location = job.location {
-          PillTag(location, foreground: AppColor.textSecondary, background: AppColor.outline)
-        }
-        if let type = job.type {
-          PillTag(type, foreground: AppColor.textSecondary, background: AppColor.outline)
-        }
+    }
+  }
+
+  private var intentionTitle: String {
+    if let first = viewModel.preferredPositions.first {
+      return "\(first.name) (意向岗位)"
+    }
+    if !viewModel.keyword.isEmpty {
+      return "\(viewModel.keyword) (意向岗位)"
+    }
+    return "前端开发 (意向岗位)"
+  }
+
+  @ViewBuilder
+  private var preferenceChips: some View {
+    // 简化两列式 chip 容器
+    let items = Array(viewModel.preferredPositions)
+    WrapChips(items: items) { item in
+      PreferenceChip(name: item.name) {
+        viewModel.removePreferred(id: item.id, using: appState)
       }
-      if !job.tags.isEmpty {
-        ScrollView(.horizontal, showsIndicators: false) {
-          HStack(spacing: 6) {
-            ForEach(job.tags.prefix(4), id: \.self) { tag in
-              PillTag(tag, foreground: AppColor.accent, background: AppColor.accent.opacity(0.12))
+    }
+  }
+
+  private func sortTab(_ label: String, active: Bool, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+      Text(label)
+        .font(.system(size: 14, weight: active ? .medium : .regular))
+        .foregroundStyle(active ? Color.black : AppColor.textTertiary)
+    }
+    .buttonStyle(.plain)
+  }
+
+  private func filterPill(_ label: String, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+      HStack(spacing: 4) {
+        Text(label)
+          .font(.system(size: 14, weight: .medium))
+          .foregroundStyle(AppColor.textTertiary)
+        Image(systemName: "chevron.down")
+          .font(.system(size: 9, weight: .semibold))
+          .foregroundStyle(AppColor.textTertiary)
+      }
+    }
+    .buttonStyle(.plain)
+  }
+
+  // MARK: 轮播
+  private var bannerCarousel: some View {
+    TabView(selection: $viewModel.currentBannerIndex) {
+      ForEach(Array(viewModel.banners.enumerated()), id: \.offset) { idx, banner in
+        AsyncImage(url: URL(string: banner.imageUrl)) { phase in
+          switch phase {
+          case .success(let image):
+            image.resizable().aspectRatio(contentMode: .fill)
+          default:
+            LinearGradient(
+              colors: [AppColor.primaryBlue.opacity(0.4), AppColor.primaryOrange.opacity(0.4)],
+              startPoint: .topLeading,
+              endPoint: .bottomTrailing
+            )
+          }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 120)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .tag(idx)
+      }
+    }
+#if os(iOS)
+    .tabViewStyle(.page(indexDisplayMode: .automatic))
+#endif
+    .frame(height: 130)
+  }
+
+  // MARK: 列表
+  @ViewBuilder
+  private var listSection: some View {
+    if viewModel.isLoading && viewModel.jobs.isEmpty {
+      ProgressView()
+        .tint(AppColor.primaryOrange)
+        .padding(.vertical, 48)
+    } else if viewModel.jobs.isEmpty {
+      emptyState
+    } else {
+      LazyVStack(spacing: 12) {
+        ForEach(viewModel.jobs) { job in
+          NavigationLink(value: job.id) {
+            JobCard(job: job)
+          }
+          .buttonStyle(.plain)
+          .onAppear {
+            if shouldLoadMore(job) {
+              Task { await viewModel.loadMore(using: appState) }
             }
           }
         }
-      }
-    }
-    .padding()
-    .background(AppColor.card)
-    .clipShape(RoundedRectangle(cornerRadius: 16))
-    .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppColor.outline, lineWidth: 1))
-  }
-}
-
-struct JobDetailView: View {
-  @EnvironmentObject private var appState: AppState
-  @StateObject private var viewModel: JobDetailViewModel
-  @State private var applyNote: String = ""
-  @State private var isApplying = false
-  @State private var applyStatus: String?
-  @State private var showLogin = false
-
-  init(jobId: String) {
-    _viewModel = StateObject(wrappedValue: JobDetailViewModel(id: jobId))
-  }
-
-  var body: some View {
-    Group {
-      if let detail = viewModel.detail {
-        ScrollView {
-          VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-              Text(detail.title)
-                .font(AppFont.title(22))
-                .foregroundStyle(AppColor.textPrimary)
-              NavigationLink {
-                CompanyDetailView(companyId: detail.companyId)
-                  .environmentObject(appState)
-              } label: {
-                HStack(spacing: 6) {
-                  Text(detail.companyName)
-                    .font(AppFont.body(15))
-                    .foregroundStyle(AppColor.textSecondary)
-                  Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(AppColor.textSecondary)
-                }
-              }
-            }
-            if let salary = detail.salary {
-              PillTag(salary)
-            }
-            if !detail.tags.isEmpty {
-              FlowLayout(detail.tags.prefix(6).map { String($0) }) { tag in
-                PillTag(tag, foreground: AppColor.accent, background: AppColor.accent.opacity(0.12))
-              }
-            }
-            VStack(alignment: .leading, spacing: 8) {
-              Text("岗位描述")
-                .font(AppFont.title(18))
-              Text(detail.description)
-                .font(AppFont.body(14))
-                .foregroundStyle(AppColor.textSecondary)
-            }
-            if !detail.responsibilities.isEmpty {
-              VStack(alignment: .leading, spacing: 6) {
-                Text("岗位职责")
-                  .font(AppFont.title(18))
-                ForEach(detail.responsibilities, id: \.self) { item in
-                  HStack(alignment: .top, spacing: 6) {
-                    Circle().fill(AppColor.accent).frame(width: 6, height: 6)
-                    Text(item)
-                      .font(AppFont.body(14))
-                      .foregroundStyle(AppColor.textSecondary)
-                  }
-                }
-              }
-            }
-            if !detail.requirements.isEmpty {
-              VStack(alignment: .leading, spacing: 6) {
-                Text("任职要求")
-                  .font(AppFont.title(18))
-                ForEach(detail.requirements, id: \.self) { item in
-                  HStack(alignment: .top, spacing: 6) {
-                    RoundedRectangle(cornerRadius: 2).fill(AppColor.accent.opacity(0.8)).frame(width: 6, height: 6)
-                    Text(item)
-                      .font(AppFont.body(14))
-                      .foregroundStyle(AppColor.textSecondary)
-                  }
-                }
-              }
-            }
-          }
-          .padding(16)
-          applySection(detail: detail)
+        if viewModel.isPaginating {
+          ProgressView().tint(AppColor.primaryOrange).padding(.vertical, 16)
+        } else if !viewModel.hasMore && !viewModel.jobs.isEmpty {
+          Text("已经到底啦")
+            .font(.system(size: 12))
+            .foregroundStyle(AppColor.textTertiary)
+            .padding(.vertical, 16)
         }
-      } else if viewModel.isLoading {
-        ProgressView()
-      } else {
-        Text(viewModel.error ?? "无法加载岗位详情")
-          .foregroundStyle(.red)
-      }
-    }
-    .background(AppColor.backgroundGradient.ignoresSafeArea())
-    .sheet(isPresented: $showLogin) {
-      LoginView { data in
-        appState.updateAuth(token: data.token, user: data.user)
-        showLogin = false
-      }
-      .environmentObject(appState)
-    }
-    .task {
-      await viewModel.load(using: appState)
-    }
-  }
-
-  private func applySection(detail: JobDetail) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Text("立即投递/约聊")
-        .font(AppFont.title(17))
-      TextField("给招聘方的留言（可选）", text: $applyNote)
-        .textFieldStyle(.roundedBorder)
-      PrimaryButton(title: "投递", isLoading: isApplying) {
-        guard appState.isLoggedIn else {
-          showLogin = true
-          return
-        }
-        Task {
-          isApplying = true
-          defer { isApplying = false }
-          do {
-            _ = try await appState.jobsService.apply(jobId: detail.id, message: applyNote.isEmpty ? nil : applyNote)
-            applyStatus = "已投递"
-          } catch {
-            applyStatus = error.localizedDescription
-          }
-        }
-      }
-      if let status = applyStatus {
-        Text(status)
-          .font(AppFont.caption(12))
-          .foregroundStyle(status == "已投递" ? AppColor.textSecondary : .red)
-      }
-    }
-    .padding(16)
-  }
-}
-
-// Simple flow layout to wrap tags
-@MainActor
-struct FlowLayout<Data: RandomAccessCollection, Content: View>: View where Data.Element: Hashable {
-  let items: Data
-  let content: (Data.Element) -> Content
-
-  init(_ items: Data, @ViewBuilder content: @escaping (Data.Element) -> Content) {
-    self.items = items
-    self.content = content
-  }
-
-  var body: some View {
-    return GeometryReader { geometry in
-      var width: CGFloat = 0
-      var height: CGFloat = 0
-      ZStack(alignment: .topLeading) {
-        ForEach(Array(items), id: \.self) { item in
-          content(item)
-            .padding(4)
-            .alignmentGuide(.leading) { d in
-              if width + d.width > geometry.size.width {
-                width = 0
-                height += d.height
-              }
-              let result = width
-              width += d.width
-              return result
-            }
-            .alignmentGuide(.top) { _ in
-              let result = height
-              return result
-            }
+        if let error = viewModel.error {
+          Text(error).font(.system(size: 12)).foregroundStyle(.red).padding(.vertical, 8)
         }
       }
     }
-    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private func shouldLoadMore(_ job: JobSummary) -> Bool {
+    guard let idx = viewModel.jobs.firstIndex(where: { $0.id == job.id }) else { return false }
+    return idx >= viewModel.jobs.count - 3
+  }
+
+  private var emptyState: some View {
+    VStack(spacing: 12) {
+      Image(systemName: "tray")
+        .font(.system(size: 40))
+        .foregroundStyle(AppColor.textTertiary)
+      Text("暂无相关岗位")
+        .font(.system(size: 14))
+        .foregroundStyle(AppColor.textSecondary)
+      Button {
+        Task { await viewModel.load(using: appState) }
+      } label: {
+        Text("重新加载")
+          .font(.system(size: 13, weight: .medium))
+          .foregroundStyle(Color.white)
+          .padding(.horizontal, 20)
+          .padding(.vertical, 8)
+          .background(Capsule().fill(AppColor.primaryOrange))
+      }
+      .buttonStyle(.plain)
+    }
+    .frame(maxWidth: .infinity)
+    .padding(.vertical, 48)
   }
 }

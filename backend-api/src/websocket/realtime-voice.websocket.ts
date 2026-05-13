@@ -14,6 +14,8 @@ export class RealtimeVoiceWebSocketServer {
     this.gatewayId = `gw-${uuidv4().slice(0, 8)}`;
     this.pubClient = new Redis(redisConnection);
     this.subClient = new Redis(redisConnection);
+    this.pubClient.on('error', (err) => console.error(`[Gateway ${this.gatewayId}] PubClient Redis Error: ${err.message}`));
+    this.subClient.on('error', (err) => console.error(`[Gateway ${this.gatewayId}] SubClient Redis Error: ${err.message}`));
     
     this.setupRedisSubscriptions();
     this.setupSocketHandlers();
@@ -31,6 +33,11 @@ export class RealtimeVoiceWebSocketServer {
       });
     }, 5000);
   }
+
+  // 去重缓存：防止同一条消息从 broadcast 和 gateway 频道被重复下发到客户端
+  private recentMessageHashes = new Set<string>();
+  private readonly DEDUPE_MAX_SIZE = 200;
+  private readonly DEDUPE_TTL_MS = 5000;
 
   private setupRedisSubscriptions() {
     const redisTarget = `${(redisConnection as any).host || 'localhost'}:${(redisConnection as any).port || 6379}/${(redisConnection as any).db ?? 0}`;
@@ -51,6 +58,19 @@ export class RealtimeVoiceWebSocketServer {
         const data = JSON.parse(message);
         const { type, sessionId, payload } = data;
         if (type && sessionId && payload) {
+           // 去重：coordinator 同时发布到 broadcast 和 gateway 频道，避免客户端收到两次相同的事件
+           const msgHash = `${type}:${sessionId}:${message.length}:${message.slice(0, 128)}`;
+           if (this.recentMessageHashes.has(msgHash)) {
+             return; // 已处理过，跳过
+           }
+           this.recentMessageHashes.add(msgHash);
+           // 过期清理
+           setTimeout(() => this.recentMessageHashes.delete(msgHash), this.DEDUPE_TTL_MS);
+           if (this.recentMessageHashes.size > this.DEDUPE_MAX_SIZE) {
+             const first = this.recentMessageHashes.values().next().value;
+             if (first) this.recentMessageHashes.delete(first);
+           }
+
            // We emit to the session room. If the socket is on this instance, it will receive it.
            this.io.to(sessionId).emit(type, payload);
         }

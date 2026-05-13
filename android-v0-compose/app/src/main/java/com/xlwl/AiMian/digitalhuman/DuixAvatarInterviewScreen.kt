@@ -80,7 +80,13 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.min
+import kotlin.math.max
 import kotlin.math.roundToInt
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 
 
 
@@ -142,6 +148,7 @@ fun DuixAvatarInterviewScreen(
     val interviewCompleted by realtimeVoiceManager.interviewCompleted.collectAsState()
     val ttsProgress by realtimeVoiceManager.ttsPlaybackProgress.collectAsState()
     val isDhSpeaking by realtimeVoiceManager.isDigitalHumanSpeaking.collectAsState()
+    val timeLimit by realtimeVoiceManager.timeLimit.collectAsState()
 
     val avatarController = remember(activity, realtimeVoiceManager) {
         if (activity == null) {
@@ -361,33 +368,30 @@ fun DuixAvatarInterviewScreen(
             ) {
                 // User Subtitle (Me) - Displayed when user is speaking
                 if (userTranscript.isNotBlank() && userTranscript != "正在聆听，请开始说话...") {
-                    Text(
-                        text = "我: $userTranscript",
-                        color = Color(0xFF00C78A), // Greenish for user
-                        fontSize = 16.sp,
-                        lineHeight = 22.sp,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center,
-                        fontWeight = FontWeight.Normal,
-                        modifier = Modifier.padding(bottom = 8.dp),
-                        style = TextStyle(
-                            shadow = Shadow(
-                                color = Color.Black.copy(alpha = 0.8f),
-                                offset = Offset(2f, 2f),
-                                blurRadius = 4f
-                            )
-                        )
+                    UserRealtimeSubtitle(
+                        text = userTranscript,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
                     )
                 }
                 
-                // Interviewer Subtitle (AI) — 固定两行，随 TTS 进度滚动窗口
+                // Interviewer Subtitle (AI) — KTV Style
                 displayAIText?.let { aiText ->
                     InterviewerTwoLineSubtitle(
                         fullText = aiText,
                         progress = ttsProgress,
                         isSpeaking = isDhSpeaking,
                         modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                
+                // Circular Countdown
+                if (!isDhSpeaking && timeLimit != null && (timeLimit ?: 0) > 0 && !interviewCompleted) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    CircularCountdown(
+                        totalTimeSeconds = timeLimit!!,
+                        modifier = Modifier.size(60.dp)
                     )
                 }
             }
@@ -1110,21 +1114,23 @@ fun LocalCameraPreview(lifecycleOwner: LifecycleOwner) {
     )
 }
 
-/**
- * 面试官字幕：最多两行，按 [progress] 与当前朗读位置滑动文本窗口。
- */
 @Composable
-private fun InterviewerTwoLineSubtitle(
-    fullText: String,
-    progress: Float,
-    isSpeaking: Boolean,
+private fun UserRealtimeSubtitle(
+    text: String,
     modifier: Modifier = Modifier
 ) {
-    val p = if (isSpeaking) progress.coerceIn(0f, 1f) else 1f
-    val windowed = remember(fullText, p) { subtitleWindowForProgress(fullText, p) }
+    if (text.isEmpty()) return
+
+    // Window configuration
+    val maxChars = 44
+    
+    // For user text, we want to always show the newest (end) of the string if it's too long
+    val start = max(0, text.length - maxChars)
+    val windowText = text.substring(start)
+
     Text(
-        text = "面试官: $windowed",
-        color = Color.White,
+        text = "我: $windowText",
+        color = Color(0xFF00C78A), // Greenish for user
         fontSize = 16.sp,
         lineHeight = 22.sp,
         maxLines = 2,
@@ -1142,18 +1148,122 @@ private fun InterviewerTwoLineSubtitle(
     )
 }
 
-/** 约两行汉字容量（Compose 未测量前用字符数近似） */
-private fun subtitleWindowForProgress(full: String, progress: Float, maxChars: Int = 44): String {
-    if (full.isEmpty()) return full
-    val p = progress.coerceIn(0f, 1f)
-    // 根据进度计算当前读到的字符索引
-    val readIdx = (full.length * p).roundToInt().coerceIn(0, full.length)
+@Composable
+private fun InterviewerTwoLineSubtitle(
+    fullText: String,
+    progress: Float,
+    isSpeaking: Boolean,
+    modifier: Modifier = Modifier
+) {
+    if (fullText.isEmpty()) return
     
-    // 我们希望显示的窗口始终以 readIdx 结尾，这样字幕看起来是在“随着说的内容滚动”
-    val end = readIdx
-    val start = (end - maxChars).coerceAtLeast(0)
+    val p = if (isSpeaking) progress.coerceIn(0f, 1f) else 1f
     
-    return full.substring(start, end)
+    // Calculate the reading index
+    val readIdx = (fullText.length * p).roundToInt().coerceIn(0, fullText.length)
+    
+    // Window configuration
+    val maxChars = 44
+    val halfWindow = maxChars / 2
+    
+    // Calculate start and end index to keep readIdx somewhat centered when it exceeds halfWindow
+    var start = max(0, readIdx - halfWindow)
+    var end = min(fullText.length, start + maxChars)
+    
+    // Ensure window is always filled if there are enough characters
+    if (end - start < maxChars && fullText.length >= maxChars) {
+        start = end - maxChars
+    }
+    
+    val windowText = fullText.substring(start, end)
+    val relativeReadIdx = readIdx - start
+
+    val annotatedString = buildAnnotatedString {
+        withStyle(style = SpanStyle(color = Color(0xFF00C78A))) {
+            append("面试官: ")
+            append(windowText.substring(0, max(0, relativeReadIdx)))
+        }
+        withStyle(style = SpanStyle(color = Color.White)) {
+            append(windowText.substring(max(0, relativeReadIdx)))
+        }
+    }
+
+    Text(
+        text = annotatedString,
+        fontSize = 16.sp,
+        lineHeight = 22.sp,
+        maxLines = 2,
+        overflow = TextOverflow.Clip,
+        textAlign = TextAlign.Center,
+        fontWeight = FontWeight.Normal,
+        modifier = modifier,
+        style = TextStyle(
+            shadow = Shadow(
+                color = Color.Black.copy(alpha = 0.8f),
+                offset = Offset(2f, 2f),
+                blurRadius = 4f
+            )
+        )
+    )
+}
+
+@Composable
+fun CircularCountdown(
+    totalTimeSeconds: Int,
+    modifier: Modifier = Modifier
+) {
+    // 倒计时状态
+    var timeLeft by remember(totalTimeSeconds) { mutableStateOf(totalTimeSeconds) }
+    
+    LaunchedEffect(totalTimeSeconds) {
+        while (timeLeft > 0) {
+            kotlinx.coroutines.delay(1000L)
+            timeLeft--
+        }
+    }
+
+    val progress by animateFloatAsState(
+        targetValue = timeLeft.toFloat() / totalTimeSeconds.toFloat(),
+        animationSpec = tween(durationMillis = 1000, easing = LinearEasing),
+        label = "countdown_progress"
+    )
+
+    Box(contentAlignment = Alignment.Center, modifier = modifier) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val strokeWidth = 4.dp.toPx()
+            val radius = (size.minDimension - strokeWidth) / 2f
+            
+            // 绘制底圈
+            drawCircle(
+                color = Color.White.copy(alpha = 0.2f),
+                radius = radius,
+                style = Stroke(width = strokeWidth)
+            )
+            
+            // 绘制进度圈
+            drawArc(
+                color = Color(0xFF00C78A),
+                startAngle = -90f,
+                sweepAngle = 360f * progress,
+                useCenter = false,
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+            )
+        }
+        
+        Text(
+            text = timeLeft.toString(),
+            color = Color.White,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            style = TextStyle(
+                shadow = Shadow(
+                    color = Color.Black.copy(alpha = 0.5f),
+                    offset = Offset(1f, 1f),
+                    blurRadius = 2f
+                )
+            )
+        )
+    }
 }
 
 private fun Context.findActivity(): Activity? {

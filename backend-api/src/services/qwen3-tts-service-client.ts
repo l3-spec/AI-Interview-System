@@ -50,13 +50,16 @@ export class Qwen3TTSServiceClient {
 
     try {
       this.publisher = new Redis(redisUrl, {
-        maxRetriesPerRequest: 3,
+        maxRetriesPerRequest: null,
         lazyConnect: true,
       });
       this.subscriber = new Redis(redisUrl, {
-        maxRetriesPerRequest: 3,
+        maxRetriesPerRequest: null,
         lazyConnect: true,
       });
+
+      this.publisher.on('error', (err) => console.error(`[TTS-Client Publisher] Redis Error: ${err.message}`));
+      this.subscriber.on('error', (err) => console.error(`[TTS-Client Subscriber] Redis Error: ${err.message}`));
 
       await this.publisher.connect();
       await this.subscriber.connect();

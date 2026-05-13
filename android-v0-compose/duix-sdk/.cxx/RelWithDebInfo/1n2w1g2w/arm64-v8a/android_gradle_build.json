@@ -1,0 +1,80 @@
+{
+  "buildFiles": [
+    "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/CMakeLists.txt",
+    "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/ncnn-20231027-android-shared/arm64-v8a/lib/cmake/ncnn/ncnn-release.cmake",
+    "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/ncnn-20231027-android-shared/arm64-v8a/lib/cmake/ncnn/ncnn.cmake",
+    "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/ncnn-20231027-android-shared/arm64-v8a/lib/cmake/ncnn/ncnnConfig.cmake",
+    "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/opencv-mobile-4.6.0-android/sdk/native/jni/OpenCVConfig-version.cmake",
+    "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/opencv-mobile-4.6.0-android/sdk/native/jni/OpenCVConfig.cmake",
+    "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/opencv-mobile-4.6.0-android/sdk/native/jni/abi-arm64-v8a/OpenCVConfig.cmake",
+    "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/opencv-mobile-4.6.0-android/sdk/native/jni/abi-arm64-v8a/OpenCVModules-release.cmake",
+    "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/opencv-mobile-4.6.0-android/sdk/native/jni/abi-arm64-v8a/OpenCVModules.cmake"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/Volumes/Leo/Tools/android-sdk-macosx/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/.cxx/RelWithDebInfo/1n2w1g2w/arm64-v8a",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/Volumes/Leo/Tools/android-sdk-macosx/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/.cxx/RelWithDebInfo/1n2w1g2w/arm64-v8a",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "dhcore::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "dhcore",
+      "output": "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/.cxx/RelWithDebInfo/1n2w1g2w/arm64-v8a/libdhcore.a"
+    },
+    "dhmfcc::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "dhmfcc",
+      "output": "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/.cxx/RelWithDebInfo/1n2w1g2w/arm64-v8a/libdhmfcc.a"
+    },
+    "dhunet::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "dhunet",
+      "output": "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/.cxx/RelWithDebInfo/1n2w1g2w/arm64-v8a/libdhunet.a"
+    },
+    "duixtest::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "duixtest",
+      "output": "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/build/intermediates/cxx/RelWithDebInfo/1n2w1g2w/obj/arm64-v8a/duixtest",
+      "runtimeFiles": [
+        "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/build/intermediates/cxx/RelWithDebInfo/1n2w1g2w/obj/arm64-v8a/libgjduix.so",
+        "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/ncnn-20231027-android-shared/arm64-v8a/lib/libncnn.so",
+        "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/arm/arm64-v8a/libonnxruntime.so"
+      ]
+    },
+    "gjduix::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "gjduix",
+      "output": "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/build/intermediates/cxx/RelWithDebInfo/1n2w1g2w/obj/arm64-v8a/libgjduix.so",
+      "runtimeFiles": [
+        "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/ncnn-20231027-android-shared/arm64-v8a/lib/libncnn.so",
+        "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/arm/arm64-v8a/libonnxruntime.so"
+      ]
+    }
+  },
+  "toolchains": {
+    "toolchain": {
+      "cCompilerExecutable": "/Volumes/Leo/Tools/android-sdk-macosx/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang.lld",
+      "cppCompilerExecutable": "/Volumes/Leo/Tools/android-sdk-macosx/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang++.lld"
+    }
+  },
+  "cFileExtensions": [
+    "c"
+  ],
+  "cppFileExtensions": [
+    "cpp"
+  ]
+}

@@ -8,6 +8,7 @@ struct RootView: View {
   @State private var jobsPath = NavigationPath()
   @State private var circlePath = NavigationPath()
   @State private var profilePath = NavigationPath()
+  @State private var showAiEntry = false
 
   var body: some View {
     GeometryReader { geometry in
@@ -38,40 +39,44 @@ struct RootView: View {
           }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.bottom, appState.shouldHideBottomBar ? 0 : 110)
-        .background(AppColor.backgroundGradient.ignoresSafeArea())
+        .padding(.bottom, appState.shouldHideBottomBar ? 0 : 72)
+        .background(AppColor.backgroundLight.ignoresSafeArea())
 
-        // 底部导航栏和 AI 按钮
+        // 底部导航栏和 AI 按钮（对齐 Android FrostedGlassBottomBar + AIInterviewFab）
         if !appState.shouldHideBottomBar {
-          VStack(spacing: 0) {
-            // AI 入口按钮（悬浮在底栏上方）
-            AiEntryButton(isActive: appState.isAiSelected) {
-              appState.updateRoute(.ai)
-              // TODO: 导航到 AI 面试入口
-            }
-            .offset(y: -32)
-            .zIndex(10)
-            
-            // 底栏
-            FrostedTabBar(selected: appState.selectedTab) { tab in
-              withAnimation(.spring(duration: 0.25)) {
-                appState.selectedTab = tab
-                switch tab {
-                case .home:
-                  appState.updateRoute(.home)
-                case .jobs:
-                  appState.updateRoute(.jobs)
-                case .circle:
-                  appState.updateRoute(.circle)
-                case .profile:
-                  appState.updateRoute(.profile)
+          ZStack(alignment: .top) {
+            // 底栏（占满宽度，顶部圆角 24）
+            FrostedTabBar(
+              selected: appState.selectedTab,
+              onSelect: { tab in
+                withAnimation(.spring(duration: 0.25)) {
+                  appState.selectedTab = tab
+                  switch tab {
+                  case .home: appState.updateRoute(.home)
+                  case .jobs: appState.updateRoute(.jobs)
+                  case .circle: appState.updateRoute(.circle)
+                  case .profile: appState.updateRoute(.profile)
+                  }
                 }
-              }
+              },
+              bottomInset: geometry.safeAreaInsets.bottom
+            )
+
+            // AI 入口按钮悬浮在底栏顶部上方20pt（对齐 Android offset(y = -20)）
+            AiEntryButton(isActive: appState.isAiSelected) {
+              showAiEntry = true
+              appState.updateRoute(.ai)
             }
+            .offset(y: -20)
+            .zIndex(10)
           }
-          .padding(.bottom, max(0, geometry.safeAreaInsets.bottom - 15))
           .transition(.opacity)
+          .ignoresSafeArea(edges: .bottom)
         }
+      }
+      .sheet(isPresented: $showAiEntry) {
+        AiInterviewEntryView()
+          .environmentObject(appState)
       }
     }
   }

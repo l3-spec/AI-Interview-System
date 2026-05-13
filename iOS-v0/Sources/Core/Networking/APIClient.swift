@@ -96,6 +96,22 @@ final class APIClient {
     return try await request(path, method: .patch, query: [], body: data, authorized: authorized)
   }
 
+  /// DELETE 无请求体
+  func delete<T: Decodable & Sendable>(_ path: String, query: [URLQueryItem] = [], authorized: Bool = false) async throws -> T {
+    try await request(path, method: .delete, query: query, body: nil, authorized: authorized)
+  }
+
+  /// DELETE 带请求体
+  func delete<T: Decodable & Sendable, Body: Encodable & Sendable>(_ path: String, body: Body, authorized: Bool = false) async throws -> T {
+    let data = try encoder.encode(body)
+    return try await request(path, method: .delete, query: [], body: data, authorized: authorized)
+  }
+
+  /// PATCH 无请求体
+  func patchEmpty<T: Decodable & Sendable>(_ path: String, authorized: Bool = false) async throws -> T {
+    try await request(path, method: .patch, query: [], body: nil, authorized: authorized)
+  }
+
   func request<T: Decodable & Sendable>(
     _ path: String,
     method: HTTPMethod,

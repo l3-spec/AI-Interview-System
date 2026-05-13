@@ -7,6 +7,7 @@ export class RedisStreamService {
 
   private constructor() {
     this.redis = new Redis(redisConnection);
+    this.redis.on('error', (err) => console.error(`[RedisStream] Redis Error: ${err.message}`));
   }
 
   public static getInstance(): RedisStreamService {

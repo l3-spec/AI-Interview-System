@@ -50,13 +50,16 @@ export class Qwen3ASRServiceClient {
 
     try {
       this.publisher = new Redis(redisUrl, {
-        maxRetriesPerRequest: 3,
+        maxRetriesPerRequest: null,
         lazyConnect: true,
       });
       this.subscriber = new Redis(redisUrl, {
-        maxRetriesPerRequest: 3,
+        maxRetriesPerRequest: null,
         lazyConnect: true,
       });
+
+      this.publisher.on('error', (err) => console.error(`[ASR-Client Publisher] Redis Error: ${err.message}`));
+      this.subscriber.on('error', (err) => console.error(`[ASR-Client Subscriber] Redis Error: ${err.message}`));
 
       await this.publisher.connect();
       await this.subscriber.connect();

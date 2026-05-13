@@ -18,6 +18,7 @@ export class CoordinatorService {
   private constructor() {
     this.workerId = `worker-${uuidv4().slice(0, 8)}`;
     this.pubClient = new Redis(redisConnection);
+    this.pubClient.on('error', (err) => console.error(`[Coordinator ${this.workerId}] PubClient Redis Error: ${err.message}`));
     const redisTarget = `${redisConnection.host || 'localhost'}:${redisConnection.port || 6379}/${redisConnection.db ?? 0}`;
     console.log(`[Coordinator ${this.workerId}] Redis connection target: ${redisTarget}`);
 
@@ -72,6 +73,7 @@ export class CoordinatorService {
   private setupSubscriptions() {
     // Keep ASR subscription as it might be broadcast from asr-service
     const asrSubClient = new Redis(redisConnection);
+    asrSubClient.on('error', (err) => console.error(`[Coordinator ${this.workerId}] AsrSubClient Redis Error: ${err.message}`));
     asrSubClient.subscribe('asr:events', (err) => {
       if (err) console.error('[Coordinator] Failed to subscribe to ASR events:', err);
       else console.log('[Coordinator] Subscribed to asr:events');
@@ -91,25 +93,31 @@ export class CoordinatorService {
     });
   }
 
-  private emitToGateway(sessionId: string, type: string, payload: any) {
-    const channel = `interview:events:outbound:session:${sessionId}`;
-    
-    this.pubClient
-      .publish(channel, JSON.stringify({
-        type,
-        sessionId,
-        payload
-      }))
-      .then((receivers) => {
-        console.log(`[Coordinator] Published ${type} to ${channel}, receivers=${receivers}`);
-        if (receivers === 0) {
-          // If no one is listening on the session channel, fallback to broadcast for legacy or debug
-          this.pubClient.publish('interview:events:outbound:broadcast', JSON.stringify({ type, sessionId, payload }));
-        }
-      })
-      .catch((err) => {
-        console.error(`[Coordinator] Failed to publish outbound ${type}:`, err);
+  private emitToGateway(sessionId: string, type: string, payload: any, gatewayId?: string) {
+    const message = JSON.stringify({ type, sessionId, payload });
+    const sessionChannel = `interview:events:outbound:session:${sessionId}`;
+
+    // 1. 始终发布到 session 频道（TTS 服务等下游微服务订阅）
+    this.pubClient.publish(sessionChannel, message).catch((err) => {
+      console.error(`[Coordinator] Failed to publish ${type} to session channel:`, err);
+    });
+
+    // 2. 始终发布到 broadcast 频道（网关兜底），确保客户端一定能收到事件（含字幕文本）
+    //    此前仅在 session 频道无订阅者时才 fallback，但 TTS 服务订阅后 receivers>0，
+    //    导致网关从未收到 voice_response，客户端字幕为空。
+    this.pubClient.publish('interview:events:outbound:broadcast', message).catch((err) => {
+      console.error(`[Coordinator] Failed to publish ${type} to broadcast:`, err);
+    });
+
+    // 3. 如果有明确的 gatewayId，额外推送到网关专属频道（最精准的路由）
+    if (gatewayId) {
+      const gwChannel = `interview:events:outbound:${gatewayId}`;
+      this.pubClient.publish(gwChannel, message).catch((err) => {
+        console.error(`[Coordinator] Failed to publish ${type} to gateway channel:`, err);
       });
+    }
+
+    console.log(`[Coordinator] Published ${type} for session=${sessionId}${gatewayId ? ` gw=${gatewayId}` : ''} (session+broadcast)`);
   }
 
   private async runInQueue(sessionId: string, task: () => Promise<any>) {
@@ -233,7 +241,8 @@ export class CoordinatorService {
         questionIndex: currentRound.roundNumber,
         isResume: true,
         progress: { current: resumeRoundNum, total: totalRounds, completed: completedRounds },
-        state: 'playing'
+        state: 'playing',
+        timeLimit: currentRound.suggestedTime
       }, gatewayId);
         this.persistAvatarVoice(sessionId, combinedText, currentRound.roundNumber);
 
@@ -264,7 +273,8 @@ export class CoordinatorService {
           duration: 0,
           ttsMode: 'qwen3_streaming',
           isWelcome: true,
-          state: 'playing'
+          state: 'playing',
+          timeLimit: 120
         }, gatewayId);
       } else {
         // 降级为客户端发声
@@ -275,7 +285,8 @@ export class CoordinatorService {
           duration: 0,
           ttsMode: 'client',
           isWelcome: true,
-          state: 'playing'
+          state: 'playing',
+          timeLimit: 120
         }, gatewayId);
       }
     this.persistAvatarVoice(sessionId, welcomeText);
@@ -444,7 +455,8 @@ export class CoordinatorService {
       duration: round.duration || 0,
       ttsMode,
       questionIndex: round.roundNumber,
-      state: 'playing'
+      state: 'playing',
+      timeLimit: round.suggestedTime
     }, session?.gatewayId);
     
     if (session) session.runtimePhase = 'speaking';

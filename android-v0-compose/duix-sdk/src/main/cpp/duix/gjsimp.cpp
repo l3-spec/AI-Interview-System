@@ -169,8 +169,22 @@ int dhduix_initWenet(dhduix_t* dg,char* fnwenet){
   }else{
     dg->weai_common = bwenet;
   }
-  if (awenet) awenet->test();
-  if (bwenet) bwenet->test();
+  if (awenet) {
+    if (!awenet->isValid()) {
+      return -3;
+    }
+    if (awenet->test() != 0) {
+      return -4;
+    }
+  }
+  if (bwenet) {
+    if (!bwenet->isValid()) {
+      return -5;
+    }
+    if (bwenet->test() != 0) {
+      return -6;
+    }
+  }
   return awenet?0:-1;
 }
 
