@@ -60,21 +60,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xlwl.AiMian.data.auth.AuthManager
 import com.xlwl.AiMian.ui.components.CompactTopBar
+import com.xlwl.AiMian.ui.components.GlassCard
+import com.xlwl.AiMian.ui.components.MD3SettingRow
+import com.xlwl.AiMian.ui.theme.*
 import kotlinx.coroutines.launch
 
 private val PageGradient = Brush.verticalGradient(
     colors = listOf(
-        Color(0xFF00ACC3), // 顶部蓝
-        Color(0xFFE9F7F9),
-        Color(0xFFE9F7F9)
+        SecondaryBlue, // 顶部蓝
+        BackgroundLight,
+        BackgroundLight
     )
 )
-private val AccentOrange = Color(0xFFEC7C38)
-private val AccentSoft = Color(0xFFFFC48A)
-private val TitleColor = Color(0xFF1D1F24)
-private val SubtleText = Color(0xFF7C818A)
-private val DividerColor = Color(0xFFE9EAEE)
-private val CardShape = RoundedCornerShape(12.dp)
+private val CardShape = RoundedCornerShape(16.dp)
 
 @Composable
 fun ProfileSettingsRoute(
@@ -120,7 +118,7 @@ fun ProfileSettingsRoute(
                         logoutAction.value.invoke()
                     }
                 ) {
-                    Text("退出", color = AccentOrange)
+                    Text("退出", color = PrimaryOrange)
                 }
             },
             dismissButton = {
@@ -208,9 +206,8 @@ private fun SettingSection(
     options: List<SettingOption>,
     onOptionSelected: (String) -> Unit
 ) {
-    if (options.isEmpty()) return
     Column(
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -218,9 +215,9 @@ private fun SettingSection(
         ) {
             Box(
                 modifier = Modifier
-                    .size(7.dp)
+                    .size(8.dp)
                     .background(
-                        brush = Brush.linearGradient(listOf(AccentSoft, AccentOrange)),
+                        brush = Brush.linearGradient(listOf(AccentSoft, PrimaryOrange)),
                         shape = CircleShape
                     )
             )
@@ -229,34 +226,37 @@ private fun SettingSection(
                     text = title,
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TitleColor
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
                     )
                 )
                 subtitle?.let {
                     Text(
                         text = it,
                         style = MaterialTheme.typography.bodySmall.copy(
-                            color = SubtleText,
+                            color = TextSecondary,
                             fontSize = 12.sp
                         )
                     )
                 }
             }
         }
-        Card(
+        GlassCard(
             modifier = Modifier.fillMaxWidth(),
             shape = CardShape,
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 options.forEachIndexed { index, option ->
-                    SettingRow(option = option, onClick = { onOptionSelected(option.label) })
+                    MD3SettingRow(
+                        icon = option.icon,
+                        label = option.label,
+                        description = option.description,
+                        onClick = { onOptionSelected(option.label) }
+                    )
                     if (index != options.lastIndex) {
                         HorizontalDivider(
-                            color = DividerColor,
-                            thickness = 0.6.dp,
+                            color = DividerColor.copy(alpha = 0.5f),
+                            thickness = 1.dp,
                             modifier = Modifier.padding(horizontal = 16.dp)
                         )
                     }
@@ -266,78 +266,16 @@ private fun SettingSection(
     }
 }
 
-@Composable
-private fun SettingRow(
-    option: SettingOption,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .background(
-                    brush = Brush.linearGradient(listOf(AccentSoft, AccentOrange)),
-                    shape = CircleShape
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = option.icon,
-                contentDescription = option.label,
-                tint = Color.White,
-                modifier = Modifier.size(18.dp)
-            )
-        }
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(
-                text = option.label,
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = TitleColor
-                )
-            )
-            option.description?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        color = SubtleText,
-                        fontSize = 12.sp
-                    )
-                )
-            }
-        }
-        Icon(
-            imageVector = Icons.Outlined.ChevronRight,
-            contentDescription = null,
-            tint = Color(0xFFB6BAC1)
-        )
-    }
-}
 
 @Composable
 private fun LogoutCard(onLogoutClick: () -> Unit) {
-    Card(
+    GlassCard(
         modifier = Modifier.fillMaxWidth(),
         shape = CardShape,
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        border = BorderStroke(1.dp, AccentOrange.copy(alpha = 0.2f))
     ) {
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 18.dp),
+                .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -346,7 +284,7 @@ private fun LogoutCard(onLogoutClick: () -> Unit) {
                     .size(42.dp)
                     .background(
                         brush = Brush.linearGradient(
-                            colors = listOf(AccentOrange, AccentSoft)
+                            colors = listOf(PrimaryOrange, AccentSoft)
                         ),
                         shape = CircleShape
                     ),
@@ -356,7 +294,7 @@ private fun LogoutCard(onLogoutClick: () -> Unit) {
                     imageVector = Icons.Outlined.Logout,
                     contentDescription = "退出登录",
                     tint = Color.White,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(20.dp)
                 )
             }
             Column(
@@ -367,14 +305,14 @@ private fun LogoutCard(onLogoutClick: () -> Unit) {
                     text = "退出登录",
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TitleColor
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
                     )
                 )
                 Text(
-                    text = "退出后需要重新登录才能接收消息通知并使用AI面试",
+                    text = "退出后需要重新登录才能使用AI面试",
                     style = MaterialTheme.typography.bodySmall.copy(
-                        color = SubtleText,
+                        color = TextSecondary,
                         fontSize = 12.sp
                     )
                 )
@@ -382,16 +320,16 @@ private fun LogoutCard(onLogoutClick: () -> Unit) {
             Button(
                 onClick = onLogoutClick,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = AccentOrange,
+                    containerColor = PrimaryOrange,
                     contentColor = Color.White
                 ),
                 shape = RoundedCornerShape(20.dp),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 Text(
                     text = "退出",
                     style = MaterialTheme.typography.labelLarge.copy(
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = FontWeight.Bold,
                         fontSize = 13.sp
                     )
                 )

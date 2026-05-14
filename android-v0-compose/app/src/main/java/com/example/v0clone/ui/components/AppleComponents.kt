@@ -30,8 +30,8 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.xlwl.AiMian.ui.theme.BackgroundWhite
-import com.xlwl.AiMian.ui.theme.BackgroundGray
+import com.xlwl.AiMian.ui.theme.SurfaceWhite
+import com.xlwl.AiMian.ui.theme.SurfaceVariant
 
 /**
  * A modifier that adds a native iOS-like scaling animation on tap.
@@ -61,8 +61,8 @@ fun Modifier.bounceClick() = composed {
 @Composable
 fun FluidCard(
     modifier: Modifier = Modifier,
-    backgroundColor: Color = BackgroundWhite,
-    shape: Shape = RoundedCornerShape(16.dp),
+    backgroundColor: Color = SurfaceWhite,
+    shape: Shape = RoundedCornerShape(24.dp),
     elevation: Dp = 2.dp,
     content: @Composable () -> Unit
 ) {
@@ -96,7 +96,7 @@ fun FluidButton(
         colors = ButtonDefaults.buttonColors(
             containerColor = containerColor,
             contentColor = contentColor,
-            disabledContainerColor = BackgroundGray,
+            disabledContainerColor = SurfaceVariant,
             disabledContentColor = Color.Gray
         ),
         contentPadding = contentPadding,

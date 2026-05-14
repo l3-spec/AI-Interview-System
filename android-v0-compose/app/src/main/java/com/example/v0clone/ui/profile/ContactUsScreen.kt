@@ -43,22 +43,23 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xlwl.AiMian.ui.components.CompactTopBar
+import com.xlwl.AiMian.ui.components.GlassCard
+import com.xlwl.AiMian.ui.theme.*
 
 private val PageGradient = Brush.verticalGradient(
     colors = listOf(
-        Color(0xFF00ACC3), // 与首页一致的顶部蓝
-        Color(0xFFE9F7F9),
-        Color(0xFFE9F7F9)
+        SecondaryBlue, // 顶部蓝
+        BackgroundLight,
+        BackgroundLight
     )
 )
-private val AccentOrange = Color(0xFFF28B3F) // 首页用的橙色
-private val AccentSoft = Color(0xFFFFE6CC)
-private val TitleColor = Color(0xFF1D1F24)
-private val SubtleText = Color(0xFF7C818A)
-private val CardShape = RoundedCornerShape(12.dp)
+private val CardShape = RoundedCornerShape(16.dp)
 
 @Composable
 fun ContactUsRoute(
@@ -103,13 +104,9 @@ fun ContactUsRoute(
 
 @Composable
 private fun ContactHeroCard(onOpenMessages: () -> Unit) {
-    Card(
+    GlassCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = CardShape,
-        colors = CardDefaults.cardColors(
-            containerColor = Color.White.copy(alpha = 0.08f)
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        containerColor = Color.Transparent
     ) {
         Box(
             modifier = Modifier
@@ -117,41 +114,46 @@ private fun ContactHeroCard(onOpenMessages: () -> Unit) {
                 .background(
                     brush = Brush.verticalGradient(
                         colors = listOf(
-                            AccentOrange,
-                            Color(0xFFFF9D5C),
-                            Color.White.copy(alpha = 0.12f)
+                            PrimaryOrange,
+                            AccentSoft,
                         )
                     ),
                     shape = CardShape
                 )
-                .padding(horizontal = 18.dp, vertical = 18.dp)
+                .padding(horizontal = 20.dp, vertical = 24.dp)
         ) {
             Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Text(
                     text = "7×12h 在线支持",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.ExtraBold,
                         color = Color.White
                     )
                 )
                 Text(
                     text = "技术、商务、产品反馈都能在这里找到负责人。我们会在 30 分钟内响应，确保沟通链路不中断。",
                     style = MaterialTheme.typography.bodyMedium.copy(
-                        fontSize = 13.sp,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
                         color = Color.White.copy(alpha = 0.9f)
                     )
                 )
-                TextButton(
+                Button(
                     onClick = onOpenMessages,
-                    shape = RoundedCornerShape(20.dp)
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White.copy(alpha = 0.2f),
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(24.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.5f))
                 ) {
                     Text(
                         text = "发起客服消息",
-                        color = Color.White,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp)
                     )
                 }
             }
@@ -187,24 +189,19 @@ private fun ContactMethodCard(onOpenMessages: () -> Unit) {
         )
     }
 
-    Card(
+    GlassCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = CardShape,
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 16.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
                 text = "联系方式",
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TitleColor
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
                 )
             )
             methods.forEach { method ->
@@ -236,7 +233,7 @@ private fun ContactMethodRow(
             modifier = Modifier
                 .size(44.dp)
                 .background(
-                    brush = Brush.linearGradient(listOf(AccentSoft, AccentOrange)),
+                    brush = Brush.linearGradient(listOf(AccentSoft, PrimaryOrange)),
                     shape = CircleShape
                 ),
             contentAlignment = Alignment.Center
@@ -256,7 +253,7 @@ private fun ContactMethodRow(
                 style = MaterialTheme.typography.bodyLarge.copy(
                     fontWeight = FontWeight.Medium,
                     fontSize = 15.sp,
-                    color = TitleColor
+                    color = TextPrimary
                 )
             )
             Text(
@@ -271,7 +268,7 @@ private fun ContactMethodRow(
                 text = method.description,
                 style = MaterialTheme.typography.bodySmall.copy(
                     fontSize = 12.sp,
-                    color = SubtleText
+                    color = TextSecondary
                 )
             )
         }
@@ -287,7 +284,7 @@ private fun ContactMethodRow(
         ) {
             Text(
                 text = if (method.onTap != null) "进入" else "复制",
-                color = AccentOrange,
+                color = PrimaryOrange,
                 fontWeight = FontWeight.SemiBold
             )
         }
@@ -296,31 +293,27 @@ private fun ContactMethodRow(
 
 @Composable
 private fun SupportTipsCard() {
-    Card(
+    GlassCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = CardShape,
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
                 text = "服务承诺",
                 style = MaterialTheme.typography.titleMedium.copy(
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TitleColor
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
                 )
             )
             Text(
                 text = "• 工作日 9:00-21:00 快速响应，节假日值班支持。\n• 需求、故障会同步到内部工单，处理进度可在消息中心查看。\n• 如需远程协助，请提前备注企业名称与问题描述。",
                 style = MaterialTheme.typography.bodySmall.copy(
-                    fontSize = 12.sp,
-                    color = SubtleText
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    color = TextSecondary
                 )
             )
         }

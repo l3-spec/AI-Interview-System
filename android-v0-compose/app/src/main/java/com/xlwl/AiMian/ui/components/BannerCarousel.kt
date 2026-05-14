@@ -54,7 +54,7 @@ fun BannerCarousel(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(161.dp)
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(24.dp))
                 .clickable {
                     if (banners.isNotEmpty()) {
                         onBannerClick(banners[currentIndex % banners.size])

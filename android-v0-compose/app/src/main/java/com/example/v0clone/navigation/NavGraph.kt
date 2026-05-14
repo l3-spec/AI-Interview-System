@@ -249,7 +249,34 @@ fun AppNavHost(navController: NavHostController) {
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        NavHost(navController = navController, startDestination = Routes.HOME) {
+        NavHost(
+            navController = navController, 
+            startDestination = Routes.HOME,
+            enterTransition = {
+                androidx.compose.animation.slideInHorizontally(
+                    initialOffsetX = { 300 },
+                    animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+                ) + androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(300))
+            },
+            exitTransition = {
+                androidx.compose.animation.slideOutHorizontally(
+                    targetOffsetX = { -300 },
+                    animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+                ) + androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(300))
+            },
+            popEnterTransition = {
+                androidx.compose.animation.slideInHorizontally(
+                    initialOffsetX = { -300 },
+                    animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+                ) + androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(300))
+            },
+            popExitTransition = {
+                androidx.compose.animation.slideOutHorizontally(
+                    targetOffsetX = { 300 },
+                    animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+                ) + androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(300))
+            }
+        ) {
             // 首页
             composable(Routes.HOME) {
                 HomeScreen(

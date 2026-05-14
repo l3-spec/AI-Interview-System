@@ -66,6 +66,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -99,22 +100,20 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import coil.compose.AsyncImage
 import com.xlwl.AiMian.ui.components.CompactTopBar
+import com.xlwl.AiMian.ui.components.GlassCard
+import com.xlwl.AiMian.ui.theme.*
 import com.xlwl.AiMian.ui.profile.ProfileViewModel
 import androidx.compose.runtime.collectAsState
 import kotlinx.coroutines.delay
 
 private val PageGradient = Brush.verticalGradient(
     colors = listOf(
-        Color(0xFF00ACC3),
-        Color(0xFFE9F7F9),
-        Color(0xFFE9F7F9)
+        SecondaryBlue, // 顶部蓝
+        BackgroundLight,
+        BackgroundLight
     )
 )
-private val AccentOrange = Color(0xFFEC7C38)
-private val AccentSoft = Color(0xFFFFC48A)
-private val TitleColor = Color(0xFF1D1F24)
-private val SubtleText = Color(0xFF7C818A)
-private val CardShape = RoundedCornerShape(12.dp)
+private val CardShape = RoundedCornerShape(16.dp)
 
 @Composable
 fun PersonalInfoRoute(
@@ -182,13 +181,11 @@ fun PersonalInfoRoute(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // 列表内容卡片
-            Card(
+            GlassCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 shape = CardShape,
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     InfoRow(
@@ -200,7 +197,7 @@ fun PersonalInfoRoute(
                         Surface(
                             shape = CircleShape,
                             modifier = Modifier.size(48.dp),
-                            color = Color(0xFFF0F2F5)
+                            color = SurfaceVariant
                         ) {
                             val displayAvatar = localAvatarUri ?: user?.avatar
                             if (displayAvatar != null) {
@@ -214,14 +211,14 @@ fun PersonalInfoRoute(
                                 Icon(
                                     Icons.Outlined.Face,
                                     contentDescription = null,
-                                    modifier = Modifier.padding(8.dp),
-                                    tint = Color(0xFFB6BAC1)
+                                    modifier = Modifier.padding(10.dp),
+                                    tint = TextTertiary
                                 )
                             }
                         }
                     }
 
-                    HorizontalDivider(thickness = 0.5.dp, color = Color(0xFFEEEEEE), modifier = Modifier.padding(horizontal = 16.dp))
+                    HorizontalDivider(thickness = 1.dp, color = DividerColor.copy(alpha = 0.5f), modifier = Modifier.padding(horizontal = 16.dp))
 
                     InfoRow(
                         label = "姓名",
@@ -229,7 +226,7 @@ fun PersonalInfoRoute(
                         onClick = { showNameDialog = true }
                     )
 
-                    HorizontalDivider(thickness = 0.5.dp, color = Color(0xFFEEEEEE), modifier = Modifier.padding(horizontal = 16.dp))
+                    HorizontalDivider(thickness = 1.dp, color = DividerColor.copy(alpha = 0.5f), modifier = Modifier.padding(horizontal = 16.dp))
 
                     InfoRow(
                         label = "性别",
@@ -237,7 +234,7 @@ fun PersonalInfoRoute(
                         onClick = { showGenderSheet = true }
                     )
 
-                    HorizontalDivider(thickness = 0.5.dp, color = Color(0xFFEEEEEE), modifier = Modifier.padding(horizontal = 16.dp))
+                    HorizontalDivider(thickness = 1.dp, color = DividerColor.copy(alpha = 0.5f), modifier = Modifier.padding(horizontal = 16.dp))
 
                     InfoRow(
                         label = "地区",
@@ -245,7 +242,7 @@ fun PersonalInfoRoute(
                         onClick = { showRegionSheet = true }
                     )
 
-                    HorizontalDivider(thickness = 0.5.dp, color = Color(0xFFEEEEEE), modifier = Modifier.padding(horizontal = 16.dp))
+                    HorizontalDivider(thickness = 1.dp, color = DividerColor.copy(alpha = 0.5f), modifier = Modifier.padding(horizontal = 16.dp))
 
                     InfoRow(
                         label = "手机号",
@@ -253,7 +250,7 @@ fun PersonalInfoRoute(
                         onClick = { showPhoneSheet = true }
                     )
                     
-                    HorizontalDivider(thickness = 0.5.dp, color = Color(0xFFEEEEEE), modifier = Modifier.padding(horizontal = 16.dp))
+                    HorizontalDivider(thickness = 1.dp, color = DividerColor.copy(alpha = 0.5f), modifier = Modifier.padding(horizontal = 16.dp))
 
                     InfoRow(
                         label = "个人签名",
@@ -264,18 +261,14 @@ fun PersonalInfoRoute(
             }
 
             // 公开设置卡片
-            Card(
+            GlassCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
                 shape = CardShape,
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     VisibilityRow(
@@ -374,7 +367,7 @@ private fun InfoRow(
             text = label,
             style = MaterialTheme.typography.bodyLarge.copy(
                 fontWeight = FontWeight.Medium,
-                color = TitleColor
+                color = TextPrimary
             )
         )
         Row(
@@ -387,7 +380,7 @@ private fun InfoRow(
                 Text(
                     text = value,
                     style = MaterialTheme.typography.bodyMedium.copy(
-                        color = SubtleText,
+                        color = TextSecondary,
                         textAlign = TextAlign.End
                     ),
                     maxLines = 1,
@@ -434,13 +427,13 @@ private fun EditFieldDialog(
                 Box(
                     modifier = Modifier
                         .size(48.dp)
-                        .background(AccentOrange.copy(alpha = 0.1f), CircleShape),
+                        .background(PrimaryOrange.copy(alpha = 0.1f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = if (singleLine) Icons.Outlined.Badge else Icons.Outlined.Email,
                         contentDescription = null,
-                        tint = AccentOrange
+                        tint = PrimaryOrange
                     )
                 }
 
@@ -448,7 +441,7 @@ private fun EditFieldDialog(
                     text = title,
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontWeight = FontWeight.Bold,
-                        color = TitleColor
+                        color = TextPrimary
                     )
                 )
 
@@ -459,9 +452,9 @@ private fun EditFieldDialog(
                     singleLine = singleLine,
                     shape = RoundedCornerShape(16.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = AccentOrange,
+                        focusedBorderColor = PrimaryOrange,
                         unfocusedBorderColor = Color(0xFFEEEEEE),
-                        cursorColor = AccentOrange
+                        cursorColor = PrimaryOrange
                     )
                 )
 
@@ -474,13 +467,13 @@ private fun EditFieldDialog(
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("取消", color = SubtleText)
+                        Text("取消", color = TextSecondary)
                     }
                     Button(
                         onClick = { onConfirm(text) },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentOrange)
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryOrange)
                     ) {
                         Text("确定", fontWeight = FontWeight.Bold)
                     }
@@ -569,7 +562,7 @@ private fun ModernRegionBottomSheet(
                     TextButton(onClick = { 
                         if (selectedCity != null) selectedCity = null else selectedProvince = null 
                     }) {
-                        Text("返回", color = AccentOrange)
+                        Text("返回", color = PrimaryOrange)
                     }
                 }
             }
@@ -647,7 +640,7 @@ private fun ModernPhoneUpdateBottomSheet(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = AccentOrange,
+                        focusedBorderColor = PrimaryOrange,
                         unfocusedBorderColor = Color(0xFFEEEEEE)
                     )
                 )
@@ -660,7 +653,7 @@ private fun ModernPhoneUpdateBottomSheet(
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(16.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = AccentOrange,
+                            focusedBorderColor = PrimaryOrange,
                             unfocusedBorderColor = Color(0xFFEEEEEE)
                         )
                     )
@@ -670,7 +663,7 @@ private fun ModernPhoneUpdateBottomSheet(
                             viewModel.sendVerificationCode(phone)
                         },
                         enabled = phone.length == 11 && countdown == 0,
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentOrange),
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryOrange),
                         modifier = Modifier.height(56.dp),
                         shape = RoundedCornerShape(16.dp)
                     ) {
@@ -711,12 +704,12 @@ private fun SelectionItem(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             if (icon != null) {
-                Icon(icon, contentDescription = null, tint = AccentOrange, modifier = Modifier.size(20.dp))
+                Icon(icon, contentDescription = null, tint = PrimaryOrange, modifier = Modifier.size(20.dp))
             }
             Text(
                 text = label,
                 style = MaterialTheme.typography.bodyLarge.copy(
-                    color = TitleColor,
+                    color = TextPrimary,
                     fontSize = 16.sp
                 )
             )
@@ -746,7 +739,7 @@ private fun VisibilityRow(
             modifier = Modifier
                 .size(42.dp)
                 .background(
-                    brush = Brush.linearGradient(listOf(AccentSoft, AccentOrange)),
+                    brush = Brush.linearGradient(listOf(AccentSoft, PrimaryOrange)),
                     shape = CircleShape
                 ),
             contentAlignment = Alignment.Center
@@ -759,12 +752,12 @@ private fun VisibilityRow(
                 style = MaterialTheme.typography.bodyLarge.copy(
                     fontWeight = FontWeight.Medium,
                     fontSize = 15.sp,
-                    color = TitleColor
+                    color = TextPrimary
                 )
             )
             Text(
                 text = subtitle,
-                style = MaterialTheme.typography.bodySmall.copy(color = SubtleText, fontSize = 12.sp)
+                style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary, fontSize = 12.sp)
             )
         }
         Checkbox(checked = checked, onCheckedChange = { onCheckedChange(it) })
@@ -800,58 +793,56 @@ fun PrivacyPermissionsRoute(
                 .padding(padding)
                 .verticalScroll(scrollState)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             PermissionCard(
                 title = "权限控制",
                 subtitle = "为面试、消息通知开启必要权限",
-                content = {
-                    PermissionRow(
-                        icon = Icons.Outlined.Notifications,
-                        title = "消息通知",
-                        subtitle = "获取面试进展、系统提醒",
-                        checked = allowNotification,
-                        onCheckedChange = { allowNotification = it }
-                    )
-                    PermissionRow(
-                        icon = Icons.Outlined.Lock,
-                        title = "摄像头",
-                        subtitle = "视频面试、头像拍摄",
-                        checked = allowCamera,
-                        onCheckedChange = { allowCamera = it }
-                    )
-                    PermissionRow(
-                        icon = Icons.Outlined.PrivacyTip,
-                        title = "麦克风",
-                        subtitle = "语音回答、语音转文字",
-                        checked = allowMicrophone,
-                        onCheckedChange = { allowMicrophone = it }
-                    )
-                    PermissionRow(
-                        icon = Icons.Outlined.LocationOn,
-                        title = "定位",
-                        subtitle = "推荐附近职位与城市偏好",
-                        checked = allowLocation,
-                        onCheckedChange = { allowLocation = it }
-                    )
-                }
-            )
+            ) {
+                PermissionRow(
+                    icon = Icons.Outlined.Notifications,
+                    title = "消息通知",
+                    subtitle = "获取面试进展、系统提醒",
+                    checked = allowNotification,
+                    onCheckedChange = { allowNotification = it }
+                )
+                PermissionRow(
+                    icon = Icons.Outlined.Lock,
+                    title = "摄像头",
+                    subtitle = "视频面试、头像拍摄",
+                    checked = allowCamera,
+                    onCheckedChange = { allowCamera = it }
+                )
+                PermissionRow(
+                    icon = Icons.Outlined.PrivacyTip,
+                    title = "麦克风",
+                    subtitle = "语音回答、语音转文字",
+                    checked = allowMicrophone,
+                    onCheckedChange = { allowMicrophone = it }
+                )
+                PermissionRow(
+                    icon = Icons.Outlined.LocationOn,
+                    title = "定位",
+                    subtitle = "推荐附近职位与城市偏好",
+                    checked = allowLocation,
+                    onCheckedChange = { allowLocation = it }
+                )
+            }
             PermissionCard(
                 title = "数据与安全",
                 subtitle = "我们严格遵守数据合规要求",
-                content = {
-                    SecurityBullet(
-                        icon = Icons.Outlined.Security,
-                        title = "端到端加密",
-                        desc = "账号、面试音视频传输均使用加密通道"
-                    )
-                    SecurityBullet(
-                        icon = Icons.Outlined.AlternateEmail,
-                        title = "最小化数据使用",
-                        desc = "仅为匹配职位和分析面试表现使用必要信息"
-                    )
-                }
-            )
+            ) {
+                SecurityBullet(
+                    icon = Icons.Outlined.Security,
+                    title = "端到端加密",
+                    desc = "账号、面试音视频传输均使用加密通道"
+                )
+                SecurityBullet(
+                    icon = Icons.Outlined.AlternateEmail,
+                    title = "最小化数据使用",
+                    desc = "仅为匹配职位和分析面试表现使用必要信息"
+                )
+            }
         }
     }
 }
@@ -862,33 +853,27 @@ private fun PermissionCard(
     subtitle: String,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Card(
+    GlassCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = CardShape,
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            content = {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 16.sp,
-                        color = TitleColor
-                    )
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = TextPrimary
                 )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall.copy(color = SubtleText, fontSize = 12.sp)
-                )
-                content()
-            }
-        )
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary, fontSize = 12.sp)
+            )
+            content()
+        }
     }
 }
 
@@ -903,7 +888,7 @@ private fun PermissionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .padding(vertical = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -911,28 +896,37 @@ private fun PermissionRow(
             modifier = Modifier
                 .size(42.dp)
                 .background(
-                    brush = Brush.linearGradient(listOf(AccentSoft, AccentOrange)),
+                    brush = Brush.linearGradient(listOf(AccentSoft, PrimaryOrange)),
                     shape = CircleShape
                 ),
             contentAlignment = Alignment.Center
         ) {
-            Icon(icon, contentDescription = title, tint = Color.White)
+            Icon(icon, contentDescription = title, tint = Color.White, modifier = Modifier.size(20.dp))
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge.copy(
-                    fontWeight = FontWeight.Medium,
+                    fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
-                    color = TitleColor
+                    color = TextPrimary
                 )
             )
             Text(
                 text = subtitle,
-                style = MaterialTheme.typography.bodySmall.copy(color = SubtleText, fontSize = 12.sp)
+                style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary, fontSize = 12.sp)
             )
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(
+            checked = checked, 
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = PrimaryOrange,
+                uncheckedThumbColor = Color.White,
+                uncheckedTrackColor = DividerColor
+            )
+        )
     }
 }
 
@@ -949,19 +943,19 @@ private fun SecurityBullet(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = null, tint = AccentOrange)
+        Icon(icon, contentDescription = null, tint = PrimaryOrange)
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge.copy(
                     fontWeight = FontWeight.Medium,
                     fontSize = 14.sp,
-                    color = TitleColor
+                    color = TextPrimary
                 )
             )
             Text(
                 text = desc,
-                style = MaterialTheme.typography.bodySmall.copy(color = SubtleText, fontSize = 12.sp)
+                style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary, fontSize = 12.sp)
             )
         }
     }
@@ -1045,14 +1039,14 @@ private fun FavoriteJobCard(
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 16.sp,
-                            color = TitleColor
+                            color = TextPrimary
                         ),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = job.company,
-                        style = MaterialTheme.typography.bodySmall.copy(color = SubtleText, fontSize = 12.sp)
+                        style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary, fontSize = 12.sp)
                     )
                 }
                 Text(
@@ -1060,7 +1054,7 @@ private fun FavoriteJobCard(
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp,
-                        color = AccentOrange
+                        color = PrimaryOrange
                     )
                 )
             }
@@ -1073,9 +1067,9 @@ private fun FavoriteJobCard(
                 onClick = onRemove,
                 shape = RoundedCornerShape(18.dp)
             ) {
-                Icon(Icons.Outlined.BookmarkRemove, contentDescription = null, tint = AccentOrange)
+                Icon(Icons.Outlined.BookmarkRemove, contentDescription = null, tint = PrimaryOrange)
                 Spacer(modifier = Modifier.size(6.dp))
-                Text("取消收藏", color = AccentOrange, fontWeight = FontWeight.SemiBold)
+                Text("取消收藏", color = PrimaryOrange, fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -1151,12 +1145,12 @@ private fun FavoritePostCard(
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 16.sp,
-                    color = TitleColor
+                    color = TextPrimary
                 )
             )
             Text(
                 text = post.snippet,
-                style = MaterialTheme.typography.bodyMedium.copy(color = TitleColor.copy(alpha = 0.85f)),
+                style = MaterialTheme.typography.bodyMedium.copy(color = TextPrimary.copy(alpha = 0.85f)),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -1165,9 +1159,9 @@ private fun FavoritePostCard(
                 TagChip(label = "${post.comments} 评论")
             }
             TextButton(onClick = onRemove, shape = RoundedCornerShape(18.dp)) {
-                Icon(Icons.Outlined.BookmarkRemove, contentDescription = null, tint = AccentOrange)
+                Icon(Icons.Outlined.BookmarkRemove, contentDescription = null, tint = PrimaryOrange)
                 Spacer(modifier = Modifier.size(6.dp))
-                Text("取消收藏", color = AccentOrange, fontWeight = FontWeight.SemiBold)
+                Text("取消收藏", color = PrimaryOrange, fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -1214,7 +1208,7 @@ fun DeliveryListRoute(
                 colors = FilterChipDefaults.filterChipColors(
                     containerColor = Color.White,
                     selectedContainerColor = AccentSoft,
-                    selectedLabelColor = TitleColor
+                    selectedLabelColor = TextPrimary
                 )
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -1256,19 +1250,19 @@ private fun DeliveryCard(item: DeliveryItem) {
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 16.sp,
-                            color = TitleColor
+                            color = TextPrimary
                         )
                     )
                     Text(
                         text = item.company,
-                        style = MaterialTheme.typography.bodySmall.copy(color = SubtleText, fontSize = 12.sp)
+                        style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary, fontSize = 12.sp)
                     )
                 }
                 TagChip(label = item.status.title)
             }
             Text(
                 text = "投递时间：${item.date}",
-                style = MaterialTheme.typography.bodySmall.copy(color = SubtleText, fontSize = 12.sp)
+                style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary, fontSize = 12.sp)
             )
         }
     }
@@ -1286,7 +1280,7 @@ private fun TagChip(label: String) {
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
             style = MaterialTheme.typography.bodySmall.copy(
                 fontSize = 12.sp,
-                color = TitleColor
+                color = TextPrimary
             )
         )
     }
@@ -1309,12 +1303,12 @@ private fun EmptyPlaceholder(
             style = MaterialTheme.typography.titleMedium.copy(
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 16.sp,
-                color = TitleColor
+                color = TextPrimary
             )
         )
         Text(
             text = subtitle,
-            style = MaterialTheme.typography.bodySmall.copy(color = SubtleText, fontSize = 12.sp)
+            style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary, fontSize = 12.sp)
         )
     }
 }

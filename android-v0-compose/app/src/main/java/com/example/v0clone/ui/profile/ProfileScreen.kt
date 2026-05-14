@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -25,6 +26,8 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -71,12 +74,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.Icon
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.xlwl.AiMian.ui.components.DataStatItem
+import com.xlwl.AiMian.ui.components.GlassCard
+import com.xlwl.AiMian.ui.theme.*
 
 private val ProfilePageGradient = Brush.verticalGradient(
     colors = listOf(
-        Color(0xFF00ACC3), // 顶部蓝，与首页一致
-        Color(0xFFE9F7F9),
-        Color(0xFFE9F7F9)
+        Color(0xFF00ADC1), // 品牌蓝
+        Color(0xFF00A3B5), // 深一度
+        Color(0xFFF0F4F7), // 背景过渡
+        Color(0xFFF7F9FC)
     )
 )
 
@@ -249,11 +256,11 @@ private fun LoggedInProfileContent(
         val navPadding = WindowInsets.navigationBars.asPaddingValues()
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = navPadding.calculateBottomPadding() + 64.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            contentPadding = PaddingValues(bottom = navPadding.calculateBottomPadding() + 80.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp) // 增加间距避免拥挤
         ) {
             item {
-                HeaderWithDeliverySection(
+                ProfileHeader(
                     user = user,
                     onVerifyClick = { 
                         if (user?.isVerified == true) {
@@ -262,11 +269,19 @@ private fun LoggedInProfileContent(
                             handleAction(Routes.PROFILE_VERIFICATION, "实名认证")
                         }
                     },
-                    onProfileDetailClick = { handleAction(Routes.PROFILE_PERSONAL_INFO, "个人资料") },
-                    deliveryShortcuts = deliveryShortcuts,
-                    deliveryStats = deliveryStats,
+                    onProfileDetailClick = { handleAction(Routes.PROFILE_PERSONAL_INFO, "个人资料") }
+                )
+            }
+
+            item {
+                MyDeliveryCard(
+                    shortcuts = deliveryShortcuts,
+                    stats = deliveryStats,
                     onShortcutClick = { shortcut -> handleAction(shortcut.route, shortcut.title) },
-                    onStatClick = handleStat
+                    onStatClick = handleStat,
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp)
+                        .offset(y = (-40).dp) // 向上偏移与 Header 融合
                 )
             }
 
@@ -279,7 +294,7 @@ private fun LoggedInProfileContent(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 12.dp)
-                            .padding(bottom = 4.dp)
+                            .offset(y = (-30).dp)
                     )
                 }
             }
@@ -288,7 +303,9 @@ private fun LoggedInProfileContent(
                 MyCommunityCard(
                     shortcuts = communityShortcuts,
                     onShortcutClick = { shortcut -> handleAction(shortcut.route, shortcut.title) },
-                    modifier = Modifier.padding(horizontal = 12.dp)
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp)
+                        .offset(y = (-20).dp)
                 )
             }
             item {
@@ -298,6 +315,7 @@ private fun LoggedInProfileContent(
                     modifier = Modifier
                         .padding(horizontal = 12.dp)
                         .padding(bottom = 12.dp)
+                        .offset(y = (-10).dp)
                 )
             }
         }
@@ -305,145 +323,120 @@ private fun LoggedInProfileContent(
 }
 
 @Composable
-private fun HeaderWithDeliverySection(
+private fun ProfileHeader(
     user: User?,
     onVerifyClick: () -> Unit,
     onProfileDetailClick: () -> Unit,
-    deliveryShortcuts: List<ProfileShortcut>,
-    deliveryStats: List<ProfileStat>,
-    onShortcutClick: (ProfileShortcut) -> Unit,
-    onStatClick: (ProfileStat) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val headerHeight = 200.dp
-    val cardOffset = 120.dp
-    val containerHeight = cardOffset + 200.dp
-
-    Box(
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .height(containerHeight)
+            .statusBarsPadding()
+            .padding(horizontal = 24.dp, vertical = 20.dp)
+            .padding(bottom = 30.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 渐变背景：从浅蓝/青色渐变到白色
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(headerHeight)
-                .background(Color.Transparent)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 16.dp)
-                    .padding(top = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    ProfileAvatar(user = user, size = 48.dp)
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                text = user?.name?.takeIf { it.isNotBlank() } ?: "星链候选人",
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF000000)
-                                ),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                ProfileAvatar(user = user, size = 64.dp) // 更大的头像
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = user?.name?.takeIf { it.isNotBlank() } ?: "星链候选人",
+                            style = MaterialTheme.typography.headlineSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White // 适配深色背景
                             )
-                            
-                            if (user?.isVerified == true) {
-                                androidx.compose.material3.Surface(
-                                    modifier = Modifier.height(18.dp),
-                                    color = Color.White.copy(alpha = 0.3f),
-                                    shape = CircleShape,
-                                    border = androidx.compose.foundation.BorderStroke(
-                                        width = 0.5.dp,
-                                        brush = Brush.linearGradient(
-                                            colors = listOf(
-                                                Color.White.copy(alpha = 0.6f),
-                                                Color(0xFFFF9A3C).copy(alpha = 0.4f)
-                                            )
+                        )
+                        
+                        if (user?.isVerified == true) {
+                            androidx.compose.material3.Surface(
+                                modifier = Modifier.height(20.dp),
+                                color = Color.White.copy(alpha = 0.2f),
+                                shape = CircleShape,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    width = 1.dp,
+                                    color = Color.White.copy(alpha = 0.5f)
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Verified,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(12.dp),
+                                        tint = Color(0xFFFF9A3C)
+                                    )
+                                    Text(
+                                        text = "已认证",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
                                         )
                                     )
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Verified,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(10.dp),
-                                            tint = Color(0xFFFF9A3C)
-                                        )
-                                        Text(
-                                            text = "已认证",
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontSize = 9.sp,
-                                                letterSpacing = 0.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFFD35400)
-                                            )
-                                        )
-                                    }
                                 }
                             }
                         }
-                        if (user?.isVerified != true) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                modifier = Modifier.clickable(onClick = onVerifyClick)
-                            ) {
-                                Text(
-                                    text = "实名认证",
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        fontSize = 12.sp,
-                                        color = Color(0xFF000000).copy(alpha = 0.5f)
-                                    )
-                                )
-                                Image(
-                                    painter = painterResource(id = R.drawable.ic_profile_chevron_small),
-                                    contentDescription = "实名认证",
-                                    modifier = Modifier.size(width = 5.dp, height = 9.dp),
-                                    colorFilter = ColorFilter.tint(Color(0x80000000))
-                                )
-                            }
-                        }
                     }
+                    Text(
+                        text = user?.signature?.takeIf { it.isNotBlank() } ?: "让面试更智能，让未来更清晰",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = Color.White.copy(alpha = 0.8f),
+                            fontSize = 13.sp
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
-                Image(
+            }
+            
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .background(Color.White.copy(alpha = 0.2f), CircleShape)
+                    .clickable(onClick = onProfileDetailClick),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
                     painter = painterResource(id = R.drawable.ic_profile_chevron_large),
-                    contentDescription = "个人资料",
-                    modifier = Modifier
-                        .size(width = 9.dp, height = 16.dp)
-                        .clickable(onClick = onProfileDetailClick),
-                    colorFilter = ColorFilter.tint(Color(0x99000000))
+                    contentDescription = "编辑",
+                    modifier = Modifier.size(16.dp),
+                    tint = Color.White
                 )
             }
         }
-
-        MyDeliveryCard(
-            shortcuts = deliveryShortcuts,
-            stats = deliveryStats,
-            onShortcutClick = onShortcutClick,
-            onStatClick = onStatClick,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(horizontal = 12.dp)
-                .offset(y = cardOffset)
-        )
+        
+        if (user?.isVerified != true) {
+            Button(
+                onClick = onVerifyClick,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.White.copy(alpha = 0.15f),
+                    contentColor = Color.White
+                ),
+                shape = CircleShape,
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.3f))
+            ) {
+                Text("完成实名认证，解锁 AI 面试功能", style = MaterialTheme.typography.labelLarge)
+            }
+        }
     }
 }
 
@@ -455,27 +448,41 @@ private fun MyDeliveryCard(
     onStatClick: (ProfileStat) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Card(
+    GlassCard(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             Text(
                 text = "我的投递",
                 style = MaterialTheme.typography.titleMedium.copy(
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color(0xFF242525)
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
                 )
             )
-            // "我的投递"图标行：使用橙色填充图标
+            
+            // 统计数据行：使用新的 DataStatItem
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                stats.forEach { stat ->
+                    DataStatItem(
+                        label = stat.label,
+                        value = stat.value,
+                        onClick = { onStatClick(stat) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+
+            // 移除分割线，改用间距，更显通透
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // 图标捷径行
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -485,24 +492,9 @@ private fun MyDeliveryCard(
                     ProfileShortcutItem(
                         shortcut = shortcut,
                         onClick = { onShortcutClick(shortcut) },
-                        isFilled = true, // 填充样式
-                        iconColor = Color(0xFFEC7C38) // 橙色
-                    )
-                }
-            }
-            HorizontalDivider(
-                color = Color(0xFFE6E7EB),
-                thickness = 0.5.dp
-            )
-            // 统计数据行
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                stats.forEach { stat ->
-                    ProfileStatItem(
-                        stat = stat,
-                        onClick = stat.route?.let { { onStatClick(stat) } }
+                        isFilled = true,
+                        iconColor = PrimaryOrange,
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }
@@ -516,35 +508,31 @@ private fun MyCommunityCard(
     onShortcutClick: (ProfileShortcut) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Card(
+    GlassCard(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 16.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
                 text = "我的社区",
                 style = MaterialTheme.typography.titleMedium.copy(
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color(0xFF242525)
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
                 )
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(42.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 shortcuts.forEach { shortcut ->
                     ProfileShortcutItem(
                         shortcut = shortcut,
-                        onClick = { onShortcutClick(shortcut) }
+                        onClick = { onShortcutClick(shortcut) },
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }
@@ -558,24 +546,19 @@ private fun GeneralFunctionsCard(
     onShortcutClick: (ProfileShortcut) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Card(
+    GlassCard(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 16.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
                 text = "通用功能",
                 style = MaterialTheme.typography.titleMedium.copy(
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color(0xFF242525)
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
                 )
             )
             // "通用功能"图标行：使用轮廓样式图标
@@ -589,7 +572,8 @@ private fun GeneralFunctionsCard(
                         shortcut = shortcut,
                         onClick = { onShortcutClick(shortcut) },
                         isFilled = false, // 轮廓样式
-                        iconColor = Color(0xFF242525) // 深灰色
+                        iconColor = TextPrimary, // 深灰色
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }
@@ -602,77 +586,39 @@ private fun ProfileShortcutItem(
     shortcut: ProfileShortcut,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    isFilled: Boolean = false, // 是否为填充样式
-    iconColor: Color = Color(0xFF242525) // 图标颜色
+    isFilled: Boolean = false,
+    iconColor: Color = Color(0xFF242525)
 ) {
     Column(
         modifier = modifier
-            .width(48.dp)
+            .padding(vertical = 4.dp)
             .clickable(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp) // 增加图标与文字间距
     ) {
-        // 根据 isFilled 参数决定是否应用颜色滤镜
-        // 填充样式（我的投递）：保持原色（橙色）
-        // 轮廓样式（我的社区、通用功能）：应用灰色滤镜
         Image(
             painter = painterResource(id = shortcut.iconRes),
             contentDescription = shortcut.title,
-            modifier = Modifier.size(24.dp),
+            modifier = Modifier.size(28.dp), // 增大图标
             colorFilter = if (!isFilled) {
                 ColorFilter.tint(iconColor)
             } else {
-                null // 填充样式保持原色
+                null
             }
         )
         Text(
             text = shortcut.title,
             style = MaterialTheme.typography.bodySmall.copy(
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Light,
-                color = Color(0xFF242525)
+                fontSize = 12.sp, // 增大字体
+                fontWeight = FontWeight.Medium,
+                color = TextPrimary
             ),
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            maxLines = 1 // 强制单行
         )
     }
 }
 
-@Composable
-private fun ProfileStatItem(
-    stat: ProfileStat,
-    modifier: Modifier = Modifier,
-    onClick: (() -> Unit)? = null
-) {
-    Column(
-        modifier = modifier
-            .width(48.dp)
-            .let { base ->
-                if (onClick != null) base.clickable(onClick = onClick) else base
-            },
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        // 统计数值：大号粗体
-        Text(
-            text = stat.value,
-            style = MaterialTheme.typography.titleLarge.copy(
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold, // 使用粗体以匹配设计
-                color = Color(0xFF000000)
-            )
-        )
-        // 统计标签：小号灰色文字
-        Text(
-            text = stat.label,
-            style = MaterialTheme.typography.bodySmall.copy(
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Normal,
-                color = Color(0xFF242525).copy(alpha = 0.7f)
-            ),
-            textAlign = TextAlign.Center
-        )
-    }
-}
 
 @Composable
 private fun ProfileAvatar(
