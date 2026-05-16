@@ -2,6 +2,7 @@ type SmsProviderName = 'mock' | 'aliyun' | 'tencent';
 
 interface SmsProvider {
   sendVerificationCode(phone: string, code: string): Promise<void>;
+  sendSms(phone: string, template: string, params: Record<string, string>): Promise<void>;
 }
 
 const DEFAULT_COUNTRY_CODE = process.env.SMS_DEFAULT_COUNTRY_CODE || '+86';
@@ -101,6 +102,11 @@ class MockSmsProvider implements SmsProvider {
   async sendVerificationCode(phone: string, code: string): Promise<void> {
     const formattedPhone = formatPhoneNumber(phone);
     console.info(`[SMS][mock] 向 ${formattedPhone} 发送验证码: ${code}`);
+  }
+
+  async sendSms(phone: string, template: string, params: Record<string, string>): Promise<void> {
+    const formattedPhone = formatPhoneNumber(phone);
+    console.info(`[SMS][mock] 向 ${formattedPhone} 发送模板短信 [${template}]: ${JSON.stringify(params)}`);
   }
 }
 
@@ -219,16 +225,17 @@ class AliyunSmsProvider implements SmsProvider {
   }
 
   async sendVerificationCode(phone: string, code: string): Promise<void> {
+    await this.sendSms(phone, this.templateCode, { [this.codeParam]: code });
+  }
+
+  async sendSms(phone: string, template: string, params: Record<string, string>): Promise<void> {
     const requestPayload: Record<string, unknown> = {
       signName: this.signName,
-      templateCode: this.templateCode,
+      templateCode: template,
       phoneNumbers: formatAliyunPhoneNumber(phone),
-      regionId: this.region
+      regionId: this.region,
+      templateParam: JSON.stringify(params)
     };
-
-    if (this.codeParam) {
-      requestPayload.templateParam = JSON.stringify({ [this.codeParam]: code });
-    }
 
     const request = new this.SendSmsRequestCtor(requestPayload);
     try {
@@ -341,11 +348,20 @@ class TencentSmsProvider implements SmsProvider {
   }
 
   async sendVerificationCode(phone: string, code: string): Promise<void> {
+    await this.sendSms(phone, this.templateId, { '1': code });
+  }
+
+  async sendSms(phone: string, template: string, params: Record<string, string>): Promise<void> {
+    // 腾讯云模板参数是按数组顺序排列的，这里简单按 Key 排序后转为数组
+    const paramArray = Object.keys(params)
+      .sort((a, b) => parseInt(a) - parseInt(b))
+      .map(key => params[key]);
+
     await this.client.SendSms({
       PhoneNumberSet: [formatPhoneNumber(phone)],
       SignName: this.signName,
-      TemplateId: this.templateId,
-      TemplateParamSet: [code],
+      TemplateId: template,
+      TemplateParamSet: paramArray,
       SmsSdkAppId: this.sdkAppId
     });
   }
@@ -415,6 +431,10 @@ class SmsService {
 
   async sendVerificationCode(phone: string, code: string): Promise<void> {
     await this.provider.sendVerificationCode(phone, code);
+  }
+
+  async sendSms(phone: string, template: string, params: Record<string, string>): Promise<void> {
+    await this.provider.sendSms(phone, template, params);
   }
 
   get activeProvider(): SmsProviderName {

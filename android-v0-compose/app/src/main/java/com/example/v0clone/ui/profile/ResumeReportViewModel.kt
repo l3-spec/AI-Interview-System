@@ -32,17 +32,18 @@ data class ResumeReportUiState(
 )
 
 class ResumeReportViewModel(
-  private val repository: AiInterviewRepository
+  private val repository: AiInterviewRepository,
+  private val initialSessionId: String? = null
 ) : ViewModel() {
 
   private val _uiState = MutableStateFlow(ResumeReportUiState())
   val uiState: StateFlow<ResumeReportUiState> = _uiState.asStateFlow()
 
   init {
-    loadReports()
+    loadReports(initialSessionId)
   }
 
-  fun loadReports() {
+  fun loadReports(sessionIdToSelect: String? = null) {
     viewModelScope.launch {
       _uiState.update { it.copy(isLoading = true, error = null) }
       val result = repository.getInterviewHistory()
@@ -51,9 +52,9 @@ class ResumeReportViewModel(
           val reports = sessions
             .filter { hasCompletedInterview(it) }
             .mapNotNull { it.toReportItem() }
-          val currentSelection = _uiState.value.selectedReport
-          val matchedSelection = currentSelection?.let { current ->
-            reports.find { candidate -> candidate.sessionId == current.sessionId }
+          val currentSelection = sessionIdToSelect ?: _uiState.value.selectedReport?.sessionId
+          val matchedSelection = currentSelection?.let { sid ->
+            reports.find { candidate -> candidate.sessionId == sid }
           }
           _uiState.update {
             it.copy(
@@ -125,11 +126,12 @@ class ResumeReportViewModel(
 
   companion object {
     fun provideFactory(
-      repository: AiInterviewRepository
+      repository: AiInterviewRepository,
+      initialSessionId: String? = null
     ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
       @Suppress("UNCHECKED_CAST")
       override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return ResumeReportViewModel(repository) as T
+        return ResumeReportViewModel(repository, initialSessionId) as T
       }
     }
   }

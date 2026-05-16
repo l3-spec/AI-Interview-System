@@ -392,6 +392,10 @@ class RealtimeVoiceManager(private val context: Context) {
     private val _ttsPlaybackProgress = MutableStateFlow(0f)
     val ttsPlaybackProgress: StateFlow<Float> = _ttsPlaybackProgress.asStateFlow()
 
+    /** 实时增量字幕事件（用于KTV效果） */
+    private val _transcriptDelta = MutableSharedFlow<com.xlwl.AiMian.ai.realtime.TranscriptDelta>(extraBufferCapacity = 20)
+    val transcriptDelta: SharedFlow<com.xlwl.AiMian.ai.realtime.TranscriptDelta> = _transcriptDelta.asSharedFlow()
+
     private var mediaProgressJob: Job? = null
 
     private val completionKeywords = listOf(
@@ -578,6 +582,25 @@ class RealtimeVoiceManager(private val context: Context) {
                         }
                     }
 
+                    // 监听实时增量字幕
+                    launch {
+                        qwen3Tts.transcriptDelta.collect { delta ->
+                            _transcriptDelta.emit(delta)
+                            // Robust incremental text reconstruction as a fallback for missing initial text
+                            val currentText = _latestDigitalHumanText.value ?: ""
+                            if (delta.text.isNotBlank() && !currentText.endsWith(delta.text)) {
+                                if (currentText.isEmpty()) {
+                                    _latestDigitalHumanText.value = delta.text
+                                } else {
+                                    // Only append if it's not already there (simple check)
+                                    if (!currentText.contains(delta.text)) {
+                                        _latestDigitalHumanText.value = currentText + delta.text
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // 监听 TTS 说话状态 → 驱动数字人嘴型
                     launch {
                         qwen3Tts.mouthRms.collect { rms ->
@@ -615,6 +638,11 @@ class RealtimeVoiceManager(private val context: Context) {
                                 }
                                 if (!_interviewCompleted.value && vadEnabled) {
                                     scheduleResumeListeningAfterSpeakerPlayback()
+                                }
+
+                                if (pendingCompletion) {
+                                    Log.i(TAG, "TTS 播报结束，且有待处理的面试完成请求，执行最终完成逻辑")
+                                    executeFinalCompletion()
                                 }
                             }
                         }
@@ -1285,6 +1313,9 @@ class RealtimeVoiceManager(private val context: Context) {
             
             if (timeLimitValue > 0) {
                 _timeLimit.value = timeLimitValue
+            } else if (text.isNotBlank() && !isCompletedFlag) {
+                // 默认 60 秒（针对面试题目）
+                _timeLimit.value = 60
             } else {
                 _timeLimit.value = null
             }
@@ -1402,35 +1433,49 @@ class RealtimeVoiceManager(private val context: Context) {
         _errors.tryEmit(message)
     }
 
+    private var pendingCompletion = false
+
     private fun markInterviewCompleted(
         reason: String? = null,
         speakFarewell: Boolean = true,
         stopCurrentAudio: Boolean = true
     ) {
         if (_interviewCompleted.value) return
-        Log.i(TAG, "标记面试已完成${reason?.let { "：$it" } ?: ""}")
-        if (stopCurrentAudio) {
-            qwen3Tts.resetPlaybackProgress()
-            stopAllAudio()
+        Log.i(TAG, "请求标记面试已完成${reason?.let { "：$it" } ?: ""} (speakFarewell=$speakFarewell)")
+        
+        if (speakFarewell) {
+            pendingCompletion = true
+            val farewell = "您太棒了，感谢完成这次愉快的面聊，我们会尽快完成后续的评测工作，报告会在“我的”“简历报告”里展示，请稍晚些查看该报告。"
+            appendMessage(
+                ConversationMessage(
+                    role = ConversationRole.DIGITAL_HUMAN,
+                    text = farewell
+                )
+            )
+            _latestDigitalHumanText.value = farewell
+            if (useQwen3Tts) {
+                qwen3Tts.speak(farewell)
+            } else {
+                playClientSideTts(farewell, farewell.hashCode().toString())
+            }
+        } else {
+            // 如果不播报欢送语（比如后端已经带了文案），则根据当前播报状态决定是否立即完成
+            if (_isDigitalHumanSpeaking.value || awaitingTtsPlayback) {
+                Log.i(TAG, "当前正在播报，将等待播报结束后完成面试")
+                pendingCompletion = true
+            } else {
+                executeFinalCompletion()
+            }
         }
+    }
+
+    private fun executeFinalCompletion() {
+        if (_interviewCompleted.value) return
+        Log.i(TAG, "执行最终面试完成逻辑")
         _ttsPlaybackProgress.value = 0f
         _interviewCompleted.value = true
+        pendingCompletion = false
         stopRecordingInternal()
-        if (!speakFarewell) return
-
-        val farewell = "您太棒了，感谢完成这次愉快的面聊，我们会尽快完成后续的评测工作，报告会在“我的”“简历报告”里展示，请稍晚些查看该报告。"
-        appendMessage(
-            ConversationMessage(
-                role = ConversationRole.DIGITAL_HUMAN,
-                text = farewell
-            )
-        )
-        _latestDigitalHumanText.value = farewell
-        if (useQwen3Tts) {
-            qwen3Tts.speak(farewell)
-        } else {
-            playClientSideTts(farewell, farewell.hashCode().toString())
-        }
     }
 
     private fun playClientSideTts(text: String, textHash: String?) {

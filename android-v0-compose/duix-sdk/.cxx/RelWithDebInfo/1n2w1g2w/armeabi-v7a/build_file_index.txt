@@ -1,0 +1,9 @@
+/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/CMakeLists.txt
+/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/ncnn-20231027-android-shared/armeabi-v7a/lib/cmake/ncnn/ncnn-release.cmake
+/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/ncnn-20231027-android-shared/armeabi-v7a/lib/cmake/ncnn/ncnn.cmake
+/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/ncnn-20231027-android-shared/armeabi-v7a/lib/cmake/ncnn/ncnnConfig.cmake
+/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/opencv-mobile-4.6.0-android/sdk/native/jni/OpenCVConfig-version.cmake
+/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/opencv-mobile-4.6.0-android/sdk/native/jni/OpenCVConfig.cmake
+/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/opencv-mobile-4.6.0-android/sdk/native/jni/abi-armeabi-v7a/OpenCVConfig.cmake
+/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/opencv-mobile-4.6.0-android/sdk/native/jni/abi-armeabi-v7a/OpenCVModules-release.cmake
+/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/opencv-mobile-4.6.0-android/sdk/native/jni/abi-armeabi-v7a/OpenCVModules.cmake

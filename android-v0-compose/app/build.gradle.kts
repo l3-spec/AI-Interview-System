@@ -121,7 +121,7 @@ android {
         versionName = "1.0"
 
         ndk {
-            abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
 
         buildConfigField(
@@ -205,6 +205,15 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+    }
+
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a")
+            isUniversalApk = true // 生成一个包含所有架构的通用包
         }
     }
 

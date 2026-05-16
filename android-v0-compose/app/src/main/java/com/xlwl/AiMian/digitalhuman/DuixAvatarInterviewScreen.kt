@@ -56,6 +56,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import com.xlwl.AiMian.ai.realtime.RealtimeVoiceManager
+import com.xlwl.AiMian.ai.realtime.TranscriptDelta
 import com.xlwl.AiMian.ai.realtime.ConnectionState
 import com.xlwl.AiMian.data.repository.AiInterviewRepository
 import com.example.v0clone.model.DimensionScore
@@ -354,48 +355,93 @@ fun DuixAvatarInterviewScreen(
         val userTranscript by realtimeVoiceManager.partialTranscript.collectAsState()
         val latestAIStreamingText by realtimeVoiceManager.latestDigitalHumanText.collectAsState()
         val latestAIHistoryMessage = _messages.lastOrNull { it.role == com.xlwl.AiMian.ai.realtime.ConversationRole.DIGITAL_HUMAN }?.text
-        val displayAIText = latestAIStreamingText ?: latestAIHistoryMessage
+        val displayAIText = latestAIStreamingText?.takeIf { it.isNotBlank() } ?: latestAIHistoryMessage
         
-        if (!isCameraMaximized) {
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .zIndex(5f)
-                    .padding(bottom = 60.dp)
-                    .padding(horizontal = 24.dp, vertical = 20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // User Subtitle (Me) - Displayed when user is speaking
-                if (userTranscript.isNotBlank() && userTranscript != "正在聆听，请开始说话...") {
-                    UserRealtimeSubtitle(
-                        text = userTranscript,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 8.dp)
-                    )
-                }
-                
-                // Interviewer Subtitle (AI) — KTV Style
-                displayAIText?.let { aiText ->
-                    InterviewerTwoLineSubtitle(
-                        fullText = aiText,
-                        progress = ttsProgress,
-                        isSpeaking = isDhSpeaking,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-                
-                // Circular Countdown
-                if (!isDhSpeaking && timeLimit != null && (timeLimit ?: 0) > 0 && !interviewCompleted) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    CircularCountdown(
-                        totalTimeSeconds = timeLimit!!,
-                        modifier = Modifier.size(60.dp)
-                    )
+        // Debug logging for UI state
+        LaunchedEffect(displayAIText, isDhSpeaking, timeLimit) {
+            Log.d("DuixAvatarScreen", "UI State: displayAIText=${displayAIText?.length ?: 0} chars, isDhSpeaking=$isDhSpeaking, timeLimit=$timeLimit")
+        }
+        val transcriptDelta by realtimeVoiceManager.transcriptDelta.collectAsState(initial = null)
+        
+        // Track the current highlit index based on transcript deltas
+        var ktvHighlightIndex by remember { mutableStateOf(0) }
+        
+        // Reset or update highlight index when delta arrives
+        LaunchedEffect(transcriptDelta, isDhSpeaking) {
+            if (!isDhSpeaking) {
+                ktvHighlightIndex = 0
+            } else {
+                transcriptDelta?.let { delta ->
+                    // Use the delta text length to advance highlight index
+                    // Note: This is a simplified approach, real KTV might need precise timing
+                    val fullText = displayAIText ?: ""
+                    val foundIdx = fullText.indexOf(delta.text, ktvHighlightIndex)
+                    if (foundIdx != -1) {
+                        ktvHighlightIndex = foundIdx + delta.text.length
+                    }
                 }
             }
         }
+
+        // Use either KTV index or linear progress for highlighting
+        val finalHighlightProgress = if (ktvHighlightIndex > 0 && (displayAIText?.length ?: 0) > 0) {
+            ktvHighlightIndex.toFloat() / displayAIText!!.length.toFloat()
+        } else {
+            ttsProgress
+        }
+
+        // Real-time Subtitles Overlay (bottom area)
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .zIndex(15f)
+                .padding(bottom = if (isCameraMaximized) 40.dp else 60.dp)
+                .padding(horizontal = 24.dp, vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.Black.copy(alpha = 0.4f))
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            // User Subtitle (Me) - Displayed when user is speaking
+            if (userTranscript.isNotBlank() && userTranscript != "正在聆听，请开始说话...") {
+                UserRealtimeSubtitle(
+                    text = userTranscript,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp)
+                )
+            }
+            
+            // Interviewer Subtitle (AI) — KTV Style
+            displayAIText?.let { aiText ->
+                InterviewerTwoLineSubtitle(
+                    fullText = aiText,
+                    progress = finalHighlightProgress,
+                    isSpeaking = isDhSpeaking,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            
+            // Circular Countdown
+            if (!isDhSpeaking && timeLimit != null && (timeLimit ?: 0) > 0 && !interviewCompleted) {
+                Spacer(modifier = Modifier.height(16.dp))
+                CircularCountdown(
+                    totalTimeSeconds = timeLimit!!,
+                    modifier = Modifier.size(60.dp)
+                )
+            }
+        }
+    }
+}
+
+
+        // Spacer for bottom padding if needed
+        Spacer(modifier = Modifier.height(16.dp))
 
         // Top UI (Close button and Watermark mask)
         Box(
@@ -490,6 +536,9 @@ fun DuixAvatarInterviewScreen(
         }
     }
 }
+
+
+
 
 // 面试结果展示页面
 @Composable

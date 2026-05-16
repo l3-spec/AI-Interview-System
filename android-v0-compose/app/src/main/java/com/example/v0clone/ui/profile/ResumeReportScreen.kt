@@ -130,9 +130,10 @@ data class ResumeReport(
 @Composable
 fun ResumeReportRoute(
   repository: AiInterviewRepository,
+  initialSessionId: String? = null,
   onBack: () -> Unit
 ) {
-  val viewModel: ResumeReportViewModel = viewModel(factory = ResumeReportViewModel.provideFactory(repository))
+  val viewModel: ResumeReportViewModel = viewModel(factory = ResumeReportViewModel.provideFactory(repository, initialSessionId))
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   val context = LocalContext.current
 

@@ -1,6 +1,7 @@
 package com.xlwl.AiMian
 
 import android.os.Bundle
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.SystemBarStyle
@@ -21,7 +22,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // 启用边到边显示，显式设为透明以消除默认遮罩
+        // 处理 Deep Link
+        val deepLinkUrl = intent?.data?.toString()
+
+        // 启用边到边显示
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.auto(
                 android.graphics.Color.TRANSPARENT,
@@ -33,7 +37,6 @@ class MainActivity : ComponentActivity() {
             )
         )
         
-        // 系统栏颜色管理已移至 V0App 中动态设置
         window.navigationBarColor = android.graphics.Color.TRANSPARENT
         
         setContent {
@@ -42,10 +45,16 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    V0App()
+                    V0App(initialDeepLink = deepLinkUrl)
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // 注意：这里由于 V0App 已经渲染，可能需要通过某种全局状态或事件总线来通知导航
+        // 为了简单起见，如果是在运行中点击通知，我们可以考虑简单的方案
     }
 }
 

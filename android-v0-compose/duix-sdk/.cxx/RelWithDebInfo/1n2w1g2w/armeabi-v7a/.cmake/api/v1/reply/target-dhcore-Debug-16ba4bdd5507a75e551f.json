@@ -1,0 +1,243 @@
+{
+	"archive" : {},
+	"artifacts" : 
+	[
+		{
+			"path" : "libdhcore.a"
+		}
+	],
+	"backtrace" : 1,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_library",
+			"add_definitions",
+			"include_directories"
+		],
+		"files" : 
+		[
+			"CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 91,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 8,
+				"parent" : 0
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 55,
+				"parent" : 0
+			}
+		]
+	},
+	"compileGroups" : 
+	[
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "-g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -march=armv7-a -mthumb -Wformat -Werror=format-security  -fno-limit-debug-info  -fPIC"
+				}
+			],
+			"defines" : 
+			[
+				{
+					"backtrace" : 2,
+					"define" : "ORT_NO_EXCEPTIONS"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 3,
+					"path" : "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/dhcore"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/dhmfcc"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/aes"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/android"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/dhunet"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/opencv-mobile-4.6.0-android/sdk/native/jni/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/ncnn-20231027-android-shared/armeabi-v7a/include/ncnn"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/arm/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/arm/include/onnx"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/arm/include/turbojpeg"
+				}
+			],
+			"language" : "C",
+			"sourceIndexes" : 
+			[
+				0
+			],
+			"sysroot" : 
+			{
+				"path" : "/Volumes/Leo/Tools/android-sdk-macosx/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/sysroot"
+			}
+		},
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "-g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -march=armv7-a -mthumb -Wformat -Werror=format-security   -std=c++17 -fPIC -funwind-tables -fno-omit-frame-pointer -fno-limit-debug-info  -fPIC"
+				}
+			],
+			"defines" : 
+			[
+				{
+					"backtrace" : 2,
+					"define" : "ORT_NO_EXCEPTIONS"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 3,
+					"path" : "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/dhcore"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/dhmfcc"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/aes"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/android"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/dhunet"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/opencv-mobile-4.6.0-android/sdk/native/jni/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/ncnn-20231027-android-shared/armeabi-v7a/include/ncnn"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/arm/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/arm/include/onnx"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp/third/arm/include/turbojpeg"
+				}
+			],
+			"language" : "CXX",
+			"languageStandard" : 
+			{
+				"backtraces" : 
+				[
+					1
+				],
+				"standard" : "17"
+			},
+			"sourceIndexes" : 
+			[
+				1,
+				2
+			],
+			"sysroot" : 
+			{
+				"path" : "/Volumes/Leo/Tools/android-sdk-macosx/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/sysroot"
+			}
+		}
+	],
+	"id" : "dhcore::@6890427a1f51a3e7e1df",
+	"name" : "dhcore",
+	"nameOnDisk" : "libdhcore.a",
+	"paths" : 
+	{
+		"build" : ".",
+		"source" : "."
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "Source Files",
+			"sourceIndexes" : 
+			[
+				0,
+				1,
+				2
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "dhcore/dh_mem.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 1,
+			"path" : "dhcore/dh_data.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 1,
+			"path" : "dhcore/dh_que.cpp",
+			"sourceGroupIndex" : 0
+		}
+	],
+	"type" : "STATIC_LIBRARY"
+}

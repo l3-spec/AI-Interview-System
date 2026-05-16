@@ -69,6 +69,7 @@ export class DeepseekService {
   private apiUrl: string;
   private model: string;
   private thinkingModel: string;
+  private analysisModel: string;
   private maxTokens: number;
   private temperature: number;
   private isEnabled: boolean;
@@ -90,6 +91,7 @@ export class DeepseekService {
       this.apiUrl = process.env.LLM_API_URL || process.env.DEEPSEEK_API_URL || 'https://api.deepseek.com/v1/chat/completions';
       this.model = process.env.LLM_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
       this.thinkingModel = process.env.DEEPSEEK_THINKING_MODEL || 'deepseek-v4-pro';
+      this.analysisModel = process.env.DEEPSEEK_ANALYSIS_MODEL || this.thinkingModel;
     }
     
     this.maxTokens = parseInt(process.env.LLM_MAX_TOKENS || process.env.DEEPSEEK_MAX_TOKENS || process.env.VOLCENGINE_MAX_TOKENS || '4096');
@@ -695,10 +697,12 @@ export class DeepseekService {
         { role: 'user', content: prompt }
       ];
 
+      const isThinking = process.env.DEEPSEEK_ANALYSIS_THINKING === 'true';
       const content = await this.chatCompletion(messages, {
         response_format: { type: 'json_object' },
-        isThinking: true,
-        reasoning_effort: 'high'
+        isThinking: isThinking,
+        model: this.analysisModel,
+        reasoning_effort: isThinking ? 'high' : undefined
       });
 
       // 尝试解析JSON
@@ -1041,94 +1045,67 @@ ${candidateLastAnswer.slice(0, 1200)}
   }
 
   /**
-   * 通用聊天完成方法，供 qaEvaluationService 等调用
+   * 通用聊天完成方法
    */
   async chatCompletion(
-    messages: Array<{ role: string; content: string }>,
-    options?: {
+    messages: any[],
+    options: {
       temperature?: number;
       maxTokens?: number;
       response_format?: any;
-      /** 覆盖默认 DeepSeek 模型，例如 QA 评估专用 model */
+      /** 覆盖默认模型 */
       model?: string;
-    }
+      isThinking?: boolean;
+      reasoning_effort?: 'high' | 'max';
+    } = {}
   ): Promise<string> {
     if (!this.isEnabled) {
       return '{}';
     }
 
     try {
-      const response = await axios.post(
-        this.apiUrl,
-        {
-          model: options?.model || this.model,
-          messages,
-          max_tokens: options?.maxTokens || 2000,
-          temperature: options?.temperature ?? 0.7,
-          stream: false,
-          ...(options?.response_format ? { response_format: options.response_format } : {})
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${this.apiKey}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: 30000
-        }
-      );
+      const isThinking = options.isThinking ?? false;
+      const model = options.model || (isThinking ? this.thinkingModel : this.model);
 
-      return response.data?.choices?.[0]?.message?.content || '{}';
+      const requestData: any = {
+        model,
+        messages,
+        max_tokens: options.maxTokens || this.maxTokens,
+        temperature: isThinking ? undefined : (options.temperature ?? this.temperature),
+        response_format: options.response_format,
+        stream: false,
+      };
+
+      if (isThinking) {
+        requestData.extra_body = {
+          thinking: {
+            type: "enabled"
+          }
+        };
+        if (options.reasoning_effort) {
+          requestData.reasoning_effort = options.reasoning_effort;
+        }
+      }
+
+      const response = await axios.post(this.apiUrl, requestData, {
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: this.defaultTimeoutMs,
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
+      });
+
+      const choice = response.data?.choices?.[0]?.message;
+      if (choice?.reasoning_content) {
+        console.log(`[Deepseek] 思维链: ${choice.reasoning_content}`);
+      }
+      return choice?.content || '{}';
     } catch (error: any) {
       console.error('chatCompletion 失败:', error.message);
       return '{}';
     }
-  }
-  /**
-   * 基础对话补全支持
-   */
-  async chatCompletion(messages: any[], options: { 
-    response_format?: any; 
-    temperature?: number; 
-    isThinking?: boolean;
-    reasoning_effort?: 'high' | 'max';
-  } = {}): Promise<string> {
-    if (!this.isEnabled) return 'Mock response';
-    
-    const isThinking = options.isThinking ?? false;
-    const model = isThinking ? this.thinkingModel : this.model;
-
-    const requestData: any = {
-      model,
-      messages,
-      max_tokens: this.maxTokens,
-      temperature: isThinking ? undefined : (options.temperature ?? this.temperature),
-      response_format: options.response_format,
-    };
-
-    if (isThinking) {
-      requestData.extra_body = {
-        thinking: {
-          type: "enabled"
-        }
-      };
-      if (options.reasoning_effort) {
-        requestData.reasoning_effort = options.reasoning_effort;
-      }
-    }
-
-    const response = await axios.post(this.apiUrl, requestData, {
-      headers: {
-        'Authorization': `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      timeout: this.defaultTimeoutMs,
-    });
-
-    const choice = response.data?.choices?.[0]?.message;
-    if (choice?.reasoning_content) {
-      console.log(`[Deepseek] 思维链: ${choice.reasoning_content}`);
-    }
-    return choice?.content || '';
   }
 }
 

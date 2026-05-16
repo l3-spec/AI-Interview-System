@@ -33,6 +33,7 @@ interface SessionQuestion {
   status?: string;
   answerText?: string;
   answerVideoUrl?: string;
+  timeLimit?: number;
 }
 
 interface SessionData {
@@ -567,6 +568,7 @@ class AIInterviewService {
           questionIndex: i,
           questionText: question,
           status: 'PREPARING',
+          timeLimit: timeLimitPerQuestion,
         };
 
         sessionQuestions.push(sessionQuestion);
@@ -715,6 +717,7 @@ class AIInterviewService {
           status: q.status || undefined,
           answerText: q.answerText || undefined,
           answerVideoUrl: q.answerVideoUrl || undefined,
+          timeLimit: q.timeLimit || undefined,
         })),
         createdAt: session.createdAt,
         startedAt: session.startedAt || undefined,

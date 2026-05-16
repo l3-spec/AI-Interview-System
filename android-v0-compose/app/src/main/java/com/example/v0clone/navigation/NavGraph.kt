@@ -683,7 +683,17 @@ fun AppNavHost(navController: NavHostController) {
             }
         }
 
-        composable(Routes.PROFILE_RESUME_REPORT) {
+        composable(
+            route = "${Routes.PROFILE_RESUME_REPORT}?sessionId={sessionId}",
+            arguments = listOf(
+                navArgument("sessionId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { backStackEntry ->
+            val sessionId = backStackEntry.arguments?.getString("sessionId")
             if (token.isNullOrEmpty()) {
                 LaunchedEffect(Unit) {
                     navController.navigate(LOGIN) { launchSingleTop = true }
@@ -691,6 +701,7 @@ fun AppNavHost(navController: NavHostController) {
             } else {
                 ResumeReportRoute(
                     repository = aiInterviewRepository,
+                    initialSessionId = sessionId,
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -1222,6 +1233,7 @@ fun AppNavHost(navController: NavHostController) {
                                     candidateUserId = currentUserId,
                                     aiInterviewRepository = aiInterviewRepository,
                                     onInterviewComplete = { sessionId ->
+                                        Log.i("DigitalInterview", "收到面试完成回调，准备跳转。sessionId=$sessionId")
                                         coroutineScope.launch {
                                             runCatching {
                                                 if (sessionId.isNotBlank()) {

@@ -28,7 +28,9 @@ import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -68,8 +70,25 @@ data class BottomNavigationItemData(
 )
 
 @Composable
-fun V0App() {
+fun V0App(initialDeepLink: String? = null) {
     val navController = rememberNavController()
+    
+    // 处理 Deep Link 跳转
+    LaunchedEffect(initialDeepLink) {
+        if (!initialDeepLink.isNullOrBlank()) {
+            val uri = Uri.parse(initialDeepLink)
+            if (uri.scheme == "ai-interview" && uri.host == "report") {
+                val sessionId = uri.getQueryParameter("sessionId")
+                if (!sessionId.isNullOrBlank()) {
+                    // 延迟一小会儿确保 NavHost 已就绪
+                    navController.navigate(Routes.PROFILE_RESUME_REPORT) {
+                        launchSingleTop = true
+                    }
+                }
+            }
+        }
+    }
+
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: ""
     val context = LocalContext.current

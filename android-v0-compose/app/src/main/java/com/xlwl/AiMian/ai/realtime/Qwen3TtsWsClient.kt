@@ -32,6 +32,12 @@ import java.io.RandomAccessFile
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
+data class TranscriptDelta(
+    val text: String,
+    val audioTime: Int, // 毫秒
+    val responseId: String
+)
+
 /**
  * Qwen3 TTS WebSocket 客户端
  *
@@ -81,6 +87,10 @@ class Qwen3TtsWsClient(
     /** 错误事件 */
     private val _errors = MutableSharedFlow<String>(extraBufferCapacity = 5)
     val errors: SharedFlow<String> = _errors.asSharedFlow()
+
+    /** 实时增量字幕事件（用于KTV效果） */
+    private val _transcriptDelta = MutableSharedFlow<TranscriptDelta>(extraBufferCapacity = 10)
+    val transcriptDelta: SharedFlow<TranscriptDelta> = _transcriptDelta.asSharedFlow()
 
     /** 是否正在播放音频 */
     private val _isSpeaking = MutableStateFlow(false)
@@ -387,6 +397,15 @@ class Qwen3TtsWsClient(
                     }
                 }
 
+                "tts.transcript_delta" -> {
+                    val text = json.optString("text", "")
+                    val audioTime = json.optInt("audioTime", 0)
+                    val responseId = json.optString("responseId", "")
+                    if (text.isNotEmpty()) {
+                        _transcriptDelta.tryEmit(TranscriptDelta(text, audioTime, responseId))
+                    }
+                }
+
                 "tts.response_done" -> {
                     val responseId = json.optString("responseId", "")
                     Log.i(TAG, "TTS 单次合成完成: responseId=$responseId, chunks=$audioChunkCount")
@@ -578,6 +597,8 @@ class Qwen3TtsWsClient(
                 endDuixStream()
                 stopPlaybackPoll()
                 _playbackProgress.value = 1f
+                _isSpeaking.value = false
+                _mouthRms.value = 0f
                 return
             }
 

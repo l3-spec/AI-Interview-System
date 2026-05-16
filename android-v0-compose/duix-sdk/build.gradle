@@ -11,8 +11,8 @@ android {
         versionCode 13
         versionName '4.1.1'
         ndk {
-            // 设备为 64 位，优先只打包 arm64，减少构建体积与依赖
-            abiFilters 'arm64-v8a'
+            // 支持 64 位和 32 位架构，满足商店上架要求
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
         }
         externalNativeBuild {
             cmake {

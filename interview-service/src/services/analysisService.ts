@@ -1932,6 +1932,16 @@ ${qaText}
             update: data,
             create: data
         });
+
+        // 发送报告就绪通知（异步）
+        try {
+            const { notificationService } = require('./notification.service');
+            notificationService.sendReportReadyNotification(sessionId).catch((err: any) => {
+                console.error('[AnalysisService] 发送通知失败:', err);
+            });
+        } catch (e) {
+            console.warn('[AnalysisService] 加载通知服务失败:', e);
+        }
     }
 
     /**

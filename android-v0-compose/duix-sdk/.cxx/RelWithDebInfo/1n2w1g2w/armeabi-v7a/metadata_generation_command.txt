@@ -1,0 +1,19 @@
+                        -H/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/src/main/cpp
+-DCMAKE_SYSTEM_NAME=Android
+-DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+-DCMAKE_SYSTEM_VERSION=24
+-DANDROID_PLATFORM=android-24
+-DANDROID_ABI=armeabi-v7a
+-DCMAKE_ANDROID_ARCH_ABI=armeabi-v7a
+-DANDROID_NDK=/Volumes/Leo/Tools/android-sdk-macosx/ndk/27.0.12077973
+-DCMAKE_ANDROID_NDK=/Volumes/Leo/Tools/android-sdk-macosx/ndk/27.0.12077973
+-DCMAKE_TOOLCHAIN_FILE=/Volumes/Leo/Tools/android-sdk-macosx/ndk/27.0.12077973/build/cmake/android.toolchain.cmake
+-DCMAKE_MAKE_PROGRAM=/Volumes/Leo/Tools/android-sdk-macosx/cmake/3.22.1/bin/ninja
+-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/build/intermediates/cxx/RelWithDebInfo/1n2w1g2w/obj/armeabi-v7a
+-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/build/intermediates/cxx/RelWithDebInfo/1n2w1g2w/obj/armeabi-v7a
+-DCMAKE_BUILD_TYPE=RelWithDebInfo
+-B/Users/linxiong/Documents/GitHub/AI-Interview-System/android-v0-compose/duix-sdk/.cxx/RelWithDebInfo/1n2w1g2w/armeabi-v7a
+-GNinja
+-DANDROID_LINKER_FLAGS=-Wl,-z,max-page-size=16384
+                        Build command args: []
+                        Version: 2
