@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Layout, 
   Menu, 
@@ -26,7 +26,6 @@ import {
   CommentOutlined
 } from '@ant-design/icons';
 import { useAuth } from '../contexts/AuthContext';
-import { GlassCard, GlassButton, BackgroundBlobs } from './GlassComponents';
 import logo from '../assets/company-logo.png';
 
 const { Header, Sider, Content } = Layout;
@@ -38,197 +37,340 @@ const DashboardLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // 新增：加载中处理，防止页面空白
   if (loading) {
     return (
-      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-main)' }}>
-        <BackgroundBlobs />
-        <span style={{ fontSize: 18, color: 'var(--text-muted)' }}>正在初始化精英工作区...</span>
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f2f5' }}>
+        <span style={{ fontSize: 18, color: '#888' }}>加载中...</span>
       </div>
     );
   }
 
+  // 如果未登录，重定向到登录页
   React.useEffect(() => {
-    if (!user) navigate('/login');
+    if (!user) {
+      navigate('/login');
+    }
   }, [user, navigate]);
 
   const isInterviewRoom = /^\/interviews\/[\w-]+$/.test(location.pathname);
 
+  // 菜单项配置
   const menuItems = [
-    { key: 'dashboard', icon: <DashboardOutlined />, label: '仪表盘', path: '/dashboard' },
-    { key: 'jobs', icon: <BankOutlined />, label: '职位管理', path: '/jobs' },
-    { key: 'candidates', icon: <TeamOutlined />, label: '候选人', path: '/candidates' },
-    { key: 'interviews', icon: <ScheduleOutlined />, label: '面试管理', path: '/interviews' },
-    { key: 'ai-interview-communication', icon: <CommentOutlined />, label: 'AI 面试沟通', path: '/ai-interview-communication' },
+    {
+      key: 'dashboard',
+      icon: <DashboardOutlined />,
+      label: '仪表盘',
+      path: '/dashboard'
+    },
+    {
+      key: 'jobs',
+      icon: <BankOutlined />,
+      label: '职位管理',
+      path: '/jobs'
+    },
+    {
+      key: 'candidates',
+      icon: <TeamOutlined />,
+      label: '候选人',
+      path: '/candidates'
+    },
+    {
+      key: 'interviews',
+      icon: <ScheduleOutlined />,
+      label: '面试管理',
+      path: '/interviews'
+    },
+    {
+      key: 'ai-interview-communication',
+      icon: <CommentOutlined />,
+      label: 'AI面试沟通',
+      path: '/ai-interview-communication'
+    },
     {
       key: 'company',
       icon: <BankOutlined />,
       label: '企业管理',
       children: [
-        { key: 'company-profile', label: '企业信息', path: '/company/profile' },
-        { key: 'company-verification', label: '实名认证', path: '/company/verification' }
+        {
+          key: 'company-profile',
+          label: '企业信息',
+          path: '/company/profile'
+        },
+        {
+          key: 'company-verification',
+          label: '实名认证',
+          path: '/company/verification'
+        }
       ]
     },
-    { key: 'settings', icon: <SettingOutlined />, label: '设置中心', path: '/settings' }
+    {
+      key: 'settings',
+      icon: <SettingOutlined />,
+      label: '设置',
+      path: '/settings'
+    }
   ];
 
+  // 获取当前选中的菜单项
   const getSelectedKeys = () => {
     const path = location.pathname;
     for (const item of menuItems) {
       if (item.children) {
         for (const child of item.children) {
-          if (child.path === path) return [child.key];
+          if (child.path === path) {
+            return [child.key];
+          }
         }
-      } else if (item.path === path) return [item.key];
+      } else if (item.path === path) {
+        return [item.key];
+      }
     }
     return ['dashboard'];
   };
 
-  const handleMenuClick = ({ key }: { key: string }) => {
+  // 获取展开的菜单项
+  const getOpenKeys = () => {
+    const path = location.pathname;
     for (const item of menuItems) {
-      if (item.key === key && item.path) { navigate(item.path); return; }
       if (item.children) {
         for (const child of item.children) {
-          if (child.key === key) { navigate(child.path); return; }
+          if (child.path === path) {
+            return [item.key];
+          }
+        }
+      }
+    }
+    return [];
+  };
+
+  // 处理菜单点击
+  const handleMenuClick = ({ key }: { key: string }) => {
+    // 找到对应的菜单项
+    for (const item of menuItems) {
+      if (item.key === key && item.path) {
+        navigate(item.path);
+        return;
+      }
+      if (item.children) {
+        for (const child of item.children) {
+          if (child.key === key) {
+            navigate(child.path);
+            return;
+          }
         }
       }
     }
   };
 
+  // 用户下拉菜单 items
   const userMenuItems = [
-    { key: 'profile', icon: <UserOutlined />, label: '个人资料', onClick: () => navigate('/settings/profile') },
-    { key: 'verification', icon: <SafetyCertificateOutlined />, label: <Space>实名认证 {!user?.isVerified && <Badge status="warning" />}</Space>, onClick: () => navigate('/company/verification') },
+    {
+      key: 'profile',
+      icon: <UserOutlined />, 
+      label: '个人设置',
+      onClick: () => navigate('/settings/profile')
+    },
+    {
+      key: 'verification',
+      icon: <SafetyCertificateOutlined />, 
+      label: (
+        <Space>
+          实名认证
+          {!user?.isVerified && <Badge status="warning" />}
+        </Space>
+      ),
+      onClick: () => navigate('/company/verification')
+    },
     { type: 'divider' as const },
-    { key: 'logout', icon: <LogoutOutlined />, label: '退出登录', onClick: async () => { await logout(); navigate('/'); } }
+    {
+      key: 'logout',
+      icon: <LogoutOutlined />, 
+      label: '退出登录',
+      onClick: async () => {
+        await logout();
+        navigate('/');
+      }
+    }
   ];
 
-  if (isInterviewRoom) return <div className="interview-room-layout"><Outlet /></div>;
+  // 生成面包屑
+  const getBreadcrumb = () => {
+    const path = location.pathname;
+    const breadcrumbItems = [
+      { title: '首页' }
+    ];
+
+    if (path.includes('/jobs')) {
+      breadcrumbItems.push({ title: '职位管理' });
+    } else if (path.includes('/candidates')) {
+      breadcrumbItems.push({ title: '候选人' });
+    } else if (path.includes('/interviews')) {
+      breadcrumbItems.push({ title: '面试管理' });
+    } else if (path.includes('/ai-interview-communication')) {
+      breadcrumbItems.push({ title: 'AI面试沟通' });
+    } else if (path.includes('/company')) {
+      breadcrumbItems.push({ title: '企业管理' });
+      if (path.includes('/profile')) {
+        breadcrumbItems.push({ title: '企业信息' });
+      } else if (path.includes('/verification')) {
+        breadcrumbItems.push({ title: '实名认证' });
+      }
+    } else if (path.includes('/settings')) {
+      breadcrumbItems.push({ title: '设置' });
+    }
+
+    return breadcrumbItems;
+  };
+
+  if (isInterviewRoom) {
+    return (
+      <div className="interview-room-layout">
+        <Outlet />
+      </div>
+    );
+  }
 
   return (
-    <Layout style={{ minHeight: '100vh', background: 'var(--bg-main)', position: 'relative' }}>
-      <BackgroundBlobs />
-      
+    <Layout style={{ minHeight: '100vh' }}>
+      {/* 侧边栏 */}
       <Sider 
         trigger={null} 
         collapsible 
         collapsed={collapsed}
-        width={260}
         style={{
-          background: 'rgba(2, 6, 23, 0.4)',
-          backdropFilter: 'blur(20px)',
-          borderRight: '1px solid var(--glass-border)',
-          zIndex: 10
+          background: '#fff',
+          boxShadow: '2px 0 8px rgba(0,0,0,0.15)'
         }}
       >
-        <div style={{ padding: collapsed ? '24px 12px' : '24px 24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <img 
-            src={logo} 
-            alt="U-Talent" 
-            style={{ 
-              width: collapsed ? 32 : '85%', 
-              height: 'auto', 
-              maxHeight: collapsed ? 32 : 48,
-              objectFit: 'contain',
-              filter: 'drop-shadow(0 0 10px rgba(56, 189, 248, 0.1))'
-            }} 
+        {/* Logo区域 */}
+        <div
+          style={{
+            padding: collapsed ? '16px 12px' : '16px 20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: collapsed ? 'center' : 'flex-start',
+            borderBottom: '1px solid #f0f0f0',
+            gap: collapsed ? 0 : 12
+          }}
+        >
+          <img
+            src={logo}
+            alt="U-Talent"
+            style={{
+              width: collapsed ? 32 : 40,
+              height: collapsed ? 32 : 40,
+              borderRadius: '12px'
+            }}
           />
+          {!collapsed && (
+            <div style={{ textAlign: 'left' }}>
+              <Text strong style={{ color: '#2563eb', fontSize: 18 }}>
+                U-Talent
+              </Text>
+              <div style={{ fontSize: 12, color: '#8c8c8c' }}>柚汀教育科技</div>
+            </div>
+          )}
         </div>
 
-
+        {/* 导航菜单 */}
         <Menu
-          theme="dark"
+          theme="light"
           mode="inline"
           selectedKeys={getSelectedKeys()}
+          defaultOpenKeys={getOpenKeys()}
           items={menuItems}
           onClick={handleMenuClick}
-          style={{ background: 'transparent', borderRight: 0, marginTop: 16 }}
-          className="elite-sidebar-menu"
+          style={{ borderRight: 0 }}
         />
       </Sider>
 
-      <Layout style={{ background: 'transparent' }}>
+      {/* 主要内容区域 */}
+      <Layout style={{ background: '#f0f2f5' }}>
+        {/* 顶部导航栏 */}
         <Header style={{ 
-          padding: '0 32px',
-          background: 'rgba(2, 6, 23, 0.4)',
-          backdropFilter: 'blur(10px)',
-          borderBottom: '1px solid var(--glass-border)',
+          padding: '0 24px',
+          background: '#fff',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
-          height: 80,
-          zIndex: 9
+          justifyContent: 'space-between'
         }}>
+          {/* 左侧：菜单折叠按钮 */}
           <Button
             type="text"
             icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
             onClick={() => setCollapsed(!collapsed)}
-            style={{ fontSize: '20px', color: 'var(--text-muted)' }}
+            style={{ fontSize: '16px' }}
           />
 
-          <Space size={32} align="center">
-            <Badge count={3} size="small" offset={[0, 8]}>
-              <Button type="text" icon={<BellOutlined />} style={{ color: 'var(--text-muted)', fontSize: 18 }} />
+          {/* 右侧：用户信息和操作 */}
+          <Space size={24} align="center" style={{ display: 'flex', alignItems: 'center' }}>
+            {/* 通知铃铛 */}
+            <Badge count={3} size="small">
+              <Button type="text" icon={<BellOutlined />} style={{ height: 40 }} />
             </Badge>
 
+            {/* 企业认证状态 */}
+            {user?.isVerified ? (
+              <Badge status="success" text="已认证" />
+            ) : (
+              <Badge status="warning" text="待认证" />
+            )}
+
+            {/* 用户下拉菜单 */}
             <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
-              <div className="user-profile-trigger">
-                <Avatar icon={<UserOutlined />} style={{ backgroundColor: 'var(--primary)' }} />
-                <div className="user-info">
-                  <div className="user-name">{user?.name || '企业用户'}</div>
-                  <div className="user-status">{user?.isVerified ? '已认证合作伙伴' : '待实名认证'}</div>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '4px 12px',
+                  border: '1px solid #e6f4ff',
+                  borderRadius: '24px',
+                  background: '#f5f9ff',
+                  cursor: 'pointer',
+                  minHeight: 44
+                }}
+              >
+                <Avatar icon={<UserOutlined />} style={{ backgroundColor: '#2563eb' }} />
+                <div style={{ lineHeight: 1.3 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#1f2937' }}>
+                    {user?.name || '未知企业'}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#6b7280' }}>
+                    {user?.email}
+                  </div>
                 </div>
               </div>
             </Dropdown>
           </Space>
         </Header>
 
-        <Content style={{ margin: '32px', overflow: 'initial' }}>
-          <Outlet />
+        {/* 内容区域 */}
+        <Content style={{ 
+          margin: '24px',
+          background: '#fff',
+          borderRadius: '8px',
+          overflow: 'hidden'
+        }}>
+          {/* 面包屑导航 */}
+          <div style={{ 
+            padding: '16px 24px',
+            borderBottom: '1px solid #f0f0f0',
+            background: '#fafafa'
+          }}>
+            <Breadcrumb items={getBreadcrumb()} />
+          </div>
+
+          {/* 页面内容 */}
+          <div style={{ padding: '24px' }}>
+            <Outlet />
+          </div>
         </Content>
       </Layout>
-
-      <style dangerouslySetInnerHTML={{ __html: `
-        .elite-sidebar-menu .ant-menu-item {
-          height: 48px !important;
-          line-height: 48px !important;
-          border-radius: 12px !important;
-          margin: 4px 12px !important;
-          color: var(--text-muted) !important;
-        }
-        .elite-sidebar-menu .ant-menu-item-selected {
-          background: rgba(42, 157, 143, 0.15) !important;
-          color: var(--text-main) !important;
-          border-right: 3px solid var(--primary) !important;
-          border: 1px solid rgba(42, 157, 143, 0.3) !important;
-        }
-        .elite-sidebar-menu .ant-menu-item:hover {
-          color: var(--text-main) !important;
-        }
-        
-        .user-profile-trigger {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 6px 16px;
-          border: 1px solid var(--glass-border);
-          border-radius: 16px;
-          background: rgba(255, 255, 255, 0.03);
-          cursor: pointer;
-          transition: all 0.3s;
-        }
-        .user-profile-trigger:hover {
-          background: rgba(255, 255, 255, 0.06);
-          border-color: var(--primary);
-        }
-        .user-info { line-height: 1.2; }
-        .user-name { font-size: 14px; font-weight: 700; color: var(--text-main); }
-        .user-status { font-size: 11px; color: var(--text-muted); font-weight: 600; }
-        
-        .ant-breadcrumb-link, .ant-breadcrumb-separator {
-          color: var(--text-muted) !important;
-        }
-      `}} />
     </Layout>
   );
 };
 
-export default DashboardLayout;
+export default DashboardLayout; 

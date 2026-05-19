@@ -149,6 +149,7 @@ export interface MultimodalAssessment {
   toneStability: number; // 语气稳定性 0-10
   speechFluency: number; // 语速流畅度 0-10
   stutterCount: number; // 卡顿次数
+  hesitationCount?: number; // 犹豫次数（API hesitionCount 别名）
 }
 
 // 能力评估
@@ -172,6 +173,7 @@ export interface AbilityAssessment {
   learningGrowthScore?: number; // 2. 学习成长 - 学习速度、知识迁移、自我驱动 📈
   communicationCollaborationScore?: number; // 3. 沟通协作 - 表达清晰、倾听理解、团队配合 🤝
   problemSolvingScore?: number; // 4. 问题解决 - 分析能力、创新思维、方案落地 🧩
+  problemSolvingNewScore?: number; // API 返回键名（映射到 problemSolvingScore）
   achievementExecutionScore?: number; // 5. 成就执行 - 目标导向、结果驱动、责任担当 🎯
   stressResilienceScore?: number; // 6. 抗压韧性 - 情绪稳定、逆商、快速恢复 🛡️
   // 兼容已有新字段

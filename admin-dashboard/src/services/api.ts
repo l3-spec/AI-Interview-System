@@ -894,6 +894,11 @@ export const candidateApi = {
   unfavorite: async (candidateId: string) => {
     return await apiClient.delete(`/candidates/${candidateId}/favorite`);
   },
+
+  // 获取AI面试分析报告
+  getAnalysisReport: async (candidateId: string): Promise<ApiResponse<any>> => {
+    return await apiClient.get(`/candidates/${candidateId}/analysis`);
+  },
 };
 
 // 面试API
@@ -904,8 +909,15 @@ export const interviewApi = {
   },
   
   // 获取面试详情（包含能力评估和问答记录）
+  // 后端可能返回 { success: true, data: { interview, assessment, qaList } }
+  // 直接透传：调用侧使用 mapReportToAssessment 做标准化映射
   getDetail: async (id: string): Promise<InterviewDetailResponse> => {
-    return await apiClient.get(`/interviews/${id}/detail`);
+    const response: any = await apiClient.get(`/interviews/${id}/detail`);
+    // 兼容两种包裹格式：{ data: { interview, ... } } 或直接的 { interview, ... }
+    if (response?.data && (response.data.interview || response.data.assessment || response.data.qaList)) {
+      return response.data as InterviewDetailResponse;
+    }
+    return response as InterviewDetailResponse;
   },
   
   // 获取面试基本信息

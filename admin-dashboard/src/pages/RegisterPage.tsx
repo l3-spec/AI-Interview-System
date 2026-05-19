@@ -113,7 +113,7 @@ const RegisterPage: React.FC = () => {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'var(--bg-main)',
+      background: '#f0f2f5',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
@@ -126,10 +126,10 @@ const RegisterPage: React.FC = () => {
       }}>
         <h1 style={{ 
           fontSize: '28px',
-          color: 'var(--primary)',
+          color: '#1890ff',
           margin: '0 0 8px 0'
         }}>
-          U-Talent 柚汀教育科技
+          U-Talent
         </h1>
         <p style={{ 
           fontSize: '16px',
@@ -336,11 +336,11 @@ const RegisterPage: React.FC = () => {
             />
             <span>
               我已阅读并同意
-              <Link to="/user-instructions" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', margin: '0 2px' }}>
+              <Link to="/user-instructions" target="_blank" rel="noopener noreferrer" style={{ color: '#0091ff', margin: '0 2px' }}>
                 《用户须知》
               </Link>
               和
-              <Link to="/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', margin: '0 2px' }}>
+              <Link to="/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ color: '#0091ff', margin: '0 2px' }}>
                 《隐私条款》
               </Link>
             </span>
@@ -352,7 +352,7 @@ const RegisterPage: React.FC = () => {
             style={{
               width: '100%',
               padding: '12px',
-              background: loading ? 'var(--primary-glow)' : 'var(--primary)',
+              background: loading ? '#bae7ff' : '#1890ff',
               color: 'white',
               border: 'none',
               borderRadius: '4px',
@@ -377,7 +377,7 @@ const RegisterPage: React.FC = () => {
               style={{
                 background: 'none',
                 border: 'none',
-                color: 'var(--primary)',
+                color: '#1890ff',
                 cursor: 'pointer',
                 padding: '0 4px'
               }}
@@ -396,9 +396,9 @@ const RegisterPage: React.FC = () => {
         fontSize: '12px'
       }}>
         注册前请阅读
-        <Link to="/user-instructions" style={{ color: 'var(--primary)', textDecoration: 'none' }}>《用户须知》</Link>
+        <Link to="/user-instructions" style={{ color: '#0091ff', textDecoration: 'none' }}>《用户须知》</Link>
         与
-        <Link to="/privacy-policy" style={{ color: 'var(--primary)', textDecoration: 'none' }}>《隐私条款》</Link>
+        <Link to="/privacy-policy" style={{ color: '#0091ff', textDecoration: 'none' }}>《隐私条款》</Link>
       </div>
 
       <FirstLaunchPrivacyModal

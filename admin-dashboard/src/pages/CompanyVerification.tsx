@@ -349,7 +349,7 @@ const CompanyVerification: React.FC = () => {
   // 渲染审核中状态
   const renderPendingStatus = () => (
     <Result
-      icon={<ClockCircleOutlined style={{ color: 'var(--primary)' }} />}
+      icon={<ClockCircleOutlined style={{ color: '#1890ff' }} />}
       title="认证审核中"
       subTitle="您的认证申请已提交，我们正在审核您的资料，请耐心等待"
       extra={
@@ -395,7 +395,7 @@ const CompanyVerification: React.FC = () => {
               </Text>
             </Timeline.Item>
             <Timeline.Item 
-              dot={<ClockCircleOutlined style={{ color: 'var(--primary)' }} />}
+              dot={<ClockCircleOutlined style={{ color: '#1890ff' }} />}
             >
               <div>平台审核中</div>
               <Text type="secondary">预计1-3个工作日完成</Text>

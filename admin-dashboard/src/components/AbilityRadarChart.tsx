@@ -50,7 +50,7 @@ const getScoreLevel = (score: number): ScoreLevel => {
 const getLevelColor = (level: ScoreLevel): string => {
   const map = {
     '优秀': '#52c41a',
-    '良好': 'var(--primary)',
+    '良好': '#1890ff',
     '一般': '#faad14',
     '待提升': '#ff4d4f'
   };
@@ -107,7 +107,7 @@ const AbilityRadarChart: React.FC<Props> = ({
           boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
         }}>
           <p style={{ margin: 0, fontWeight: 'bold' }}>{`${label}`}</p>
-          <p style={{ margin: 0, color: 'var(--primary)' }}>
+          <p style={{ margin: 0, color: '#1890ff' }}>
             {`评分: ${payload[0].value}/10`}
           </p>
         </div>
@@ -144,11 +144,11 @@ const AbilityRadarChart: React.FC<Props> = ({
               <Radar
                 name="能力评分"
                 dataKey="score"
-                stroke="var(--primary)"
-                fill="var(--primary)"
+                stroke="#1890ff"
+                fill="#1890ff"
                 fillOpacity={0.3}
                 strokeWidth={2}
-                dot={{ fill: 'var(--primary)', strokeWidth: 2, r: 4 }}
+                dot={{ fill: '#1890ff', strokeWidth: 2, r: 4 }}
               />
               <Tooltip content={<CustomTooltip />} />
               <Legend />
@@ -239,7 +239,7 @@ const AbilityRadarChart: React.FC<Props> = ({
                 <Text strong>👀 眼神接触</Text>
                 <Progress 
                   percent={assessment.multimodal.eyeContact * 10} 
-                  strokeColor="var(--primary)"
+                  strokeColor="#1890ff"
                   format={() => `${assessment.multimodal.eyeContact.toFixed(1)}/10`}
                 />
               </div>

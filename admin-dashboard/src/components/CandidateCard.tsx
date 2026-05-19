@@ -131,7 +131,7 @@ const CandidateCard: React.FC<Props> = ({
                 value={getScoreStars(interview.score)} 
                 style={{ fontSize: '14px' }}
               />
-              <span style={{ fontSize: '16px', fontWeight: 'bold', color: 'var(--primary)' }}>
+              <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#1890ff' }}>
                 {interview.score.toFixed(1)}
               </span>
             </div>

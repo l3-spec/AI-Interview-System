@@ -21,6 +21,9 @@ import {
   Typography,
   Badge,
   Tooltip,
+  Collapse,
+  Progress,
+  Spin,
   message
 } from 'antd';
 import {
@@ -40,6 +43,10 @@ import {
 import { candidateApi, jobApi } from '../services/api';
 import { Candidate, CandidateListParams, Job } from '../types/interview';
 import InterviewDetailModal from '../components/InterviewDetailModal';
+import {
+  Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
+  ResponsiveContainer, Tooltip as RechartsTooltip
+} from 'recharts';
 
 const { Option } = Select;
 const { Search } = Input;
@@ -60,6 +67,8 @@ const CandidateManagement: React.FC = () => {
   const [interviewModalVisible, setInterviewModalVisible] = useState(false);
   const [selectedInterviewId, setSelectedInterviewId] = useState<string>('');
   const [favoriteLoading, setFavoriteLoading] = useState<string[]>([]);
+  const [analysisReport, setAnalysisReport] = useState<any>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
 
   // 加载候选人列表
   const loadCandidates = async () => {
@@ -170,9 +179,21 @@ const CandidateManagement: React.FC = () => {
   };
 
   // 查看候选人详情
-  const showCandidateDetail = (candidate: Candidate) => {
+  const showCandidateDetail = async (candidate: Candidate) => {
     setSelectedCandidate(candidate);
     setCandidateDetailVisible(true);
+    setAnalysisReport(null);
+    setAnalysisLoading(true);
+    try {
+      const response = await candidateApi.getAnalysisReport(candidate.id);
+      if (response.success && response.data?.hasReport) {
+        setAnalysisReport(response.data);
+      }
+    } catch (error) {
+      // 静默处理，分析报告不是必须的
+    } finally {
+      setAnalysisLoading(false);
+    }
   };
 
   // 表格列定义
@@ -204,7 +225,7 @@ const CandidateManagement: React.FC = () => {
       render: (record: Candidate) => (
         <div>
           <div style={{ marginBottom: '4px' }}>
-            <MailOutlined style={{ marginRight: '4px', color: 'var(--primary)' }} />
+            <MailOutlined style={{ marginRight: '4px', color: '#1890ff' }} />
             <Text copyable style={{ fontSize: '12px' }}>{record.email}</Text>
           </div>
           <div>
@@ -314,7 +335,7 @@ const CandidateManagement: React.FC = () => {
               title="待面试"
               value={156}
               prefix={<CalendarOutlined />}
-              valueStyle={{ color: 'var(--primary)' }}
+              valueStyle={{ color: '#1890ff' }}
             />
           </Card>
         </Col>
@@ -557,6 +578,134 @@ const CandidateManagement: React.FC = () => {
                   </Button>
                 </div>
               </div>
+            )}
+
+            {/* AI面试分析报告 */}
+            {analysisLoading && (
+              <div style={{ textAlign: 'center', padding: '24px' }}>
+                <Spin tip="加载分析报告..." />
+              </div>
+            )}
+            {!analysisLoading && analysisReport?.hasReport && (
+              <>
+                <Divider />
+                <div style={{ marginBottom: '16px' }}>
+                  <Row justify="space-between" align="middle">
+                    <Col>
+                      <Text strong style={{ fontSize: '16px' }}>
+                        📊 AI面试分析报告
+                      </Text>
+                    </Col>
+                    <Col>
+                      <Tag color="blue">{analysisReport.jobTarget}</Tag>
+                      <Text type="secondary" style={{ fontSize: '12px' }}>
+                        {analysisReport.completedAt ? new Date(analysisReport.completedAt).toLocaleDateString() : ''}
+                      </Text>
+                    </Col>
+                  </Row>
+                </div>
+                {/* 雷达图 */}
+                <div style={{ width: '100%', height: 300, marginBottom: '16px' }}>
+                  <ResponsiveContainer>
+                    <RadarChart data={[
+                      { ability: '专业能力', score: analysisReport.report.newDimensionScores.professionalAbilityScore, fullMark: 10 },
+                      { ability: '学习成长', score: analysisReport.report.newDimensionScores.learningGrowthScore, fullMark: 10 },
+                      { ability: '沟通协作', score: analysisReport.report.newDimensionScores.communicationCollaborationScore, fullMark: 10 },
+                      { ability: '问题解决', score: analysisReport.report.newDimensionScores.problemSolvingScore, fullMark: 10 },
+                      { ability: '成就执行', score: analysisReport.report.newDimensionScores.achievementExecutionScore, fullMark: 10 },
+                      { ability: '抗压韧性', score: analysisReport.report.newDimensionScores.stressResilienceScore, fullMark: 10 },
+                    ]}>
+                      <PolarGrid gridType="polygon" />
+                      <PolarAngleAxis dataKey="ability" tick={{ fontSize: 11 }} />
+                      <PolarRadiusAxis domain={[0, 10]} tickCount={6} />
+                      <Radar name="能力评分" dataKey="score" stroke="#1890ff" fill="#1890ff" fillOpacity={0.3} />
+                      <RechartsTooltip />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                </div>
+                {/* 综合评分 */}
+                <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+                  <Statistic
+                    title="综合评分"
+                    value={analysisReport.report.overallScore}
+                    suffix="/ 100"
+                    valueStyle={{ color: '#1890ff' }}
+                  />
+                </div>
+                {/* 维度详情 */}
+                <Collapse ghost items={[{
+                  key: 'dimensions',
+                  label: '查看各维度详细评分',
+                  children: (
+                    <Row gutter={[12, 12]}>
+                      {(analysisReport.report.competenciesDetailed || []).map((d: any) => (
+                        <Col span={12} key={d.key}>
+                          <Card size="small">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <Text strong>{d.name}</Text>
+                              <Tag color={d.score >= 9 ? 'green' : d.score >= 7.5 ? 'blue' : d.score >= 6 ? 'orange' : 'red'}>
+                                {d.level || (d.score >= 9 ? '优秀' : d.score >= 7.5 ? '良好' : d.score >= 6 ? '一般' : '待提升')}
+                              </Tag>
+                            </div>
+                            <Progress percent={d.score * 10} size="small" />
+                            {d.description && (
+                              <Text type="secondary" style={{ fontSize: '12px' }}>{d.description}</Text>
+                            )}
+                          </Card>
+                        </Col>
+                      ))}
+                    </Row>
+                  )
+                }]} />
+                {/* 优势与改进 */}
+                {(analysisReport.report.strengths?.length > 0 || analysisReport.report.improvements?.length > 0) && (
+                  <Row gutter={16} style={{ marginTop: '16px' }}>
+                    <Col span={12}>
+                      <Text strong style={{ color: '#52c41a' }}>✅ 优势</Text>
+                      <ul style={{ paddingLeft: '20px', marginTop: '8px' }}>
+                        {(analysisReport.report.strengths || []).map((s: string, i: number) => (
+                          <li key={i}><Text>{s}</Text></li>
+                        ))}
+                      </ul>
+                    </Col>
+                    <Col span={12}>
+                      <Text strong style={{ color: '#faad14' }}>🔧 改进建议</Text>
+                      <ul style={{ paddingLeft: '20px', marginTop: '8px' }}>
+                        {(analysisReport.report.improvements || []).map((s: string, i: number) => (
+                          <li key={i}><Text>{s}</Text></li>
+                        ))}
+                      </ul>
+                    </Col>
+                  </Row>
+                )}
+                {/* Tips */}
+                {analysisReport.report.tips && (
+                  <div style={{ marginTop: '16px', padding: '12px', backgroundColor: '#f0f5ff', borderRadius: '8px' }}>
+                    <Text strong>💡 职场Tips：</Text>
+                    <Text>{analysisReport.report.tips}</Text>
+                  </div>
+                )}
+                {/* 历史报告 */}
+                {analysisReport.reportHistory?.length > 0 && (
+                  <>
+                    <Divider />
+                    <Text strong>📋 历史面试报告</Text>
+                    <Table
+                      style={{ marginTop: '8px' }}
+                      size="small"
+                      pagination={false}
+                      dataSource={analysisReport.reportHistory}
+                      rowKey="sessionId"
+                      columns={[
+                        { title: '面试职位', dataIndex: 'jobTarget', key: 'jobTarget' },
+                        { title: '综合评分', dataIndex: 'overallScore', key: 'overallScore', render: (v: number) => <Tag color="blue">{v}</Tag> },
+                        { title: '完成时间', dataIndex: 'completedAt', key: 'completedAt', render: (v: string) => v ? new Date(v).toLocaleDateString() : '-' },
+                        { title: '状态', dataIndex: 'analysisStatus', key: 'analysisStatus', render: (v: string) => <Tag color={v === 'COMPLETED' ? 'green' : 'orange'}>{v}</Tag> }
+                      ]}
+                    />
+                  </>
+                )}
+              </>
             )}
           </div>
         )}

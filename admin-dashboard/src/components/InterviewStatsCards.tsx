@@ -74,8 +74,8 @@ const InterviewStatsCards: React.FC<Props> = ({ interviews, stats, style }) => {
             <Statistic
               title="总面试数"
               value={totalInterviews}
-              prefix={<UserOutlined style={{ color: 'var(--primary)' }} />}
-              valueStyle={{ color: 'var(--primary)' }}
+              prefix={<UserOutlined style={{ color: '#1890ff' }} />}
+              valueStyle={{ color: '#1890ff' }}
             />
           </Card>
         </Col>
@@ -203,7 +203,7 @@ const InterviewStatsCards: React.FC<Props> = ({ interviews, stats, style }) => {
                         <Statistic
                           title="通过"
                           value={stats.passed}
-                          valueStyle={{ fontSize: '16px', color: 'var(--primary)' }}
+                          valueStyle={{ fontSize: '16px', color: '#1890ff' }}
                         />
                       </Col>
                     </Row>

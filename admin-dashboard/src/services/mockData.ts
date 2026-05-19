@@ -468,18 +468,12 @@ const mockInterviews: Interview[] = [
   }
 ];
 
-// 模拟能力评估数据
+// 模拟能力评估数据（新6维度 + 详细描述 + 多模态）
 const mockAssessments: Record<string, AbilityAssessment> = {
   '1': {
     id: 'assessment-1',
-    // 新6维度 (2026版)
-    professionalAbilityScore: 8.8,
-    learningGrowthScore: 8.2,
-    communicationCollaborationScore: 8.5,
-    problemSolvingScore: 8.8,
-    achievementExecutionScore: 7.8,
-    stressResilienceScore: 8.0,
     interviewId: '1',
+    // 旧字段（向后兼容）
     technicalSkills: 9.0,
     communication: 8.5,
     problemSolving: 8.8,
@@ -487,6 +481,13 @@ const mockAssessments: Record<string, AbilityAssessment> = {
     leadership: 7.5,
     creativity: 8.0,
     adaptability: 8.3,
+    // 新6维度 (2026版)
+    professionalAbilityScore: 8.8,
+    learningGrowthScore: 8.2,
+    communicationCollaborationScore: 8.5,
+    problemSolvingScore: 8.8,
+    achievementExecutionScore: 7.8,
+    stressResilienceScore: 8.0,
     overallScore: 8.5,
     feedback: 'Henry在技术能力方面表现出色，特别是在React和TypeScript的使用上非常熟练。沟通能力强，能够清晰表达技术观点。问题解决能力突出，在面试中的算法题目完成得很好。团队协作意识强，有一定的领导潜力。',
     strengths: [
@@ -499,16 +500,52 @@ const mockAssessments: Record<string, AbilityAssessment> = {
       '可以加强对系统架构设计的理解',
       '项目管理经验有待提升',
       '可以多参与开源项目提升影响力'
-    ]
+    ],
+    // 各维度详细描述（对应 competenciesDetailed）
+    dimensionDetails: {
+      professionalAbilityScore: {
+        score: 8.8,
+        level: '优秀',
+        description: 'React和TypeScript技术栈掌握扎实，具备良好的组件化开发思维，代码规范意识强。'
+      },
+      learningGrowthScore: {
+        score: 8.2,
+        level: '优秀',
+        description: '对新技术有敏锐的嗅觉，能够快速学习并应用到项目中，具备良好的知识迁移能力。'
+      },
+      communicationCollaborationScore: {
+        score: 8.5,
+        level: '优秀',
+        description: '表达清晰、逻辑性强，能够很好地阐述技术观点，与面试官互动自然流畅。'
+      },
+      problemSolvingScore: {
+        score: 8.8,
+        level: '优秀',
+        description: '算法题目完成度高，问题分解思路清晰，能够考虑边界情况和性能优化。'
+      },
+      achievementExecutionScore: {
+        score: 7.8,
+        level: '良好',
+        description: '有一定项目管理意识，能够按时交付任务，但在跨团队推动方面经验尚浅。'
+      },
+      stressResilienceScore: {
+        score: 8.0,
+        level: '优秀',
+        description: '面试过程中表现从容，面对追问能够冷静思考，情绪控制良好。'
+      }
+    },
+    // 多模态行为分析
+    multimodal: {
+      expressionStability: 8.2,
+      eyeContact: 8.5,
+      toneStability: 7.8,
+      speechFluency: 8.0,
+      stutterCount: 2,
+      hesitationCount: 2
+    }
   },
   '2': {
     id: 'assessment-2',
-    professionalAbilityScore: 8.2,
-    learningGrowthScore: 8.0,
-    communicationCollaborationScore: 8.0,
-    problemSolvingScore: 8.0,
-    achievementExecutionScore: 7.5,
-    stressResilienceScore: 8.2,
     interviewId: '2',
     technicalSkills: 8.2,
     communication: 7.8,
@@ -517,6 +554,12 @@ const mockAssessments: Record<string, AbilityAssessment> = {
     leadership: 7.0,
     creativity: 7.5,
     adaptability: 8.0,
+    professionalAbilityScore: 8.2,
+    learningGrowthScore: 8.0,
+    communicationCollaborationScore: 8.0,
+    problemSolvingScore: 8.0,
+    achievementExecutionScore: 7.5,
+    stressResilienceScore: 8.2,
     overallScore: 7.8,
     feedback: 'Sarah的Java技术栈很扎实，Spring Boot框架使用熟练。在数据库设计和优化方面有一定经验。团队协作能力强，有良好的沟通技巧。',
     strengths: [
@@ -529,16 +572,50 @@ const mockAssessments: Record<string, AbilityAssessment> = {
       '可以学习更多微服务架构知识',
       '前端技术栈可以补强',
       '英语口语能力有待提升'
-    ]
+    ],
+    dimensionDetails: {
+      professionalAbilityScore: {
+        score: 8.2,
+        level: '优秀',
+        description: 'Java/Spring Boot技术扎实，对后端开发流程熟悉，代码质量较高。'
+      },
+      learningGrowthScore: {
+        score: 8.0,
+        level: '优秀',
+        description: '持续学习意愿强，对新技术保持好奇心，具备一定的自我驱动能力。'
+      },
+      communicationCollaborationScore: {
+        score: 8.0,
+        level: '优秀',
+        description: '表达清晰有条理，能够与团队成员有效配合，协作意识良好。'
+      },
+      problemSolvingScore: {
+        score: 8.0,
+        level: '优秀',
+        description: '遇到问题能系统分析，提出可行的解决方案，有一定的架构思维。'
+      },
+      achievementExecutionScore: {
+        score: 7.5,
+        level: '良好',
+        description: '能够按计划完成任务，但在主动推动和结果导向方面可以进一步提升。'
+      },
+      stressResilienceScore: {
+        score: 8.2,
+        level: '优秀',
+        description: '面试中表现稳定，面对压力场景能够保持冷静，抗压能力较强。'
+      }
+    },
+    multimodal: {
+      expressionStability: 7.5,
+      eyeContact: 7.8,
+      toneStability: 7.5,
+      speechFluency: 7.2,
+      stutterCount: 3,
+      hesitationCount: 3
+    }
   },
   '3': {
     id: 'assessment-3',
-    professionalAbilityScore: 7.0,
-    learningGrowthScore: 6.5,
-    communicationCollaborationScore: 7.2,
-    problemSolvingScore: 6.5,
-    achievementExecutionScore: 6.8,
-    stressResilienceScore: 6.2,
     interviewId: '3',
     technicalSkills: 7.0,
     communication: 6.8,
@@ -547,6 +624,12 @@ const mockAssessments: Record<string, AbilityAssessment> = {
     leadership: 6.0,
     creativity: 6.8,
     adaptability: 6.5,
+    professionalAbilityScore: 7.0,
+    learningGrowthScore: 6.5,
+    communicationCollaborationScore: 7.2,
+    problemSolvingScore: 6.5,
+    achievementExecutionScore: 6.8,
+    stressResilienceScore: 6.2,
     overallScore: 6.5,
     feedback: 'Mike有丰富的工作经验，对.NET技术栈比较熟悉。但在面试中表现不够突出，一些技术细节回答不够深入。',
     strengths: [
@@ -558,16 +641,50 @@ const mockAssessments: Record<string, AbilityAssessment> = {
       '需要加强对新技术的学习',
       '沟通表达能力有待提升',
       '代码质量意识需要加强'
-    ]
+    ],
+    dimensionDetails: {
+      professionalAbilityScore: {
+        score: 7.0,
+        level: '良好',
+        description: '具备.NET技术栈基本能力，能满足日常开发需求，但深度不够。'
+      },
+      learningGrowthScore: {
+        score: 6.5,
+        level: '良好',
+        description: '有一定学习能力，但对新技术的关注度不够，知识更新慢。'
+      },
+      communicationCollaborationScore: {
+        score: 7.2,
+        level: '良好',
+        description: '基本沟通无障碍，但在复杂技术讨论时表达不够精准。'
+      },
+      problemSolvingScore: {
+        score: 6.5,
+        level: '良好',
+        description: '能解决常见问题，但面对复杂场景时分析不够深入，方案不够全面。'
+      },
+      achievementExecutionScore: {
+        score: 6.8,
+        level: '良好',
+        description: '有一定执行力，但在主动性和责任心方面有提升空间。'
+      },
+      stressResilienceScore: {
+        score: 6.2,
+        level: '良好',
+        description: '基础抗压能力尚可，但在高压情境下容易出现紧张和失误。'
+      }
+    },
+    multimodal: {
+      expressionStability: 6.5,
+      eyeContact: 6.0,
+      toneStability: 6.2,
+      speechFluency: 5.8,
+      stutterCount: 5,
+      hesitationCount: 5
+    }
   },
   '6': {
     id: 'assessment-6',
-    professionalAbilityScore: 9.0,
-    learningGrowthScore: 8.8,
-    communicationCollaborationScore: 9.2,
-    problemSolvingScore: 9.5,
-    achievementExecutionScore: 9.8,
-    stressResilienceScore: 8.5,
     interviewId: '6',
     technicalSkills: 8.8,
     communication: 9.0,
@@ -576,6 +693,12 @@ const mockAssessments: Record<string, AbilityAssessment> = {
     leadership: 8.5,
     creativity: 9.8,
     adaptability: 9.0,
+    professionalAbilityScore: 9.0,
+    learningGrowthScore: 8.8,
+    communicationCollaborationScore: 9.2,
+    problemSolvingScore: 9.5,
+    achievementExecutionScore: 9.8,
+    stressResilienceScore: 8.5,
     overallScore: 9.2,
     feedback: 'Amy在设计能力方面表现非常优秀，对用户体验有深刻理解。创意思维突出，能够提出创新的设计解决方案。沟通能力强，能够很好地阐述设计理念。',
     strengths: [
@@ -588,16 +711,50 @@ const mockAssessments: Record<string, AbilityAssessment> = {
       '可以加强前端开发技能',
       '数据分析能力有待提升',
       '项目管理经验需要积累'
-    ]
+    ],
+    dimensionDetails: {
+      professionalAbilityScore: {
+        score: 9.0,
+        level: '优秀',
+        description: '设计功底深厚，Figma/Sketch等工具精通，设计规范意识强，输出质量高。'
+      },
+      learningGrowthScore: {
+        score: 8.8,
+        level: '优秀',
+        description: '对设计趋势保持高度敏感，持续学习新工具和方法论，成长速度快。'
+      },
+      communicationCollaborationScore: {
+        score: 9.2,
+        level: '优秀',
+        description: '设计理念阐述清晰有力，能有效协调产品、开发等多方诉求，沟通效率高。'
+      },
+      problemSolvingScore: {
+        score: 9.5,
+        level: '优秀',
+        description: '能从用户视角出发发现问题本质，提出创新且切实可行的设计方案。'
+      },
+      achievementExecutionScore: {
+        score: 9.8,
+        level: '优秀',
+        description: '目标导向明确，能够自驱地推进设计交付，对成果质量有极高要求。'
+      },
+      stressResilienceScore: {
+        score: 8.5,
+        level: '优秀',
+        description: '面对紧迫的项目周期和多方意见时保持专业和冷静，情绪管理能力出色。'
+      }
+    },
+    multimodal: {
+      expressionStability: 8.8,
+      eyeContact: 9.0,
+      toneStability: 8.5,
+      speechFluency: 8.2,
+      stutterCount: 1,
+      hesitationCount: 1
+    }
   },
   '7': {
     id: 'assessment-7',
-    professionalAbilityScore: 7.0,
-    learningGrowthScore: 7.5,
-    communicationCollaborationScore: 8.0,
-    problemSolvingScore: 7.2,
-    achievementExecutionScore: 7.8,
-    stressResilienceScore: 7.0,
     interviewId: '7',
     technicalSkills: 6.5,
     communication: 7.8,
@@ -606,6 +763,12 @@ const mockAssessments: Record<string, AbilityAssessment> = {
     leadership: 7.2,
     creativity: 7.8,
     adaptability: 7.0,
+    professionalAbilityScore: 7.0,
+    learningGrowthScore: 7.5,
+    communicationCollaborationScore: 8.0,
+    problemSolvingScore: 7.2,
+    achievementExecutionScore: 7.8,
+    stressResilienceScore: 7.0,
     overallScore: 7.2,
     feedback: 'Tom在市场营销方面有一定经验，但在数字化营销和数据分析方面还需要加强。沟通能力不错，有一定的团队管理经验。',
     strengths: [
@@ -617,7 +780,47 @@ const mockAssessments: Record<string, AbilityAssessment> = {
       '数字化营销技能需要提升',
       '数据分析能力有待加强',
       '创新营销策略思考不够'
-    ]
+    ],
+    dimensionDetails: {
+      professionalAbilityScore: {
+        score: 7.0,
+        level: '良好',
+        description: '具备市场营销基础知识，但数字化营销方面技能需要加强。'
+      },
+      learningGrowthScore: {
+        score: 7.5,
+        level: '良好',
+        description: '对行业动态有一定关注，有学习和提升的意愿。'
+      },
+      communicationCollaborationScore: {
+        score: 8.0,
+        level: '优秀',
+        description: '客户沟通能力强，能够准确把握客户需求，表达自然流畅。'
+      },
+      problemSolvingScore: {
+        score: 7.2,
+        level: '良好',
+        description: '面对营销问题有一定分析和解决能力，但创新思维不足。'
+      },
+      achievementExecutionScore: {
+        score: 7.8,
+        level: '良好',
+        description: '能够推动营销方案落地，有一定团队管理经验。'
+      },
+      stressResilienceScore: {
+        score: 7.0,
+        level: '良好',
+        description: '应对日常压力尚可，但在重大项目压力下的表现有待观察。'
+      }
+    },
+    multimodal: {
+      expressionStability: 7.2,
+      eyeContact: 7.5,
+      toneStability: 6.8,
+      speechFluency: 7.0,
+      stutterCount: 3,
+      hesitationCount: 3
+    }
   }
 };
 
@@ -753,6 +956,12 @@ export const mockInterviewApi = {
       leadership: 6.5,
       creativity: 6.8,
       adaptability: 7.2,
+      professionalAbilityScore: 7.0,
+      learningGrowthScore: 7.0,
+      communicationCollaborationScore: 7.0,
+      problemSolvingScore: 7.0,
+      achievementExecutionScore: 6.8,
+      stressResilienceScore: 7.0,
       overallScore: 7.0,
       feedback: '评估数据正在生成中...',
       strengths: ['待评估'],

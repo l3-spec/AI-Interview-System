@@ -43,7 +43,7 @@ const FeatureGuide: React.FC<Props> = ({ onClose }) => {
         type="text"
         icon={<QuestionCircleOutlined />}
         onClick={() => setOpen(true)}
-        style={{ color: 'var(--primary)' }}
+        style={{ color: '#1890ff' }}
       >
         功能指南
       </Button>

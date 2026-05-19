@@ -19,7 +19,7 @@ const VideoPlayerModal: React.FC<Props> = ({
     <Modal
       title={
         <div style={{ display: 'flex', alignItems: 'center' }}>
-          <VideoCameraOutlined style={{ marginRight: '8px', color: 'var(--primary)' }} />
+          <VideoCameraOutlined style={{ marginRight: '8px', color: '#1890ff' }} />
           面试视频 {candidateName && `- ${candidateName}`}
         </div>
       }

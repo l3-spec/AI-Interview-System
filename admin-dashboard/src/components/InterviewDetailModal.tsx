@@ -30,7 +30,7 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined
 } from '@ant-design/icons';
-import { Interview, InterviewDetailResponse, InterviewQA } from '../types/interview';
+import { Interview, InterviewDetailResponse, InterviewQA, AbilityAssessment, MultimodalAssessment } from '../types/interview';
 import { interviewApi } from '../services/api';
 import AbilityRadarChart from './AbilityRadarChart';
 import dayjs from 'dayjs';
@@ -61,12 +61,119 @@ const InterviewDetailModal: React.FC<Props> = ({
     }
   }, [visible, interview]);
 
+  /**
+   * 将后端 API 返回的分析报告映射为 AbilityAssessment 类型
+   * 后端 getAnalysisReport 返回格式包含：
+   * - newDimensionScores: 6维度分数（problemSolvingNewScore 键名）
+   * - competenciesDetailed: 各维度详细描述
+   * - multimodalScores: 多模态行为数据（hesitationCount 键名）
+   * - strengths / improvements / tips
+   * - overallScore: 可能是 0-100 或 0-10 分制
+   */
+  const mapReportToAssessment = (report: any, interviewId: string): AbilityAssessment => {
+    // 标准化 overallScore 为 0-10 分制
+    const rawOverall = typeof report?.overallScore === 'number' ? report.overallScore : 0;
+    const overallScore = rawOverall > 10 ? rawOverall / 10 : rawOverall;
+    
+    // 提取 newDimensionScores（优先）或直接使用 report 自身作为回退
+    const newScores = report?.newDimensionScores || {};
+    
+    // 构建 dimensionDetails（来自 competenciesDetailed）
+    const dimensionDetails: AbilityAssessment['dimensionDetails'] = {};
+    (report?.competenciesDetailed || []).forEach((d: any) => {
+      if (d?.key) {
+        dimensionDetails[d.key] = {
+          score: typeof d.score === 'number' ? d.score : 0,
+          level: d.level || '一般',
+          description: d.description || ''
+        };
+      }
+    });
+    
+    // 构建多模态数据（API 使用 hesitationCount，内部使用 stutterCount）
+    const multimodal: MultimodalAssessment | undefined = report?.multimodalScores
+      ? {
+          expressionStability: report.multimodalScores.expressionStability ?? 0,
+          eyeContact: report.multimodalScores.eyeContact ?? 0,
+          toneStability: report.multimodalScores.toneStability ?? 0,
+          speechFluency: report.multimodalScores.speechFluency ?? 0,
+          stutterCount: report.multimodalScores.hesitationCount ?? report.multimodalScores.stutterCount ?? 0,
+          hesitationCount: report.multimodalScores.hesitationCount ?? 0,
+        }
+      : (report?.multimodal || undefined);
+    
+    // 提取各维度分数：API 用 problemSolvingNewScore，内部用 problemSolvingScore
+    const professionalAbilityScore = newScores.professionalAbilityScore ?? report?.professionalAbilityScore ?? 0;
+    const learningGrowthScore = newScores.learningGrowthScore ?? report?.learningGrowthScore ?? 0;
+    const communicationCollaborationScore = newScores.communicationCollaborationScore ?? report?.communicationCollaborationScore ?? 0;
+    const problemSolvingScore = newScores.problemSolvingNewScore ?? newScores.problemSolvingScore ?? report?.problemSolvingScore ?? 0;
+    const achievementExecutionScore = newScores.achievementExecutionScore ?? report?.achievementExecutionScore ?? 0;
+    const stressResilienceScore = newScores.stressResilienceScore ?? report?.stressResilienceScore ?? 0;
+    
+    // 向后兼容：提取旧的 direct 字段（如果新维度为空）
+    const technicalSkills = report?.technicalSkills ?? (professionalAbilityScore || 0);
+    const communication = report?.communication ?? (communicationCollaborationScore || 0);
+    const problemSolving = report?.problemSolving ?? (problemSolvingScore || 0);
+    const teamwork = report?.teamwork ?? (communicationCollaborationScore || 0);
+    const leadership = report?.leadership ?? (achievementExecutionScore || 0);
+    const creativity = report?.creativity ?? (problemSolvingScore || 0);
+    const adaptability = report?.adaptability ?? (learningGrowthScore || 0);
+    
+    const result: AbilityAssessment = {
+      id: report?.id || `assessment-${interviewId}`,
+      interviewId: report?.interviewId || interviewId,
+      
+      // 旧字段（向后兼容）
+      technicalSkills,
+      communication,
+      problemSolving,
+      teamwork,
+      leadership,
+      creativity,
+      adaptability,
+      learningResearchScore: report?.learningResearchScore,
+      interpersonalCommunicationScore: report?.interpersonalCommunicationScore,
+      stressToleranceScore: report?.stressToleranceScore,
+      achievementOrientationScore: report?.achievementOrientationScore,
+      
+      // 新6维度
+      professionalAbilityScore,
+      learningGrowthScore,
+      communicationCollaborationScore,
+      problemSolvingScore,
+      problemSolvingNewScore: newScores.problemSolvingNewScore, // 保留原始 API 键
+      achievementExecutionScore,
+      stressResilienceScore,
+      
+      // 兼容过渡字段
+      learningAbilityScore: report?.learningAbilityScore ?? newScores.learningGrowthScore,
+      opennessInnovationScore: report?.opennessInnovationScore,
+      stressResistanceScore: report?.stressResistanceScore,
+      communicationAbilityScore: report?.communicationAbilityScore,
+      collaborationResponsibilityScore: report?.collaborationResponsibilityScore,
+      achievementInnovationScore: report?.achievementInnovationScore,
+      
+      overallScore,
+      feedback: report?.tips || report?.feedback || '',
+      strengths: report?.strengths || [],
+      improvements: report?.improvements || [],
+      multimodal,
+      dimensionDetails: Object.keys(dimensionDetails).length > 0 ? dimensionDetails : report?.dimensionDetails,
+    };
+    
+    return result;
+  };
+
   const fetchDetailData = async () => {
     if (!interview) return;
     
     setLoading(true);
     try {
       const data = await interviewApi.getDetail(interview.id);
+      // 映射 assessment 数据，确保前端内部字段与 API 返回格式兼容
+      if (data?.assessment) {
+        data.assessment = mapReportToAssessment(data.assessment, interview.id);
+      }
       setDetailData(data);
     } catch (error) {
       console.error('获取面试详情失败:', error);
@@ -207,7 +314,7 @@ const InterviewDetailModal: React.FC<Props> = ({
                     <Descriptions.Item label="面试评分" span={2}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <Rate disabled value={Math.round(interview.score / 2)} />
-                        <Text strong style={{ fontSize: '18px', color: 'var(--primary)' }}>
+                        <Text strong style={{ fontSize: '18px', color: '#1890ff' }}>
                           {interview.score.toFixed(1)}/10
                         </Text>
                       </div>
@@ -266,47 +373,55 @@ const InterviewDetailModal: React.FC<Props> = ({
           {/* 能力分析 */}
           <TabPane tab="能力分析" key="2" icon={<StarOutlined />}>
             {detailData?.assessment ? (
-              <Row gutter={24}>
-                <Col span={16}>
-                  <AbilityRadarChart 
-                    assessment={detailData.assessment}
-                    title="综合能力评估"
-                  />
-                </Col>
-                <Col span={8}>
-                  <Card title="评估反馈" style={{ marginBottom: '20px' }}>
-                    <Paragraph>
-                      {detailData.assessment.feedback || '暂无评估反馈'}
-                    </Paragraph>
-                  </Card>
-                  
-                  <Card title="优势亮点" style={{ marginBottom: '20px' }}>
-                    <List
-                      size="small"
-                      dataSource={detailData.assessment.strengths}
-                      renderItem={(item) => (
-                        <List.Item>
-                          <CheckCircleOutlined style={{ color: '#52c41a', marginRight: '8px' }} />
-                          {item}
-                        </List.Item>
-                      )}
-                    />
-                  </Card>
-                  
-                  <Card title="改进建议">
-                    <List
-                      size="small"
-                      dataSource={detailData.assessment.improvements}
-                      renderItem={(item) => (
-                        <List.Item>
-                          <CloseCircleOutlined style={{ color: '#faad14', marginRight: '8px' }} />
-                          {item}
-                        </List.Item>
-                      )}
-                    />
-                  </Card>
-                </Col>
-              </Row>
+              <>
+                {/* 雷达图 + 各维度详情卡片 + 多模态分析（已内置于 AbilityRadarChart） */}
+                <AbilityRadarChart 
+                  assessment={detailData.assessment}
+                  title="综合能力评估"
+                  showMultimodal={true}
+                />
+                
+                {/* 评估反馈 & 优劣势 */}
+                <Row gutter={24} style={{ marginTop: '20px' }}>
+                  <Col span={12}>
+                    <Card title="评估反馈" style={{ height: '100%' }}>
+                      <Paragraph style={{ whiteSpace: 'pre-wrap' }}>
+                        {detailData.assessment.feedback || '暂无评估反馈'}
+                      </Paragraph>
+                    </Card>
+                  </Col>
+                  <Col span={6}>
+                    <Card title="优势亮点" style={{ height: '100%' }}>
+                      <List
+                        size="small"
+                        dataSource={detailData.assessment.strengths}
+                        locale={{ emptyText: '暂无数据' }}
+                        renderItem={(item) => (
+                          <List.Item style={{ padding: '4px 0' }}>
+                            <CheckCircleOutlined style={{ color: '#52c41a', marginRight: '8px', flexShrink: 0 }} />
+                            <Text style={{ fontSize: '13px' }}>{item}</Text>
+                          </List.Item>
+                        )}
+                      />
+                    </Card>
+                  </Col>
+                  <Col span={6}>
+                    <Card title="改进建议" style={{ height: '100%' }}>
+                      <List
+                        size="small"
+                        dataSource={detailData.assessment.improvements}
+                        locale={{ emptyText: '暂无数据' }}
+                        renderItem={(item) => (
+                          <List.Item style={{ padding: '4px 0' }}>
+                            <CloseCircleOutlined style={{ color: '#faad14', marginRight: '8px', flexShrink: 0 }} />
+                            <Text style={{ fontSize: '13px' }}>{item}</Text>
+                          </List.Item>
+                        )}
+                      />
+                    </Card>
+                  </Col>
+                </Row>
+              </>
             ) : (
               <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
                 能力评估数据正在生成中...
@@ -357,7 +472,7 @@ const InterviewDetailModal: React.FC<Props> = ({
                             {Object.entries(qa.dimensionScores).map(([key, score]) => {
                               const dimensionMap: Record<string, { label: string; color: string }> = {
                                 // 新6维度
-                                professionalAbilityScore: { label: '专业能力 💡', color: 'var(--primary)' },
+                                professionalAbilityScore: { label: '专业能力 💡', color: '#1890ff' },
                                 learningGrowthScore: { label: '学习成长 📈', color: '#fa8c16' },
                                 communicationCollaborationScore: { label: '沟通协作 🤝', color: '#52c41a' },
                                 problemSolvingScore: { label: '问题解决 🧩', color: '#722ed1' },
