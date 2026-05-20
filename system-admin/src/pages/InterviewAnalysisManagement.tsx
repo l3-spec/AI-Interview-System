@@ -15,11 +15,14 @@ import {
     Select,
     Tabs,
     Collapse,
-    Timeline
+    Timeline,
+    Row,
+    Col
 } from 'antd';
 import { SearchOutlined, EyeOutlined, ReloadOutlined, PlayCircleOutlined, DownloadOutlined, RedoOutlined } from '@ant-design/icons';
 import { aiInterviewApi } from '../services/api';
 import { buildAssetUrl } from '../utils/url';
+import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Tooltip } from 'recharts';
 
 const { Title, Text, Paragraph } = Typography;
 const { Option } = Select;
@@ -103,6 +106,22 @@ interface AnalysisReport {
         ratio: number;
     };
     tips: string;
+    newDimensionScores?: {
+        professionalAbilityScore: number;
+        learningGrowthScore: number;
+        communicationCollaborationScore: number;
+        problemSolvingScore: number;
+        achievementExecutionScore: number;
+        stressResilienceScore: number;
+    };
+    multimodalScores?: {
+        expressionStability: number;
+        eyeContact: number;
+        toneStability: number;
+        speechFluency: number;
+        hesitationCount: number;
+    };
+    contentMultimodalFusion?: Record<string, any>;
     metrics?: {
         videoConfidenceScore?: number | null;
         emotionDistribution?: Record<string, number> | null;
@@ -243,6 +262,46 @@ const InterviewAnalysisManagement: React.FC = () => {
             return <Tag>未启用</Tag>;
         }
         return <Tag>未知</Tag>;
+    };
+
+    // 6维度评分等级和颜色
+    const getScoreLevel = (score: number) => {
+        if (score >= 9) return '优秀';
+        if (score >= 7.5) return '良好';
+        if (score >= 6) return '一般';
+        return '待提升';
+    };
+
+    const getLevelColor = (level: string) => {
+        const map: Record<string, string> = {
+            '优秀': '#52c41a',
+            '良好': '#1890ff',
+            '一般': '#faad14',
+            '待提升': '#ff4d4f'
+        };
+        return map[level] || '#d9d9d9';
+    };
+
+    const buildRadarData = (report: AnalysisReport) => {
+        const ns = report.newDimensionScores;
+        if (!ns) return [];
+        return [
+            { ability: '专业能力', score: ns.professionalAbilityScore ?? 0, fullMark: 10 },
+            { ability: '学习成长', score: ns.learningGrowthScore ?? 0, fullMark: 10 },
+            { ability: '沟通协作', score: ns.communicationCollaborationScore ?? 0, fullMark: 10 },
+            { ability: '问题解决', score: ns.problemSolvingScore ?? 0, fullMark: 10 },
+            { ability: '成就执行', score: ns.achievementExecutionScore ?? 0, fullMark: 10 },
+            { ability: '抗压韧性', score: ns.stressResilienceScore ?? 0, fullMark: 10 },
+        ];
+    };
+
+    const dimensionLabels: Record<string, string> = {
+        professionalAbilityScore: '专业能力',
+        learningGrowthScore: '学习成长',
+        communicationCollaborationScore: '沟通协作',
+        problemSolvingScore: '问题解决',
+        achievementExecutionScore: '成就执行',
+        stressResilienceScore: '抗压韧性',
     };
 
     /** 候选人条目的视频 OSS objectKey：优先沟通行上的字段，否则从同题号问题答案视频解析 */
@@ -949,6 +1008,67 @@ const InterviewAnalysisManagement: React.FC = () => {
                                         </Descriptions>
                                     </Card>
 
+                                    {/* 6维度能力雷达图 */}
+                                    {analysisReport.newDimensionScores ? (
+                                        <Card title="6维度能力雷达图">
+                                            <div style={{ width: '100%', height: 400 }}>
+                                                <ResponsiveContainer>
+                                                    <RadarChart data={buildRadarData(analysisReport)}>
+                                                        <PolarGrid gridType="polygon" stroke="#e0e0e0" />
+                                                        <PolarAngleAxis dataKey="ability" tick={{ fontSize: 12, fill: '#666' }} />
+                                                        <PolarRadiusAxis angle={90} domain={[0, 10]} tick={{ fontSize: 10, fill: '#999' }} tickCount={6} />
+                                                        <Radar
+                                                            name="能力评分"
+                                                            dataKey="score"
+                                                            stroke="#1890ff"
+                                                            fill="#1890ff"
+                                                            fillOpacity={0.3}
+                                                            strokeWidth={2}
+                                                            dot={{ fill: '#1890ff', strokeWidth: 2, r: 4 }}
+                                                        />
+                                                        <Tooltip />
+                                                    </RadarChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        </Card>
+                                    ) : null}
+
+                                    {/* 6维度详细评分卡片 */}
+                                    {analysisReport.newDimensionScores ? (
+                                        <Card title="维度详细评分">
+                                            <Row gutter={[16, 16]}>
+                                                {Object.entries(analysisReport.newDimensionScores).map(([key, score]) => {
+                                                    const label = dimensionLabels[key] || key;
+                                                    const level = getScoreLevel(score);
+                                                    const competency = analysisReport.competencies?.find(
+                                                        (c) => c.name.includes(label) || label.includes(c.name)
+                                                    );
+                                                    return (
+                                                        <Col span={8} key={key}>
+                                                            <Card size="small" style={{ height: '100%' }}>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                                                    <Text strong>{label}</Text>
+                                                                    <Tag color={getLevelColor(level)}>{level}</Tag>
+                                                                </div>
+                                                                <Progress
+                                                                    percent={score * 10}
+                                                                    status={level === '待提升' ? 'exception' : 'active'}
+                                                                    strokeColor={getLevelColor(level)}
+                                                                    format={() => `${score}/10`}
+                                                                />
+                                                                {competency?.description && (
+                                                                    <div style={{ marginTop: 8, fontSize: 12, color: '#666' }}>
+                                                                        {competency.description}
+                                                                    </div>
+                                                                )}
+                                                            </Card>
+                                                        </Col>
+                                                    );
+                                                })}
+                                            </Row>
+                                        </Card>
+                                    ) : null}
+
                                     <Card title="客观指标">
                                         <Descriptions bordered column={2}>
                                             <Descriptions.Item label="视频自信度">
@@ -1132,20 +1252,22 @@ const InterviewAnalysisManagement: React.FC = () => {
                                         />
                                     </Card>
 
-                                    <Card title="能力维度分析">
-                                        <List
-                                            grid={{ gutter: 16, column: 2 }}
-                                            dataSource={analysisReport.competencies}
-                                            renderItem={item => (
-                                                <List.Item>
-                                                    <Card size="small" title={item.name} extra={<Text strong>{item.score}分</Text>}>
-                                                        <Progress percent={item.score} size="small" status="active" />
-                                                        <Paragraph style={{ marginTop: 8 }} type="secondary">{item.description}</Paragraph>
-                                                    </Card>
-                                                </List.Item>
-                                            )}
-                                        />
-                                    </Card>
+                                    {!analysisReport.newDimensionScores && (
+                                        <Card title="能力维度分析">
+                                            <List
+                                                grid={{ gutter: 16, column: 2 }}
+                                                dataSource={analysisReport.competencies}
+                                                renderItem={item => (
+                                                    <List.Item>
+                                                        <Card size="small" title={item.name} extra={<Text strong>{item.score}分</Text>}>
+                                                            <Progress percent={item.score} size="small" status="active" />
+                                                            <Paragraph style={{ marginTop: 8 }} type="secondary">{item.description}</Paragraph>
+                                                        </Card>
+                                                    </List.Item>
+                                                )}
+                                            />
+                                        </Card>
+                                    )}
 
                                     <div style={{ display: 'flex', gap: 16 }}>
                                         <Card title="优势" style={{ flex: 1 }}>

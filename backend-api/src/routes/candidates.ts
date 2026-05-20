@@ -7,7 +7,8 @@ import {
   updateCandidate,
   addCandidateNote,
   favoriteCandidate,
-  unfavoriteCandidate
+  unfavoriteCandidate,
+  getCandidateAnalysisReport
 } from '../controllers/candidateController';
 import { authenticateToken } from '../middleware/auth';
 
@@ -240,5 +241,8 @@ router.post('/:id/favorite', authenticateToken, favoriteCandidate);
  *         description: 取消收藏成功
  */
 router.delete('/:id/favorite', authenticateToken, unfavoriteCandidate);
+
+// 获取候选人AI面试分析报告
+router.get('/:id/analysis', authenticateToken, getCandidateAnalysisReport);
 
 export default router; 

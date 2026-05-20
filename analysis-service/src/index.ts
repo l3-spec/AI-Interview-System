@@ -34,12 +34,12 @@ async function pollPendingAnalyses() {
                     create: {
                         sessionId: session.id,
                         overallScore: 0,
-                        communicationScore: 0,
-                        technicalScore: 0,
+                        professionalAbilityScore: 0,
+                        learningGrowthScore: 0,
+                        communicationCollaborationScore: 0,
                         problemSolvingNewScore: 0,
-                        collaborationResponsibilityScore: 0,
-                        adaptabilityScore: 0,
-                        learningScore: 0,
+                        achievementExecutionScore: 0,
+                        stressResilienceScore: 0,
                         analysisStatus: 'PROCESSING'
                     } as any
                 });
@@ -63,12 +63,12 @@ async function pollPendingAnalyses() {
                     create: {
                         sessionId: session.id,
                         overallScore: 0,
-                        communicationScore: 0,
-                        technicalScore: 0,
+                        professionalAbilityScore: 0,
+                        learningGrowthScore: 0,
+                        communicationCollaborationScore: 0,
                         problemSolvingNewScore: 0,
-                        collaborationResponsibilityScore: 0,
-                        adaptabilityScore: 0,
-                        learningScore: 0,
+                        achievementExecutionScore: 0,
+                        stressResilienceScore: 0,
                         analysisStatus: 'FAILED',
                         analysisError: error instanceof Error ? error.message : 'Unknown error'
                     } as any

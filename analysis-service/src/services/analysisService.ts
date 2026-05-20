@@ -13,35 +13,42 @@ import { logSystemAction } from '../utils/systemLog';
 
 /**
  * AI面试分析服务
- * 负责使用DeepSeek LLM分析面试表现，生成多维度职场素养报告
+ * 负责使用DeepSeek LLM分析面试表现，生成6维度立体分析报告
+ * 
+ * 6维度：专业能力 / 学习成长 / 沟通协作 / 问题解决 / 成就执行 / 抗压韧性
  */
-
-type DimensionKey =
-    | 'opennessInnovation'
-    | 'learningResearch'
-    | 'achievementOrientation'
-    | 'teamwork'
-    | 'interpersonalCommunication'
-    | 'stressTolerance';
-
-const DIMENSIONS: Array<{ key: DimensionKey; label: string }> = [
-    { key: 'opennessInnovation', label: '开放创新' },
-    { key: 'learningResearch', label: '学习研究' },
-    { key: 'achievementOrientation', label: '成就导向' },
-    { key: 'teamwork', label: '团队协作' },
-    { key: 'interpersonalCommunication', label: '人际沟通' },
-    { key: 'stressTolerance', label: '压力承受' }
-];
 
 const EMPTY_ANSWER_PLACEHOLDER = '(未作答)';
 
-interface CompetencyAnalysis {
-    opennessInnovation: number;
-    learningResearch: number;
-    achievementOrientation: number;
-    teamwork: number;
-    interpersonalCommunication: number;
-    stressTolerance: number;
+// ========== 统一6维度定义 ==========
+const NEW_DIMENSIONS = [
+    { key: 'professionalAbilityScore' as const, label: '专业能力', desc: '候选人在专业领域的知识深度、技术熟练度、行业理解力' },
+    { key: 'learningGrowthScore' as const, label: '学习成长', desc: '学习能力、成长潜力、知识迁移能力、自我反思意识' },
+    { key: 'communicationCollaborationScore' as const, label: '沟通协作', desc: '表达能力、逻辑清晰度、团队合作意识、倾听与反馈' },
+    { key: 'problemSolvingNewScore' as const, label: '问题解决', desc: '分析问题能力、解决思路清晰度、应变与创新能力' },
+    { key: 'achievementExecutionScore' as const, label: '成就执行', desc: '目标导向、执行力、成果意识、时间管理能力' },
+    { key: 'stressResilienceScore' as const, label: '抗压韧性', desc: '压力承受力、情绪稳定性、逆境应对能力、复原力' },
+] as const;
+
+type NewDimensionKey = typeof NEW_DIMENSIONS[number]['key'];
+
+// ========== 维度详情 ==========
+interface DimensionDetail {
+    key: NewDimensionKey;
+    name: string;
+    score: number;        // 0-10
+    level: string;         // '优秀' | '良好' | '一般' | '需提升'
+    description: string;   // 150-200字客观描述
+}
+
+// ========== 6维度评分（0-10分制） ==========
+interface NewDimensionScores {
+    professionalAbilityScore: number;          // 1. 专业能力
+    learningGrowthScore: number;               // 2. 学习成长
+    communicationCollaborationScore: number;   // 3. 沟通协作
+    problemSolvingNewScore: number;             // 4. 问题解决
+    achievementExecutionScore: number;         // 5. 成就执行
+    stressResilienceScore: number;             // 6. 抗压韧性
 }
 
 interface AnswerStats {
@@ -52,60 +59,35 @@ interface AnswerStats {
     answerCoverage: number;
 }
 
-interface DimensionDetail {
-    key: DimensionKey;
-    name: string;
-    score: number; // 0-1
-    level: string;
-    description: string;
-}
-
 interface MultimodalScores {
-    expressionStability: number; // 表情稳定性 0-10
-    eyeContact: number; // 眼神接触 0-10
-    toneStability: number; // 语气稳定性 0-10
-    speechFluency: number; // 语速流畅度 0-10
-    hesitationCount: number; // 卡顿次数
+    expressionStability: number;    // 表情稳定性 0-10
+    eyeContact: number;             // 眼神接触 0-10
+    toneStability: number;          // 语气稳定性 0-10
+    speechFluency: number;          // 语速流畅度 0-10
+    hesitationCount: number;        // 卡顿次数
     overallMultimodalScore: number; // 综合多模态得分 0-10
 }
 
-// 新6维度评分结果（0-10分制）
-interface NewDimensionScores {
-    professionalAbilityScore: number;         // 1. 专业能力
-    learningGrowthScore: number;              // 2. 学习成长
-    communicationCollaborationScore: number;  // 3. 沟通协作
-    problemSolvingNewScore: number;            // 4. 问题解决
-    achievementExecutionScore: number;        // 5. 成就执行
-    stressResilienceScore: number;            // 6. 抗压韧性
-}
-
-interface ObjectiveScores {
-    overallScore: number;
-    dimensions: Record<DimensionKey, number>; // 0-100
-    signals: {
-        textLength: number;
-        keywordHits: Record<DimensionKey, number>;
-        numericEvidence: number;
-        answerCoverage?: number;
-        speechQuality?: number | null;
-        speechRate?: number | null;
-        pauseRatio?: number | null;
-        fillerRatio?: number | null;
-        volumeStability?: number | null;
-        videoConfidence?: number | null;
-        emotionStability?: number | null;
-        postureStability?: number | null;
-        gazeFocus?: number | null;
-        microExpressionScore?: number | null;
-        fidgetingScore?: number | null;
-        professionalAccuracyScore?: number | null; // 新增：专业准确度信号
-    };
+interface ObjectiveSignals {
+    answerCoverage?: number;
+    speechQuality?: number | null;
+    speechRate?: number | null;
+    pauseRatio?: number | null;
+    fillerRatio?: number | null;
+    volumeStability?: number | null;
+    videoConfidence?: number | null;
+    emotionStability?: number | null;
+    postureStability?: number | null;
+    gazeFocus?: number | null;
+    microExpressionScore?: number | null;
+    fidgetingScore?: number | null;
+    professionalAccuracyScore?: number | null;
 }
 
 interface AnalysisResult {
-    overallScore: number;
-    competencies: CompetencyAnalysis;
-    competenciesDetailed: DimensionDetail[];
+    overallScore: number;                          // 综合评分 0-100
+    newDimensionScores: NewDimensionScores;        // 6维度评分 0-10
+    competenciesDetailed: DimensionDetail[];       // 6维度详情（含描述）
     strengths: string[];
     improvements: string[];
     jobMatch?: {
@@ -114,7 +96,7 @@ interface AnalysisResult {
         matchRatio: number;
     };
     tips: string;
-    objectiveScores?: ObjectiveScores;
+    objectiveSignals?: ObjectiveSignals;
     speechMetrics?: SpeechMetricsSummary;
     videoConfidenceScore?: number;
     emotionStability?: number;
@@ -125,29 +107,29 @@ interface AnalysisResult {
     videoAnalysisResults?: VideoAnalysisResult[];
     integrity?: IntegrityReport;
     voiceprint?: VoiceprintAnalysisSummary;
-    // 新增逐题分析维度
-    relevanceScore: number;         // 平均相关性评分
-    completenessScore: number;      // 平均完整度评分
-    professionalAccuracyScore: number; // 平均专业准确度评分
-    logicalCoherenceScore: number;  // 平均逻辑连贯性评分
-    questionAnalysisDetails?: Array<{  // 每个问题的详细分析
+    // 逐题分析维度
+    relevanceScore: number;
+    completenessScore: number;
+    professionalAccuracyScore: number;
+    logicalCoherenceScore: number;
+    questionAnalysisDetails?: Array<{
         questionIndex: number;
         questionText: string;
         relevanceScore: number;
         completenessScore: number;
         professionalAccuracyScore: number;
         logicalCoherenceScore: number;
-        feedback: string;  // 针对该问题的简短反馈
+        feedback: string;
     }>;
-    // 新增：多模态+逐题评分字段
-    multimodalScores?: MultimodalScores;            // 多模态评分
-    questionByQuestion?: Array<{                    // 逐题评分详情
+    // 多模态评分
+    multimodalScores?: MultimodalScores;
+    questionByQuestion?: Array<{
         questionIndex: number;
         question: string;
         answer: string;
         score: number;
     }>;
-    contentMultimodalFusion?: Record<string, any>;  // 内容+多模态融合详情
+    contentMultimodalFusion?: Record<string, any>;
 }
 
 interface IntegrityCheck {
@@ -644,9 +626,10 @@ export class AnalysisService {
                     communicationScore: 0,
                     technicalScore: 0,
                     problemSolvingNewScore: 0,
-                    collaborationResponsibilityScore: 0,
-                    adaptabilityScore: 0,
-                    learningScore: 0,
+                    achievementExecutionScore: 0,
+                    stressResilienceScore: 0,
+                    learningGrowthScore: 0,
+                    communicationCollaborationScore: 0,
                     analysisStatus: 'FAILED',
                     analysisError: error instanceof Error ? error.message : '未知错误'
                 } as any
@@ -986,74 +969,52 @@ export class AnalysisService {
         voiceprint?: VoiceprintAnalysisSummary
     ): AnalysisResult {
         const videoSummary = this.summarizeVideoAnalysis(videoAnalysisResults);
-        const transcript = this.resolveTranscript(questionsAndAnswers, speechMetrics);
-        const objectiveScores = this.calculateObjectiveScores({
-            transcript,
-            speechMetrics,
-            videoSummary,
-            answerCoverage: answerStats?.answerCoverage
-        });
 
-        const llmScores = this.denormalizeCompetencies(textAnalysis.competencies);
-        const fusedScores = this.fuseDimensionScores(llmScores, objectiveScores.dimensions);
-        const overallScore = this.fuseOverallScores(textAnalysis.overallScore, objectiveScores.overallScore);
-
-        const descriptionMap = this.extractDimensionDescriptions(textAnalysis.competenciesDetailed);
-        const adjustedScores = this.applyCoveragePenalty(fusedScores, answerStats?.answerCoverage);
-        const adjustedOverall = this.applyCoveragePenaltyToOverall(overallScore, answerStats?.answerCoverage);
-        const competenciesDetailed = this.buildDimensionDetails(
-            adjustedScores,
-            descriptionMap,
-            speechMetrics,
-            videoSummary
-        );
-
-        // ========== 新评分体系：内容+多模态融合 ==========
-        // 1. 计算多模态综合评分
+        // 计算多模态得分
         const multimodalScores = this.calculateMultimodalScores(videoSummary, speechMetrics);
 
-        // 2. 计算专业硬能力内容得分（使用技术得分+问题解决得分+专业准确度得分的平均值）
-        const professionalAbilityContentScore = this.clampScore(
-            (adjustedScores.learningResearch + adjustedScores.opennessInnovation + (objectiveScores.signals.professionalAccuracyScore ?? 60)) / 3
+        // 微调6维度得分：融合语音质量信号
+        const adjustedDimensions = this.adjustDimensionsWithSpeech(
+            textAnalysis.newDimensionScores,
+            speechMetrics,
+            multimodalScores
         );
 
-        // 3. 融合内容评分与多模态评分，得到新6维度得分（0-10分）
-        const newDimensionScores = this.fuseContentAndMultimodalScores(
-            adjustedScores,
-            multimodalScores.overallMultimodalScore,
-            professionalAbilityContentScore,
-            textAnalysis.competencies.opennessInnovation // 旧版问题解决得分0-1
+        // 答题覆盖率惩罚
+        const coverage = answerStats?.answerCoverage ?? 1;
+        const adjustedOverall = Math.round(
+            textAnalysis.overallScore * (0.7 + coverage * 0.3)
         );
 
-        // 4. 构建逐题评分详情
+        // 构建逐题评分
         const questionByQuestion = questionsAndAnswers.map((qa, idx) => ({
             questionIndex: idx + 1,
             question: qa.question,
             answer: qa.answer,
-            score: objectiveScores.dimensions.teamwork // 简单示例，实际可以替换为逐题的具体得分
+            score: adjustedOverall
         }));
 
-        // 5. 构建内容与多模态融合详情
-        const contentMultimodalFusion = {
-            contentScores: adjustedScores,
-            multimodalScores,
-            newDimensionScores,
-            fusionRules: {
-                professionalAbility: '内容80% + 多模态20%',
-                stressTolerance: '内容20% + 多模态80%',
-                others: '内容80% + 多模态20%'
-            }
-        };
-        const normalizedCompetencies = this.normalizeCompetencies(adjustedScores);
-
         const bodyLanguageScore = this.calculateBodyLanguageScore(videoSummary);
+
+        // 构建客观信号
+        const objectiveSignals: ObjectiveSignals = {
+            answerCoverage: coverage,
+            speechQuality: speechMetrics?.speechQuality ?? null,
+            speechRate: speechMetrics?.avgSpeechRate ?? null,
+            pauseRatio: speechMetrics?.avgPauseRatio ?? null,
+            fillerRatio: speechMetrics?.avgFillerRatio ?? null,
+            volumeStability: speechMetrics?.avgVolumeStability ?? null,
+            videoConfidence: videoSummary?.avgConfidence,
+            emotionStability: videoSummary?.avgStability,
+            postureStability: videoSummary?.avgPostureStability,
+            gazeFocus: videoSummary?.avgGazeFocus
+        };
 
         return {
             ...textAnalysis,
             overallScore: adjustedOverall,
-            competencies: normalizedCompetencies,
-            competenciesDetailed,
-            objectiveScores,
+            newDimensionScores: adjustedDimensions,
+            objectiveSignals,
             speechMetrics,
             videoConfidenceScore: videoSummary?.avgConfidence,
             emotionStability: videoSummary?.avgStability,
@@ -1064,11 +1025,39 @@ export class AnalysisService {
             videoAnalysisResults,
             integrity,
             voiceprint,
-            // 新评分体系字段
-            ...newDimensionScores,
             multimodalScores,
             questionByQuestion,
-            contentMultimodalFusion
+            contentMultimodalFusion: {
+                newDimensionScores: adjustedDimensions,
+                multimodalScores,
+                coverage
+            }
+        };
+    }
+
+    /**
+     * 基于语音质量信号微调6维度得分
+     */
+    private adjustDimensionsWithSpeech(
+        scores: NewDimensionScores,
+        speechMetrics?: SpeechMetricsSummary,
+        multimodalScores?: MultimodalScores
+    ): NewDimensionScores {
+        if (!speechMetrics) return scores;
+
+        const speechQuality = speechMetrics.speechQuality ?? 70;
+        const fluencyBonus = ((speechQuality - 50) / 100) * 1.0; // ±0.5 调整
+
+        const adjust = (base: number, weight: number) =>
+            Number(Math.max(0, Math.min(10, base + fluencyBonus * weight)).toFixed(1));
+
+        return {
+            professionalAbilityScore: adjust(scores.professionalAbilityScore, 0.3),
+            learningGrowthScore: adjust(scores.learningGrowthScore, 0.3),
+            communicationCollaborationScore: adjust(scores.communicationCollaborationScore, 0.6),
+            problemSolvingNewScore: adjust(scores.problemSolvingNewScore, 0.2),
+            achievementExecutionScore: adjust(scores.achievementExecutionScore, 0.3),
+            stressResilienceScore: adjust(scores.stressResilienceScore, 0.5),
         };
     }
 
@@ -1132,419 +1121,9 @@ export class AnalysisService {
         };
     }
 
-    private resolveTranscript(
-        questionsAndAnswers: Array<{ question: string; answer: string }>,
-        speechMetrics: SpeechMetricsSummary | undefined
-    ): string {
-        if (speechMetrics?.transcript && speechMetrics.transcript.trim()) {
-            return speechMetrics.transcript;
-        }
-        return questionsAndAnswers
-            .map(item => item.answer || '')
-            .filter(answer => this.isMeaningfulAnswer(answer))
-            .join('\n');
-    }
-
-    private isMeaningfulAnswer(answer: string): boolean {
-        if (!answer) {
-            return false;
-        }
-        const trimmed = answer.trim();
-        if (!trimmed) {
-            return false;
-        }
-        return trimmed !== EMPTY_ANSWER_PLACEHOLDER && trimmed !== '(未回答)';
-    }
-
-    private calculateObjectiveScores(params: {
-        transcript: string;
-        speechMetrics: SpeechMetricsSummary | undefined;
-        videoSummary: {
-            avgConfidence: number;
-            avgStability: number;
-            dominantEmotion: string;
-            emotionDistribution: Record<string, number>;
-            avgPostureStability?: number;
-            avgGazeFocus?: number;
-            avgMicroExpressionScore?: number;
-            avgFidgetingScore?: number;
-        } | null;
-        answerCoverage?: number;
-        detailedScores?: {
-            avgRelevance: number;
-            avgCompleteness: number;
-            avgProfessional: number;
-            avgLogical: number;
-        };
-    }): ObjectiveScores {
-        const text = params.transcript || '';
-        const textLength = text.replace(/\s+/g, '').length;
-        const numericEvidence = (text.match(/\d+(\.\d+)?/g) || []).length;
-
-        const keywordHits: Record<DimensionKey, number> = {
-            opennessInnovation: this.countKeywordHits(text, [
-                '创新', '探索', '实验', '试验', '改进', '突破', '新方法', '新技术', '迭代',
-                '原型', '优化', '点子', '想法', '开放', '尝试'
-            ]),
-            learningResearch: this.countKeywordHits(text, [
-                '学习', '研究', '复盘', '总结', '课程', '培训', '证书', '阅读', '论文',
-                '调研', '知识', '成长', '进修', '方法论'
-            ]),
-            achievementOrientation: this.countKeywordHits(text, [
-                '目标', '达成', '结果', '业绩', '指标', '增长', '提升', '交付', '产出',
-                '成果', '转化', '里程碑', '收益'
-            ]),
-            teamwork: this.countKeywordHits(text, [
-                '团队', '协作', '跨部门', '配合', '共建', '协同', '支持', '伙伴', '对齐'
-            ]),
-            interpersonalCommunication: this.countKeywordHits(text, [
-                '沟通', '表达', '倾听', '协调', '同理', '反馈', '影响', '说服', '共识', '分享'
-            ]),
-            stressTolerance: this.countKeywordHits(text, [
-                '压力', '抗压', '紧急', '突发', '危机', '高压', '加班', '困难', '挫折', '挑战', '复原'
-            ])
-        };
-
-        const speechQuality = params.speechMetrics?.speechQuality ?? null;
-        const speechRate = params.speechMetrics?.avgSpeechRate ?? null;
-        const pauseRatio = params.speechMetrics?.avgPauseRatio ?? null;
-        const fillerRatio = params.speechMetrics?.avgFillerRatio ?? null;
-        const volumeStability = params.speechMetrics?.avgVolumeStability ?? null;
-        const videoConfidence = params.videoSummary?.avgConfidence ?? null;
-        const emotionStability = params.videoSummary?.avgStability ?? null;
-        const postureStability = params.videoSummary?.avgPostureStability ?? null;
-        const gazeFocus = params.videoSummary?.avgGazeFocus ?? null;
-        const microExpressionScore = params.videoSummary?.avgMicroExpressionScore ?? null;
-        const fidgetingScore = params.videoSummary?.avgFidgetingScore ?? null;
-
-        const lengthBonus = Math.min(10, Math.round(textLength / 120));
-        const numericBonus = Math.min(15, numericEvidence * 3);
-
-        const opennessInnovation = this.clampScore(
-            55 + Math.min(24, keywordHits.opennessInnovation * 4) + Math.min(8, numericEvidence * 2)
-        );
-        const learningResearch = this.clampScore(
-            55 + Math.min(24, keywordHits.learningResearch * 4) + lengthBonus
-        );
-        const achievementOrientation = this.clampScore(
-            55 + Math.min(24, keywordHits.achievementOrientation * 4) + numericBonus
-        );
-        const teamwork = this.clampScore(
-            55 + Math.min(24, keywordHits.teamwork * 4)
-        );
-
-        const speechBonus = speechQuality !== null ? (speechQuality - 60) * 0.4 : 0;
-        const gazeBonus = gazeFocus !== null ? gazeFocus * 0.08 : 0;
-        const fillerPenalty = fillerRatio !== null ? fillerRatio * 100 * 0.3 : 0;
-        const pausePenalty = pauseRatio !== null ? pauseRatio * 100 * 0.2 : 0;
-        const interpersonalCommunication = this.clampScore(
-            50 + Math.min(20, keywordHits.interpersonalCommunication * 4) + speechBonus + gazeBonus - fillerPenalty - pausePenalty
-        );
-
-        const stabilityBonus = emotionStability !== null ? emotionStability * 0.3 : 0;
-        const confidenceBonus = videoConfidence !== null ? videoConfidence * 0.1 : 0;
-        const postureBonus = postureStability !== null ? postureStability * 0.12 : 0;
-        const microBonus = microExpressionScore !== null ? (microExpressionScore - 60) * 0.15 : 0;
-        const fidgetingPenalty = fidgetingScore !== null ? fidgetingScore * 0.2 : 0;
-        const stressPausePenalty = pauseRatio !== null ? pauseRatio * 100 * 0.1 : 0;
-        const stressTolerance = this.clampScore(
-            50 + Math.min(20, keywordHits.stressTolerance * 4) + stabilityBonus + confidenceBonus + postureBonus + microBonus - fidgetingPenalty - stressPausePenalty
-        );
-
-        const dimensions: Record<DimensionKey, number> = {
-            opennessInnovation,
-            learningResearch,
-            achievementOrientation,
-            teamwork,
-            interpersonalCommunication,
-            stressTolerance
-        };
-
-        // 计算各维度得分，使用推荐权重：文本内容(50%) + 逐题评分(25%) + 语音指标(15%) + 视频指标(10%)
-        const textScore = Math.round(
-            Object.values(dimensions).reduce((sum, score) => sum + score, 0) / DIMENSIONS.length
-        );
-
-        // 逐题评分（如果有）
-        let detailedScore = 0;
-        if (params.detailedScores) {
-            detailedScore = Math.round(
-                (params.detailedScores.avgRelevance + 
-                 params.detailedScores.avgCompleteness + 
-                 params.detailedScores.avgProfessional + 
-                 params.detailedScores.avgLogical) / 4
-            );
-        }
-
-        // 语音指标分（归一化）
-        const speechScores: number[] = [];
-        if (speechQuality !== null) speechScores.push(speechQuality);
-        if (speechRate !== null) speechScores.push(this.normalizeSpeechRate(speechRate));
-        if (pauseRatio !== null) speechScores.push(this.normalizePauseRatio(pauseRatio));
-        if (fillerRatio !== null) speechScores.push(100 - Math.min(fillerRatio * 10, 100)); // 填充词越少得分越高
-        if (volumeStability !== null) speechScores.push(volumeStability);
-        const speechScore = speechScores.length > 0 ? Math.round(speechScores.reduce((a, b) => a + b, 0) / speechScores.length) : 60;
-
-        // 视频指标分
-        const videoScores: number[] = [];
-        if (videoConfidence !== null) videoScores.push(videoConfidence);
-        if (emotionStability !== null) videoScores.push(emotionStability);
-        if (postureStability !== null) videoScores.push(postureStability);
-        if (gazeFocus !== null) videoScores.push(gazeFocus);
-        const videoScore = videoScores.length > 0 ? Math.round(videoScores.reduce((a, b) => a + b, 0) / videoScores.length) : 60;
-
-        // 加权计算最终总分
-        const overallScore = Math.round(
-            textScore * 0.5 +
-            detailedScore * 0.25 +
-            speechScore * 0.15 +
-            videoScore * 0.1
-        );
-
-        return {
-            overallScore,
-            dimensions,
-            signals: {
-                textLength,
-                keywordHits,
-                numericEvidence,
-                answerCoverage: params.answerCoverage,
-                speechQuality,
-                speechRate,
-                pauseRatio,
-                fillerRatio,
-                volumeStability,
-                videoConfidence,
-                emotionStability,
-                postureStability,
-                gazeFocus,
-                microExpressionScore,
-                fidgetingScore
-            }
-        };
-    }
-
-    private countKeywordHits(text: string, keywords: string[]): number {
-        if (!text) {
-            return 0;
-        }
-        return keywords.reduce((count, keyword) => {
-            const matches = text.match(new RegExp(keyword, 'g'));
-            return count + (matches ? matches.length : 0);
-        }, 0);
-    }
-
-    private denormalizeCompetencies(competencies: CompetencyAnalysis): Record<DimensionKey, number> {
-        return {
-            opennessInnovation: Math.round(competencies.opennessInnovation * 100),
-            learningResearch: Math.round(competencies.learningResearch * 100),
-            achievementOrientation: Math.round(competencies.achievementOrientation * 100),
-            teamwork: Math.round(competencies.teamwork * 100),
-            interpersonalCommunication: Math.round(competencies.interpersonalCommunication * 100),
-            stressTolerance: Math.round(competencies.stressTolerance * 100)
-        };
-    }
-
-    private normalizeCompetencies(scores: Record<DimensionKey, number>): CompetencyAnalysis {
-        return {
-            opennessInnovation: this.clampScore(scores.opennessInnovation) / 100,
-            learningResearch: this.clampScore(scores.learningResearch) / 100,
-            achievementOrientation: this.clampScore(scores.achievementOrientation) / 100,
-            teamwork: this.clampScore(scores.teamwork) / 100,
-            interpersonalCommunication: this.clampScore(scores.interpersonalCommunication) / 100,
-            stressTolerance: this.clampScore(scores.stressTolerance) / 100
-        };
-    }
-
-    private fuseDimensionScores(
-        llmScores: Record<DimensionKey, number>,
-        objectiveScores: Record<DimensionKey, number>
-    ): Record<DimensionKey, number> {
-        const weightLLM = 0.65;
-        const weightObjective = 0.35;
-
-        const fused: Record<DimensionKey, number> = {} as Record<DimensionKey, number>;
-        DIMENSIONS.forEach(({ key }) => {
-            const llm = llmScores[key];
-            const obj = objectiveScores[key];
-            const hasLLM = Number.isFinite(llm);
-            const hasObj = Number.isFinite(obj);
-
-            if (hasLLM && hasObj) {
-                fused[key] = this.clampScore(llm * weightLLM + obj * weightObjective);
-            } else if (hasLLM) {
-                fused[key] = this.clampScore(llm);
-            } else if (hasObj) {
-                fused[key] = this.clampScore(obj);
-            } else {
-                fused[key] = 60;
-            }
-        });
-        return fused;
-    }
-
-    private fuseOverallScores(llmOverall: number, objectiveOverall: number): number {
-        if (Number.isFinite(llmOverall) && Number.isFinite(objectiveOverall)) {
-            return Math.round(llmOverall * 0.65 + objectiveOverall * 0.35);
-        }
-        if (Number.isFinite(llmOverall)) {
-            return Math.round(llmOverall);
-        }
-        if (Number.isFinite(objectiveOverall)) {
-            return Math.round(objectiveOverall);
-        }
-        return 60;
-    }
-
-    private extractDimensionDescriptions(details: DimensionDetail[]): Record<DimensionKey, string> {
-        const map = {} as Record<DimensionKey, string>;
-        details.forEach(detail => {
-            map[detail.key] = detail.description;
-        });
-        return map;
-    }
-
-    private buildDimensionDetails(
-        scores: Record<DimensionKey, number>,
-        descriptions: Record<DimensionKey, string>,
-        speechMetrics: SpeechMetricsSummary | undefined,
-        videoSummary: {
-            avgConfidence: number;
-            avgStability: number;
-            dominantEmotion: string;
-            emotionDistribution: Record<string, number>;
-            avgPostureStability?: number;
-            avgGazeFocus?: number;
-        } | null
-    ): DimensionDetail[] {
-        return DIMENSIONS.map(({ key, label }) => {
-            const score = this.clampScore(scores[key]);
-            const level = this.getLevel(score);
-            const description = descriptions[key] ||
-                this.buildDefaultDescription(key, label, score, speechMetrics, videoSummary);
-            return {
-                key,
-                name: label,
-                score: score / 100,
-                level,
-                description
-            };
-        });
-    }
-
-    private buildDefaultDescription(
-        key: DimensionKey,
-        label: string,
-        score: number,
-        speechMetrics: SpeechMetricsSummary | undefined,
-        videoSummary: {
-            avgConfidence: number;
-            avgStability: number;
-            dominantEmotion: string;
-            emotionDistribution: Record<string, number>;
-            avgPostureStability?: number;
-            avgGazeFocus?: number;
-        } | null
-    ): string {
-        const level = this.getLevel(score);
-        if (key === 'interpersonalCommunication') {
-            const quality = speechMetrics?.speechQuality ?? null;
-            const rate = speechMetrics?.avgSpeechRate ?? null;
-            const gaze = videoSummary?.avgGazeFocus ?? null;
-            const qualityText = quality !== null ? `语音质量约${Math.round(quality)}分` : '语音质量数据不足';
-            const rateText = rate !== null ? `语速约${Math.round(rate)}字/分钟` : '语速数据不足';
-            const gazeText = gaze !== null ? `视线专注度约${Math.round(gaze)}分` : '视线专注度数据不足';
-            return `在人际沟通方面表现${level}，${qualityText}，${rateText}，${gazeText}，表达逻辑与互动节奏较为稳定。`;
-        }
-        if (key === 'stressTolerance') {
-            const stability = videoSummary?.avgStability ?? null;
-            const posture = videoSummary?.avgPostureStability ?? null;
-            const stabilityText = stability !== null ? `情绪稳定性约${Math.round(stability)}分` : '情绪稳定性数据不足';
-            const postureText = posture !== null ? `姿态稳定性约${Math.round(posture)}分` : '姿态稳定性数据不足';
-            return `在压力承受方面表现${level}，${stabilityText}，${postureText}，面对挑战时情绪波动相对可控。`;
-        }
-        if (key === 'opennessInnovation') {
-            return `在开放创新方面表现${level}，对新方法和改进思路有一定敏感度，能提出可尝试的优化方向。`;
-        }
-        if (key === 'learningResearch') {
-            return `在学习研究方面表现${level}，体现出持续学习与总结的意愿，具备稳步提升的潜力。`;
-        }
-        if (key === 'achievementOrientation') {
-            return `在成就导向方面表现${level}，目标意识较明确，关注结果与产出指标的达成。`;
-        }
-        return `在${label}方面表现${level}，具备稳定的基础素养与协作意识。`;
-    }
-
-    private calculateBodyLanguageScore(videoSummary: {
-        avgConfidence: number;
-        avgStability: number;
-        avgPostureStability?: number;
-        avgGazeFocus?: number;
-        avgMicroExpressionScore?: number;
-        avgFidgetingScore?: number;
-    } | null) {
-        if (!videoSummary) {
-            return undefined;
-        }
-        const posture = typeof videoSummary.avgPostureStability === 'number'
-            ? videoSummary.avgPostureStability
-            : 70;
-        const gaze = typeof videoSummary.avgGazeFocus === 'number'
-            ? videoSummary.avgGazeFocus
-            : 70;
-        const micro = typeof videoSummary.avgMicroExpressionScore === 'number'
-            ? videoSummary.avgMicroExpressionScore
-            : 70;
-        const fidgeting = typeof videoSummary.avgFidgetingScore === 'number'
-            ? (100 - videoSummary.avgFidgetingScore) // 小动作分数越高越不好，所以反向计算
-            : 70;
-        return Math.round(
-            micro * 0.3 +
-            videoSummary.avgStability * 0.2 +
-            posture * 0.2 +
-            gaze * 0.2 +
-            fidgeting * 0.1
-        );
-    }
-
-    private applyCoveragePenalty(scores: Record<DimensionKey, number>, coverage?: number) {
-        if (coverage === undefined || coverage >= 0.95) {
-            return scores;
-        }
-        const penalty = Math.round((1 - coverage) * 30);
-        const adjusted: Record<DimensionKey, number> = {} as Record<DimensionKey, number>;
-        DIMENSIONS.forEach(({ key }) => {
-            adjusted[key] = this.clampScore(scores[key] - penalty);
-        });
-        return adjusted;
-    }
-
-    private applyCoveragePenaltyToOverall(score: number, coverage?: number): number {
-        if (coverage === undefined || coverage >= 0.95) {
-            return this.clampScore(score);
-        }
-        const penalty = Math.round((1 - coverage) * 30);
-        return this.clampScore(score - penalty);
-    }
-
-    private clampScore(score: number): number {
-        if (!Number.isFinite(score)) {
-            return 0;
-        }
-        return Math.max(0, Math.min(100, score));
-    }
-
-    // 归一化0-100分值到0-10
-    private normalizeTo10Scale(score: number | null | undefined): number {
-        if (score === null || score === undefined || !Number.isFinite(score)) {
-            return 6.0; // 默认分
-        }
-        return Number((Math.max(0, Math.min(100, score)) / 10).toFixed(1));
-    }
-
     /**
      * 计算多模态综合评分
-     * 公式：多模态综合分 = (表情稳定性 + 眼神接触 + 语气稳定性 + 语速流畅度) / 4 - (卡顿次数 * 0.2)
+     * 公式：综合分 = (表情稳定性 + 眼神接触 + 语气稳定性 + 语速流畅度) / 4 - (卡顿次数 * 0.2)
      */
     private calculateMultimodalScores(
         videoSummary: {
@@ -1588,65 +1167,40 @@ export class AnalysisService {
     }
 
     /**
-     * 融合内容评分和多模态评分得到最终维度得分
-     * 规则：
-     * 1. 专业能力：内容(85%) + 多模态(15%)
-     * 2. 学习成长：内容(70%) + 多模态(30%)
-     * 3. 沟通协作：内容(60%) + 多模态(40%)
-     * 4. 问题解决：内容(80%) + 多模态(20%)
-     * 5. 成就执行：内容(75%) + 多模态(25%)
-     * 6. 抗压韧性：内容(20%) + 多模态(80%)
+     * 计算肢体语言评分
      */
-    private fuseContentAndMultimodalScores(
-        contentScores: Record<DimensionKey, number>, // 0-100分
-        multimodalScore: number, // 0-10分
-        professionalAbilityContentScore: number, // 专业能力内容得分0-100
-        oldProblemSolvingScore?: number // 旧版问题解决得分0-1
-    ): NewDimensionScores {
-        // 归一化内容得分到0-10
-        const normalizeContent = (score: number) => Number((score / 10).toFixed(1));
+    private calculateBodyLanguageScore(videoSummary: {
+        avgConfidence: number;
+        avgStability: number;
+        avgPostureStability?: number;
+        avgGazeFocus?: number;
+        avgMicroExpressionScore?: number;
+        avgFidgetingScore?: number;
+    } | null): number | undefined {
+        if (!videoSummary) return undefined;
+        return Math.round(
+            (videoSummary.avgConfidence * 0.3) +
+            (videoSummary.avgStability * 0.3) +
+            ((videoSummary.avgPostureStability ?? 60) * 0.25) +
+            ((videoSummary.avgGazeFocus ?? 60) * 0.15)
+        );
+    }
 
-        // 1. 专业能力：内容85% + 多模态15%
-        const professionalAbilityScore = Number((
-            normalizeContent(professionalAbilityContentScore) * 0.85 + multimodalScore * 0.15
-        ).toFixed(1));
+    private clampScore(score: number): number {
+        if (!Number.isFinite(score)) {
+            return 0;
+        }
+        return Math.max(0, Math.min(100, score));
+    }
 
-        // 2. 学习成长：内容70% + 多模态30%（映射旧学习研究维度）
-        const learningGrowthScore = Number((
-            normalizeContent(contentScores.learningResearch) * 0.7 + multimodalScore * 0.3
-        ).toFixed(1));
-
-        // 3. 沟通协作：内容60% + 多模态40%（合并旧团队协作+人际沟通）
-        const communicationCollaborationScore = Number((
-            normalizeContent((contentScores.teamwork + contentScores.interpersonalCommunication) / 2) * 0.6 + multimodalScore * 0.4
-        ).toFixed(1));
-
-        // 4. 问题解决：内容80% + 多模态20%（从旧版problemSolvingScore 0-1转换为0-10，如果没有则使用开放创新+成就导向平均值）
-        const problemSolvingContentScore = oldProblemSolvingScore !== undefined && oldProblemSolvingScore !== null
-            ? oldProblemSolvingScore * 10 // 0-1转0-10
-            : normalizeContent((contentScores.opennessInnovation + contentScores.achievementOrientation) / 2);
-        const problemSolvingNewScore = Number((
-            problemSolvingContentScore * 0.8 + multimodalScore * 0.2
-        ).toFixed(1));
-
-        // 5. 成就执行：内容75% + 多模态25%（合并旧成就导向+开放创新）
-        const achievementExecutionScore = Number((
-            normalizeContent((contentScores.achievementOrientation + contentScores.opennessInnovation) / 2) * 0.75 + multimodalScore * 0.25
-        ).toFixed(1));
-
-        // 6. 抗压韧性：内容20% + 多模态80%（映射旧压力承受维度）
-        const stressResilienceScore = Number((
-            normalizeContent(contentScores.stressTolerance) * 0.2 + multimodalScore * 0.8
-        ).toFixed(1));
-
-        return {
-            professionalAbilityScore,
-            learningGrowthScore,
-            communicationCollaborationScore,
-            problemSolvingNewScore,
-            achievementExecutionScore,
-            stressResilienceScore
-        };
+    /**
+     * 归一化0-100分值到0-10
+     */
+    private normalizeTo10Scale(score: number | null | undefined): number {
+        if (score === null || score === undefined || !Number.isFinite(score)) {
+            return 6.0;
+        }
+        return Number((Math.max(0, Math.min(100, score)) / 10).toFixed(1));
     }
 
     /**
@@ -1713,7 +1267,7 @@ export class AnalysisService {
 有效作答覆盖率：${Math.round(answerStats.answerCoverage * 100)}%`
             : '';
 
-        return `你是一位资深的职业素养评估专家，请基于以下面试内容进行多维度分析。
+        return `你是一位资深的职业素养评估专家，请基于以下面试内容进行6维度立体分析。
 
 【候选人信息】
 目标职位：${jobTarget}
@@ -1725,120 +1279,131 @@ ${answerStatsText ? `${answerStatsText}\n` : ''}
 【面试问答】
 ${qaText}
 
-请从以下6个维度对候选人进行评估，每个维度给出0-100的分数（精确到小数点后1位），并提供对应的客观描述：
+请从以下6个维度对候选人进行评估，每个维度给出0-10的分数（精确到小数点后1位），并提供150-200字的客观描述：
 
-1. **开放创新**：新方法、新技术、试验和改进意识
-2. **学习研究**：持续学习、研究与复盘能力
-3. **成就导向**：目标意识、结果驱动与业绩导向
-4. **团队协作**：跨部门协作、支持与共建意识
-5. **人际沟通**：表达清晰、同理心与沟通协调能力
-6. **压力承受**：高压情境下的稳定性与应对能力
+1. **专业能力(professionalAbilityScore)**：专业领域的知识深度、技术熟练度、行业理解力
+2. **学习成长(learningGrowthScore)**：持续学习意愿、成长潜力、知识迁移能力、自我反思
+3. **沟通协作(communicationCollaborationScore)**：表达清晰度、逻辑性、团队合作意识、倾听与反馈
+4. **问题解决(problemSolvingNewScore)**：分析问题能力、解决思路、应变能力、创新思维
+5. **成就执行(achievementExecutionScore)**：目标导向、执行力、成果意识、时间管理
+6. **抗压韧性(stressResilienceScore)**：压力承受力、情绪稳定性、逆境应对、复原力
 
-评分提示：
-- 若某题未作答，请在维度描述中体现，并合理下调评分。
-- 若整体未作答比例较高，请显著降低综合评分与相关维度评分。
+描述要求：
+- 每个维度的description必须150-200字
+- 必须结合候选人具体回答来写，引用实际内容
+- 格式：成就表现（得分点）+ 不足（扣分点）+ 针对性建议
+- 若某题未作答，在描述中体现并下调评分
+- 若整体未作答比例过高，显著降低综合评分与相关维度评分
 
-请严格按照以下JSON格式输出（不要有任何其他文字，只输出JSON）：
+请严格按照以下JSON格式输出（只输出JSON，不要任何其他文字）：
 
 {
   "overallScore": 85,
   "dimensions": {
-    "opennessInnovation": {
-      "score": 88.5,
-      "description": "举例说明候选人在开放创新方面的表现，语言要客观具体。"
+    "professionalAbilityScore": {
+      "score": 8.5,
+      "description": "候选人在XXX问题上展现出...（150-200字客观描述）"
     },
-    "learningResearch": {
-      "score": 82.0,
-      "description": "举例说明候选人在学习研究方面的表现。"
+    "learningGrowthScore": {
+      "score": 7.2,
+      "description": "..."
     },
-    "achievementOrientation": {
-      "score": 85.5,
-      "description": "举例说明候选人在成就导向方面的表现。"
+    "communicationCollaborationScore": {
+      "score": 8.0,
+      "description": "..."
     },
-    "teamwork": {
-      "score": 87.0,
-      "description": "举例说明候选人在团队协作方面的表现。"
+    "problemSolvingNewScore": {
+      "score": 7.8,
+      "description": "..."
     },
-    "interpersonalCommunication": {
-      "score": 84.0,
-      "description": "举例说明候选人在人际沟通方面的表现。"
+    "achievementExecutionScore": {
+      "score": 7.5,
+      "description": "..."
     },
-    "stressTolerance": {
-      "score": 89.0,
-      "description": "举例说明候选人在压力承受方面的表现。"
+    "stressResilienceScore": {
+      "score": 8.3,
+      "description": "..."
     }
   },
-  "strengths": [
-    "表达清晰，逻辑性强",
-    "对技术有深入理解",
-    "主动学习意愿强"
-  ],
-  "improvements": [
-    "可以更多结合具体案例",
-    "建议加强对行业趋势的了解"
-  ],
+  "strengths": ["...", "...", "..."],
+  "improvements": ["...", "...", "..."],
   "jobMatch": {
-    "title": "研发类",
-    "description": "候选人展现出较强的技术能力和学习意愿，适合从事研发相关工作",
-    "matchRatio": 0.89
+    "title": "...",
+    "description": "...",
+    "matchRatio": 0.85
   },
-  "tips": "在团队协作中要注意倾听他人意见，平衡个人想法与团队目标。建议持续关注行业动态，保持技术敏感度。"
+  "tips": "..."
 }`;
     }
 
     /**
-     * 解析LLM返回的分析结果
+     * 解析LLM返回的6维度分析结果
      */
     private parseAnalysisResponse(content: string, jobTarget: string): AnalysisResult {
         try {
-            // 尝试提取JSON
             const jsonMatch = content.match(/\{[\s\S]*\}/);
             if (!jsonMatch) {
                 throw new Error('未找到JSON格式的分析结果');
             }
 
             const parsed = JSON.parse(jsonMatch[0]);
-
             const dimensions = parsed.dimensions || {};
-            const legacy = parsed.competencies || {};
-            const normalized = {
-                opennessInnovation: dimensions.opennessInnovation || { score: legacy.problemSolving },
-                learningResearch: dimensions.learningResearch || { score: legacy.learning || legacy.technical },
-                achievementOrientation: dimensions.achievementOrientation || { score: legacy.problemSolving || legacy.technical },
-                teamwork: dimensions.teamwork || { score: legacy.teamwork },
-                interpersonalCommunication: dimensions.interpersonalCommunication || { score: legacy.communication },
-                stressTolerance: dimensions.stressTolerance || { score: legacy.adaptability }
+
+            const getDim = (key: string) => {
+                const item = dimensions[key] || {};
+                return {
+                    score: Number(item.score ?? 0),
+                    description: typeof item.description === 'string' ? item.description : ''
+                };
             };
 
-            const competenciesDetailed: DimensionDetail[] = DIMENSIONS.map(({ key, label }) => {
-                const item = normalized[key] || {};
-                const score = Number(item.score ?? 0);
-                const description = typeof item.description === 'string' ? item.description : '';
+            const prof = getDim('professionalAbilityScore');
+            const learn = getDim('learningGrowthScore');
+            const comm = getDim('communicationCollaborationScore');
+            const solve = getDim('problemSolvingNewScore');
+            const achieve = getDim('achievementExecutionScore');
+            const stress = getDim('stressResilienceScore');
+
+            const newDimensionScores: NewDimensionScores = {
+                professionalAbilityScore: Number(prof.score.toFixed(1)),
+                learningGrowthScore: Number(learn.score.toFixed(1)),
+                communicationCollaborationScore: Number(comm.score.toFixed(1)),
+                problemSolvingNewScore: Number(solve.score.toFixed(1)),
+                achievementExecutionScore: Number(achieve.score.toFixed(1)),
+                stressResilienceScore: Number(stress.score.toFixed(1)),
+            };
+
+            const scoreMap: Record<string, { score: number; description: string }> = {
+                professionalAbilityScore: prof,
+                learningGrowthScore: learn,
+                communicationCollaborationScore: comm,
+                problemSolvingNewScore: solve,
+                achievementExecutionScore: achieve,
+                stressResilienceScore: stress,
+            };
+
+            const competenciesDetailed: DimensionDetail[] = NEW_DIMENSIONS.map(({ key, label }) => {
+                const s = scoreMap[key] || { score: 0, description: '' };
                 return {
                     key,
                     name: label,
-                    score: score / 100,
-                    level: this.getLevel(score),
-                    description
+                    score: s.score,
+                    level: this.getLevelNew(s.score),
+                    description: s.description
                 };
             });
 
+            const avgDimScore = Object.values(newDimensionScores).reduce((a, b) => a + b, 0) / 6;
+            const overallScore = Math.round(parsed.overallScore || avgDimScore * 10);
+
             return {
-                overallScore: Math.round(parsed.overallScore),
-                competencies: {
-                    opennessInnovation: (Number(normalized.opennessInnovation?.score ?? 0)) / 100,
-                    learningResearch: (Number(normalized.learningResearch?.score ?? 0)) / 100,
-                    achievementOrientation: (Number(normalized.achievementOrientation?.score ?? 0)) / 100,
-                    teamwork: (Number(normalized.teamwork?.score ?? 0)) / 100,
-                    interpersonalCommunication: (Number(normalized.interpersonalCommunication?.score ?? 0)) / 100,
-                    stressTolerance: (Number(normalized.stressTolerance?.score ?? 0)) / 100
-                },
+                overallScore,
+                newDimensionScores,
                 competenciesDetailed,
                 strengths: parsed.strengths || [],
                 improvements: parsed.improvements || [],
                 jobMatch: parsed.jobMatch,
                 tips: parsed.tips || '继续保持良好的学习态度，不断提升专业能力。',
-                // 新增字段默认值
                 relevanceScore: 0,
                 completenessScore: 0,
                 professionalAccuracyScore: 0,
@@ -1852,29 +1417,39 @@ ${qaText}
     }
 
     /**
-     * 获取能力等级
+     * 获取能力等级（0-10分制）
      */
-    private getLevel(score: number): string {
-        if (score >= 90) return '优秀';
-        if (score >= 80) return '良好';
-        if (score >= 70) return '中等';
-        if (score >= 60) return '及格';
+    private getLevelNew(score: number): string {
+        if (score >= 9.0) return '优秀';
+        if (score >= 7.5) return '良好';
+        if (score >= 6.0) return '一般';
+        if (score >= 4.0) return '需提升';
         return '待提升';
     }
 
     /**
-     * 保存分析报告到数据库
+     * 保存分析报告到数据库（仅使用V2 6维度字段）
      */
-    private async saveAnalysisReport(sessionId: string, result: any): Promise<void> {
+    private async saveAnalysisReport(sessionId: string, result: AnalysisResult): Promise<void> {
+        const ns = result.newDimensionScores;
         const data = {
             sessionId,
             overallScore: result.overallScore,
-            communicationScore: result.competencies.interpersonalCommunication,
-            technicalScore: result.competencies.learningResearch,
-            problemSolvingScore: result.competencies.opennessInnovation,
-            teamworkScore: result.competencies.teamwork,
-            adaptabilityScore: result.competencies.stressTolerance,
-            learningScore: result.competencies.achievementOrientation,
+            // 旧字段设默认值（向后兼容）
+            communicationScore: 0,
+            technicalScore: 0,
+            problemSolvingScore: 0,
+            teamworkScore: 0,
+            adaptabilityScore: 0,
+            learningScore: 0,
+            // V2 6维度字段 (0-10)
+            professionalAbilityScore: ns.professionalAbilityScore,
+            learningGrowthScore: ns.learningGrowthScore,
+            communicationCollaborationScore: ns.communicationCollaborationScore,
+            problemSolvingNewScore: ns.problemSolvingNewScore,
+            achievementExecutionScore: ns.achievementExecutionScore,
+            stressResilienceScore: ns.stressResilienceScore,
+            // 维度详情JSON
             competenciesJson: JSON.stringify(result.competenciesDetailed),
             strengths: JSON.stringify(result.strengths),
             improvements: JSON.stringify(result.improvements),
@@ -1885,7 +1460,7 @@ ${qaText}
             analysisStatus: 'COMPLETED',
             analysisError: null,
             generatedAt: new Date(),
-            // 视频分析字段（新增）
+            // 视频/语音分析字段
             videoConfidenceScore: result.videoConfidenceScore,
             emotionDistribution: result.emotionDistribution ?
                 JSON.stringify(result.emotionDistribution) : null,
@@ -1893,38 +1468,28 @@ ${qaText}
             bodyLanguageScore: result.bodyLanguageScore ?? null,
             postureStability: result.postureStability ?? null,
             gazeFocus: result.gazeFocus ?? null,
-            // 新增：逐题分析维度评分
+            // 逐题分析
             relevanceScore: result.relevanceScore ?? null,
             completenessScore: result.completenessScore ?? null,
             professionalAccuracyScore: result.professionalAccuracyScore ?? null,
             logicalCoherenceScore: result.logicalCoherenceScore ?? null,
-            questionAnalysisDetails: result.questionAnalysisDetails ? JSON.stringify(result.questionAnalysisDetails) : null,
-            videoInsights: result.videoAnalysisResults || result.speechMetrics || result.objectiveScores ?
-                JSON.stringify({
-                    video: result.videoAnalysisResults || [],
-                    speech: result.speechMetrics || null,
-                    objectiveScores: result.objectiveScores || null,
-                    integrity: result.integrity || null,
-                    voiceprint: result.voiceprint || null
-                }) : null,
-            // 新6维度评分体系 (0-10分)
-            professionalAbilityScore: result.professionalAbilityScore ?? null,
-            achievementInnovationScore: result.achievementInnovationScore ?? null,
-            learningAbilityScore: result.learningAbilityScore ?? null,
-            opennessInnovationScore: result.opennessInnovationScore ?? null,
-            stressResistanceScore: result.stressResistanceScore ?? null,
-            communicationAbilityScore: result.communicationAbilityScore ?? null,
-            collaborationResponsibilityScore: result.collaborationResponsibilityScore ?? null,
-            // 新版6维度评分体系（2026）
-            learningGrowthScore: result.learningGrowthScore ?? null,
-            communicationCollaborationScore: result.communicationCollaborationScore ?? null,
-            problemSolvingNewScore: result.problemSolvingNewScore ?? null,
-            achievementExecutionScore: result.achievementExecutionScore ?? null,
-            stressResilienceScore: result.stressResilienceScore ?? null,
-            // 新增JSON字段
-            multimodalScoresJson: result.multimodalScores ? JSON.stringify(result.multimodalScores) : null,
-            questionByQuestionJson: result.questionByQuestion ? JSON.stringify(result.questionByQuestion) : null,
-            contentMultimodalFusionJson: result.contentMultimodalFusion ? JSON.stringify(result.contentMultimodalFusion) : null
+            questionAnalysisDetails: result.questionAnalysisDetails ?
+                JSON.stringify(result.questionAnalysisDetails) : null,
+            // 综合Insights
+            videoInsights: JSON.stringify({
+                video: result.videoAnalysisResults || [],
+                speech: result.speechMetrics || null,
+                objectiveSignals: result.objectiveSignals || null,
+                integrity: result.integrity || null,
+                voiceprint: result.voiceprint || null
+            }),
+            // JSON字段
+            multimodalScoresJson: result.multimodalScores ?
+                JSON.stringify(result.multimodalScores) : null,
+            questionByQuestionJson: result.questionByQuestion ?
+                JSON.stringify(result.questionByQuestion) : null,
+            contentMultimodalFusionJson: result.contentMultimodalFusion ?
+                JSON.stringify(result.contentMultimodalFusion) : null
         };
 
         await prisma.aIInterviewAnalysisReport.upsert({
@@ -1942,31 +1507,26 @@ ${qaText}
             where: { sessionId }
         });
 
-        if (!report) {
-            return null;
-        }
+        if (!report) return null;
 
         const insights = report.videoInsights ? JSON.parse(report.videoInsights) : null;
         const videoItems = Array.isArray(insights?.video) ? insights.video : [];
-        const fallbackPosture = videoItems.length
-            ? Math.round(videoItems.reduce((sum: number, item: any) => sum + (item.postureStability || 0), 0) / videoItems.length)
-            : null;
-        const fallbackGaze = videoItems.length
-            ? Math.round(videoItems.reduce((sum: number, item: any) => sum + (item.gazeFocus || 0), 0) / videoItems.length)
-            : null;
-        const fallbackEmotionStability = videoItems.length
-            ? Math.round(videoItems.reduce((sum: number, item: any) => sum + (item.emotionStability || 0), 0) / videoItems.length)
-            : null;
-        const fallbackMicroExpressionScore = videoItems.length
-            ? Math.round(videoItems.reduce((sum: number, item: any) => sum + (item.microExpressionScore || 0), 0) / videoItems.length)
-            : null;
-        const postureStability = report.postureStability ?? fallbackPosture;
-        const gazeFocus = report.gazeFocus ?? fallbackGaze;
+
+        // 从 V2 字段构建6维度
+        const newDimensionScores: NewDimensionScores = {
+            professionalAbilityScore: report.professionalAbilityScore ?? 0,
+            learningGrowthScore: report.learningGrowthScore ?? 0,
+            communicationCollaborationScore: report.communicationCollaborationScore ?? 0,
+            problemSolvingNewScore: report.problemSolvingNewScore ?? 0,
+            achievementExecutionScore: report.achievementExecutionScore ?? 0,
+            stressResilienceScore: report.stressResilienceScore ?? 0,
+        };
 
         return {
             sessionId: report.sessionId,
             overallScore: report.overallScore,
-            competencies: JSON.parse(report.competenciesJson || '[]'),
+            newDimensionScores,
+            competenciesDetailed: JSON.parse(report.competenciesJson || '[]'),
             strengths: JSON.parse(report.strengths || '[]'),
             improvements: JSON.parse(report.improvements || '[]'),
             jobMatch: report.jobMatchTitle ? {
@@ -1977,33 +1537,19 @@ ${qaText}
             tips: report.tips || '',
             metrics: {
                 videoConfidenceScore: report.videoConfidenceScore,
-                emotionDistribution: report.emotionDistribution ? JSON.parse(report.emotionDistribution) : null,
-                emotionStability: fallbackEmotionStability,
+                emotionDistribution: report.emotionDistribution ?
+                    JSON.parse(report.emotionDistribution) : null,
                 speechQuality: report.speechQuality,
                 bodyLanguageScore: report.bodyLanguageScore,
-                postureStability,
-                gazeFocus,
-                microExpressionScore: fallbackMicroExpressionScore
+                postureStability: report.postureStability,
+                gazeFocus: report.gazeFocus
             },
-            // 新6维度评分体系
-            newDimensionScores: {
-                professionalAbilityScore: report.professionalAbilityScore,
-                achievementInnovationScore: report.achievementInnovationScore,
-                learningAbilityScore: report.learningAbilityScore,
-                opennessInnovationScore: report.opennessInnovationScore,
-                stressResistanceScore: report.stressResistanceScore,
-                collaborationResponsibilityScore: report.collaborationResponsibilityScore,
-                // 新版2026维度
-                learningGrowthScore: report.learningGrowthScore,
-                communicationCollaborationScore: report.communicationCollaborationScore,
-                problemSolvingScore: report.problemSolvingNewScore,
-                achievementExecutionScore: report.achievementExecutionScore,
-                stressResilienceScore: report.stressResilienceScore
-            },
-            // 新增JSON字段
-            multimodalScores: report.multimodalScoresJson ? JSON.parse(report.multimodalScoresJson) : null,
-            questionByQuestion: report.questionByQuestionJson ? JSON.parse(report.questionByQuestionJson) : null,
-            contentMultimodalFusion: report.contentMultimodalFusionJson ? JSON.parse(report.contentMultimodalFusionJson) : null,
+            multimodalScores: report.multimodalScoresJson ?
+                JSON.parse(report.multimodalScoresJson) : null,
+            questionByQuestion: report.questionByQuestionJson ?
+                JSON.parse(report.questionByQuestionJson) : null,
+            contentMultimodalFusion: report.contentMultimodalFusionJson ?
+                JSON.parse(report.contentMultimodalFusionJson) : null,
             integrity: insights?.integrity || null,
             voiceprint: insights?.voiceprint || null,
             insights,

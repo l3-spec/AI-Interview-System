@@ -533,6 +533,10 @@ export const companyApi = {
     payload: { days: number; reason: string }
   ): Promise<ApiResponse> => {
     return await apiClient.post(`/admin/companies/${companyId}/extend-subscription`, payload);
+  },
+
+  resetPassword: async (companyId: string, newPassword: string): Promise<ApiResponse> => {
+    return await apiClient.post(`/admin/companies/${companyId}/reset-password`, { newPassword });
   }
 };
 

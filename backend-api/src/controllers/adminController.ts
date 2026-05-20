@@ -1151,6 +1151,64 @@ export const deleteJob = async (req: Request, res: Response) => {
 };
 
 /**
+ * 重置企业登录密码
+ */
+export const resetCompanyPassword = async (req: Request, res: Response) => {
+  try {
+    const { companyId } = req.params;
+    const { newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: '新密码至少8位'
+      });
+    }
+
+    const company = await prisma.company.findUnique({
+      where: { id: companyId }
+    });
+
+    if (!company) {
+      return res.status(404).json({
+        success: false,
+        message: '企业不存在'
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await prisma.company.update({
+      where: { id: companyId },
+      data: { password: hashedPassword }
+    });
+
+    // 记录操作日志
+    await prisma.systemLog.create({
+      data: {
+        action: 'RESET_COMPANY_PASSWORD',
+        module: 'COMPANY_MANAGEMENT',
+        description: `管理员重置了企业 ${company.name} (${company.email}) 的登录密码`,
+        targetId: companyId,
+        targetType: 'COMPANY',
+        result: 'SUCCESS'
+      }
+    });
+
+    return res.json({
+      success: true,
+      message: `企业 ${company.name} 的密码已重置成功`
+    });
+  } catch (error: any) {
+    console.error('重置企业密码失败:', error);
+    return res.status(500).json({
+      success: false,
+      message: '重置密码失败：' + (error.message || '未知错误')
+    });
+  }
+};
+
+/**
  * 获取职位统计数据
  */
 export const getJobStats = async (req: Request, res: Response) => {

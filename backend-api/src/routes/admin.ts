@@ -17,7 +17,8 @@ import {
   deleteJob,
   getJobStats,
   adminLogin,
-  getCompanyDetail
+  getCompanyDetail,
+  resetCompanyPassword
 } from '../controllers/adminController';
 import { adminAuth, requireRole, requirePermission } from '../middleware/adminAuth';
 import { body, query, param } from 'express-validator';
@@ -177,6 +178,14 @@ router.patch('/companies/:companyId/status', [
   body('isVerified').optional().isBoolean().withMessage('认证状态必须是布尔值'),
   validate
 ], updateCompanyStatus);
+
+// 重置企业登录密码
+router.post('/companies/:companyId/reset-password', [
+  requirePermission('company:write'),
+  param('companyId').isUUID().withMessage('企业ID格式错误'),
+  body('newPassword').isLength({ min: 8 }).withMessage('新密码至少8位'),
+  validate
+], resetCompanyPassword);
 
 // 订阅管理
 router.post('/companies/:companyId/extend-subscription', [

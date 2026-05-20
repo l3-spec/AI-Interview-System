@@ -27,6 +27,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xlwl.AiMian.R
@@ -113,20 +115,30 @@ fun FigmaAgreementText(
 ) {
     val agreementText = buildAnnotatedString {
         append("我已阅读并同意")
-        pushStringAnnotation(tag = "USER_AGREEMENT", annotation = "agreement")
-        withStyle(style = SpanStyle(color = StarLinkLinkBlue)) {
-            append("《用户须知》")
+        withLink(
+            LinkAnnotation.Clickable(
+                tag = "USER_AGREEMENT",
+                linkInteractionListener = { _ -> onAgreementClick() }
+            )
+        ) {
+            withStyle(style = SpanStyle(color = StarLinkLinkBlue)) {
+                append("《用户须知》")
+            }
         }
-        pop()
         append("和")
-        pushStringAnnotation(tag = "PRIVACY_POLICY", annotation = "privacy")
-        withStyle(style = SpanStyle(color = StarLinkLinkBlue)) {
-            append("《隐私条款》")
+        withLink(
+            LinkAnnotation.Clickable(
+                tag = "PRIVACY_POLICY",
+                linkInteractionListener = { _ -> onPrivacyClick() }
+            )
+        ) {
+            withStyle(style = SpanStyle(color = StarLinkLinkBlue)) {
+                append("《隐私条款》")
+            }
         }
-        pop()
     }
 
-    androidx.compose.foundation.text.ClickableText(
+    Text(
         text = agreementText,
         style = TextStyle(
             color = StarLinkPrimaryText,
@@ -135,12 +147,6 @@ fun FigmaAgreementText(
             lineHeight = 21.sp,
             letterSpacing = (-0.32).sp
         ),
-        modifier = modifier,
-        onClick = { offset ->
-            agreementText.getStringAnnotations(tag = "USER_AGREEMENT", start = offset, end = offset)
-                .firstOrNull()?.let { onAgreementClick() }
-            agreementText.getStringAnnotations(tag = "PRIVACY_POLICY", start = offset, end = offset)
-                .firstOrNull()?.let { onPrivacyClick() }
-        }
+        modifier = modifier
     )
 }

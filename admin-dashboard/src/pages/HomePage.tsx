@@ -7,14 +7,8 @@ import FirstLaunchPrivacyModal, {
 } from '../components/FirstLaunchPrivacyModal';
 import './LoginPage.css';
 import companyLogo from '../assets/company-logo.png';
-import alibabaLogo from '../assets/alibaba-logo.svg';
-import bytedanceLogo from '../assets/bytedance-logo.svg';
-import antGroupLogo from '../assets/antgroup-logo.svg';
-import huaweiLogo from '../assets/huawei-logo.svg';
-import baiduLogo from '../assets/baidu-logo.svg';
-import jdLogo from '../assets/jd-logo.svg';
-import didiLogo from '../assets/didi-logo.svg';
-import oppoLogo from '../assets/oppo-logo.svg';
+import PartnerCard from '../components/PartnerCard';
+import { partners } from '../data/partners';
 
 const HomePage: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -41,40 +35,7 @@ const HomePage: React.FC = () => {
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
-  const caseStudies = [
-    {
-      name: '阿里巴巴',
-      logo: alibabaLogo,
-      quote: '"U-Talent帮助我们提升了面试效率，候选人体验也更好了"',
-      resultLabel: '面试效率提升',
-      resultValue: '85%'
-    },
-    {
-      name: '字节跳动',
-      logo: bytedanceLogo,
-      quote: '"智能筛选功能让我们能够快速找到最合适的技术人才"',
-      resultLabel: '招聘成功率提升',
-      resultValue: '70%'
-    },
-    {
-      name: '蚂蚁金服',
-      logo: antGroupLogo,
-      quote: '"AI分析报告非常专业，为我们的招聘决策提供了有力支持"',
-      resultLabel: '招聘成本降低',
-      resultValue: '60%'
-    }
-  ];
-
-  const partnerCompanies = [
-    { name: '华为', logo: huaweiLogo },
-    { name: '阿里巴巴', logo: alibabaLogo },
-    { name: '百度', logo: baiduLogo },
-    { name: '京东', logo: jdLogo },
-    { name: '字节跳动', logo: bytedanceLogo },
-    { name: '滴滴出行', logo: didiLogo },
-    { name: '蚂蚁集团', logo: antGroupLogo },
-    { name: 'OPPO', logo: oppoLogo }
-  ];
+  const combinedCompanies = partners;
   const currentYear = new Date().getFullYear();
 
   useEffect(() => {
@@ -142,7 +103,7 @@ const HomePage: React.FC = () => {
     e.preventDefault();
     e.stopPropagation();
     if (!loginAgreedPolicies) {
-      setError('请先阅读并勾选同意《用户须知》和《隐私条款》');
+      setError('请先阅读并勾选同意《用户须知》和《隐私政策》');
       return;
     }
     console.log('开始登录，邮箱:', email);
@@ -192,7 +153,7 @@ const HomePage: React.FC = () => {
     setRegisterLoading(true);
 
     if (!registerAgreedPolicies) {
-      setRegisterError('请先阅读并勾选同意《用户须知》和《隐私条款》');
+      setRegisterError('请先阅读并勾选同意《用户须知》和《隐私政策》');
       setRegisterLoading(false);
       return;
     }
@@ -259,8 +220,7 @@ const HomePage: React.FC = () => {
           </div>
           <nav className="nav-menu">
             <a href="#features">产品特色</a>
-            <a href="#cases">成功案例</a>
-            <a href="#partners">合作伙伴</a>
+            <a href="#partners">成功案例 & 合作伙伴</a>
             <div className="nav-download">
               <span className="nav-link">APP 下载</span>
               <div className="download-dropdown" aria-label="Android 客户端下载">
@@ -378,36 +338,17 @@ const HomePage: React.FC = () => {
         </div>
       </section>
 
-      {/* 成功案例 */}
-      <section id="cases" className="cases-section">
-        <div className="container">
-          <h2 className="section-title">成功案例</h2>
-          <div className="cases-grid">
-            {caseStudies.map(caseItem => (
-              <div className="case-item" key={caseItem.name}>
-                <div className="case-logo">
-                  <img src={caseItem.logo} alt={`${caseItem.name} logo`} />
-                </div>
-                <h3>{caseItem.name}</h3>
-                <p>{caseItem.quote}</p>
-                <div className="case-result">
-                  {caseItem.resultLabel} <strong>{caseItem.resultValue}</strong>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* 合作伙伴 */}
+      {/* 成功案例 & 合作伙伴 */}
       <section id="partners" className="partners-section">
         <div className="container">
-          <h2 className="section-title">合作伙伴</h2>
+          <h2 className="section-title">成功案例 & 合作伙伴</h2>
+          <p className="partners-subtitle">
+            U-Talent 已与金融、能源、互联网、教育、政企、地产等多行业头部客户达成合作，
+            点击任意卡片可查看完整的合作详情与企业招聘方向介绍。
+          </p>
           <div className="partners-grid">
-            {partnerCompanies.map(partner => (
-              <div className="partner-logo" key={partner.name} title={partner.name}>
-                <img src={partner.logo} alt={`${partner.name} logo`} />
-              </div>
+            {combinedCompanies.map((company) => (
+              <PartnerCard partner={company} key={company.id} />
             ))}
           </div>
         </div>
@@ -475,7 +416,7 @@ const HomePage: React.FC = () => {
           <div className="home-footer__links">
             <Link to="/user-instructions" className="home-footer__link">用户须知</Link>
             <span className="home-footer__separator">|</span>
-            <Link to="/privacy-policy" className="home-footer__link">隐私条款</Link>
+            <Link to="/privacy-policy" className="home-footer__link">隐私政策</Link>
             <span className="home-footer__separator">|</span>
             <Link to="/privacy-rights" className="home-footer__link">隐私权利</Link>
           </div>
@@ -592,7 +533,7 @@ const HomePage: React.FC = () => {
                   </Link>
                   和
                   <Link to="/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ color: '#0091ff', margin: '0 2px' }}>
-                    《隐私条款》
+                    《隐私政策》
                   </Link>
                 </span>
               </label>
@@ -825,7 +766,7 @@ const HomePage: React.FC = () => {
                   </Link>
                   和
                   <Link to="/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ color: '#0091ff', margin: '0 2px' }}>
-                    《隐私条款》
+                    《隐私政策》
                   </Link>
                 </span>
               </label>

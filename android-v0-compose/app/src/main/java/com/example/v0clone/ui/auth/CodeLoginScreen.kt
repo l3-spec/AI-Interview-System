@@ -95,7 +95,8 @@ fun CodeLoginScreen(
     initialPhone: String? = null,
     onLoginSuccess: (String, String) -> Unit,
     onBackClick: () -> Unit,
-    onNavigatePrivacy: () -> Unit = {}
+    onNavigatePrivacy: () -> Unit = {},
+    onNavigateUserInstructions: () -> Unit = {}
 ) {
     val initialPhoneSanitized = initialPhone?.filter { it.isDigit() }?.take(11).orEmpty()
     var phoneField by rememberSaveable(stateSaver = TextFieldValue.Saver) {
@@ -400,7 +401,7 @@ fun CodeLoginScreen(
                             )
                             FigmaAgreementText(
                                 onPrivacyClick = onNavigatePrivacy,
-                                onAgreementClick = onNavigatePrivacy
+                                onAgreementClick = onNavigateUserInstructions
                             )
                         }
                     }

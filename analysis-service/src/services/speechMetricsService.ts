@@ -17,6 +17,17 @@ export interface SpeechMetricsSample {
   fillerRatio?: number | null; // 0-1
   volumeStability?: number | null; // 0-100
   speechQuality?: number | null; // 0-100
+  // 新增：语音质量详细维度
+  fluencyScore?: number | null;      // 流畅度 0-100
+  confidenceScore?: number | null;   // 自信度 0-100
+  clarityScore?: number | null;      // 清晰度 0-100
+  rateStability?: number | null;     // 语速稳定性 0-100
+  fillerDetails?: {                  // 填充词详情
+    totalFillers: number;
+    chineseFillers: string[];
+    fillerDensity: number;           // 每百字填充词数
+  } | null;
+  voiceprintMatch?: number | null;   // 声纹匹配（辅助）
   videoProvided?: boolean;
   videoResolved?: boolean;
   audioExtracted?: boolean;
@@ -34,6 +45,10 @@ export interface SpeechMetricsSummary {
   avgFillerRatio?: number | null;
   avgVolumeStability?: number | null;
   speechQuality?: number | null;
+  // 新增：语音质量详细维度
+  avgFluencyScore?: number | null;
+  avgConfidenceScore?: number | null;
+  avgClarityScore?: number | null;
   asrEnabled: boolean;
   audioExtractSuccessCount: number;
   asrAttemptCount: number;
@@ -162,6 +177,22 @@ class SpeechMetricsService {
         : audioResult?.durationSec ?? null;
 
       const metrics = this.calculateSpeechMetrics(transcript, durationSec, audioResult);
+      const fillerInfo = this.countFillersEnhanced(transcript || '');
+      const pauseInfo = this.analyzePausePattern(transcript, durationSec);
+      const fluencyScore = this.calculateFluencyScore({
+        speechRate: metrics.speechRate,
+        fillerDensity: fillerInfo.density,
+        pauseRatio: metrics.pauseRatio
+      });
+      const confidenceScore = this.calculateConfidenceScore({
+        speechRate: metrics.speechRate,
+        pauseRatio: metrics.pauseRatio,
+        fillerDensity: fillerInfo.density,
+        volumeStability: metrics.volumeStability
+      });
+      const clarityScore = this.calculateClarityScore({
+        speechRate: metrics.speechRate
+      });
       samples.push({
         questionIndex: question.questionIndex,
         transcript,
@@ -171,6 +202,14 @@ class SpeechMetricsService {
         fillerRatio: metrics.fillerRatio,
         volumeStability: metrics.volumeStability,
         speechQuality: metrics.speechQuality,
+        fluencyScore,
+        confidenceScore,
+        clarityScore,
+        fillerDetails: fillerInfo.totalCount > 0 ? {
+          totalFillers: fillerInfo.totalCount,
+          chineseFillers: fillerInfo.fillerList,
+          fillerDensity: fillerInfo.density
+        } : null,
         videoProvided: hasVideo,
         videoResolved,
         audioExtracted,
@@ -194,6 +233,9 @@ class SpeechMetricsService {
     const avgFillerRatio = this.average(samples.map(s => s.fillerRatio));
     const avgVolumeStability = this.average(samples.map(s => s.volumeStability));
     const speechQuality = this.average(samples.map(s => s.speechQuality));
+    const avgFluencyScore = this.average(samples.map(s => s.fluencyScore));
+    const avgConfidenceScore = this.average(samples.map(s => s.confidenceScore));
+    const avgClarityScore = this.average(samples.map(s => s.clarityScore));
 
     return {
       transcript: fullTranscript.trim(),
@@ -203,6 +245,9 @@ class SpeechMetricsService {
       avgFillerRatio,
       avgVolumeStability,
       speechQuality,
+      avgFluencyScore,
+      avgConfidenceScore,
+      avgClarityScore,
       asrEnabled: this.asrEnabled,
       audioExtractSuccessCount,
       asrAttemptCount,
@@ -343,6 +388,109 @@ class SpeechMetricsService {
     const diff = Math.abs(speechRate - target);
     const penalty = Math.min(60, (diff / tolerance) * 60);
     return Math.max(40, Math.round(100 - penalty));
+  }
+
+  /**
+   * 增强版填充词检测：中英文填充词 + 重复词 + 卡顿标记
+   */
+  countFillersEnhanced(text: string): { totalCount: number; fillerList: string[]; density: number } {
+    if (!text) return { totalCount: 0, fillerList: [], density: 0 };
+    const chineseFillers = ['嗯', '呃', '额', '就是', '然后', '那个', '其实', '可能', '感觉', '就是说', '对吧', '这个', '这样子', '那么'];
+    const englishFillers = ['um', 'uh', 'er', 'ah', 'like', 'you know', 'i mean', 'sort of', 'kind of'];
+    const allFillers = [...chineseFillers, ...englishFillers];
+    const found: string[] = [];
+    let totalCount = 0;
+    for (const filler of allFillers) {
+      const regex = new RegExp(filler, 'gi');
+      const matches = text.match(regex);
+      if (matches) {
+        totalCount += matches.length;
+        found.push(`${filler}(${matches.length})`);
+      }
+    }
+    const charCount = text.replace(/\s+/g, '').length;
+    const density = charCount > 0 ? (totalCount / charCount) * 100 : 0;
+    return { totalCount, fillerList: found, density: Number(density.toFixed(2)) };
+  }
+
+  /**
+   * 计算流畅度评分：综合语速稳定性 + 卡顿率 + 填充词密度
+   */
+  calculateFluencyScore(params: {
+    speechRate?: number | null;
+    rateStability?: number | null;
+    fillerDensity?: number | null;
+    pauseRatio?: number | null;
+  }): number {
+    const rateScore = params.speechRate
+      ? this.rateScore(params.speechRate)
+      : 60;
+    const stabilityScore = params.rateStability ?? 60;
+    const fillerPenalty = params.fillerDensity !== null && params.fillerDensity !== undefined
+      ? Math.min(40, params.fillerDensity * 8)
+      : 0;
+    const fillerScore = Math.max(0, 100 - fillerPenalty);
+    const pauseScore = params.pauseRatio !== null && params.pauseRatio !== undefined
+      ? Math.round((1 - params.pauseRatio) * 100)
+      : 60;
+    return Math.round(rateScore * 0.25 + stabilityScore * 0.3 + fillerScore * 0.25 + pauseScore * 0.2);
+  }
+
+  /**
+   * 计算自信度评分：语速正常 + 停顿少 + 填充词少 + 音量稳定
+   */
+  calculateConfidenceScore(params: {
+    speechRate?: number | null;
+    pauseRatio?: number | null;
+    fillerDensity?: number | null;
+    volumeStability?: number | null;
+  }): number {
+    const rateScore = params.speechRate
+      ? this.rateScore(params.speechRate)
+      : 60;
+    const pauseScore = params.pauseRatio !== null && params.pauseRatio !== undefined
+      ? Math.round((1 - params.pauseRatio) * 100)
+      : 60;
+    const fillerPenalty = params.fillerDensity !== null && params.fillerDensity !== undefined
+      ? Math.min(35, params.fillerDensity * 7)
+      : 0;
+    const fillerScore = Math.max(0, 100 - fillerPenalty);
+    const volumeScore = params.volumeStability ?? 60;
+    return Math.round(rateScore * 0.3 + pauseScore * 0.3 + fillerScore * 0.25 + volumeScore * 0.15);
+  }
+
+  /**
+   * 计算清晰度评分：ASR置信度 + 语速合理性
+   */
+  calculateClarityScore(params: {
+    speechRate?: number | null;
+    asrConfidence?: number | null;
+  }): number {
+    const rateScore = params.speechRate
+      ? this.rateScore(params.speechRate)
+      : 60;
+    const asrScore = params.asrConfidence !== null && params.asrConfidence !== undefined
+      ? Math.round(params.asrConfidence * 100)
+      : 60;
+    return Math.round(rateScore * 0.4 + asrScore * 0.6);
+  }
+
+  /**
+   * 分析停顿模式
+   */
+  analyzePausePattern(text: string, durationSec?: number | null): { pattern: string; pauseDensity: number } {
+    if (!text || !durationSec || durationSec <= 0) {
+      return { pattern: 'unknown', pauseDensity: 0 };
+    }
+    const charCount = text.replace(/\s+/g, '').length;
+    const charsPerSec = charCount / durationSec;
+    const pauseDensity = Number((1 - Math.min(1, charsPerSec / 7)).toFixed(2));
+    let pattern: string;
+    if (pauseDensity < 0.1) pattern = '流畅自然';
+    else if (pauseDensity < 0.25) pattern = '偶有停顿';
+    else if (pauseDensity < 0.4) pattern = '停顿较多';
+    else pattern = '频繁停顿';
+    return { pattern, pauseDensity };
   }
 
   private countFillers(text: string): number {

@@ -310,4 +310,88 @@ export const unfavoriteCandidate = async (req: Request, res: Response) => {
     console.error('取消收藏候选人失败:', error);
     res.status(500).json({ success: false, message: '服务器错误' });
   }
+};
+
+/**
+ * 获取候选人的 AI 面试分析报告
+ */
+export const getCandidateAnalysisReport = async (req: Request, res: Response) => {
+  try {
+    const { id: userId } = req.params;
+
+    // 查找该候选人已完成的 AI 面试会话及其分析报告
+    const sessions = await prisma.aIInterviewSession.findMany({
+      where: {
+        userId,
+        status: 'COMPLETED',
+        analysisReport: { isNot: null }
+      },
+      include: {
+        analysisReport: true
+      },
+      orderBy: { completedAt: 'desc' },
+      take: 5
+    });
+
+    if (!sessions.length) {
+      return res.json({
+        success: true,
+        data: {
+          hasReport: false,
+          message: '该候选人暂无面试分析报告'
+        }
+      });
+    }
+
+    // 取最新的一份报告
+    const latestSession = sessions[0];
+    const report = latestSession.analysisReport!;
+
+    // 构建返回数据
+    const result = {
+      hasReport: true,
+      sessionId: latestSession.id,
+      jobTarget: latestSession.jobTarget,
+      completedAt: latestSession.completedAt,
+      report: {
+        overallScore: report.overallScore,
+        newDimensionScores: {
+          professionalAbilityScore: report.professionalAbilityScore ?? 0,
+          learningGrowthScore: report.learningGrowthScore ?? 0,
+          communicationCollaborationScore: report.communicationCollaborationScore ?? 0,
+          problemSolvingScore: report.problemSolvingNewScore ?? 0,
+          achievementExecutionScore: report.achievementExecutionScore ?? 0,
+          stressResilienceScore: report.stressResilienceScore ?? 0,
+        },
+        competenciesDetailed: report.competenciesJson ? JSON.parse(report.competenciesJson) : [],
+        strengths: report.strengths ? JSON.parse(report.strengths) : [],
+        improvements: report.improvements ? JSON.parse(report.improvements) : [],
+        tips: report.tips || '',
+        multimodalScores: report.multimodalScoresJson ? JSON.parse(report.multimodalScoresJson) : null,
+        jobMatch: report.jobMatchTitle ? {
+          title: report.jobMatchTitle,
+          description: report.jobMatchDescription,
+          matchRatio: report.jobMatchRatio
+        } : null,
+        analysisStatus: report.analysisStatus,
+        generatedAt: report.generatedAt
+      },
+      // 历史报告列表
+      reportHistory: sessions.slice(1).map(s => ({
+        sessionId: s.id,
+        jobTarget: s.jobTarget,
+        overallScore: s.analysisReport!.overallScore,
+        completedAt: s.completedAt,
+        analysisStatus: s.analysisReport!.analysisStatus
+      }))
+    };
+
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error('获取候选人分析报告失败:', error);
+    return res.status(500).json({
+      success: false,
+      message: '获取分析报告失败：' + (error.message || '未知错误')
+    });
+  }
 }; 

@@ -65,7 +65,7 @@ const FirstLaunchPrivacyModal: React.FC<FirstLaunchPrivacyModalProps> = ({
           </svg>
         </div>
         <h2 id="first-privacy-title" className="first-privacy-heading">
-          隐私条款
+          隐私政策
         </h2>
         <p className="first-privacy-body">
           欢迎您使用由<strong>柚汀科技</strong>提供的产品与服务。我们非常重视您的个人信息与隐私保护。
@@ -73,9 +73,9 @@ const FirstLaunchPrivacyModal: React.FC<FirstLaunchPrivacyModalProps> = ({
         <p className="first-privacy-body">
           请您在使用前仔细阅读
           <Link to="/privacy-policy" className="first-privacy-link" target="_blank" rel="noopener noreferrer">
-            《隐私条款》
+            《隐私政策》
           </Link>
-          （为独立文档）。您通过外链访问的《隐私条款》全文与本站
+          （为独立文档）。您通过外链访问的《隐私政策》全文与本站
           <Link to="/privacy-policy" className="first-privacy-link" target="_blank" rel="noopener noreferrer">
             /privacy-policy
           </Link>

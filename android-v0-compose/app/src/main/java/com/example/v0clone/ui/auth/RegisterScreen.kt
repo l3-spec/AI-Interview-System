@@ -35,7 +35,8 @@ fun RegisterScreen(
     repo: AuthRepository,
     onRegisterSuccess: (String, String) -> Unit, // token, userJson
     onGoLogin: () -> Unit,
-    onNavigatePrivacy: () -> Unit = {}
+    onNavigatePrivacy: () -> Unit = {},
+    onNavigateUserInstructions: () -> Unit = {}
 ) {
     var email by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
@@ -239,7 +240,7 @@ fun RegisterScreen(
                         Spacer(Modifier.width(8.dp))
                         FigmaAgreementText(
                             onPrivacyClick = onNavigatePrivacy,
-                            onAgreementClick = onNavigatePrivacy
+                            onAgreementClick = onNavigateUserInstructions
                         )
                     }
 

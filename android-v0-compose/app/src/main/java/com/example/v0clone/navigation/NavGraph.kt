@@ -116,6 +116,7 @@ import com.xlwl.AiMian.ui.profile.DeliveryListRoute
 import com.xlwl.AiMian.ui.profile.PersonalInfoRoute
 import com.xlwl.AiMian.ui.profile.PrivacyPermissionsRoute
 import com.xlwl.AiMian.ui.profile.PrivacyPolicyScreen
+import com.xlwl.AiMian.ui.profile.UserInstructionsScreen
 import kotlinx.coroutines.launch
 import java.net.URLDecoder
 import java.net.URLEncoder
@@ -1027,7 +1028,8 @@ fun AppNavHost(navController: NavHostController) {
                     navController.navigate(Routes.PROFILE)
                 },
                 onGoRegister = { navController.navigate(Routes.REGISTER) },
-                onNavigatePrivacy = { navController.navigate(Routes.PRIVACY_POLICY) }
+                onNavigatePrivacy = { navController.navigate(Routes.PRIVACY_POLICY) },
+                onNavigateUserInstructions = { navController.navigate(Routes.USER_INSTRUCTIONS) }
             )
         }
 
@@ -1044,7 +1046,8 @@ fun AppNavHost(navController: NavHostController) {
                     navController.navigate(Routes.PROFILE)
                 },
                 onGoLogin = { navController.popBackStack(); navController.navigate(Routes.LOGIN) },
-                onNavigatePrivacy = { navController.navigate(Routes.PRIVACY_POLICY) }
+                onNavigatePrivacy = { navController.navigate(Routes.PRIVACY_POLICY) },
+                onNavigateUserInstructions = { navController.navigate(Routes.USER_INSTRUCTIONS) }
             )
         }
 
@@ -1277,6 +1280,10 @@ fun AppNavHost(navController: NavHostController) {
 
         composable(Routes.PRIVACY_POLICY) {
             PrivacyPolicyScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(Routes.USER_INSTRUCTIONS) {
+            UserInstructionsScreen(onBack = { navController.popBackStack() })
         }
         }
 

@@ -12,7 +12,8 @@ fun LoginFlowScreen(
     repo: AuthRepository,
     onLoginSuccess: (String, String) -> Unit, // token, userJson
     onGoRegister: () -> Unit,
-    onNavigatePrivacy: () -> Unit = {}
+    onNavigatePrivacy: () -> Unit = {},
+    onNavigateUserInstructions: () -> Unit = {}
 ) {
     var currentScreen by remember { mutableStateOf(LoginScreenType.MAIN) }
     var codeLoginPhone by remember { mutableStateOf<String?>(null) }
@@ -26,7 +27,8 @@ fun LoginFlowScreen(
                     codeLoginPhone = phone
                     currentScreen = LoginScreenType.CODE_LOGIN
                 },
-                onNavigatePrivacy = onNavigatePrivacy
+                onNavigatePrivacy = onNavigatePrivacy,
+                onNavigateUserInstructions = onNavigateUserInstructions
             )
         }
         
@@ -39,7 +41,8 @@ fun LoginFlowScreen(
                     codeLoginPhone = null
                     currentScreen = LoginScreenType.MAIN
                 },
-                onNavigatePrivacy = onNavigatePrivacy
+                onNavigatePrivacy = onNavigatePrivacy,
+                onNavigateUserInstructions = onNavigateUserInstructions
             )
         }
     }

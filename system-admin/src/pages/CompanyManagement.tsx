@@ -55,6 +55,9 @@ const CompanyManagement: React.FC = () => {
   const [selectedCompany, setSelectedCompany] = useState<AdminCompanySummary | null>(null);
   const [showcaseModalOpen, setShowcaseModalOpen] = useState(false);
   const [showcaseForm] = Form.useForm();
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
+  const [passwordCompany, setPasswordCompany] = useState<AdminCompanySummary | null>(null);
+  const [passwordForm] = Form.useForm();
 
   const renderVerificationStatusTag = (verification?: AdminCompanyDetail['verification'], isVerified?: boolean) => {
     const status = (verification?.status || (isVerified ? 'APPROVED' : 'PENDING')).toString().toUpperCase();
@@ -441,6 +444,13 @@ const CompanyManagement: React.FC = () => {
               </Button>
             </Popconfirm>
           )}
+          <Button type="link" size="small" onClick={() => {
+            setPasswordCompany(record);
+            passwordForm.resetFields();
+            setPasswordModalVisible(true);
+          }}>
+            重置密码
+          </Button>
         </Space>
       )
     }
@@ -712,6 +722,63 @@ const CompanyManagement: React.FC = () => {
             rules={[{ type: 'number', min: 0, max: 1000, message: '请输入 0-1000 的排序值' }]}
           >
             <InputNumber style={{ width: '100%' }} min={0} max={1000} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="重置企业登录密码"
+        open={passwordModalVisible}
+        onCancel={() => setPasswordModalVisible(false)}
+        onOk={async () => {
+          try {
+            const values = await passwordForm.validateFields();
+            if (values.newPassword !== values.confirmPassword) {
+              message.error('两次输入的密码不一致');
+              return;
+            }
+            await companyApi.resetPassword(passwordCompany!.id, values.newPassword);
+            message.success(`企业 ${passwordCompany!.name} 的密码已重置`);
+            setPasswordModalVisible(false);
+          } catch (error: any) {
+            if (error?.errorFields) return; // 表单验证错误
+            message.error(error?.message || '重置密码失败');
+          }
+        }}
+        okText="确认重置"
+        cancelText="取消"
+        destroyOnClose
+      >
+        <Form form={passwordForm} layout="vertical">
+          <Form.Item label="企业">
+            <Input value={`${passwordCompany?.name || ''} (${passwordCompany?.email || ''})`} disabled />
+          </Form.Item>
+          <Form.Item
+            name="newPassword"
+            label="新密码"
+            rules={[
+              { required: true, message: '请输入新密码' },
+              { min: 8, message: '密码至少8位' }
+            ]}
+          >
+            <Input.Password placeholder="至少8位" />
+          </Form.Item>
+          <Form.Item
+            name="confirmPassword"
+            label="确认密码"
+            rules={[
+              { required: true, message: '请再次输入新密码' },
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  if (!value || getFieldValue('newPassword') === value) {
+                    return Promise.resolve();
+                  }
+                  return Promise.reject(new Error('两次输入的密码不一致'));
+                },
+              }),
+            ]}
+          >
+            <Input.Password placeholder="再次输入新密码" />
           </Form.Item>
         </Form>
       </Modal>

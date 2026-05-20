@@ -73,7 +73,8 @@ fun LoginMainScreen(
     repo: AuthRepository,
     onLoginSuccess: (String, String) -> Unit,
     onRequestCodeLogin: (String?) -> Unit,
-    onNavigatePrivacy: () -> Unit = {}
+    onNavigatePrivacy: () -> Unit = {},
+    onNavigateUserInstructions: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -240,7 +241,7 @@ fun LoginMainScreen(
                     )
                     FigmaAgreementText(
                         onPrivacyClick = onNavigatePrivacy,
-                        onAgreementClick = onNavigatePrivacy // For now, both point to privacy
+                        onAgreementClick = onNavigateUserInstructions
                     )
                 }
 

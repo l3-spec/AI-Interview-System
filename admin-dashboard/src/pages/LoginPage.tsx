@@ -32,7 +32,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
 
   const handleSubmit = async (values: { email: string; password: string }) => {
     if (!agreedPolicies) {
-      message.warning('请先阅读并勾选同意《用户须知》和《隐私条款》');
+      message.warning('请先阅读并勾选同意《用户须知》和《隐私政策》');
       return;
     }
     setLoading(true);
@@ -147,7 +147,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                 </Link>
                 和
                 <Link to="/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ color: '#0091ff' }}>
-                  《隐私条款》
+                  《隐私政策》
                 </Link>
               </span>
             </Checkbox>

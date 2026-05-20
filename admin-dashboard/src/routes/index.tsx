@@ -22,6 +22,7 @@ import UserInstructions from '../pages/UserInstructions';
 import PrivacyPolicy from '../pages/PrivacyPolicy';
 import PrivacyRights from '../pages/PrivacyRights';
 import UserAgreement from '../pages/UserAgreement';
+import PartnerDetail from '../pages/partners/PartnerDetail';
 
 export const AppRoutes: React.FC = () => {
   const { isAuthenticated, loading } = useAuth();
@@ -55,6 +56,7 @@ export const AppRoutes: React.FC = () => {
         <Route path="/privacy-rights" element={<PrivacyRights />} />
         <Route path="/user-agreement" element={<UserAgreement />} />
         <Route path="/privacy-statement" element={<Navigate to="/privacy-policy" replace />} />
+        <Route path="/partners/:id" element={<PartnerDetail />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     );
@@ -83,6 +85,7 @@ export const AppRoutes: React.FC = () => {
       <Route path="/privacy-rights" element={<PrivacyRights />} />
       <Route path="/user-agreement" element={<UserAgreement />} />
       <Route path="/privacy-statement" element={<Navigate to="/privacy-policy" replace />} />
+      <Route path="/partners/:id" element={<PartnerDetail />} />
       <Route path="/login" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
