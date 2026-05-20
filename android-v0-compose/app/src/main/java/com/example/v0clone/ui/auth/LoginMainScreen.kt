@@ -73,6 +73,8 @@ fun LoginMainScreen(
     repo: AuthRepository,
     onLoginSuccess: (String, String) -> Unit,
     onRequestCodeLogin: (String?) -> Unit,
+    agreed: Boolean,
+    onAgreedChange: (Boolean) -> Unit,
     onNavigatePrivacy: () -> Unit = {},
     onNavigateUserInstructions: () -> Unit = {}
 ) {
@@ -83,7 +85,6 @@ fun LoginMainScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var info by remember { mutableStateOf<String?>(null) }
     var pendingAutoLogin by remember { mutableStateOf(false) }
-    var agreed by remember { mutableStateOf(false) } // 默认不勾选
 
     val requiredPermissions = remember {
         val permissions = mutableListOf(Manifest.permission.READ_PHONE_STATE)
@@ -237,7 +238,7 @@ fun LoginMainScreen(
                 ) {
                     FigmaAgreementCheckbox(
                         checked = agreed,
-                        onCheckedChange = { agreed = it }
+                        onCheckedChange = onAgreedChange
                     )
                     FigmaAgreementText(
                         onPrivacyClick = onNavigatePrivacy,

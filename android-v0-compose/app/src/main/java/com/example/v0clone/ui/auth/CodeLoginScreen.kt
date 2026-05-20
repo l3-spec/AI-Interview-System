@@ -95,6 +95,8 @@ fun CodeLoginScreen(
     initialPhone: String? = null,
     onLoginSuccess: (String, String) -> Unit,
     onBackClick: () -> Unit,
+    agreed: Boolean,
+    onAgreedChange: (Boolean) -> Unit,
     onNavigatePrivacy: () -> Unit = {},
     onNavigateUserInstructions: () -> Unit = {}
 ) {
@@ -127,7 +129,6 @@ fun CodeLoginScreen(
     var showKeyboard by remember { mutableStateOf(false) }
     var phoneFocused by remember { mutableStateOf(false) }
     var codeFocused by remember { mutableStateOf(false) }
-    var agreed by remember { mutableStateOf(false) }
     val phoneFocusRequester = remember { FocusRequester() }
     val codeFocusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
@@ -397,7 +398,7 @@ fun CodeLoginScreen(
                         ) {
                             FigmaAgreementCheckbox(
                                 checked = agreed,
-                                onCheckedChange = { agreed = it }
+                                onCheckedChange = onAgreedChange
                             )
                             FigmaAgreementText(
                                 onPrivacyClick = onNavigatePrivacy,

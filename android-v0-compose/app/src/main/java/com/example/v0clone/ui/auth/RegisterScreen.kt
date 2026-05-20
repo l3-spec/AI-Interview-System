@@ -35,6 +35,8 @@ fun RegisterScreen(
     repo: AuthRepository,
     onRegisterSuccess: (String, String) -> Unit, // token, userJson
     onGoLogin: () -> Unit,
+    isAgreed: Boolean,
+    onAgreedChange: (Boolean) -> Unit,
     onNavigatePrivacy: () -> Unit = {},
     onNavigateUserInstructions: () -> Unit = {}
 ) {
@@ -45,7 +47,6 @@ fun RegisterScreen(
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var passwordVisible by remember { mutableStateOf(false) }
-    var isAgreed by remember { mutableStateOf(false) } // 默认不勾选
     val scope = rememberCoroutineScope()
     val navPadding = WindowInsets.navigationBars.asPaddingValues()
 
@@ -235,7 +236,7 @@ fun RegisterScreen(
                     ) {
                         FigmaAgreementCheckbox(
                             checked = isAgreed,
-                            onCheckedChange = { isAgreed = it }
+                            onCheckedChange = onAgreedChange
                         )
                         Spacer(Modifier.width(8.dp))
                         FigmaAgreementText(

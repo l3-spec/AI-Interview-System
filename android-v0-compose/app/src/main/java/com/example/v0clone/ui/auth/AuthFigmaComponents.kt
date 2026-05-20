@@ -113,40 +113,52 @@ fun FigmaAgreementText(
     onPrivacyClick: () -> Unit = {},
     onAgreementClick: () -> Unit = {}
 ) {
-    val agreementText = buildAnnotatedString {
-        append("我已阅读并同意")
-        withLink(
-            LinkAnnotation.Clickable(
-                tag = "USER_AGREEMENT",
-                linkInteractionListener = { _ -> onAgreementClick() }
-            )
-        ) {
-            withStyle(style = SpanStyle(color = StarLinkLinkBlue)) {
-                append("《用户须知》")
-            }
-        }
-        append("和")
-        withLink(
-            LinkAnnotation.Clickable(
-                tag = "PRIVACY_POLICY",
-                linkInteractionListener = { _ -> onPrivacyClick() }
-            )
-        ) {
-            withStyle(style = SpanStyle(color = StarLinkLinkBlue)) {
-                append("《隐私条款》")
-            }
-        }
-    }
-
-    Text(
-        text = agreementText,
-        style = TextStyle(
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.Start,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "我已阅读并同意",
             color = StarLinkPrimaryText,
             fontSize = 12.sp,
             fontWeight = FontWeight.Light,
             lineHeight = 21.sp,
             letterSpacing = (-0.32).sp
-        ),
-        modifier = modifier
-    )
+        )
+        Text(
+            text = "《用户须知》",
+            color = StarLinkLinkBlue,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Light,
+            lineHeight = 21.sp,
+            letterSpacing = (-0.32).sp,
+            modifier = Modifier.clickable(
+                onClick = onAgreementClick,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            )
+        )
+        Text(
+            text = "和",
+            color = StarLinkPrimaryText,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Light,
+            lineHeight = 21.sp,
+            letterSpacing = (-0.32).sp
+        )
+        Text(
+            text = "《隐私条款》",
+            color = StarLinkLinkBlue,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Light,
+            lineHeight = 21.sp,
+            letterSpacing = (-0.32).sp,
+            modifier = Modifier.clickable(
+                onClick = onPrivacyClick,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            )
+        )
+    }
 }

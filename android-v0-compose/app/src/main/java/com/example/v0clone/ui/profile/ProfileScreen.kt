@@ -95,6 +95,8 @@ fun ProfileScreen(
     ossRepository: OssRepository,
     contentRepository: ContentRepository,
     authManager: AuthManager,
+    agreed: Boolean = false,
+    onAgreedChange: (Boolean) -> Unit = {},
     onBannerClick: (BannerData) -> Unit = {}
 ) {
     val viewModel: ProfileViewModel = viewModel(factory = ProfileViewModel.provideFactory(
@@ -115,7 +117,7 @@ fun ProfileScreen(
     }
     val loginAuthApi = remember(loginClient) { RetrofitClient.createService(AuthApi::class.java, loginClient) }
     val loginRepo = remember(loginAuthApi) { AuthRepository(loginAuthApi) }
-
+ 
     if (token.isNullOrEmpty()) {
         LoginFlowScreen(
             repo = loginRepo,
@@ -125,7 +127,9 @@ fun ProfileScreen(
                     authManager.setUserJson(newUserJson)
                 }
             },
-            onGoRegister = { navController.navigate(Routes.REGISTER) }
+            onGoRegister = { navController.navigate(Routes.REGISTER) },
+            agreed = agreed,
+            onAgreedChange = onAgreedChange
         )
     } else {
         LoggedInProfileContent(

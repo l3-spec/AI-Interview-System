@@ -173,6 +173,7 @@ fun AppNavHost(navController: NavHostController) {
     val appUpdateRepo = remember(apiService) { AppUpdateRepository(apiService) }
     val userRepo = remember(apiService) { UserRepository(apiService) }
     var latestAppVersion by remember { mutableStateOf<AppVersionInfo?>(null) }
+    var agreementsAgreed by remember { mutableStateOf(false) }
     val openDownload = remember(context) {
         { url: String ->
             if (url.isBlank()) {
@@ -1028,6 +1029,8 @@ fun AppNavHost(navController: NavHostController) {
                     navController.navigate(Routes.PROFILE)
                 },
                 onGoRegister = { navController.navigate(Routes.REGISTER) },
+                agreed = agreementsAgreed,
+                onAgreedChange = { agreementsAgreed = it },
                 onNavigatePrivacy = { navController.navigate(Routes.PRIVACY_POLICY) },
                 onNavigateUserInstructions = { navController.navigate(Routes.USER_INSTRUCTIONS) }
             )
@@ -1046,6 +1049,8 @@ fun AppNavHost(navController: NavHostController) {
                     navController.navigate(Routes.PROFILE)
                 },
                 onGoLogin = { navController.popBackStack(); navController.navigate(Routes.LOGIN) },
+                isAgreed = agreementsAgreed,
+                onAgreedChange = { agreementsAgreed = it },
                 onNavigatePrivacy = { navController.navigate(Routes.PRIVACY_POLICY) },
                 onNavigateUserInstructions = { navController.navigate(Routes.USER_INSTRUCTIONS) }
             )
@@ -1279,11 +1284,21 @@ fun AppNavHost(navController: NavHostController) {
         }
 
         composable(Routes.PRIVACY_POLICY) {
-            PrivacyPolicyScreen(onBack = { navController.popBackStack() })
+            PrivacyPolicyScreen(
+                onBack = {
+                    agreementsAgreed = true
+                    navController.popBackStack()
+                }
+            )
         }
 
         composable(Routes.USER_INSTRUCTIONS) {
-            UserInstructionsScreen(onBack = { navController.popBackStack() })
+            UserInstructionsScreen(
+                onBack = {
+                    agreementsAgreed = true
+                    navController.popBackStack()
+                }
+            )
         }
         }
 

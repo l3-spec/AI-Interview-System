@@ -12,6 +12,8 @@ fun LoginFlowScreen(
     repo: AuthRepository,
     onLoginSuccess: (String, String) -> Unit, // token, userJson
     onGoRegister: () -> Unit,
+    agreed: Boolean,
+    onAgreedChange: (Boolean) -> Unit,
     onNavigatePrivacy: () -> Unit = {},
     onNavigateUserInstructions: () -> Unit = {}
 ) {
@@ -27,6 +29,8 @@ fun LoginFlowScreen(
                     codeLoginPhone = phone
                     currentScreen = LoginScreenType.CODE_LOGIN
                 },
+                agreed = agreed,
+                onAgreedChange = onAgreedChange,
                 onNavigatePrivacy = onNavigatePrivacy,
                 onNavigateUserInstructions = onNavigateUserInstructions
             )
@@ -41,6 +45,8 @@ fun LoginFlowScreen(
                     codeLoginPhone = null
                     currentScreen = LoginScreenType.MAIN
                 },
+                agreed = agreed,
+                onAgreedChange = onAgreedChange,
                 onNavigatePrivacy = onNavigatePrivacy,
                 onNavigateUserInstructions = onNavigateUserInstructions
             )
