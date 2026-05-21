@@ -3,10 +3,7 @@ import { Form, Input, Button, Card, Typography, Alert, Space, message, Checkbox 
 import { UserOutlined, LockOutlined, BuildOutlined } from '@ant-design/icons';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import FirstLaunchPrivacyModal, {
-  hasPrivacyFirstLaunchConsent,
-  setPrivacyFirstLaunchConsent
-} from '../components/FirstLaunchPrivacyModal';
+
 
 import logoImage from '../assets/company-logo.png';
 
@@ -19,16 +16,12 @@ interface LoginPageProps {
 const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
-  const [showPrivacyGateModal, setShowPrivacyGateModal] = useState(false);
+
   const [agreedPolicies, setAgreedPolicies] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    if (!hasPrivacyFirstLaunchConsent()) {
-      setShowPrivacyGateModal(true);
-    }
-  }, []);
+
 
   const handleSubmit = async (values: { email: string; password: string }) => {
     if (!agreedPolicies) {
@@ -171,32 +164,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
           </Form.Item>
         </Form>
 
-        {/* 测试账号提示 */}
-        <Card 
-          size="small" 
-          style={{ 
-            background: '#f8f9fa', 
-            border: '1px dashed #d9d9d9',
-            marginTop: '24px'
-          }}
-        >
-          <Space direction="vertical" size="small" style={{ width: '100%' }}>
-            <Text strong style={{ color: '#1890ff' }}>
-              <BuildOutlined /> 测试账号
-            </Text>
-            <div>
-              <Text type="secondary">邮箱：</Text>
-              <Text code copyable>admin@test.com</Text>
-            </div>
-            <div>
-              <Text type="secondary">密码：</Text>
-              <Text code copyable>123456</Text>
-            </div>
-            <Text type="secondary" style={{ fontSize: '12px' }}>
-              💡 输入任意有效邮箱和密码即可登录
-            </Text>
-          </Space>
-        </Card>
 
         {/* 底部信息 */}
         <div style={{ 
@@ -212,14 +179,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
         </div>
       </Card>
 
-      <FirstLaunchPrivacyModal
-        open={showPrivacyGateModal}
-        onAgree={() => {
-          setPrivacyFirstLaunchConsent();
-          setShowPrivacyGateModal(false);
-        }}
-        onDisagree={() => setShowPrivacyGateModal(false)}
-      />
+
     </div>
   );
 };

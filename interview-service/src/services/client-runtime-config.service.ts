@@ -1,5 +1,5 @@
 import { Request } from 'express';
-import { getMergedPlatformAiConfig } from './platformAiSettings.service';
+import { getMergedPlatformAiConfig } from './platform-ai-settings.service';
 
 function trim(s: string | undefined): string {
   return (s || '').trim();

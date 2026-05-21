@@ -1,0 +1,169 @@
+version: '3.8'
+
+# ============================================================
+# AI 面试系统 - 生产部署 Docker Compose
+# 数据库和 Redis 使用外部托管服务（已在 .env.prod 中配置）
+# 服务端口规划：
+#   backend-api      → 3001
+#   asr-service      → 3002
+#   tts-service      → 3003
+#   interview-service→ 3004
+#   analysis-service → 3005
+#   nginx 反向代理   → 80 / 443
+# ============================================================
+
+services:
+
+  # ── 1. 主后端 API ──────────────────────────────────────────
+  backend-api:
+    build:
+      context: ./backend-api
+      dockerfile: Dockerfile
+    container_name: airi-backend-api
+    env_file: .env.prod
+    environment:
+      PORT: 3001
+      NODE_ENV: production
+      # 服务内网地址（容器间通信）
+      ASR_SERVICE_URL: http://asr-service:3002
+      TTS_SERVICE_URL: http://tts-service:3003
+      INTERVIEW_SERVICE_URL: http://interview-service:3004
+    ports:
+      - "3001:3001"
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      - asr-service
+      - tts-service
+      - interview-service
+    networks:
+      - airi-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ── 2. ASR 语音识别微服务 ────────────────────────────────────
+  asr-service:
+    build:
+      context: ./asr-service
+      dockerfile: Dockerfile
+    container_name: airi-asr-service
+    env_file: .env.prod
+    environment:
+      PORT: 3002
+      NODE_ENV: production
+    ports:
+      - "3002:3002"
+    networks:
+      - airi-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── 3. TTS 语音合成微服务 ────────────────────────────────────
+  tts-service:
+    build:
+      context: ./tts-service
+      dockerfile: Dockerfile
+    container_name: airi-tts-service
+    env_file: .env.prod
+    environment:
+      PORT: 3003
+      NODE_ENV: production
+    ports:
+      - "3003:3003"
+    networks:
+      - airi-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── 4. Interview 面试流程微服务 ──────────────────────────────
+  interview-service:
+    build:
+      context: ./interview-service
+      dockerfile: Dockerfile
+    container_name: airi-interview-service
+    env_file: .env.prod
+    environment:
+      PORT: 3004
+      NODE_ENV: production
+      TTS_SERVICE_URL: http://tts-service:3003
+    ports:
+      - "3004:3004"
+    depends_on:
+      - tts-service
+    networks:
+      - airi-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── 5. Analysis 分析工作微服务 ───────────────────────────────
+  analysis-service:
+    build:
+      context: ./analysis-service
+      dockerfile: Dockerfile
+    container_name: airi-analysis-service
+    env_file: .env.prod
+    environment:
+      PORT: 3005
+      NODE_ENV: production
+    ports:
+      - "3005:3005"
+    networks:
+      - airi-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── 6. Nginx 反向代理 ────────────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: airi-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - uploads_data:/app/uploads:ro
+    depends_on:
+      - backend-api
+      - asr-service
+      - tts-service
+      - interview-service
+      - analysis-service
+    networks:
+      - airi-network
+    restart: unless-stopped
+
+# ── 卷 ──────────────────────────────────────────────────────
+volumes:
+  uploads_data:
+    driver: local
+
+# ── 网络 ─────────────────────────────────────────────────────
+networks:
+  airi-network:
+    driver: bridge

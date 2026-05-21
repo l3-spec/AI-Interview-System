@@ -1,5 +1,11 @@
+import { Server } from 'socket.io';
+import Redis from 'ioredis';
 import { redisStreamService } from '../services/redis-stream.service';
 import { serviceDiscoveryService } from '../services/service-discovery.service';
+import { redisConnection } from '../config/redis';
+import { getMergedPlatformAiConfig } from '../services/platformAiSettings.service';
+import { qwen3ASRClient } from '../services/qwen3-asr-service-client';
+import { qwen3TTSClient } from '../services/qwen3-tts-service-client';
 import { v4 as uuidv4 } from 'uuid';
 
 export class RealtimeVoiceWebSocketServer {

@@ -68,8 +68,8 @@ export class DeepseekService {
   private apiKey: string;
   private apiUrl: string;
   private model: string;
-  private thinkingModel: string;
-  private analysisModel: string;
+  private thinkingModel!: string;
+  private analysisModel!: string;
   private maxTokens: number;
   private temperature: number;
   private isEnabled: boolean;

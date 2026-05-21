@@ -46,8 +46,42 @@ fun PrivacyPolicyScreen(
             AndroidView(
                 factory = { context ->
                     WebView(context).apply {
-                        webViewClient = WebViewClient()
-                        settings.javaScriptEnabled = true
+                        webViewClient = object : android.webkit.WebViewClient() {
+                            override fun onReceivedSslError(
+                                view: WebView?,
+                                handler: android.webkit.SslErrorHandler?,
+                                error: android.net.http.SslError?
+                            ) {
+                                handler?.proceed() // 忽略 SSL 证书错误，防止测试环境下因证书链不完整导致白屏
+                            }
+
+                            override fun onReceivedError(
+                                view: WebView?,
+                                request: android.webkit.WebResourceRequest?,
+                                error: android.webkit.WebResourceError?
+                            ) {
+                                super.onReceivedError(view, request, error)
+                                android.util.Log.e("WebView", "PrivacyPolicy load error: ${error?.description}")
+                            }
+                        }
+                        
+                        webChromeClient = object : android.webkit.WebChromeClient() {
+                            override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage?): Boolean {
+                                android.util.Log.d("WebViewConsole", "${consoleMessage?.message()} -- From line ${consoleMessage?.lineNumber()} of ${consoleMessage?.sourceId()}")
+                                return true
+                            }
+                        }
+
+                        settings.apply {
+                            javaScriptEnabled = true
+                            domStorageEnabled = true // 必须启用：现代单页应用 (SPA) 通常需要访问 localStorage/sessionStorage
+                            databaseEnabled = true
+                            mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW // 允许 HTTPS 页面加载 HTTP 资源
+                            useWideViewPort = true
+                            loadWithOverviewMode = true
+                            allowFileAccess = true
+                            allowContentAccess = true
+                        }
                         loadUrl("https://www.u-talent.cn/privacy-policy")
                     }
                 },

@@ -30,17 +30,20 @@ app.use(helmet({
   },
 }));
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production'
-    ? ['https://yourdomain.com', 'https://admin.yourdomain.com', 'https://system.yourdomain.com']
-    : [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://localhost:5173', // Vite默认端口
-      'http://localhost:5174', // 企业管理后台
-      'http://localhost:5175', // 系统管理后台
-      'http://localhost:8080', // 可能的其他端口
-      'http://localhost:8081'
-    ],
+  origin: function (origin, callback) {
+    // 如果有 CORS_ORIGINS 环境变量，则进行匹配
+    if (process.env.CORS_ORIGINS) {
+      const allowedOrigins = process.env.CORS_ORIGINS.split(',');
+      if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    } else {
+      // 默认允许所有来源 (动态反射 Origin，兼容 credentials: true)
+      callback(null, origin || '*');
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Access-Control-Allow-Origin'],

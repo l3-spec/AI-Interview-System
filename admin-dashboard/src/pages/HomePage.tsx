@@ -1,10 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import FirstLaunchPrivacyModal, {
-  hasPrivacyFirstLaunchConsent,
-  setPrivacyFirstLaunchConsent
-} from '../components/FirstLaunchPrivacyModal';
+
 import './LoginPage.css';
 import companyLogo from '../assets/company-logo.png';
 import PartnerCard from '../components/PartnerCard';
@@ -29,7 +26,7 @@ const HomePage: React.FC = () => {
   const [registerError, setRegisterError] = useState('');
   const [registerLoading, setRegisterLoading] = useState(false);
   const [navScrollProgress, setNavScrollProgress] = useState(0);
-  const [showPrivacyGateModal, setShowPrivacyGateModal] = useState(false);
+
   const [loginAgreedPolicies, setLoginAgreedPolicies] = useState(false);
   const [registerAgreedPolicies, setRegisterAgreedPolicies] = useState(false);
   const { login, isAuthenticated } = useAuth();
@@ -38,11 +35,7 @@ const HomePage: React.FC = () => {
   const combinedCompanies = partners;
   const currentYear = new Date().getFullYear();
 
-  useEffect(() => {
-    if (!hasPrivacyFirstLaunchConsent()) {
-      setShowPrivacyGateModal(true);
-    }
-  }, []);
+
 
   useEffect(() => {
     if (showLoginModal) setLoginAgreedPolicies(false);
@@ -53,18 +46,10 @@ const HomePage: React.FC = () => {
   }, [showRegisterModal]);
 
   const requestOpenLogin = () => {
-    if (!hasPrivacyFirstLaunchConsent()) {
-      setShowPrivacyGateModal(true);
-      return;
-    }
     setShowLoginModal(true);
   };
 
   const requestOpenRegister = () => {
-    if (!hasPrivacyFirstLaunchConsent()) {
-      setShowPrivacyGateModal(true);
-      return;
-    }
     setShowRegisterModal(true);
   };
 
@@ -818,14 +803,7 @@ const HomePage: React.FC = () => {
         </div>
       )}
 
-      <FirstLaunchPrivacyModal
-        open={showPrivacyGateModal}
-        onAgree={() => {
-          setPrivacyFirstLaunchConsent();
-          setShowPrivacyGateModal(false);
-        }}
-        onDisagree={() => setShowPrivacyGateModal(false)}
-      />
+
 
       <style dangerouslySetInnerHTML={{
         __html: `

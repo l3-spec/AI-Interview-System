@@ -37,3 +37,8 @@ uploads/duix-sdk/
 *.jpg
 *.mp4
 *.png
+interview-service/interview-s.tar
+backend-api/backend-api.tar
+analysis-service/analysis-s.tar
+tts-service/tts.tar
+asr-service/asr.tar

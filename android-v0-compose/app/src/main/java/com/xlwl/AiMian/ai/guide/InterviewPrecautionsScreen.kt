@@ -22,13 +22,14 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
-
-private val GuideBgWhite = Color(0xFFFFFFFF)
-private val GuideTextPrimary = Color(0xFF1A1A1A)
-private val GuideTextSecondary = Color(0xFF666666)
-private val GuideGreen = Color(0xFF00C78A)
-private val GuideSurface = Color(0xFFF7F8FA)
-private val GuideButtonBg = Color(0xFF2C2D31)
+import com.xlwl.AiMian.ui.theme.PrimaryBlue
+import com.xlwl.AiMian.ui.theme.TextPrimary
+import com.xlwl.AiMian.ui.theme.TextSecondary
+import com.xlwl.AiMian.ui.theme.BackgroundLight
+import com.xlwl.AiMian.ui.theme.SurfaceWhite
+import com.xlwl.AiMian.ui.theme.TextInvert
+import com.xlwl.AiMian.ui.theme.ErrorRed
+import com.xlwl.AiMian.ui.theme.SurfaceVariant
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,7 +40,7 @@ fun InterviewPrecautionsScreen(
     var isAgreed by remember { mutableStateOf(false) }
 
     Scaffold(
-        containerColor = GuideBgWhite,
+        containerColor = SurfaceWhite,
         topBar = {
             TopAppBar(
                 title = {
@@ -47,7 +48,7 @@ fun InterviewPrecautionsScreen(
                         text = "面试注意事项",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = GuideTextPrimary
+                        color = TextPrimary
                     )
                 },
                 navigationIcon = {
@@ -55,12 +56,12 @@ fun InterviewPrecautionsScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "返回",
-                            tint = GuideTextPrimary
+                            tint = TextPrimary
                         )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = GuideBgWhite
+                    containerColor = SurfaceWhite
                 )
             )
         },
@@ -68,7 +69,7 @@ fun InterviewPrecautionsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(GuideBgWhite)
+                    .background(SurfaceWhite)
                     .padding(horizontal = 24.dp, vertical = 16.dp)
                     .navigationBarsPadding(),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -82,19 +83,19 @@ fun InterviewPrecautionsScreen(
                     Icon(
                         imageVector = Icons.Default.CheckCircle,
                         contentDescription = "同意",
-                        tint = if (isAgreed) GuideGreen else Color.LightGray,
+                        tint = if (isAgreed) PrimaryBlue else Color.LightGray,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = buildAnnotatedString {
                             append("我已阅读并同意")
-                            withStyle(SpanStyle(color = GuideGreen)) {
+                            withStyle(SpanStyle(color = PrimaryBlue)) {
                                 append("AI面试隐私政策")
                             }
                         },
                         fontSize = 13.sp,
-                        color = GuideTextSecondary
+                        color = TextSecondary
                     )
                 }
 
@@ -106,10 +107,10 @@ fun InterviewPrecautionsScreen(
                     enabled = isAgreed,
                     shape = RoundedCornerShape(27.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = GuideButtonBg,
-                        contentColor = GuideGreen,
-                        disabledContainerColor = GuideButtonBg.copy(alpha = 0.5f),
-                        disabledContentColor = GuideGreen.copy(alpha = 0.5f)
+                        containerColor = PrimaryBlue,
+                        contentColor = TextInvert,
+                        disabledContainerColor = SurfaceVariant,
+                        disabledContentColor = TextSecondary
                     )
                 ) {
                     Text(
@@ -132,7 +133,7 @@ fun InterviewPrecautionsScreen(
                 Text(
                     text = "为保证您的面试顺利进行，请注意以下事项：",
                     fontSize = 14.sp,
-                    color = GuideTextSecondary,
+                    color = TextSecondary,
                     modifier = Modifier.padding(top = 8.dp)
                 )
             }
@@ -146,19 +147,19 @@ fun InterviewPrecautionsScreen(
                         modifier = Modifier.weight(1f),
                         title = "保持",
                         subtitle = "良好光线 干净背景",
-                        iconTint = GuideGreen
+                        iconTint = PrimaryBlue
                     )
                     PrecautionCard(
                         modifier = Modifier.weight(1f),
                         title = "保持",
                         subtitle = "安静环境",
-                        iconTint = GuideGreen
+                        iconTint = PrimaryBlue
                     )
                     PrecautionCard(
                         modifier = Modifier.weight(1f),
                         title = "保持",
                         subtitle = "良好网络",
-                        iconTint = GuideGreen
+                        iconTint = PrimaryBlue
                     )
                 }
                 Spacer(modifier = Modifier.height(12.dp))
@@ -170,13 +171,13 @@ fun InterviewPrecautionsScreen(
                         modifier = Modifier.weight(1f),
                         title = "请勿中途退出",
                         subtitle = "接听电话",
-                        iconTint = Color(0xFFFF5A5A)
+                        iconTint = ErrorRed
                     )
                     PrecautionCard(
                         modifier = Modifier.weight(1f),
                         title = "请勿",
                         subtitle = "录屏/截屏",
-                        iconTint = Color(0xFFFF5A5A)
+                        iconTint = ErrorRed
                     )
                 }
             }
@@ -199,7 +200,7 @@ fun InterviewPrecautionsScreen(
                     privacyPoints.forEach { point ->
                         Text(
                             text = point,
-                            color = GuideTextSecondary,
+                            color = TextSecondary,
                             fontSize = 13.sp,
                             lineHeight = 20.sp
                         )
@@ -219,14 +220,14 @@ private fun SectionTitle(title: String) {
         Box(
             modifier = Modifier
                 .size(width = 4.dp, height = 16.dp)
-                .background(GuideGreen, RoundedCornerShape(2.dp))
+                .background(PrimaryBlue, RoundedCornerShape(2.dp))
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = title,
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
-            color = GuideTextPrimary
+            color = TextPrimary
         )
     }
 }
@@ -240,7 +241,7 @@ private fun PrecautionCard(
 ) {
     Surface(
         modifier = modifier.height(86.dp),
-        color = GuideSurface,
+        color = BackgroundLight,
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(
@@ -259,12 +260,12 @@ private fun PrecautionCard(
                 text = title,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
-                color = GuideTextPrimary
+                color = TextPrimary
             )
             Text(
                 text = subtitle,
                 fontSize = 11.sp,
-                color = GuideTextSecondary,
+                color = TextSecondary,
                 lineHeight = 14.sp,
                 textAlign = TextAlign.Center
             )

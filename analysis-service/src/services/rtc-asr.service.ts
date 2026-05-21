@@ -5,7 +5,7 @@
 
 import axios from 'axios';
 import WebSocket from 'ws';
-import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 import { gunzipSync, inflateSync } from 'zlib';
 
 export interface ASRResult {
@@ -309,7 +309,7 @@ export class VolcEngineASRService {
       return existing;
     }
 
-    const reqId = uuidv4();
+    const reqId = crypto.randomUUID();
 
     let resolveReady!: () => void;
     let rejectReady!: (error: Error) => void;
@@ -481,7 +481,7 @@ export class VolcEngineASRService {
   }
 
   async recognize(audioBuffer: Buffer, sampleRate: number = 16000): Promise<ASRResult> {
-    const sessionId = uuidv4();
+    const sessionId = crypto.randomUUID();
     try {
       const result = await this.streamRecognize(sessionId, audioBuffer, {
         sampleRate,

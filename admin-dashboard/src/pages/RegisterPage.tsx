@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import FirstLaunchPrivacyModal, {
-  hasPrivacyFirstLaunchConsent,
-  setPrivacyFirstLaunchConsent
-} from '../components/FirstLaunchPrivacyModal';
+
 import { AUTH_CONSTANTS } from '../config/constants';
 
 const RegisterPage: React.FC = () => {
@@ -19,13 +16,7 @@ const RegisterPage: React.FC = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [agreedPolicies, setAgreedPolicies] = useState(false);
-  const [showPrivacyGateModal, setShowPrivacyGateModal] = useState(false);
 
-  useEffect(() => {
-    if (!hasPrivacyFirstLaunchConsent()) {
-      setShowPrivacyGateModal(true);
-    }
-  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -401,14 +392,7 @@ const RegisterPage: React.FC = () => {
         <Link to="/privacy-policy" style={{ color: '#0091ff', textDecoration: 'none' }}>《隐私政策》</Link>
       </div>
 
-      <FirstLaunchPrivacyModal
-        open={showPrivacyGateModal}
-        onAgree={() => {
-          setPrivacyFirstLaunchConsent();
-          setShowPrivacyGateModal(false);
-        }}
-        onDisagree={() => setShowPrivacyGateModal(false)}
-      />
+
     </div>
   );
 };

@@ -1,6 +1,5 @@
 import axios from 'axios';
 import crypto from 'crypto';
-import { v4 as uuidv4 } from 'uuid';
 
 interface TokenApiResponse {
   RequestId?: string;
@@ -61,7 +60,7 @@ export const requestAliyunToken = async (
     AccessKeyId: accessKeyId,
     SignatureMethod: 'HMAC-SHA1',
     SignatureVersion: '1.0',
-    SignatureNonce: uuidv4(),
+    SignatureNonce: crypto.randomUUID(),
     Timestamp: new Date().toISOString(),
     Format: 'JSON'
   };

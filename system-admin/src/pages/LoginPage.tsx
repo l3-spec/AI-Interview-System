@@ -6,8 +6,8 @@ import { authApi } from '../services/api';
 import utalentLogo from '../assets/utalent-logo.png';
 
 const LoginPage: React.FC = () => {
-  const [email, setEmail] = useState('superadmin@aiinterview.com');
-  const [password, setPassword] = useState('superadmin123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
@@ -158,28 +158,7 @@ const LoginPage: React.FC = () => {
             </button>
           </form>
 
-        <div style={{
-          marginTop: '2rem',
-          padding: '1rem',
-          background: '#f7fafc',
-          borderRadius: '4px'
-        }}>
-          <p style={{ 
-            margin: '0 0 0.5rem 0',
-            color: '#4a5568',
-            fontSize: '14px'
-          }}>
-            超级管理员账号：
-          </p>
-          <div style={{
-            fontFamily: 'monospace',
-            color: '#718096',
-            fontSize: '14px'
-          }}>
-            <div>superadmin@aiinterview.com</div>
-            <div>superadmin123</div>
-          </div>
-        </div>
+
       </div>
     </div>
   );

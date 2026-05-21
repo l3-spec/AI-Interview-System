@@ -5,7 +5,8 @@ import { serviceDiscoveryService } from './service-discovery.service';
 import { v4 as uuidv4 } from 'uuid';
 import { interviewFlowService } from './flow-controller.service';
 import { qwen3TTSClient } from './qwen3-tts-service-client';
-import { interviewConductor } from './interview-conductor.service';
+import { interviewConductor, type InterviewScene } from './interview-conductor.service';
+import { prisma } from '../lib/prisma';
 
 export class CoordinatorService {
   private static instance: CoordinatorService;
@@ -357,14 +358,14 @@ export class CoordinatorService {
         sessionId,
         ttsMode: await this.synthesizeQwen3TtsSegments(sessionId, waitText, 'transition'),
         state: 'playing'
-      }, session?.gatewayId as string);
+      }, (session as any)?.gatewayId as string);
       if (readySession) readySession.runtimePhase = 'speaking';
       this.persistAvatarVoice(sessionId, waitText);
       return;
     }
     
     // UI 回显
-    this.emitToGateway(sessionId, 'asr_partial', { text, isFinal: true, sessionId }, session?.gatewayId as string);
+    this.emitToGateway(sessionId, 'asr_partial', { text, isFinal: true, sessionId }, (session as any)?.gatewayId as string);
 
     // 处理用户记录
     const currentSession = interviewFlowService.getSession(sessionId);
@@ -382,7 +383,7 @@ export class CoordinatorService {
         sequence: turnMeta.sequence,
         turnId: turnMeta.id,
         questionIndex,
-      }, session?.gatewayId as string);
+      }, (session as any)?.gatewayId as string);
     }
 
     // 检查结束意图
@@ -399,7 +400,7 @@ export class CoordinatorService {
          isCompleted: true,
          status: 'completed',
          state: 'playing'
-       }, session?.gatewayId as string);
+       }, (session as any)?.gatewayId as string);
        this.persistAvatarVoice(sessionId, closingText);
        return;
     }
@@ -416,7 +417,7 @@ export class CoordinatorService {
            isCompleted: true,
            status: 'completed',
            state: 'playing'
-         }, session?.gatewayId as string);
+         }, (session as any)?.gatewayId as string);
          this.persistAvatarVoice(sessionId, closingText);
       } else if (result.nextRound) {
          await this.emitRoundVoiceResponse(sessionId, result.nextRound);
@@ -457,7 +458,7 @@ export class CoordinatorService {
       questionIndex: round.roundNumber,
       state: 'playing',
       timeLimit: round.suggestedTime
-    }, session?.gatewayId);
+    }, (session as any)?.gatewayId);
     
     if (session) session.runtimePhase = 'speaking';
     this.persistAvatarVoice(sessionId, round.question, round.roundNumber);

@@ -513,7 +513,7 @@ export class AnalysisService {
                 questions,
                 {
                     jobCategory,
-                    jobRequirements: session.jobRequirements || ''
+                    jobRequirements: (session as any).jobRequirements || ''
                 }
             );
 
@@ -643,6 +643,8 @@ export class AnalysisService {
                     overallScore: 0,
                     communicationScore: 0,
                     technicalScore: 0,
+                    problemSolvingScore: 0,
+                    teamworkScore: 0,
                     problemSolvingNewScore: 0,
                     collaborationResponsibilityScore: 0,
                     adaptabilityScore: 0,
@@ -2018,7 +2020,7 @@ ${qaText}
             voiceprint: insights?.voiceprint || null,
             insights,
             analysisStatus: report.analysisStatus,
-            generatedAt: report.generatedAt.toISOString()
+            generatedAt: report.generatedAt?.toISOString() || null
         };
     }
 

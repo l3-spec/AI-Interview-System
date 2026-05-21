@@ -84,11 +84,7 @@ const LoginPage: React.FC = () => {
               </Button>
             </Form.Item>
 
-            <div className="login-footer">
-              <Text type="secondary">
-                测试账号：company@aiinterview.com / company123
-              </Text>
-            </div>
+
           </Form>
         </Card>
       </div>

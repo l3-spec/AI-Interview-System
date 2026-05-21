@@ -106,6 +106,8 @@ fun V0App(initialDeepLink: String? = null) {
         currentRoute == Routes.EDIT_INTENTION ||
         currentRoute.startsWith(Routes.JOB_DETAIL) ||
         currentRoute == Routes.PROFILE_VERIFICATION ||
+        currentRoute == Routes.PRIVACY_POLICY ||
+        currentRoute == Routes.USER_INSTRUCTIONS ||
         (currentRoute == Routes.PROFILE && token.isNullOrEmpty())
 
     val aiSelected = isAiRoute(currentRoute)
