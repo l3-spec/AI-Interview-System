@@ -209,6 +209,28 @@ fun DuixAvatarInterviewScreen(
     val avatarVolume = avatarController?.avatarVolume?.collectAsState()?.value ?: 0f
     val latencyMetrics = avatarController?.latencyMetrics?.collectAsState()?.value ?: emptyMap()
 
+    // 4个音量柱独立的弹性物理动画，错开阻尼比与刚度，实现极其灵动平滑的交互波形
+    val waveHeight1 by animateDpAsState(
+        targetValue = if (avatarVolume > 5) (10.dp + (avatarVolume.dp * 0.35f)).coerceAtMost(40.dp) else 4.dp,
+        animationSpec = spring(dampingRatio = 0.52f, stiffness = Spring.StiffnessMediumLow),
+        label = "wave_h_1"
+    )
+    val waveHeight2 by animateDpAsState(
+        targetValue = if (avatarVolume > 5) (10.dp + (avatarVolume.dp * 0.65f)).coerceAtMost(40.dp) else 4.dp,
+        animationSpec = spring(dampingRatio = 0.58f, stiffness = Spring.StiffnessMedium),
+        label = "wave_h_2"
+    )
+    val waveHeight3 by animateDpAsState(
+        targetValue = if (avatarVolume > 5) (10.dp + (avatarVolume.dp * 0.48f)).coerceAtMost(40.dp) else 4.dp,
+        animationSpec = spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessLow),
+        label = "wave_h_3"
+    )
+    val waveHeight4 by animateDpAsState(
+        targetValue = if (avatarVolume > 5) (10.dp + (avatarVolume.dp * 0.25f)).coerceAtMost(40.dp) else 4.dp,
+        animationSpec = spring(dampingRatio = 0.50f, stiffness = Spring.StiffnessMedium),
+        label = "wave_h_4"
+    )
+
     var hasCameraPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
@@ -400,44 +422,52 @@ fun DuixAvatarInterviewScreen(
                 .padding(horizontal = 24.dp, vertical = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Box(
+            Surface(
+                color = Color.Black.copy(alpha = 0.65f), // 加深对比度，确保亮暗背景下文字均能舒适阅读
+                shape = RoundedCornerShape(16.dp), // 更加柔和高级的圆角舱体
+                border = androidx.compose.foundation.BorderStroke(
+                    width = 0.5.dp,
+                    color = Color.White.copy(alpha = 0.18f) // 精致的半透明夜空舱白描边
+                ),
                 modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.Black.copy(alpha = 0.4f))
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp)
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            // User Subtitle (Me) - Displayed when user is speaking
-            if (userTranscript.isNotBlank() && userTranscript != "正在聆听，请开始说话...") {
-                UserRealtimeSubtitle(
-                    text = userTranscript,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp)
-                )
-            }
-            
-            // Interviewer Subtitle (AI) — KTV Style
-            displayAIText?.let { aiText ->
-                InterviewerTwoLineSubtitle(
-                    fullText = aiText,
-                    progress = finalHighlightProgress,
-                    isSpeaking = isDhSpeaking,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-            
-            // Circular Countdown
-            if (!isDhSpeaking && timeLimit != null && (timeLimit ?: 0) > 0 && !interviewCompleted) {
-                Spacer(modifier = Modifier.height(16.dp))
-                CircularCountdown(
-                    totalTimeSeconds = timeLimit!!,
-                    modifier = Modifier.size(60.dp)
-                )
+                Column(
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // User Subtitle (Me) - Displayed when user is speaking
+                    if (userTranscript.isNotBlank() && userTranscript != "正在聆听，请开始说话...") {
+                        UserRealtimeSubtitle(
+                            text = userTranscript,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp)
+                        )
+                    }
+                    
+                    // Interviewer Subtitle (AI) — KTV Style
+                    displayAIText?.let { aiText ->
+                        InterviewerTwoLineSubtitle(
+                            fullText = aiText,
+                            progress = finalHighlightProgress,
+                            isSpeaking = isDhSpeaking,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    
+                    // Circular Countdown
+                    if (!isDhSpeaking && timeLimit != null && (timeLimit ?: 0) > 0 && !interviewCompleted) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        CircularCountdown(
+                            totalTimeSeconds = timeLimit!!,
+                            modifier = Modifier.size(60.dp)
+                        )
+                    }
+                }
             }
         }
-    }
-}
 
 
         // Spacer for bottom padding if needed
@@ -488,6 +518,7 @@ fun DuixAvatarInterviewScreen(
         // Center UI if wait for user answer logic removed here
 
         // Avatar Speaking Wave (Bottom right of main video or near subtitles)
+        // 使用弹簧物理动效高度（waveHeight1-4）追踪音量跳动
         if (avatarVolume > 5 && !isCameraMaximized) {
             Row(
                 modifier = Modifier
@@ -497,12 +528,11 @@ fun DuixAvatarInterviewScreen(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                repeat(4) { i ->
-                    val h = 10.dp + (avatarVolume.dp * (0.2f + i * 0.2f)).coerceAtMost(40.dp)
+                listOf(waveHeight1, waveHeight2, waveHeight3, waveHeight4).forEach { height ->
                     Box(
                         modifier = Modifier
                             .width(4.dp)
-                            .height(h)
+                            .height(height)
                             .background(Color(0xFF00C78A), RoundedCornerShape(2.dp))
                     )
                 }

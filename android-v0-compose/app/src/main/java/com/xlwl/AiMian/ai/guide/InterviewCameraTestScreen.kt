@@ -46,14 +46,13 @@ import java.util.concurrent.Executors
 import com.xlwl.AiMian.data.repository.AiInterviewRepository
 import kotlinx.coroutines.launch
 import android.widget.Toast
-
-private val GuideBgWhite = Color(0xFFFFFFFF)
-private val GuideTextPrimary = Color(0xFF1A1A1A)
-private val GuideTextSecondary = Color(0xFF666666)
-private val GuideGreen = Color(0xFF00C78A)
-private val GuideButtonBg = Color(0xFF2C2D31)
-private val GuideButtonLightBg = Color(0xFFE8F7F2)
-private val GuideRed = Color(0xFFFF5A5A)
+import com.xlwl.AiMian.ui.theme.PrimaryBlue
+import com.xlwl.AiMian.ui.theme.TextPrimary
+import com.xlwl.AiMian.ui.theme.TextSecondary
+import com.xlwl.AiMian.ui.theme.SurfaceWhite
+import com.xlwl.AiMian.ui.theme.TextInvert
+import com.xlwl.AiMian.ui.theme.ErrorRed
+import com.xlwl.AiMian.ui.theme.SurfaceVariant
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -101,7 +100,7 @@ fun InterviewCameraTestScreen(
     var isUploading by remember { mutableStateOf(false) }
 
     Scaffold(
-        containerColor = GuideBgWhite,
+        containerColor = SurfaceWhite,
         topBar = {
             TopAppBar(
                 title = {
@@ -109,7 +108,7 @@ fun InterviewCameraTestScreen(
                         text = "拍摄面试照",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = GuideTextPrimary
+                        color = TextPrimary
                     )
                 },
                 navigationIcon = {
@@ -117,7 +116,7 @@ fun InterviewCameraTestScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "返回",
-                            tint = GuideTextPrimary
+                            tint = TextPrimary
                         )
                     }
                 },
@@ -132,7 +131,7 @@ fun InterviewCameraTestScreen(
                         Icon(
                             imageVector = Icons.Default.CameraAlt,
                             contentDescription = null,
-                            tint = GuideTextSecondary,
+                            tint = TextSecondary,
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
@@ -151,7 +150,7 @@ fun InterviewCameraTestScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = GuideBgWhite
+                    containerColor = SurfaceWhite
                 )
             )
         },
@@ -159,14 +158,14 @@ fun InterviewCameraTestScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(GuideBgWhite)
+                    .background(SurfaceWhite)
                     .padding(horizontal = 24.dp, vertical = 16.dp)
                     .navigationBarsPadding(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
                     text = "请拍照并上传你的照片正式加入面试",
-                    color = GuideTextSecondary,
+                    color = TextSecondary,
                     fontSize = 12.sp,
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
@@ -196,8 +195,10 @@ fun InterviewCameraTestScreen(
                         enabled = hasCameraPermission,
                         shape = RoundedCornerShape(27.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = GuideButtonBg,
-                            contentColor = GuideGreen
+                            containerColor = PrimaryBlue,
+                            contentColor = TextInvert,
+                            disabledContainerColor = SurfaceVariant,
+                            disabledContentColor = TextSecondary
                         )
                     ) {
                         Text("开始拍照", fontSize = 16.sp, fontWeight = FontWeight.Medium)
@@ -214,8 +215,8 @@ fun InterviewCameraTestScreen(
                                 .height(54.dp),
                             shape = RoundedCornerShape(27.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = GuideButtonLightBg,
-                                contentColor = GuideGreen
+                                containerColor = SurfaceVariant,
+                                contentColor = TextPrimary
                             )
                         ) {
                             Text("重拍", fontSize = 16.sp, fontWeight = FontWeight.Medium)
@@ -240,14 +241,16 @@ fun InterviewCameraTestScreen(
                             enabled = !isUploading,
                             shape = RoundedCornerShape(27.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = GuideButtonBg,
-                                contentColor = GuideGreen
+                                containerColor = PrimaryBlue,
+                                contentColor = TextInvert,
+                                disabledContainerColor = SurfaceVariant,
+                                disabledContentColor = TextSecondary
                             )
                         ) {
                             if (isUploading) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(24.dp),
-                                    color = GuideGreen,
+                                    color = TextInvert,
                                     strokeWidth = 2.dp
                                 )
                             } else {
@@ -273,7 +276,7 @@ fun InterviewCameraTestScreen(
                 Text(
                     text = "1/2",
                     fontSize = 16.sp,
-                    color = GuideTextSecondary,
+                    color = TextSecondary,
                     modifier = Modifier.padding(bottom = 4.dp)
                 )
             }
@@ -286,14 +289,14 @@ fun InterviewCameraTestScreen(
                 Icon(
                     imageVector = Icons.Default.Warning,
                     contentDescription = null,
-                    tint = GuideRed,
+                    tint = ErrorRed,
                     modifier = Modifier.size(16.dp).padding(top = 2.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Column {
                     Text(
                         text = "本场面试要求使用摄像头和麦克风，请保持设备开启",
-                        color = GuideTextSecondary,
+                        color = TextSecondary,
                         fontSize = 13.sp,
                         lineHeight = 18.sp
                     )
@@ -323,7 +326,7 @@ fun InterviewCameraTestScreen(
                                 .align(Alignment.TopEnd)
                                 .padding(16.dp)
                                 .size(24.dp)
-                                .background(GuideGreen, CircleShape),
+                                .background(PrimaryBlue, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(

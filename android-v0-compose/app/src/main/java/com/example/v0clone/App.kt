@@ -60,6 +60,7 @@ import com.xlwl.AiMian.navigation.Routes
 import com.xlwl.AiMian.ui.design.StarLinkAccentOrange
 import com.xlwl.AiMian.ui.design.StarLinkPlaceholderGray
 import com.xlwl.AiMian.ui.design.StarLinkWhite
+import com.xlwl.AiMian.ui.components.PrivacyPolicyDialog
 
 private val BottomBarShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
 
@@ -71,6 +72,7 @@ data class BottomNavigationItemData(
 
 @Composable
 fun V0App(initialDeepLink: String? = null) {
+    PrivacyPolicyDialog()
     val navController = rememberNavController()
     
     // 处理 Deep Link 跳转

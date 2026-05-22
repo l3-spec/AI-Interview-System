@@ -19,6 +19,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -60,10 +62,38 @@ fun SplashScreen(
 ) {
     var startAnimation by remember { mutableStateOf(false) }
 
-    val alphaAnim by animateFloatAsState(
+    // Logo 弹性缩放动画 (带来 Apple 级 Overshoot 物理弹性)
+    val scaleAnim by animateFloatAsState(
+        targetValue = if (startAnimation) 1f else 0.3f,
+        animationSpec = spring(
+            dampingRatio = 0.58f, // 适度的回弹阻尼感
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "logo_scale"
+    )
+
+    // Logo 淡入动画
+    val logoAlphaAnim by animateFloatAsState(
         targetValue = if (startAnimation) 1f else 0f,
-        animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
-        label = "splash_alpha"
+        animationSpec = tween(durationMillis = 800, easing = LinearOutSlowInEasing),
+        label = "logo_alpha"
+    )
+
+    // 品牌文字 Y 轴浮升动画
+    val textYOffsetAnim by animateDpAsState(
+        targetValue = if (startAnimation) 0.dp else 24.dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "text_y_offset"
+    )
+
+    // 品牌文字延迟淡入动画，体现视觉层叠美感
+    val textAlphaAnim by animateFloatAsState(
+        targetValue = if (startAnimation) 1f else 0f,
+        animationSpec = tween(durationMillis = 900, delayMillis = 150, easing = LinearOutSlowInEasing),
+        label = "text_alpha"
     )
 
     LaunchedEffect(Unit) {
@@ -97,27 +127,36 @@ fun SplashScreen(
             // ===== Logo 品牌组合 (图标 + 副标题) =====
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier
-                    .alpha(alphaAnim)
-                    .padding(bottom = 40.dp)
+                modifier = Modifier.padding(bottom = 40.dp)
             ) {
-                // 显著放大后的 U 图标 (移除了 -Talent 文字)
+                // 显著放大后的 U 图标，带阻尼弹性缩放和淡入
                 Image(
                     painter = painterResource(id = R.drawable.splash_icon),
                     contentDescription = "U-Talent Logo",
-                    modifier = Modifier.size(120.dp),
+                    modifier = Modifier
+                        .size(120.dp)
+                        .graphicsLayer(
+                            scaleX = scaleAnim,
+                            scaleY = scaleAnim,
+                            alpha = logoAlphaAnim
+                        ),
                     contentScale = androidx.compose.ui.layout.ContentScale.Fit
                 )
                 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(18.dp))
                 
-                // 柚汀教育科技 中文部分
+                // 柚汀教育科技 中文部分，带有延时浮现与微位移动画
                 Text(
                     text = "柚 汀 教 育 科 技",
-                    color = Color.White.copy(alpha = 0.85f),
+                    color = Color.White.copy(alpha = 0.88f),
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Medium,
-                    letterSpacing = 4.sp
+                    letterSpacing = 4.sp,
+                    modifier = Modifier
+                        .graphicsLayer(
+                            alpha = textAlphaAnim,
+                            translationY = with(LocalDensity.current) { textYOffsetAnim.toPx() }
+                        )
                 )
             }
         }
