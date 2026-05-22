@@ -43,6 +43,7 @@ export const AppRoutes: React.FC = () => {
         <Route path="home-content" element={<HomeContentManagement />} />
         <Route path="posts" element={<PostManagement />} />
         <Route path="assessments" element={<AssessmentManagement />} />
+        <Route path="system-logs" element={<SystemLogs />} />
         <Route path="admins" element={<AdminManagement />} />
         <Route path="app-versions" element={<AppVersionManagement />} />
         <Route path="logs" element={<SystemLogs />} />

@@ -26,6 +26,7 @@ import jobPreferenceRoutes from './jobPreferences';
 import messageRoutes from './messages';
 import aliyunAvatarRoutes from './aliyunAvatar.routes';
 import regionDictionaryRoutes from './regionDictionary';
+import systemStatusRoutes from './systemStatus';
 // voiceRoutes 已在 index.ts 中直接注册，避免重复注册
 // import voiceRoutes from './voice.routes';
 
@@ -70,6 +71,7 @@ router.use('/region-dictionary', regionDictionaryRoutes); // 地区字典路由�
 router.use('/job-preferences', jobPreferenceRoutes); // 职岗偏好路由（新增）
 router.use('/messages', messageRoutes);        // 消息中心路由（新增）
 router.use('/aliyun-avatar', aliyunAvatarRoutes); // 阿里云 Avatar 数字人路由（新增）
+router.use('/system', systemStatusRoutes);        // 系统状态监控路由（新增）
 // voiceRoutes 已在 index.ts 中直接注册到 /api/voice，避免重复注册
 
 // API文档信息
@@ -105,6 +107,7 @@ router.get('/', (req, res) => {
       'job-preferences': '/api/job-preferences',
       messages: '/api/messages',
       'aliyun-avatar': '/api/aliyun-avatar',
+      'system': '/api/system',
       'app-version': '/api/public/app-version'
     }
   });

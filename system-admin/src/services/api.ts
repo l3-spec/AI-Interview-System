@@ -1125,4 +1125,33 @@ export const platformAiSettingsApi = {
   },
 };
 
+// ==================== 系统状态监控 ====================
+
+export interface ServiceStatus {
+  name: string;
+  description: string;
+  serviceUrl: string;
+  isHealthy: boolean;
+  lastCheckTime?: number;
+  consecutiveFailures: number;
+  responseTime?: number;
+}
+
+export interface SystemStatusResponse {
+  services: ServiceStatus[];
+  timestamp: string;
+}
+
+export const systemStatusApi = {
+  // 获取所有服务状态
+  getAll: async (): Promise<ApiResponse<SystemStatusResponse>> => {
+    return (await apiClient.get('/system/status')) as ApiResponse<SystemStatusResponse>;
+  },
+  
+  // 获取单个服务状态
+  getOne: async (serviceName: string): Promise<ApiResponse<{ service: ServiceStatus }>> => {
+    return (await apiClient.get(`/system/status/${serviceName}`)) as ApiResponse<{ service: ServiceStatus }>;
+  },
+};
+
 export default apiClient;

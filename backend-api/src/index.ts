@@ -89,6 +89,7 @@ import { Server } from 'socket.io';
 import { FayWebSocketServer } from './websocket/fay.websocket';
 import { RealtimeVoiceWebSocketServer } from './websocket/realtime-voice.websocket';
 import { warmPlatformAiConfigRuntime } from './services/platformAiSettings.service';
+import { serviceSupervisor } from './services/service-supervisor';
 
 // 配置Socket.IO
 const defaultOrigins = [
@@ -121,6 +122,23 @@ const io = new Server(httpServer, {
 
 const fayWebSocket = new FayWebSocketServer(io);
 // RealtimeVoiceWebSocketServer removed - using HTTPS Gateway instead
+
+// 设置系统状态 WebSocket 推送
+function setupSystemStatusPush() {
+  serviceSupervisor.onStatusChange((serviceName: string, isHealthy: boolean) => {
+    const statusData = {
+      serviceName,
+      isHealthy,
+      timestamp: new Date().toISOString(),
+    };
+    
+    // 向所有连接的 admin 客户端推送状态更新
+    io.emit('system:status_update', statusData);
+    console.log(`📡 [WebSocket] 推送系统状态: ${serviceName} -> ${isHealthy ? '健康' : '异常'}`);
+  });
+}
+
+setupSystemStatusPush();
 
 // 附加到应用
 fayWebSocket.attachToApp(app);
