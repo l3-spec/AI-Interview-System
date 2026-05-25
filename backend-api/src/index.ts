@@ -1,3 +1,6 @@
+import { initServiceLogger, logEmitter } from './utils/service-logger';
+initServiceLogger('backend-api');
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -57,6 +60,10 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // 日志中间件
 app.use(requestLogger);
 app.use((req, res, next) => {
+  // 排除日志上报请求，防止产生的调试日志造成循环
+  if (req.url === '/api/system/logs/upload' || req.url === '/system/logs/upload') {
+    return next();
+  }
   if (req.url.startsWith('/api') || req.url === '/health') {
     console.log(`[GlobalDebug] Received request: ${req.method} ${req.url}`);
   }
@@ -139,6 +146,59 @@ function setupSystemStatusPush() {
 }
 
 setupSystemStatusPush();
+
+// 设置微服务日志 WebSocket 实时推送
+function setupServiceLogsPush() {
+  // 1. 监听 logEmitter 本地汇聚的日志，并通过 WebSocket 广播
+  logEmitter.on('log', (logData) => {
+    io.emit('system:service_log', logData);
+  });
+
+  // 2. 订阅 Redis 频道接收外部微服务的日志上报
+  const redisUrl = process.env.REDIS_URL;
+  if (redisUrl) {
+    try {
+      const Redis = require('ioredis');
+      const redisSub = new Redis(redisUrl, {
+        maxRetriesPerRequest: 3,
+        retryStrategy: (times: number) => Math.min(times * 200, 3000),
+        lazyConnect: true,
+      });
+
+      // 绑定 error 监听器，捕获连接重试报错，避免触发 Node 进程的 unhandled error 崩溃
+      redisSub.on('error', (err: any) => {
+        // 仅在控制台静默记录，不重新触发日志流
+      });
+
+      redisSub.connect().then(() => {
+        redisSub.subscribe('system:service_logs', (err: any) => {
+          if (err) {
+            console.error('[Redis] 订阅日志频道 system:service_logs 失败:', err.message);
+          } else {
+            console.log('[Redis] 已成功订阅日志频道 system:service_logs');
+          }
+        });
+      }).catch((err: any) => {
+        console.warn('[Redis] 日志订阅 Redis 连接失败:', err.message);
+      });
+
+      redisSub.on('message', (channel: string, message: string) => {
+        if (channel === 'system:service_logs') {
+          try {
+            const logData = JSON.parse(message);
+            logEmitter.emit('log', logData);
+          } catch (e) {
+            // 忽略格式解析失败
+          }
+        }
+      });
+    } catch (e: any) {
+      console.warn('[Redis] 日志订阅服务初始化异常:', e.message);
+    }
+  }
+}
+
+setupServiceLogsPush();
 
 // 附加到应用
 fayWebSocket.attachToApp(app);

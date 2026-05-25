@@ -4,6 +4,11 @@ import { Request, Response, NextFunction } from 'express';
  * 请求日志中间件
  */
 export const requestLogger = (req: Request, res: Response, next: NextFunction) => {
+  // 过滤系统日志上报接口，避免上报请求产生日志导致死循环
+  if (req.url === '/api/system/logs/upload' || req.url === '/system/logs/upload') {
+    return next();
+  }
+
   const start = Date.now();
   
   // 记录请求开始

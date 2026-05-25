@@ -1,3 +1,9 @@
+// 必须在任何 import 之前加载环境变量，确保服务实例化时能读取到配置
+require('dotenv').config();
+
+import { initServiceLogger } from './utils/service-logger';
+initServiceLogger('analysis-service');
+
 import { prisma } from './lib/prisma';
 import { analysisService } from './services/analysisService';
 import express from 'express';
@@ -34,6 +40,12 @@ async function pollPendingAnalyses() {
                     create: {
                         sessionId: session.id,
                         overallScore: 0,
+                        communicationScore: 0,
+                        technicalScore: 0,
+                        problemSolvingScore: 0,
+                        teamworkScore: 0,
+                        adaptabilityScore: 0,
+                        learningScore: 0,
                         professionalAbilityScore: 0,
                         learningGrowthScore: 0,
                         communicationCollaborationScore: 0,
@@ -63,6 +75,12 @@ async function pollPendingAnalyses() {
                     create: {
                         sessionId: session.id,
                         overallScore: 0,
+                        communicationScore: 0,
+                        technicalScore: 0,
+                        problemSolvingScore: 0,
+                        teamworkScore: 0,
+                        adaptabilityScore: 0,
+                        learningScore: 0,
                         professionalAbilityScore: 0,
                         learningGrowthScore: 0,
                         communicationCollaborationScore: 0,

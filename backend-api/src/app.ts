@@ -18,14 +18,22 @@ const corsOptions = {
       'http://127.0.0.1:5174',
       'http://127.0.0.1:5175',
       'http://192.168.0.188:5174',  // Android开发环境
-      'https://admin.aiinterview.com'  // 生产环境
+      'https://admin.aiinterview.com',  // 生产环境
+      // 支持通过环境变量配置额外的允许源
+      ...(process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',').map(s => s.trim()) : [])
     ];
     
     // 允许没有origin的请求（比如同源请求）
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      // 开发环境下允许所有源（便于调试）
+      if (process.env.NODE_ENV === 'development') {
+        console.warn(`CORS: 允许未知源 ${origin}（开发模式）`);
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],

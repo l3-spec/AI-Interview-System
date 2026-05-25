@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { serviceSupervisor } from '../services/service-supervisor';
+import { logEmitter } from '../utils/service-logger';
 
 /**
  * 系统状态监控控制器
@@ -58,6 +59,34 @@ export class SystemStatusController {
       res.status(500).json({
         success: false,
         message: '获取服务状态失败',
+        error: error.message,
+      });
+    }
+  }
+
+  /**
+   * 上报微服务日志
+   * POST /api/system/logs/upload
+   */
+  static async uploadLogs(req: Request, res: Response) {
+    try {
+      const { serviceName, logs } = req.body;
+      if (serviceName && Array.isArray(logs)) {
+        for (const log of logs) {
+          logEmitter.emit('log', {
+            serviceName,
+            level: log.level || 'info',
+            message: log.message,
+            timestamp: log.timestamp || new Date().toISOString(),
+          });
+        }
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      // 避免在此处调用劫持后的 console 产生任何影响
+      res.status(500).json({
+        success: false,
+        message: '上报日志失败',
         error: error.message,
       });
     }

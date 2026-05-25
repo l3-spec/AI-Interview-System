@@ -27,13 +27,13 @@ plugins {
 //val defaultApiHost ="https://app.api.xlwl-ai.com/"
 //val defaultApiHost = "192.168.0.103"
 //val defaultApiHost = "10.0.1.61"
-//val defaultApiHost = "10.0.1.77"
+//val defaultApiHost = "10.10.1.74"
 //val defaultApiHost = "192.168.10.62"
-//val defaultApiHost = "10.0.1.33"
-//val defaultApiHost = "192.168.124.111"
+val defaultApiHost = "10.0.1.32"
+//val defaultApiHost = "192.168.124.150"
 //val defaultApiHost = "192.168.10.84"
 //val defaultApiHost = "10.0.1.22"
-val defaultApiHost = "api.s.u-talent.cn"
+//val defaultApiHost = "api.s.u-talent.cn"
 val defaultApiPort = 3001
 val defaultApiPath = "api"
 

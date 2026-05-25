@@ -14,4 +14,7 @@ router.get('/status', SystemStatusController.getServicesStatus);
 // 获取单个服务状态
 router.get('/status/:serviceName', SystemStatusController.getServiceStatus);
 
+// 上报服务日志
+router.post('/logs/upload', SystemStatusController.uploadLogs);
+
 export default router;

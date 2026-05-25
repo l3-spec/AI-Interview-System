@@ -6,6 +6,9 @@ import { coordinatorService } from './services/coordinator.service';
 
 dotenv.config();
 
+import { initServiceLogger } from './utils/service-logger';
+initServiceLogger('interview-service');
+
 // Ensure coordinator service is initialized to listen to Redis
 const _coordinator = coordinatorService;
 

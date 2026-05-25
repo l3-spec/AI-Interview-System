@@ -1,0 +1,44 @@
+# system-admin 生产环境 Nginx 配置示例
+# 将此配置添加到服务器的 Nginx 配置中
+
+server {
+    listen 80;
+    server_name admin.aiinterview.com;  # 替换为你的域名
+    
+    # 前端静态文件
+    location / {
+        root /path/to/system-admin/dist;  # 替换为实际路径
+        index index.html;
+        try_files $uri $uri/ /index.html;
+    }
+    
+    # 反向代理后端 API
+    location /api {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        
+        # CORS 相关头（如果需要）
+        add_header Access-Control-Allow-Origin $http_origin;
+        add_header Access-Control-Allow-Methods 'GET, POST, PUT, DELETE, OPTIONS, PATCH';
+        add_header Access-Control-Allow-Headers 'Content-Type, Authorization, X-Requested-With, Accept, Origin';
+        add_header Access-Control-Max-Age 86400;
+        
+        # 处理预检请求
+        if ($request_method = 'OPTIONS') {
+            add_header Access-Control-Allow-Origin $http_origin;
+            add_header Access-Control-Allow-Methods 'GET, POST, PUT, DELETE, OPTIONS, PATCH';
+            add_header Access-Control-Allow-Headers 'Content-Type, Authorization, X-Requested-With, Accept, Origin';
+            add_header Access-Control-Max-Age 86400;
+            add_header Content-Length 0;
+            add_header Content-Type text/plain;
+            return 204;
+        }
+    }
+}
