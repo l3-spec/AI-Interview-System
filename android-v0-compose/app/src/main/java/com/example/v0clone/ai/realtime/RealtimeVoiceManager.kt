@@ -18,7 +18,7 @@ import android.media.AudioAttributes
 import com.xlwl.AiMian.ai.realtime.VolcanoTtsService
 import com.xlwl.AiMian.ai.realtime.Qwen3AsrWsClient
 import com.xlwl.AiMian.ai.realtime.Qwen3TtsWsClient
-import com.xlwl.AiMian.config.AppConfig
+import com.example.v0clone.config.AppConfig
 import com.xlwl.AiMian.digitalhuman.DigitalHumanController
 import io.socket.client.IO
 import io.socket.client.Socket

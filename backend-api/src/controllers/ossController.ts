@@ -305,8 +305,12 @@ class OSSController {
       }
 
       const key = objectKey.replace(/^\/+/, '');
+      
+      // 从 objectKey 推断文件类型，从而确定使用哪个存储桶
+      // 例如: uploads/avatars/xxx.jpg -> avatar
+      const bucketName = this.inferBucketFromObjectKey(key);
 
-      const { stream, res: ossRes } = await ossService.getFileStream(key);
+      const { stream, res: ossRes } = await ossService.getFileStream(key, bucketName);
       const headers = (ossRes && ossRes.headers ? ossRes.headers : {}) as Record<string, string>;
       // 透传必要头部
       res.setHeader('Content-Type', headers['content-type'] || 'application/octet-stream');
@@ -338,6 +342,19 @@ class OSSController {
         error_message: '读取文件失败'
       });
     }
+  }
+
+  /**
+   * 从 objectKey 推断应该使用哪个存储桶
+   * @param objectKey OSS对象键，如 uploads/avatars/xxx.jpg
+   */
+  private inferBucketFromObjectKey(objectKey: string): string | undefined {
+    // 检查是否包含 avatars 路径
+    if (objectKey.includes('avatars') || objectKey.startsWith('avatar-')) {
+      return ossService.getBucketForType('avatar');
+    }
+    // 其他情况使用默认存储桶
+    return undefined;
   }
 
   /**

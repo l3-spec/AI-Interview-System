@@ -49,7 +49,8 @@ export const submitVerification = async (req: Request, res: Response) => {
     if (file) {
       try {
         const folder = typeToFolder('license');
-        const { objectKey } = await ossService.uploadLocalFile(file.path, `uploads/${folder}/${file.filename}`);
+        const bucketName = ossService.getBucketForType('license');
+        const { objectKey } = await ossService.uploadLocalFile(file.path, `uploads/${folder}/${file.filename}`, bucketName);
         businessLicenseKey = toObjectKey(objectKey);
       } catch (err) {
         console.error('OSS上传营业执照失败:', err);

@@ -3,6 +3,7 @@ package com.xlwl.AiMian
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.core.*
@@ -31,14 +32,23 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xlwl.AiMian.R
+import com.xlwl.AiMian.config.ConfigUpdateStrategy
 import com.xlwl.AiMian.data.repository.ClientRuntimeConfigRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 @SuppressLint("CustomSplashScreen")
 class SplashActivity : ComponentActivity() {
+    
+    companion object {
+        private const val TAG = "SplashActivity"
+    }
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        Log.i(TAG, "🎬 SplashActivity 创建")
+        
         setContent {
             SplashScreen(
                 onSplashComplete = {
@@ -46,6 +56,13 @@ class SplashActivity : ComponentActivity() {
                 }
             )
         }
+    }
+    
+    override fun onResume() {
+        super.onResume()
+        
+        // 热启动：检查配置是否需要更新
+        ConfigUpdateStrategy.onResume(this)
     }
 
     private fun navigateToMain() {
@@ -96,10 +113,17 @@ fun SplashScreen(
         label = "text_alpha"
     )
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    
     LaunchedEffect(Unit) {
         startAnimation = true
-        withContext(Dispatchers.IO) {
-            ClientRuntimeConfigRepository.fetchAndApply()
+        // 热启动检查配置更新（在后台线程）
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                com.xlwl.AiMian.config.ConfigUpdateStrategy.onResume(context = context)
+            } catch (e: Exception) {
+                android.util.Log.e("SplashActivity", "配置更新检查失败", e)
+            }
         }
         kotlinx.coroutines.delay(1800) // 给予足够动画时间后自动跳转
         onSplashComplete()

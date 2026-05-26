@@ -95,7 +95,8 @@ router.post(
       .slice(2, 10)}${ext}`;
 
     try {
-      const result = await ossService.uploadLocalFile(file.path, objectKey);
+      // 面试照片使用主存储桶
+      const result = await ossService.uploadLocalFile(file.path, objectKey, ossService.getBucketForType());
       return res.json({
         success: true,
         data: null,
@@ -793,7 +794,8 @@ router.post(
       const objectKey = `uploads/ai-interview/round-videos/${safeUser}/${sessionId}/turn_${seq}_${Date.now()}${ext}`;
 
       try {
-        const up = await ossService.uploadLocalFile(file.path, objectKey);
+        // 面试视频使用主存储桶
+        const up = await ossService.uploadLocalFile(file.path, objectKey, ossService.getBucketForType());
         cleanupTempFile(file.path);
         const result = await aiInterviewService.attachCandidateVideoToConversationTurn({
           sessionId,

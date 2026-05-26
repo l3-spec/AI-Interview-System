@@ -11,7 +11,7 @@ import ai.guiji.duix.sdk.client.loader.ModelInfo
 import ai.guiji.duix.sdk.client.render.DUIXRenderer
 import ai.guiji.duix.sdk.client.render.DUIXTextureView
 import com.xlwl.AiMian.ai.realtime.RealtimeVoiceManager
-import com.xlwl.AiMian.config.AppConfig
+import com.example.v0clone.config.AppConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

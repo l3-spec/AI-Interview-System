@@ -3,7 +3,7 @@ package com.xlwl.AiMian.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.xlwl.AiMian.data.api.PagedData
+import com.example.v0clone.data.api.PagedData
 import com.xlwl.AiMian.data.model.Banner
 import com.xlwl.AiMian.data.model.HomeFeedItem
 import com.xlwl.AiMian.data.model.HomeFeedTargetType
@@ -174,7 +174,7 @@ class HomeViewModel(private val repository: ContentRepository) : ViewModel() {
         if (url.isNullOrBlank()) return null
         if (url.startsWith("http://") || url.startsWith("https://")) return url
         
-        val baseUrl = com.xlwl.AiMian.config.AppConfig.apiBaseUrl
+        val baseUrl = com.example.v0clone.config.AppConfig.apiBaseUrl
         // 去掉开头的 /api/ 以便与 apiBaseUrl (通常以 api/ 结尾) 接合
         val cleanUrl = if (url.startsWith("/api/")) {
             url.substring(5)

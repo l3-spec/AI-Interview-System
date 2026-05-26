@@ -88,6 +88,7 @@ function buildMicroserviceUrls(apiBase: string) {
 }
 
 export type ClientRuntimeConfigJson = {
+  version: string;
   apiBaseUrl: string;
   realtimeSocketUrl: string;
   asrServiceWsUrl: string;
@@ -131,6 +132,8 @@ export async function getClientRuntimeConfig(req: Request): Promise<ClientRuntim
   const mask = (s: string) => (hideSecrets ? '' : s);
 
   return {
+    // 配置版本号（客户端用于检测更新）
+    version: trim(process.env.CONFIG_VERSION) || Date.now().toString(),
     apiBaseUrl: apiBase,
     realtimeSocketUrl: toRealtimeSocketUrl(apiBase),
     asrServiceWsUrl,

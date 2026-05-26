@@ -43,7 +43,7 @@ class DuixAvatarInterviewActivity : ComponentActivity() {
             ) {
                 // 使用本地 DUiX SDK 直连处理
                 DuixAvatarInterviewScreen(
-                    projectId = com.xlwl.AiMian.config.AppConfig.aliyunAvatarProjectId,
+                    projectId = com.example.v0clone.config.AppConfig.aliyunAvatarProjectId,
                     jobPositionLabel = position,
                     interviewQuestion = questionText,
                     interviewSessionId = sessionId.takeIf { it.isNotBlank() },

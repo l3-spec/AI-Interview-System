@@ -1,8 +1,8 @@
 package com.xlwl.AiMian.data.repository
 
 import com.google.gson.Gson
-import com.xlwl.AiMian.data.api.ApiService
-import com.xlwl.AiMian.data.api.PagedData
+import com.example.v0clone.data.api.ApiService
+import com.example.v0clone.data.api.PagedData
 import com.xlwl.AiMian.data.model.*
 import java.io.File
 import okhttp3.MediaType.Companion.toMediaType
@@ -10,7 +10,7 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
-import com.xlwl.AiMian.data.api.ApiResponse
+import com.example.v0clone.data.api.ApiResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 

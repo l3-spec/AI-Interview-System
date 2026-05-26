@@ -10,6 +10,7 @@ class OSSService {
   private readonly accessKeySecret: string;
   private readonly region: string;
   private readonly bucket: string;
+  private readonly userBucket: string;
   private readonly roleArn: string;
   private readonly cdnDomain?: string;
 
@@ -17,7 +18,8 @@ class OSSService {
     this.accessKeyId = process.env.OSS_ACCESS_KEY_ID || '';
     this.accessKeySecret = process.env.OSS_ACCESS_KEY_SECRET || '';
     this.region = process.env.OSS_REGION || 'oss-cn-hangzhou';
-    this.bucket = process.env.OSS_BUCKET || 'ai-interview-videos';
+    this.bucket = process.env.OSS_BUCKET || 'ai-interview-2025';
+    this.userBucket = process.env.OSS_USER_BUCKET || 'interview-users';
     this.roleArn = process.env.OSS_ROLE_ARN || '';
     this.cdnDomain = process.env.OSS_CDN_DOMAIN;
 
@@ -28,14 +30,29 @@ class OSSService {
 
   /**
    * 获取OSS客户端实例
+   * @param bucketName 可选，指定使用哪个存储桶，默认使用主存储桶
    */
-  private getOSSClient(): OSS {
+  private getOSSClient(bucketName?: string): OSS {
+    const bucket = bucketName || this.bucket;
     return new OSS({
       region: this.region,
       accessKeyId: this.accessKeyId,
       accessKeySecret: this.accessKeySecret,
-      bucket: this.bucket
+      bucket: bucket
     });
+  }
+
+  /**
+   * 根据文件类型获取对应的存储桶名称
+   * @param type 文件类型（avatar、banner、logo等）
+   */
+  getBucketForType(type?: string): string {
+    // 用户相关的文件使用用户存储桶
+    if (type === 'avatar') {
+      return this.userBucket;
+    }
+    // 其他文件使用主存储桶
+    return this.bucket;
   }
 
   /**
@@ -138,23 +155,30 @@ class OSSService {
 
   /**
    * 生成文件的访问URL
+   * @param objectKey 对象键
+   * @param useSSL 是否使用SSL
+   * @param expiresInSeconds 过期时间（秒）
+   * @param bucketName 可选，指定存储桶
    */
-  generateFileUrl(objectKey: string, useSSL: boolean = true, expiresInSeconds: number = 3600): string {
+  generateFileUrl(objectKey: string, useSSL: boolean = true, expiresInSeconds: number = 3600, bucketName?: string): string {
     // 如果配置了CDN，优先返回 CDN 公网地址（默认桶视作私有，CDN 需配置回源权限）
     if (this.cdnDomain) {
       return `${useSSL ? 'https' : 'http'}://${this.cdnDomain}/${objectKey}`;
     }
     // 否则返回带有效期的签名URL，适配私有桶
-    const client = this.getOSSClient();
+    const client = this.getOSSClient(bucketName);
     return client.signatureUrl(objectKey, { expires: expiresInSeconds, method: 'GET' });
   }
 
   /**
    * 生成文件的签名访问URL（用于私有文件）
+   * @param objectKey 对象键
+   * @param expiresInSeconds 过期时间（秒）
+   * @param bucketName 可选，指定存储桶
    */
-  async generateSignedUrl(objectKey: string, expiresInSeconds: number = 3600): Promise<string> {
+  async generateSignedUrl(objectKey: string, expiresInSeconds: number = 3600, bucketName?: string): Promise<string> {
     try {
-      const client = this.getOSSClient();
+      const client = this.getOSSClient(bucketName);
       const url = client.signatureUrl(objectKey, {
         expires: expiresInSeconds
       });
@@ -167,14 +191,19 @@ class OSSService {
 
   /**
    * 生成带处理参数的签名URL（用于视频截帧等）
+   * @param objectKey 对象键
+   * @param process 处理参数
+   * @param expiresInSeconds 过期时间（秒）
+   * @param bucketName 可选，指定存储桶
    */
   async generateSignedProcessUrl(
     objectKey: string,
     process: string,
-    expiresInSeconds: number = 3600
+    expiresInSeconds: number = 3600,
+    bucketName?: string
   ): Promise<string> {
     try {
-      const client = this.getOSSClient();
+      const client = this.getOSSClient(bucketName);
       const url = client.signatureUrl(objectKey, {
         expires: expiresInSeconds,
         process
@@ -188,10 +217,12 @@ class OSSService {
 
   /**
    * 删除文件
+   * @param objectKey 对象键
+   * @param bucketName 可选，指定存储桶
    */
-  async deleteFile(objectKey: string): Promise<boolean> {
+  async deleteFile(objectKey: string, bucketName?: string): Promise<boolean> {
     try {
-      const client = this.getOSSClient();
+      const client = this.getOSSClient(bucketName);
       await client.delete(objectKey);
       console.log(`删除文件成功: ${objectKey}`);
       return true;
@@ -203,10 +234,12 @@ class OSSService {
 
   /**
    * 获取文件信息
+   * @param objectKey 对象键
+   * @param bucketName 可选，指定存储桶
    */
-  async getFileInfo(objectKey: string): Promise<any> {
+  async getFileInfo(objectKey: string, bucketName?: string): Promise<any> {
     try {
-      const client = this.getOSSClient();
+      const client = this.getOSSClient(bucketName);
       const result = await client.head(objectKey);
       // 添加类型注解避免TypeScript错误
       const headers = result.res.headers as any;
@@ -264,10 +297,12 @@ class OSSService {
 
   /**
    * 检查文件是否存在
+   * @param objectKey 对象键
+   * @param bucketName 可选，指定存储桶
    */
-  async fileExists(objectKey: string): Promise<boolean> {
+  async fileExists(objectKey: string, bucketName?: string): Promise<boolean> {
     try {
-      const client = this.getOSSClient();
+      const client = this.getOSSClient(bucketName);
       await client.head(objectKey);
       return true;
     } catch (error: any) {
@@ -305,7 +340,7 @@ class OSSService {
     }
   }
 
-  async uploadLocalFile(localFilePath: string, objectKey?: string): Promise<{ url: string; objectKey: string }> {
+  async uploadLocalFile(localFilePath: string, objectKey?: string, bucketName?: string): Promise<{ url: string; objectKey: string }> {
     // 按需加载，避免在无上传场景下引入额外依赖
     const path = await import('path');
     const fs = await import('fs');
@@ -316,7 +351,7 @@ class OSSService {
         objectKey = `uploads/${Date.now()}_${basename}`;
       }
 
-      const client = this.getOSSClient();
+      const client = this.getOSSClient(bucketName);
       await client.put(objectKey, localFilePath);
 
       // 上传成功后删除本地临时文件，忽略删除错误
@@ -324,7 +359,7 @@ class OSSService {
 
       return {
         objectKey,
-        url: this.generateFileUrl(objectKey)
+        url: this.generateFileUrl(objectKey, true, 3600, bucketName)
       };
     } catch (error) {
       console.error('上传本地文件到OSS失败:', error);
@@ -334,14 +369,17 @@ class OSSService {
 
   /**
    * 上传Buffer数据到OSS（如Base64解码后的二进制数据）
+   * @param buffer 二进制数据
+   * @param objectKey 对象键
+   * @param bucketName 可选，指定存储桶
    */
-  async uploadBuffer(buffer: Buffer, objectKey: string): Promise<{ url: string; objectKey: string }> {
+  async uploadBuffer(buffer: Buffer, objectKey: string, bucketName?: string): Promise<{ url: string; objectKey: string }> {
     try {
-      const client = this.getOSSClient();
+      const client = this.getOSSClient(bucketName);
       await client.put(objectKey, buffer);
       return {
         objectKey,
-        url: this.generateFileUrl(objectKey)
+        url: this.generateFileUrl(objectKey, true, 3600, bucketName)
       };
     } catch (error) {
       console.error('上传Buffer到OSS失败:', error);
@@ -351,9 +389,11 @@ class OSSService {
 
   /**
    * 获取文件流（用于服务端代理输出）
+   * @param objectKey 对象键
+   * @param bucketName 可选，指定存储桶
    */
-  async getFileStream(objectKey: string) {
-    const client = this.getOSSClient();
+  async getFileStream(objectKey: string, bucketName?: string) {
+    const client = this.getOSSClient(bucketName);
     return client.getStream(objectKey);
   }
 }

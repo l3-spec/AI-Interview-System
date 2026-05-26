@@ -84,8 +84,11 @@ val aliyunAvatarInstanceId: String = (project.findProperty("ALIYUN_AVATAR_INSTAN
     ?: defaultAliyunAvatarInstanceId
 
 // 阿里云 RAM (AccessKey) 配置
-val defaultAliyunAccessKeyId = "LTAI5tCVEqD97rEMyyJEVpp5"
-val defaultAliyunAccessKeySecret = "K272Yb0Bl7NsU5mj5t1GlCrB0Zodfv"
+// 【安全警告】不要在此处硬编码真实的 AccessKey！
+// AccessKey 应该由后端 /api/client-runtime-config 接口动态下发
+// 此处仅保留空字符串作为编译默认值，运行时必须从服务端获取
+val defaultAliyunAccessKeyId = ""
+val defaultAliyunAccessKeySecret = ""
 val aliyunAccessKeyId: String = (project.findProperty("aliyun_access_key_id") as? String?)
     ?.trim()
     ?.takeIf { it.isNotEmpty() }
@@ -277,6 +280,14 @@ dependencies {
     // Retrofit for networking
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+
+    // 加密存储（Android Keystore + EncryptedSharedPreferences）
+    // 用于安全存储敏感配置（AccessKey 等）
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
+    // Lifecycle 组件（用于配置管理）
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
+    implementation("androidx.lifecycle:lifecycle-process:2.8.4")
     implementation("com.squareup.okhttp3:okhttp:4.9.3")
     implementation("com.squareup.okhttp3:logging-interceptor:4.9.3") // For logging
 

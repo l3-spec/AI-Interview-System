@@ -104,7 +104,8 @@ export class TTSService {
     try {
       const objectKey = `temp/tts/${fileName}`;
       console.log(`正在上传音频到OSS: ${objectKey}`);
-      const result = await ossService.uploadLocalFile(filePath, objectKey);
+      // 音频文件使用主存储桶
+      const result = await ossService.uploadLocalFile(filePath, objectKey, ossService.getBucketForType());
       console.log(`✅ 上传到OSS成功: ${result.url}`);
       return result.url;
     } catch (error) {

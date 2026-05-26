@@ -1,7 +1,7 @@
 package com.xlwl.AiMian.data.repository
 
-import com.xlwl.AiMian.data.api.AiInterviewApi
-import com.xlwl.AiMian.data.api.ApiResponse
+import com.example.v0clone.data.api.AiInterviewApi
+import com.example.v0clone.data.api.ApiResponse
 import com.xlwl.AiMian.data.model.AiInterviewCreateSessionData
 import com.xlwl.AiMian.data.model.AiInterviewSessionDetail
 import com.xlwl.AiMian.data.model.AiInterviewSessionSummary

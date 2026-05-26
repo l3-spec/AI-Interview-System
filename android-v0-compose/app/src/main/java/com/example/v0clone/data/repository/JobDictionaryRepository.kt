@@ -1,6 +1,6 @@
 package com.xlwl.AiMian.data.repository
 
-import com.xlwl.AiMian.data.api.JobDictionaryApi
+import com.example.v0clone.data.api.JobDictionaryApi
 import com.xlwl.AiMian.data.model.JobDictionaryCategory
 import com.xlwl.AiMian.data.model.JobDictionaryPosition
 

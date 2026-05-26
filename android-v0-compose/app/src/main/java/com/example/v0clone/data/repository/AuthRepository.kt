@@ -1,7 +1,7 @@
 package com.xlwl.AiMian.data.repository
 
-import com.xlwl.AiMian.data.api.AuthApi
-import com.xlwl.AiMian.data.api.ApiResponse
+import com.example.v0clone.data.api.AuthApi
+import com.example.v0clone.data.api.ApiResponse
 import com.xlwl.AiMian.data.model.*
 
 class AuthRepository(private val api: AuthApi) {

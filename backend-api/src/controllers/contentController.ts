@@ -966,7 +966,8 @@ export const createUserPost = async (req: Request, res: Response) => {
             const timestamp = Date.now();
             const random = Math.random().toString(36).substring(2, 8);
             const objectKey = `post-images/${timestamp}_${random}${ext}`;
-            const { objectKey: storedKey } = await ossService.uploadLocalFile(file.path, objectKey);
+            // 帖子图片使用主存储桶
+            const { objectKey: storedKey } = await ossService.uploadLocalFile(file.path, objectKey, ossService.getBucketForType('post'));
             return storedKey;
           })
         );

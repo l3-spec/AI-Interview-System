@@ -116,7 +116,8 @@ class DigitalHumanService {
       }
 
       const objectKey = `videos/interviewer/${sessionId}_${questionIndex}_${uuidv4()}.mp4`;
-      const uploadRes = await ossService.uploadBuffer(buffer, objectKey);
+      // 数字人视频使用主存储桶
+      const uploadRes = await ossService.uploadBuffer(buffer, objectKey, ossService.getBucketForType());
 
       return { success: true, videoUrl: uploadRes.url };
     } catch (err: any) {

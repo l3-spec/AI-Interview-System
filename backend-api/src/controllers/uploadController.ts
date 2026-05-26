@@ -39,9 +39,12 @@ export const uploadFile = async (req: Request, res: Response) => {
       });
     }
 
+    // 根据文件类型选择存储桶
+    const bucketName = ossService.getBucketForType(type);
+    
     // 始终上传到 OSS
     const objectKey = buildObjectKey(type, file.filename);
-    const { objectKey: storedKey } = await ossService.uploadLocalFile(file.path, objectKey);
+    const { objectKey: storedKey } = await ossService.uploadLocalFile(file.path, objectKey, bucketName);
     const fileUrl = toPublicUrl(storedKey);
 
     res.json({
@@ -54,7 +57,8 @@ export const uploadFile = async (req: Request, res: Response) => {
         mimetype: file.mimetype,
         url: fileUrl,
         type: type,
-        objectKey: storedKey
+        objectKey: storedKey,
+        bucket: bucketName
       }
     });
   } catch (error) {

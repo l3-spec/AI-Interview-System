@@ -24,7 +24,7 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
-import com.xlwl.AiMian.config.AppConfig
+import com.example.v0clone.config.AppConfig
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream

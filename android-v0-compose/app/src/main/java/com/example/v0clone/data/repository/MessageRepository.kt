@@ -1,7 +1,7 @@
 package com.xlwl.AiMian.data.repository
 
-import com.xlwl.AiMian.data.api.ApiService
-import com.xlwl.AiMian.data.api.PagedData
+import com.example.v0clone.data.api.ApiService
+import com.example.v0clone.data.api.PagedData
 import com.xlwl.AiMian.data.model.CreateMessageRequest
 import com.xlwl.AiMian.data.model.MessageDetail
 import com.xlwl.AiMian.data.model.MessageEntry

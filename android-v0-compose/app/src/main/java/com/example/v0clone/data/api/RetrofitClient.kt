@@ -1,6 +1,6 @@
-package com.xlwl.AiMian.data.api
+package com.example.v0clone.data.api
 
-import com.xlwl.AiMian.config.AppConfig
+import com.example.v0clone.config.AppConfig
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor

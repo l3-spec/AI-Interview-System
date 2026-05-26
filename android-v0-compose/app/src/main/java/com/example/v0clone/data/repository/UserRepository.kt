@@ -1,7 +1,7 @@
 package com.xlwl.AiMian.data.repository
 
-import com.xlwl.AiMian.data.api.ApiService
-import com.xlwl.AiMian.data.api.ApiResponse
+import com.example.v0clone.data.api.ApiService
+import com.example.v0clone.data.api.ApiResponse
 import com.xlwl.AiMian.data.model.RegionDictionaryItem
 import com.xlwl.AiMian.data.model.UpdateProfileRequest
 import com.xlwl.AiMian.data.model.User

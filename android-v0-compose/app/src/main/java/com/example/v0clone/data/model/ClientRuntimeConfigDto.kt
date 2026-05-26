@@ -1,4 +1,4 @@
-package com.xlwl.AiMian.data.model
+package com.example.v0clone.data.model
 
 import com.google.gson.annotations.SerializedName
 
@@ -7,6 +7,7 @@ import com.google.gson.annotations.SerializedName
  * 字段均为可选：未返回时回退到 BuildConfig。
  */
 data class ClientRuntimeConfigDto(
+    @SerializedName("version") val version: String? = null,  // 配置版本号
     @SerializedName("apiBaseUrl") val apiBaseUrl: String? = null,
     @SerializedName("realtimeSocketUrl") val realtimeSocketUrl: String? = null,
     @SerializedName("asrServiceWsUrl") val asrServiceWsUrl: String? = null,

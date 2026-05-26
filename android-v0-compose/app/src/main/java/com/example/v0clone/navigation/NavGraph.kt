@@ -49,15 +49,15 @@ import com.google.gson.Gson
 import java.io.IOException
 import java.net.SocketTimeoutException
 
-import com.xlwl.AiMian.data.api.AiInterviewApi
-import com.xlwl.AiMian.data.api.ApiService
+import com.example.v0clone.data.api.AiInterviewApi
+import com.example.v0clone.data.api.ApiService
 import com.xlwl.AiMian.data.api.OssApi
 import com.xlwl.AiMian.BuildConfig
 import com.xlwl.AiMian.ai.prep.PrepRoute
 import com.xlwl.AiMian.ai.session.InterviewSessionRoute
-import com.xlwl.AiMian.data.api.AuthApi
-import com.xlwl.AiMian.data.api.JobDictionaryApi
-import com.xlwl.AiMian.data.api.RetrofitClient
+import com.example.v0clone.data.api.AuthApi
+import com.example.v0clone.data.api.JobDictionaryApi
+import com.example.v0clone.data.api.RetrofitClient
 import com.xlwl.AiMian.data.auth.AuthManager
 import com.xlwl.AiMian.data.repository.AuthRepository
 import com.xlwl.AiMian.data.repository.AiInterviewRepository
@@ -1234,7 +1234,7 @@ fun AppNavHost(navController: NavHostController) {
                                 ?: data.questions.minByOrNull { it.questionIndex }
                             if (!isCompleted) {
                                 DuixAvatarInterviewScreen(
-                                    projectId = com.xlwl.AiMian.config.AppConfig.aliyunAvatarProjectId,
+                                    projectId = com.example.v0clone.config.AppConfig.aliyunAvatarProjectId,
                                     jobPositionLabel = selectedPosition,
                                     interviewQuestion = currentQuestion?.questionText ?: "请做一下自我介绍",
                                     interviewSessionId = data.sessionId,

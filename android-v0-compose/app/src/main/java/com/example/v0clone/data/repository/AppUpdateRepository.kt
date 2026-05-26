@@ -1,6 +1,6 @@
 package com.xlwl.AiMian.data.repository
 
-import com.xlwl.AiMian.data.api.ApiService
+import com.example.v0clone.data.api.ApiService
 import com.xlwl.AiMian.data.model.AppVersionInfo
 
 class AppUpdateRepository(private val api: ApiService) {

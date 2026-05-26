@@ -2,7 +2,7 @@ package com.xlwl.AiMian.ai.realtime
 
 import android.content.Context
 import android.util.Log
-import com.xlwl.AiMian.config.AppConfig
+import com.example.v0clone.config.AppConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex

@@ -3,7 +3,7 @@ package com.xlwl.AiMian.ui.circle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.xlwl.AiMian.data.api.PagedData
+import com.example.v0clone.data.api.PagedData
 import com.xlwl.AiMian.data.model.ExpertPost
 import com.xlwl.AiMian.data.model.UserPost
 import com.xlwl.AiMian.data.repository.ContentRepository
@@ -233,7 +233,7 @@ class CircleViewModel(private val repository: ContentRepository) : ViewModel() {
         if (url.isNullOrBlank()) return null
         if (url.startsWith("http://") || url.startsWith("https://")) return url
         
-        val baseUrl = com.xlwl.AiMian.config.AppConfig.apiBaseUrl
+        val baseUrl = com.example.v0clone.config.AppConfig.apiBaseUrl
         val cleanUrl = if (url.startsWith("/api/")) {
             url.substring(5)
         } else if (url.startsWith("api/")) {

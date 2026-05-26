@@ -1,4 +1,4 @@
-package com.xlwl.AiMian.data.api
+package com.example.v0clone.data.api
 
 import com.xlwl.AiMian.data.model.JobDictionaryCategory
 import retrofit2.http.GET

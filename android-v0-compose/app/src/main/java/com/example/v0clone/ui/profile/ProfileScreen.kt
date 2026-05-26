@@ -56,8 +56,8 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.xlwl.AiMian.R
-import com.xlwl.AiMian.data.api.AuthApi
-import com.xlwl.AiMian.data.api.RetrofitClient
+import com.example.v0clone.data.api.AuthApi
+import com.example.v0clone.data.api.RetrofitClient
 import com.xlwl.AiMian.data.auth.AuthManager
 import com.xlwl.AiMian.data.model.User
 import com.xlwl.AiMian.data.repository.AuthRepository

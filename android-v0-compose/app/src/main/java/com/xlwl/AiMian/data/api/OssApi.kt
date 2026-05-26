@@ -1,5 +1,7 @@
 package com.xlwl.AiMian.data.api
 
+import com.example.v0clone.data.api.ApiResponse
+
 import com.xlwl.AiMian.data.model.OssConfig
 import com.xlwl.AiMian.data.model.OssUploadCompleteRequest
 import com.xlwl.AiMian.data.model.OssUploadResult

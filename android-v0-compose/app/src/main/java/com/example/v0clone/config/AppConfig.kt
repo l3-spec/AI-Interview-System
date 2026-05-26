@@ -1,8 +1,15 @@
-package com.xlwl.AiMian.config
+package com.example.v0clone.config
 
 import com.xlwl.AiMian.BuildConfig
-import com.xlwl.AiMian.data.model.ClientRuntimeConfigDto
+import com.xlwl.AiMian.data.repository.ClientRuntimeConfigRepository
+import com.xlwl.AiMian.di.AppModule
+import com.example.v0clone.data.model.ClientRuntimeConfigDto
 import java.net.URI
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+import android.util.Log
 
 private const val DEFAULT_API_PORT = 3001
 private const val DEFAULT_ASR_PORT = 3002
@@ -25,14 +32,42 @@ private fun nonBlank(s: String?): String? = s?.trim()?.takeIf { it.isNotEmpty() 
 
 object AppConfig {
 
+    private const val TAG = "AppConfig"
+
     @Volatile
     private var clientRuntime: ClientRuntimeConfigDto? = null
+    
+    // 配置监听器（观察 Repository 的配置变化）
+    private var configListenerJob: kotlinx.coroutines.Job? = null
+    
+    /**
+     * 启动配置监听器
+     * 当 Repository 中的配置更新时，自动同步到 AppConfig
+     * 应该在 Application.onCreate() 中调用
+     */
+    fun startConfigListener(scope: CoroutineScope) {
+        configListenerJob?.cancel() // 取消旧的监听器
+        
+        configListenerJob = scope.launch(Dispatchers.Main) {
+            try {
+                AppModule.configRepository.config.collectLatest { config ->
+                    if (config != null) {
+                        Log.i(TAG, "🔄 配置已更新: version=${config.version}")
+                        applyClientRuntime(config)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ 配置监听器异常", e)
+            }
+        }
+    }
 
     /**
      * 由 [com.xlwl.AiMian.data.repository.ClientRuntimeConfigRepository] 在冷启动时调用。
      */
     fun applyClientRuntime(config: ClientRuntimeConfigDto) {
         clientRuntime = config
+        Log.d(TAG, "✅ 配置已应用: version=${config.version}")
     }
 
     val volcanoAppId: String
@@ -98,10 +133,36 @@ object AppConfig {
         get() = nonBlank(clientRuntime?.aliyunAvatarInstanceId) ?: BuildConfig.ALIYUN_AVATAR_INSTANCE_ID
 
     val aliyunAccessKeyId: String
-        get() = nonBlank(clientRuntime?.aliyunAccessKeyId) ?: BuildConfig.ALIYUN_ACCESS_KEY_ID
+        get() {
+            val fromServer = nonBlank(clientRuntime?.aliyunAccessKeyId)
+            if (fromServer != null) return fromServer
+            
+            // 【安全警告】不再使用 BuildConfig 中的硬编码值
+            // AccessKey 必须由服务端 /api/client-runtime-config 接口动态下发
+            val buildConfigValue = BuildConfig.ALIYUN_ACCESS_KEY_ID
+            if (buildConfigValue.isNotBlank()) {
+                android.util.Log.w("AppConfig", 
+                    "⚠️ AccessKey 从 BuildConfig 回退，这不应该是生产环境的行为！" +
+                    "请确保服务端 /api/client-runtime-config 正确返回 aliyunAccessKeyId")
+            }
+            return buildConfigValue
+        }
 
     val aliyunAccessKeySecret: String
-        get() = nonBlank(clientRuntime?.aliyunAccessKeySecret) ?: BuildConfig.ALIYUN_ACCESS_KEY_SECRET
+        get() {
+            val fromServer = nonBlank(clientRuntime?.aliyunAccessKeySecret)
+            if (fromServer != null) return fromServer
+            
+            // 【安全警告】不再使用 BuildConfig 中的硬编码值
+            // AccessKey 必须由服务端 /api/client-runtime-config 接口动态下发
+            val buildConfigValue = BuildConfig.ALIYUN_ACCESS_KEY_SECRET
+            if (buildConfigValue.isNotBlank()) {
+                android.util.Log.w("AppConfig", 
+                    "⚠️ AccessKeySecret 从 BuildConfig 回退，这不应该是生产环境的行为！" +
+                    "请确保服务端 /api/client-runtime-config 正确返回 aliyunAccessKeySecret")
+            }
+            return buildConfigValue
+        }
 
     val vadThreshold: Float
         get() = clientRuntime?.vadThreshold ?: -40f
