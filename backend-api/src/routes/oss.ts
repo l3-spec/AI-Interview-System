@@ -50,7 +50,7 @@ const router = express.Router();
  *       500:
  *         description: 服务器错误
  */
-router.get('/sts-token', ossController.getStsToken);
+router.get('/sts-token', (req, res) => ossController.getStsToken(req, res));
 
 /**
  * @swagger
@@ -80,7 +80,7 @@ router.get('/sts-token', ossController.getStsToken);
  *                     cdnDomain:
  *                       type: string
  */
-router.get('/config', ossController.getOSSConfig);
+router.get('/config', (req, res) => ossController.getOSSConfig(req, res));
 
 /**
  * @swagger
@@ -128,7 +128,7 @@ router.get('/config', ossController.getOSSConfig);
  *       500:
  *         description: 服务器错误
  */
-router.post('/upload-complete', ossController.uploadComplete);
+router.post('/upload-complete', (req, res) => ossController.uploadComplete(req, res));
 
 /**
  * @swagger
@@ -162,7 +162,7 @@ router.post('/upload-complete', ossController.uploadComplete);
  *       500:
  *         description: 服务器错误
  */
-router.post('/upload-callback', ossController.uploadCallback);
+router.post('/upload-callback', (req, res) => ossController.uploadCallback(req, res));
 
 /**
  * @swagger
@@ -207,8 +207,8 @@ router.post('/upload-callback', ossController.uploadCallback);
  *       500:
  *         description: 服务器错误
  */
-router.get('/file-url', ossController.getFileUrl);
-router.get('/proxy', ossController.proxyFile);
+router.get('/file-url', (req, res) => ossController.getFileUrl(req, res));
+router.get('/proxy', (req, res) => ossController.proxyFile(req, res));
 
 /**
  * @swagger
@@ -236,7 +236,7 @@ router.get('/proxy', ossController.proxyFile);
  *       500:
  *         description: 删除失败
  */
-router.delete('/delete-file', ossController.deleteFile);
+router.delete('/delete-file', (req, res) => ossController.deleteFile(req, res));
 
 /**
  * @swagger
@@ -264,7 +264,7 @@ router.delete('/delete-file', ossController.deleteFile);
  *       500:
  *         description: 服务器错误
  */
-router.get('/storage-stats', ossController.getStorageStats);
+router.get('/storage-stats', (req, res) => ossController.getStorageStats(req, res));
 
 /**
  * @swagger
@@ -293,7 +293,7 @@ router.get('/storage-stats', ossController.getStorageStats);
  *       500:
  *         description: 服务器错误
  */
-router.post('/upload-file', uploadSingle('file'), ossController.uploadFile);
+router.post('/upload-file', uploadSingle('file'), (req, res) => ossController.uploadFile(req, res));
 
 /**
  * @swagger
@@ -324,6 +324,6 @@ router.post('/upload-file', uploadSingle('file'), ossController.uploadFile);
  *       500:
  *         description: 服务器错误
  */
-router.post('/upload-base64', ossController.uploadBase64);
+router.post('/upload-base64', (req, res) => ossController.uploadBase64(req, res));
 
 export default router; 

@@ -20,6 +20,7 @@ import PostManagement from './pages/PostManagement';
 import AppVersionManagement from './pages/AppVersionManagement';
 import InterviewAnalysisManagement from './pages/InterviewAnalysisManagement';
 import RegionDictionaryManagement from './pages/RegionDictionaryManagement';
+import MonitoringDashboard from './pages/MonitoringDashboard';
 import './App.css';
 
 const App: React.FC = () => {
@@ -33,6 +34,7 @@ const App: React.FC = () => {
           {/* 系统布局 */}
           <Route path="/" element={<SystemLayout />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route path="monitoring" element={<MonitoringDashboard />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="users" element={<UserManagement />} />
             <Route path="companies" element={<CompanyManagement />} />
@@ -46,7 +48,6 @@ const App: React.FC = () => {
             <Route path="admins" element={<AdminManagement />} />
             <Route path="app-versions" element={<AppVersionManagement />} />
             <Route path="interview-analysis" element={<InterviewAnalysisManagement />} />
-            <Route path="logs" element={<SystemLogs />} />
             <Route path="permissions" element={<PermissionManagement />} />
             <Route path="billing" element={<BillingManagement />} />
             <Route path="settings" element={<Settings />} />

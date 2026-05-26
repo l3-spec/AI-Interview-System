@@ -225,6 +225,11 @@ fun AppNavHost(navController: NavHostController) {
                         navController.navigate("content/${URLEncoder.encode(id, "UTF-8")}")
                     }
                 }
+                "job" -> {
+                    banner.linkId?.let { id ->
+                        navController.navigate("${Routes.JOB_DETAIL}/${URLEncoder.encode(id, "UTF-8")}")
+                    }
+                }
                 "company" -> {
                     banner.linkId?.let { id ->
                         navController.navigate("${Routes.COMPANY}/${URLEncoder.encode(id, "UTF-8")}")
@@ -237,7 +242,7 @@ fun AppNavHost(navController: NavHostController) {
                         }
                     }
                 }
-                "webview", "third_party" -> {
+                "external", "webview", "third_party" -> {
                     banner.linkId?.let { url ->
                         if (url.isNotBlank()) {
                             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

@@ -412,58 +412,64 @@ fun DuixAvatarInterviewScreen(
             ttsProgress
         }
 
-        // Real-time Subtitles Overlay (bottom area)
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .zIndex(15f)
-                .padding(bottom = if (isCameraMaximized) 40.dp else 60.dp)
-                .padding(horizontal = 24.dp, vertical = 20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Surface(
-                color = Color.Black.copy(alpha = 0.65f), // 加深对比度，确保亮暗背景下文字均能舒适阅读
-                shape = RoundedCornerShape(16.dp), // 更加柔和高级的圆角舱体
-                border = androidx.compose.foundation.BorderStroke(
-                    width = 0.5.dp,
-                    color = Color.White.copy(alpha = 0.18f) // 精致的半透明夜空舱白描边
-                ),
+        // Real-time Subtitles Overlay (bottom area) — 仅在有字幕内容时才显示，避免空透明黑条
+        val showUserSubtitle = userTranscript.isNotBlank() && userTranscript != "正在聆听，请开始说话..."
+        val showAISubtitle = !displayAIText.isNullOrEmpty()
+        val showCountdown = !isDhSpeaking && timeLimit != null && (timeLimit ?: 0) > 0 && !interviewCompleted
+        
+        if (showUserSubtitle || showAISubtitle || showCountdown) {
+            Column(
                 modifier = Modifier
+                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(horizontal = 4.dp)
+                    .zIndex(15f)
+                    .padding(bottom = if (isCameraMaximized) 40.dp else 60.dp)
+                    .padding(horizontal = 24.dp, vertical = 20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                Surface(
+                    color = Color.Black.copy(alpha = 0.65f),
+                    shape = RoundedCornerShape(16.dp),
+                    border = androidx.compose.foundation.BorderStroke(
+                        width = 0.5.dp,
+                        color = Color.White.copy(alpha = 0.18f)
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp)
                 ) {
-                    // User Subtitle (Me) - Displayed when user is speaking
-                    if (userTranscript.isNotBlank() && userTranscript != "正在聆听，请开始说话...") {
-                        UserRealtimeSubtitle(
-                            text = userTranscript,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 8.dp)
-                        )
-                    }
-                    
-                    // Interviewer Subtitle (AI) — KTV Style
-                    displayAIText?.let { aiText ->
-                        InterviewerTwoLineSubtitle(
-                            fullText = aiText,
-                            progress = finalHighlightProgress,
-                            isSpeaking = isDhSpeaking,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                    
-                    // Circular Countdown
-                    if (!isDhSpeaking && timeLimit != null && (timeLimit ?: 0) > 0 && !interviewCompleted) {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        CircularCountdown(
-                            totalTimeSeconds = timeLimit!!,
-                            modifier = Modifier.size(60.dp)
-                        )
+                    Column(
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        // User Subtitle (Me) - Displayed when user is speaking
+                        if (showUserSubtitle) {
+                            UserRealtimeSubtitle(
+                                text = userTranscript,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 8.dp)
+                            )
+                        }
+                                
+                        // Interviewer Subtitle (AI) — KTV Style
+                        if (showAISubtitle) {
+                            InterviewerTwoLineSubtitle(
+                                fullText = displayAIText!!,
+                                progress = finalHighlightProgress,
+                                isSpeaking = isDhSpeaking,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                                
+                        // Circular Countdown
+                        if (showCountdown) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            CircularCountdown(
+                                totalTimeSeconds = timeLimit!!,
+                                modifier = Modifier.size(60.dp)
+                            )
+                        }
                     }
                 }
             }

@@ -134,10 +134,15 @@ export const getUsers = async (req: Request, res: Response) => {
       prisma.user.count({ where })
     ]);
 
+    const transformedUsers = users.map((user: any) => ({
+      ...user,
+      avatar: toMediaUrl(user.avatar) ?? user.avatar,
+    }));
+
     res.json({
       success: true,
       data: {
-        users,
+        users: transformedUsers,
         pagination: {
           page: Number(page),
           pageSize: Number(pageSize),

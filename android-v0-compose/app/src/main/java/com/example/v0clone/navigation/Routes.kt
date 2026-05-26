@@ -45,4 +45,5 @@ object Routes {
     const val PROFILE_DELIVERIES = "profileDeliveries"
     const val PRIVACY_POLICY = "privacyPolicy"
     const val USER_INSTRUCTIONS = "userInstructions"
+    const val WEBVIEW = "webview"
 }

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
+import { toMediaUrl } from '../utils/ossUtils';
 
 // 获取用户列表
 export const getUsers = async (req: Request, res: Response) => {
@@ -67,10 +68,11 @@ export const getUsers = async (req: Request, res: Response) => {
       prisma.user.count({ where })
     ]);
 
-    // 处理技能字段
+    // 处理技能字段和头像 URL
     const processedUsers = users.map((user: any) => ({
       ...user,
-      skills: user.skills ? JSON.parse(user.skills) : []
+      skills: user.skills ? JSON.parse(user.skills) : [],
+      avatar: toMediaUrl(user.avatar) ?? user.avatar
     }));
 
     res.json({
@@ -127,10 +129,11 @@ export const getUserById = async (req: Request, res: Response) => {
       });
     }
 
-    // 处理技能字段
+    // 处理技能字段和头像 URL
     const processedUser = {
       ...user,
-      skills: user.skills ? JSON.parse(user.skills) : []
+      skills: user.skills ? JSON.parse(user.skills) : [],
+      avatar: toMediaUrl(user.avatar) ?? user.avatar
     };
 
     res.json({

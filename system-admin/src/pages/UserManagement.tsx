@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { config } from '../config/config';
+import { buildAssetUrl } from '../utils/url';
 
 interface User {
   id: string;
@@ -301,7 +302,7 @@ const UserManagement: React.FC = () => {
                       width: '40px',
                       height: '40px',
                       borderRadius: '50%',
-                      background: user.avatar ? `url(${user.avatar})` : '#f0f0f0',
+                      background: user.avatar ? `url(${buildAssetUrl(user.avatar)})` : '#f0f0f0',
                       backgroundSize: 'cover',
                       backgroundPosition: 'center',
                       display: 'flex',

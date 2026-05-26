@@ -18,6 +18,7 @@ import AssessmentManagement from '../pages/AssessmentManagement';
 import PostManagement from '../pages/PostManagement';
 import AppVersionManagement from '../pages/AppVersionManagement';
 import DimensionManagement from '../pages/DimensionManagement';
+import MonitoringDashboard from '../pages/MonitoringDashboard';
 
 export const AppRoutes: React.FC = () => {
   const { isAuthenticated } = useAuth();
@@ -35,6 +36,7 @@ export const AppRoutes: React.FC = () => {
     <Routes>
       <Route path="/" element={<SystemLayout />}>
         <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route path="monitoring" element={<MonitoringDashboard />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="users" element={<UserManagement />} />
         <Route path="companies" element={<CompanyManagement />} />
@@ -51,6 +53,7 @@ export const AppRoutes: React.FC = () => {
         <Route path="billing" element={<BillingManagement />} />
         <Route path="settings" element={<SystemSettings />} />
         <Route path="dimensions" element={<DimensionManagement />} />
+        <Route path="monitoring" element={<MonitoringDashboard />} />
       </Route>
       <Route path="/login" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

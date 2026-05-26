@@ -49,7 +49,7 @@ const SystemLayout: React.FC = () => {
     { path: '/dimensions', label: '维度配置', icon: '📐' },
     { path: '/app-versions', label: '版本管理', icon: '📱' },
     { path: '/interview-analysis', label: '面试/简历分析', icon: '🤖' },
-    { path: '/system-logs', label: '系统监控', icon: '📡' },
+    { path: '/monitoring', label: '监控大屏', icon: '📺' },
     { path: '/admins', label: '管理员', icon: '🔑' },
     { path: '/logs', label: '系统日志', icon: '📋' },
     { path: '/permissions', label: '权限管理', icon: '🔐' },
@@ -144,26 +144,28 @@ const SystemLayout: React.FC = () => {
       </div>
 
       {/* 主内容区域 */}
-      <div style={{ flex: 1, background: '#f0f2f5' }}>
-        {/* 顶部导航栏 */}
-        <header style={{
-          background: '#fff',
-          padding: '16px 24px',
-          borderBottom: '1px solid #e8e8e8',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
-        }}>
-          <h1 style={{ margin: 0, fontSize: '20px', color: '#262626' }}>
-            {menuItems.find(item => location.pathname === item.path || location.pathname.startsWith(`${item.path}/`))?.label || '系统管理'}
-          </h1>
-          <div style={{ fontSize: '14px', color: '#666' }}>
-            U-Talent v1.0 | 系统管理后台
-          </div>
-        </header>
+      <div style={{ flex: 1, background: location.pathname === '/monitoring' ? '#0a0e27' : '#f0f2f5' }}>
+        {/* 顶部导航栏 - 监控大屏时隐藏 */}
+        {location.pathname !== '/monitoring' && (
+          <header style={{
+            background: '#fff',
+            padding: '16px 24px',
+            borderBottom: '1px solid #e8e8e8',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <h1 style={{ margin: 0, fontSize: '20px', color: '#262626' }}>
+              {menuItems.find(item => location.pathname === item.path || location.pathname.startsWith(`${item.path}/`))?.label || '系统管理'}
+            </h1>
+            <div style={{ fontSize: '14px', color: '#666' }}>
+              U-Talent v1.0 | 系统管理后台
+            </div>
+          </header>
+        )}
 
         {/* 页面内容 */}
-        <main style={{ padding: '24px' }}>
+        <main style={{ padding: location.pathname === '/monitoring' ? '0' : '24px' }}>
           <Outlet />
         </main>
       </div>
