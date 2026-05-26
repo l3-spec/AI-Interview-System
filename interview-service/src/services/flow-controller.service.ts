@@ -1,3 +1,4 @@
+import { Redis } from 'ioredis';
 import { deepseekService, OpeningResult, ClosingResult } from './deepseek.service';
 import { ttsService } from './tts.service';
 import { avatarService } from './avatar.service';
@@ -6,6 +7,8 @@ import { aiInterviewService } from './ai-interview.service';
 import { qwen3TTSClient } from './qwen3-tts-service-client';
 import { InterviewSession, InterviewRound, InterviewState, ResponseAnalysis } from '../models/interviewFlow';
 import { prisma } from '../lib/prisma';
+import { redisConnection } from '../config/redis';
+import { redisStreamService } from './redis-stream.service';
 
 function rehydrateQuestionHasAnswer(q: {
   answerText?: string | null;
@@ -28,6 +31,43 @@ function rehydrateQuestionHasAnswer(q: {
 export class InterviewFlowService {
   private sessions = new Map<string, InterviewSession>();
 
+  // ==================== 超时保护配置 ====================
+  /** 单题超时提醒时长（默认 5 分钟） */
+  private readonly QUESTION_REMINDER_TIMEOUT_MS = parseInt(process.env.QUESTION_REMINDER_TIMEOUT_MS || '300000', 10);
+  /** 提醒后跳题等待时长（默认 2 分钟） */
+  private readonly QUESTION_SKIP_TIMEOUT_MS = parseInt(process.env.QUESTION_SKIP_TIMEOUT_MS || '120000', 10);
+  /** 面试整体最长时长（默认 60 分钟） */
+  private readonly INTERVIEW_MAX_DURATION_MS = parseInt(process.env.INTERVIEW_MAX_DURATION_MS || '3600000', 10);
+
+  /** 单题级超时计时器：sessionId -> { reminderTimer, skipTimer } */
+  private questionTimers = new Map<string, { reminderTimer: NodeJS.Timeout | null; skipTimer: NodeJS.Timeout | null }>();
+  /** 整场面试级超时计时器：sessionId -> Timeout */
+  private interviewTimers = new Map<string, NodeJS.Timeout>();
+
+  /** Redis 发布客户端（用于将超时事件投递到 outbound 频道，让网关与客户端感知） */
+  private timeoutPubClient: Redis | null = null;
+
+  /** LLM 题目生成失败时的兜底题库（按职位关键字命中，否则使用 default） */
+  private readonly FALLBACK_QUESTIONS: Record<string, string[]> = {
+    default: [
+      '请简单介绍一下您自己，包括您的教育背景和工作经历。',
+      '请描述一个您在工作中遇到的挑战，以及您是如何解决的。',
+      '您认为自己最大的优势是什么？请举例说明。',
+      '您对未来的职业发展有什么规划？',
+      '您还有什么问题想问我们的吗？',
+    ],
+  };
+
+  private getTimeoutPubClient(): Redis {
+    if (!this.timeoutPubClient) {
+      this.timeoutPubClient = new Redis(redisConnection);
+      this.timeoutPubClient.on('error', (err) =>
+        console.error(`[InterviewFlow] timeoutPubClient Redis Error: ${err.message}`)
+      );
+    }
+    return this.timeoutPubClient;
+  }
+
   private async sendToAvatarAndTTS(sessionId: string, userId: string, text: string, clearPrevious: boolean = true) {
     if (clearPrevious) {
       qwen3TTSClient.clearSynthesis(sessionId);
@@ -47,12 +87,34 @@ export class InterviewFlowService {
 
   private async persistRoundStarted(session: InterviewSession, round: InterviewRound): Promise<void> {
     try {
-      await prisma.aIInterviewSession.update({
-        where: { id: session.sessionId },
-        data: {
-          status: 'IN_PROGRESS',
-          currentQuestion: this.toQuestionIndex(round),
-        },
+      // 使用事务 + 乐观锁，避免并发场景下覆盖已结束/已取消会话的状态
+      await prisma.$transaction(async (tx) => {
+        // 乐观锁检查：确保会话仍处于可推进状态
+        const dbSession = await tx.aIInterviewSession.findUnique({
+          where: { id: session.sessionId },
+          select: { status: true, currentQuestion: true },
+        });
+
+        if (!dbSession) {
+          console.warn(`[InterviewFlow] 持久化跳过: 会话 ${session.sessionId} 不存在`);
+          return;
+        }
+
+        if (dbSession.status === 'COMPLETED' || dbSession.status === 'CANCELLED') {
+          console.warn(
+            `[InterviewFlow] 持久化跳过: 会话 ${session.sessionId} 状态已变更为 ${dbSession.status}`
+          );
+          return;
+        }
+
+        // 推进会话当前题号
+        await tx.aIInterviewSession.update({
+          where: { id: session.sessionId },
+          data: {
+            status: 'IN_PROGRESS',
+            currentQuestion: this.toQuestionIndex(round),
+          },
+        });
       });
     } catch (err: any) {
       console.warn(`[InterviewFlow] 持久化当前题失败: ${err?.message || err}`);
@@ -71,20 +133,53 @@ export class InterviewFlowService {
 
     const questionIndex = this.toQuestionIndex(round);
     try {
-      await prisma.aIInterviewQuestion.updateMany({
-        where: { sessionId: session.sessionId, questionIndex },
-        data: {
-          answerText,
-          answeredAt: new Date(),
-        },
-      });
+      // 使用事务 + 乐观锁，确保「写答案 + 推进会话」原子完成，并避免重复写入
+      await prisma.$transaction(async (tx) => {
+        // 乐观锁检查：若题目已有非空答案则视为已写入，跳过避免覆盖
+        const question = await tx.aIInterviewQuestion.findFirst({
+          where: { sessionId: session.sessionId, questionIndex },
+          select: { id: true, answerText: true, answeredAt: true },
+        });
 
-      await prisma.aIInterviewSession.update({
-        where: { id: session.sessionId },
-        data: {
-          status: 'IN_PROGRESS',
-          currentQuestion: questionIndex,
-        },
+        if (
+          question &&
+          question.answeredAt &&
+          (question.answerText || '').trim().length > 0
+        ) {
+          console.warn(
+            `[InterviewFlow] 重复写入跳过: 会话 ${session.sessionId} 题目 ${questionIndex} 已有答案`
+          );
+          return;
+        }
+
+        // 同时确认会话未结束，避免在面试已结束后回写答案
+        const dbSession = await tx.aIInterviewSession.findUnique({
+          where: { id: session.sessionId },
+          select: { status: true },
+        });
+
+        if (dbSession?.status === 'COMPLETED' || dbSession?.status === 'CANCELLED') {
+          console.warn(
+            `[InterviewFlow] 持久化候选人回答跳过: 会话 ${session.sessionId} 状态为 ${dbSession?.status}`
+          );
+          return;
+        }
+
+        await tx.aIInterviewQuestion.updateMany({
+          where: { sessionId: session.sessionId, questionIndex },
+          data: {
+            answerText,
+            answeredAt: new Date(),
+          },
+        });
+
+        await tx.aIInterviewSession.update({
+          where: { id: session.sessionId },
+          data: {
+            status: 'IN_PROGRESS',
+            currentQuestion: questionIndex,
+          },
+        });
       });
     } catch (err: any) {
       console.warn(`[InterviewFlow] 持久化候选人回答失败: ${err?.message || err}`);
@@ -93,13 +188,34 @@ export class InterviewFlowService {
 
   private async persistInterviewCompleted(session: InterviewSession): Promise<void> {
     try {
-      await prisma.aIInterviewSession.update({
-        where: { id: session.sessionId },
-        data: {
-          status: 'COMPLETED',
-          completedAt: new Date(),
-          currentQuestion: session.rounds.length,
-        },
+      // 使用事务 + 乐观锁，避免重复标记完成（如全局超时与正常收尾并发）
+      await prisma.$transaction(async (tx) => {
+        // 乐观锁检查：若已完成则跳过，避免覆盖原有 completedAt
+        const dbSession = await tx.aIInterviewSession.findUnique({
+          where: { id: session.sessionId },
+          select: { status: true },
+        });
+
+        if (!dbSession) {
+          console.warn(`[InterviewFlow] 持久化面试完成跳过: 会话 ${session.sessionId} 不存在`);
+          return;
+        }
+
+        if (dbSession.status === 'COMPLETED') {
+          console.warn(
+            `[InterviewFlow] 面试已完成, 跳过重复持久化: ${session.sessionId}`
+          );
+          return;
+        }
+
+        await tx.aIInterviewSession.update({
+          where: { id: session.sessionId },
+          data: {
+            status: 'COMPLETED',
+            completedAt: new Date(),
+            currentQuestion: session.rounds.length,
+          },
+        });
       });
     } catch (err: any) {
       console.warn(`[InterviewFlow] 持久化面试完成失败: ${err?.message || err}`);
@@ -444,14 +560,17 @@ export class InterviewFlowService {
 
     session.state = InterviewState.GENERATING;
 
-    // 1. 使用DeepSeek生成面试内容
-    const interviewContent = await this.generateInterviewContent(session);
+    // 1. 使用DeepSeek生成面试内容（失败时自动降级到模板题库）
+    const interviewContent = await this.generateInterviewContentWithFallback(session);
 
     // 2. 将内容转换为语音回合
     const interviewRounds = await this.createInterviewRounds(sessionId, interviewContent);
 
     session.rounds = interviewRounds;
     session.state = InterviewState.READY;
+
+    // 面试题库就绪后，启动整场面试的全局超时计时器
+    this.startInterviewTimer(sessionId);
 
     if (autoStart) {
       await this.startNextRound(sessionId);
@@ -461,6 +580,38 @@ export class InterviewFlowService {
       totalRounds: interviewRounds.length,
       nextRound: interviewRounds[0]
     };
+  }
+
+  /**
+   * 使用DeepSeek AI生成面试内容（带兜底降级）
+   */
+  private async generateInterviewContentWithFallback(session: InterviewSession): Promise<string> {
+    try {
+      const content = await this.generateInterviewContent(session);
+      // 简单校验：解析后题目数量必须 > 0，否则视作失败
+      if (this.parseInterviewContent(content).length === 0) {
+        throw new Error('LLM 输出未能解析出任何题干');
+      }
+      return content;
+    } catch (err: any) {
+      console.error(
+        `[InterviewFlow] 会话 ${session.sessionId} LLM 题目生成失败: ${err?.message || err}, 使用模板题库降级`
+      );
+      const job = (session.userInfo.targetJob || '').trim();
+      const fallbackKey = Object.keys(this.FALLBACK_QUESTIONS).find(
+        (k) => k !== 'default' && job.includes(k)
+      );
+      const questions = this.FALLBACK_QUESTIONS[fallbackKey || 'default'];
+      // 拼装为 parseInterviewContent 兼容格式（带 [emotion:xxx] 标注、** 包裹）
+      return questions
+        .map((q, idx) => {
+          let scene: 'opening' | 'question' | 'closing' = 'question';
+          if (idx === 0) scene = 'opening';
+          else if (idx === questions.length - 1) scene = 'closing';
+          return `**[emotion:${scene}]${q}**`;
+        })
+        .join('\n\n');
+    }
   }
 
   /**
@@ -665,12 +816,18 @@ export class InterviewFlowService {
 
     const nextRound = await this.markNextRoundInProgress(session);
     if (!nextRound) {
+      // 所有题目均已完成，清除整场超时计时器
+      this.clearInterviewTimer(sessionId);
+      this.clearQuestionTimers(sessionId);
       return null;
     }
 
     // Web 嵌入式数字人侧记一笔；同时通过 qwen3TTSClient 下发音频流到 App
     await this.sendToAvatarAndTTS(sessionId, session.userId, nextRound.question);
     session.runtimePhase = 'listening';
+
+    // 启动单题超时计时器（包括提醒 + 跳题）
+    this.startQuestionTimer(sessionId);
 
     // 如果有音频文件，客户端会播放音频，这里不需要服务器端播放
     // if (nextRound.audioUrl) {
@@ -700,6 +857,8 @@ export class InterviewFlowService {
 
     session.isProcessing = true;
     session.runtimePhase = 'processing';
+    // 候选人已作答，清除当前题超时计时器
+    this.clearQuestionTimers(sessionId);
     try {
       const currentRound = session.rounds.find(r => r.status === 'in_progress');
       let analysisResult;
@@ -864,13 +1023,22 @@ ${currentRound.followupCount || 0}
 
   /**
    * 结束面试
+   * @param sessionId 会话 ID
+   * @param reason 结束原因（可选）：'normal' | 'timeout' | 其他业务原因
    */
-  async endInterview(sessionId: string) {
+  async endInterview(sessionId: string, reason: string = 'normal') {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('Session not found');
 
+    // 无论何种原因结束，都需清除该会话的所有超时计时器，避免泄露
+    this.clearQuestionTimers(sessionId);
+    this.clearInterviewTimer(sessionId);
+
     session.state = InterviewState.COMPLETED;
     session.endTime = new Date();
+    if (reason && reason !== 'normal') {
+      console.log(`[InterviewFlow] 会话 ${sessionId} 面试结束，原因=${reason}`);
+    }
 
     // 生成总结
     const summary = await this.generateSummary(session);
@@ -885,6 +1053,7 @@ ${currentRound.followupCount || 0}
     return {
       sessionId,
       summary,
+      reason,
       totalRounds: session.rounds.length,
       completedRounds: session.rounds.filter(r => r.status === 'completed').length
     };
@@ -963,12 +1132,236 @@ ${currentRound.followupCount || 0}
         if (session.state !== InterviewState.COMPLETED) {
           await this.endInterview(sessionId);
         }
+        // 占隆安全：明确释放超时器与会话记录
+        this.clearQuestionTimers(sessionId);
+        this.clearInterviewTimer(sessionId);
         this.sessions.delete(sessionId);
         cleanedCount++;
       }
     }
 
     return cleanedCount;
+  }
+
+  // ==================== 超时保护：单题级 ====================
+
+  /**
+   * 启动单题超时计时器（提醒阶段）。
+   * 逻辑：在 QUESTION_REMINDER_TIMEOUT_MS 后触发提醒，进入 skip 等待阶段。
+   */
+  private startQuestionTimer(sessionId: string): void {
+    this.clearQuestionTimers(sessionId);
+
+    const reminderTimer = setTimeout(() => {
+      console.log(
+        `[InterviewFlow] 会话 ${sessionId} 单题超时提醒 (${this.QUESTION_REMINDER_TIMEOUT_MS / 1000}s)`
+      );
+      this.handleQuestionTimeout(sessionId, 'reminder');
+    }, this.QUESTION_REMINDER_TIMEOUT_MS);
+
+    this.questionTimers.set(sessionId, { reminderTimer, skipTimer: null });
+  }
+
+  /**
+   * 清除单题超时计时器（提醒 + 跳题）。
+   */
+  private clearQuestionTimers(sessionId: string): void {
+    const timers = this.questionTimers.get(sessionId);
+    if (timers) {
+      if (timers.reminderTimer) clearTimeout(timers.reminderTimer);
+      if (timers.skipTimer) clearTimeout(timers.skipTimer);
+      this.questionTimers.delete(sessionId);
+    }
+  }
+
+  /**
+   * 单题超时事件处理：
+   *  - reminder：提醒候选人可以继续思考，同时启动跳题计时器
+   *  - skip：下发跳题提示并自动推进到下一题
+   */
+  private handleQuestionTimeout(sessionId: string, stage: 'reminder' | 'skip'): void {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.state === InterviewState.COMPLETED) {
+      this.clearQuestionTimers(sessionId);
+      return;
+    }
+
+    if (stage === 'reminder') {
+      // 发送 TTS 提示语
+      this.emitTimeoutEvent(
+        sessionId,
+        'question_reminder',
+        '如果您还需要时间思考，可以继续，我等您准备好再回答。'
+      );
+      // 启动跳题计时器
+      const timers = this.questionTimers.get(sessionId);
+      if (timers) {
+        timers.skipTimer = setTimeout(() => {
+          console.log(`[InterviewFlow] 会话 ${sessionId} 跳题超时触发`);
+          this.handleQuestionTimeout(sessionId, 'skip');
+        }, this.QUESTION_SKIP_TIMEOUT_MS);
+      }
+    } else {
+      // 自动跳题
+      this.emitTimeoutEvent(sessionId, 'question_skip', '没关系，我们跳到下一个问题。');
+      this.autoSkipToNextRound(sessionId).catch((err: any) =>
+        console.error(`[InterviewFlow] 会话 ${sessionId} 自动跳题异常: ${err?.message || err}`)
+      );
+    }
+  }
+
+  /**
+   * 将当前题标记为跳过状态并推进到下一题。
+   */
+  private async autoSkipToNextRound(sessionId: string): Promise<void> {
+    try {
+      const session = this.sessions.get(sessionId);
+      if (!session) return;
+
+      const currentRound = session.rounds.find((r) => r.status === 'in_progress');
+      if (currentRound) {
+        currentRound.status = 'skipped';
+        currentRound.endTime = new Date();
+        currentRound.userResponse = '[超时未作答]';
+
+        // 同步到 DB：将题目记为已作答状态，避免后续分析陛入死循环
+        try {
+          await prisma.aIInterviewQuestion.updateMany({
+            where: { sessionId: session.sessionId, questionIndex: this.toQuestionIndex(currentRound) },
+            data: {
+              answerText: '[超时未作答]',
+              answeredAt: new Date(),
+            },
+          });
+        } catch (err: any) {
+          console.warn(`[InterviewFlow] 跳题持久化失败 (可忽略): ${err?.message || err}`);
+        }
+      }
+
+      // 尝试推进到下一题（startNextRound 内部会启动新的超时计时器）
+      await this.startNextRound(sessionId);
+    } catch (err: any) {
+      console.error(`[InterviewFlow] 会话 ${sessionId} 自动跳题失败: ${err?.message || err}`);
+    }
+  }
+
+  // ==================== 超时保护：整场面试级 ====================
+
+  /**
+   * 启动整场面试超时计时器。到达 INTERVIEW_MAX_DURATION_MS 后强制结束面试。
+   */
+  private startInterviewTimer(sessionId: string): void {
+    this.clearInterviewTimer(sessionId);
+
+    const timer = setTimeout(() => {
+      console.warn(
+        `[InterviewFlow] 会话 ${sessionId} 面试全局超时 (${this.INTERVIEW_MAX_DURATION_MS / 60000}分钟)`
+      );
+      this.handleInterviewGlobalTimeout(sessionId).catch((err: any) =>
+        console.error(
+          `[InterviewFlow] 会话 ${sessionId} 面试全局超时处理异常: ${err?.message || err}`
+        )
+      );
+    }, this.INTERVIEW_MAX_DURATION_MS);
+
+    this.interviewTimers.set(sessionId, timer);
+  }
+
+  /**
+   * 清除整场面试超时计时器。
+   */
+  private clearInterviewTimer(sessionId: string): void {
+    const timer = this.interviewTimers.get(sessionId);
+    if (timer) {
+      clearTimeout(timer);
+      this.interviewTimers.delete(sessionId);
+    }
+  }
+
+  /**
+   * 面试全局超时处理：发送结束 TTS 并调用 endInterview。
+   */
+  private async handleInterviewGlobalTimeout(sessionId: string): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.state === InterviewState.COMPLETED) {
+      this.clearInterviewTimer(sessionId);
+      return;
+    }
+
+    this.emitTimeoutEvent(
+      sessionId,
+      'interview_timeout',
+      '感谢您的耐心配合，由于时间关系，我们今天的面试到此结束。感谢您的参与！'
+    );
+
+    try {
+      await this.endInterview(sessionId, 'timeout');
+    } catch (err: any) {
+      console.error(
+        `[InterviewFlow] 会话 ${sessionId} 超时后调用 endInterview 异常: ${err?.message || err}`
+      );
+    }
+  }
+
+  // ==================== 超时事件广播 ====================
+
+  /**
+   * 发出超时事件：
+   *  1. 通过 qwen3TTSClient 下发 TTS 语音提示
+   *  2. 向 outbound session/broadcast 频道发布 timeout_notification 事件供网关转发
+   *  3. 同时向 inbound stream 投递一条 TIMEOUT 事件，让 coordinator 统一处理、记录并转发
+   */
+  private emitTimeoutEvent(sessionId: string, eventType: string, ttsText: string): void {
+    // 1. TTS 语音下发（调用现有 qwen3TTSClient 并清除之前的任务）
+    try {
+      qwen3TTSClient.clearSynthesis(sessionId);
+      qwen3TTSClient.synthesize(sessionId, ttsText, true);
+    } catch (err: any) {
+      console.warn(`[InterviewFlow] 超时 TTS 下发失败 (可忽略): ${err?.message || err}`);
+    }
+
+    // 2. 发布到 outbound 频道，让网关与客户端双路跟进状态
+    const session = this.sessions.get(sessionId);
+    const gatewayId = (session as any)?.gatewayId as string | undefined;
+    const message = JSON.stringify({
+      type: 'timeout_notification',
+      sessionId,
+      payload: {
+        eventType, // 'question_reminder' | 'question_skip' | 'interview_timeout'
+        text: ttsText,
+        timestamp: Date.now(),
+      },
+    });
+    const pub = this.getTimeoutPubClient();
+    pub.publish(`interview:events:outbound:session:${sessionId}`, message).catch((err: any) =>
+      console.error(`[InterviewFlow] 发布 timeout_notification 到 session 频道失败: ${err?.message || err}`)
+    );
+    pub.publish('interview:events:outbound:broadcast', message).catch((err: any) =>
+      console.error(`[InterviewFlow] 发布 timeout_notification 到 broadcast 失败: ${err?.message || err}`)
+    );
+    if (gatewayId) {
+      pub.publish(`interview:events:outbound:${gatewayId}`, message).catch((err: any) =>
+        console.error(`[InterviewFlow] 发布 timeout_notification 到 gateway 频道失败: ${err?.message || err}`)
+      );
+    }
+
+    // 3. 同时写入 inbound stream 让 coordinator 统一记录 / 转发（保留业务事件轨迹）
+    redisStreamService
+      .add('interview:inbound_stream', {
+        type: 'TIMEOUT',
+        sessionId,
+        gatewayId,
+        payload: {
+          eventType,
+          text: ttsText,
+          timestamp: Date.now(),
+        },
+      })
+      .catch((err: any) =>
+        console.warn(`[InterviewFlow] 超时事件写入 inbound stream 失败 (可忽略): ${err?.message || err}`)
+      );
+
+    console.log(`[InterviewFlow] 会话 ${sessionId} 发出超时事件: ${eventType}`);
   }
 }
 

@@ -17,6 +17,53 @@ import { logger } from './logger';
 const serviceId = `asr-${uuidv4().slice(0, 8)}`;
 const SERVICE_URL = process.env.ASR_SERVICE_EXTERNAL_URL || `ws://localhost:${process.env.ASR_SERVICE_PORT || '3002'}/ws/asr`;
 
+/**
+ * 简化版业务指标收集器
+ * - 仅使用计数器累加，避免对热路径性能造成影响
+ * - 每小时自动重置一次，防止长时间运行导致计数无限增长
+ */
+class MetricsCollector {
+  private requestCount = 0;
+  private errorCount = 0;
+  private totalLatencyMs = 0;
+  private latencySamples = 0;
+
+  recordRequest(): void { this.requestCount++; }
+  recordError(): void { this.errorCount++; }
+  recordLatency(ms: number): void {
+    if (!Number.isFinite(ms) || ms < 0) return;
+    this.totalLatencyMs += ms;
+    this.latencySamples++;
+  }
+
+  getMetrics() {
+    return {
+      totalRequests: this.requestCount,
+      totalErrors: this.errorCount,
+      errorRate: this.requestCount > 0
+        ? (this.errorCount / this.requestCount * 100).toFixed(2) + '%'
+        : '0%',
+      avgLatencyMs: this.latencySamples > 0
+        ? Math.round(this.totalLatencyMs / this.latencySamples)
+        : 0,
+      latencySamples: this.latencySamples,
+    };
+  }
+
+  /** 每小时重置一次累计数据（避免无限增长） */
+  startPeriodicReset(): void {
+    setInterval(() => {
+      this.requestCount = 0;
+      this.errorCount = 0;
+      this.totalLatencyMs = 0;
+      this.latencySamples = 0;
+    }, 3600 * 1000);
+  }
+}
+
+const metrics = new MetricsCollector();
+metrics.startPeriodicReset();
+
 function startHeartbeat() {
   setInterval(() => {
     serviceDiscoveryService.heartbeat({
@@ -37,15 +84,22 @@ const corsOrigins = (process.env.CORS_ORIGINS || '*').split(',').map(s => s.trim
 app.use(cors({ origin: corsOrigins.length === 1 && corsOrigins[0] === '*' ? true : corsOrigins }));
 app.use(express.json());
 
-// 健康检查
+// 健康检查（含业务指标）
 app.get('/health', (_req, res) => {
   const manager = ASRSessionManager.getInstance();
+  const memUsage = process.memoryUsage();
   res.json({
     status: 'ok',
     service: 'asr-service',
     model: process.env.ASR_PROVIDER === 'volcengine' ? 'volcengine-streaming-asr' : (process.env.QWEN_ASR_MODEL || 'qwen3-asr-flash-realtime'),
     activeSessions: manager.getActiveSessionCount(),
-    uptime: process.uptime(),
+    uptime: Math.round(process.uptime()),
+    metrics: metrics.getMetrics(),
+    memory: {
+      heapUsedMB: Math.round(memUsage.heapUsed / 1024 / 1024),
+      rssMB: Math.round(memUsage.rss / 1024 / 1024),
+    },
+    timestamp: new Date().toISOString(),
   });
 });
 
@@ -74,6 +128,8 @@ wss.on('connection', (ws, req) => {
   /** 限流：会话不可用时的错误通知，最多每 5 秒发一次给客户端 */
   let lastSessionErrorAt = 0;
   let droppedAudioCount = 0;
+  /** 会话创建起始时间，用于统计端到端识别延迟 */
+  let sessionStartTime: number | null = null;
 
   ws.on('message', async (data) => {
     try {
@@ -82,6 +138,8 @@ wss.on('connection', (ws, req) => {
       switch (message.type) {
         case 'session.create': {
           const config = message.config || {};
+          // 记录一次会话创建请求（无论成功失败都计入 totalRequests）
+          metrics.recordRequest();
           try {
             sessionId = await sessionManager.createSession(ws, {
               sessionId: message.sessionId,
@@ -94,6 +152,16 @@ wss.on('connection', (ws, req) => {
             });
 
             droppedAudioCount = 0;
+            sessionStartTime = Date.now();
+            // 结构化业务事件日志：会话创建
+            console.log(JSON.stringify({
+              type: 'event',
+              event: 'asr_session_created',
+              sessionId,
+              language: config.language || process.env.ASR_LANGUAGE || 'zh',
+              vadMode: config.vadMode || process.env.ASR_VAD_MODE || 'server_vad',
+              timestamp: new Date().toISOString(),
+            }));
             ws.send(JSON.stringify({
               type: 'session.created',
               sessionId,
@@ -101,6 +169,7 @@ wss.on('connection', (ws, req) => {
             }));
           } catch (createErr: any) {
             sessionId = null;
+            metrics.recordError();
             logger.error(`[ASR] 创建会话失败: ${createErr.message}`);
             ws.send(JSON.stringify({
               type: 'error',
@@ -154,8 +223,21 @@ wss.on('connection', (ws, req) => {
 
         case 'session.finish': {
           if (sessionId) {
+            // 记录会话整体耗时作为延迟样本（端到端音频持续时长）
+            if (sessionStartTime !== null) {
+              metrics.recordLatency(Date.now() - sessionStartTime);
+            }
+            // 结构化业务事件日志：会话结束
+            console.log(JSON.stringify({
+              type: 'event',
+              event: 'asr_session_finished',
+              sessionId,
+              durationMs: sessionStartTime ? Date.now() - sessionStartTime : 0,
+              timestamp: new Date().toISOString(),
+            }));
             await sessionManager.finishSession(sessionId);
             sessionId = null;
+            sessionStartTime = null;
           }
           break;
         }
@@ -164,6 +246,7 @@ wss.on('connection', (ws, req) => {
           ws.send(JSON.stringify({ type: 'error', message: `未知消息类型: ${message.type}` }));
       }
     } catch (err: any) {
+      metrics.recordError();
       logger.error(`[ASR] 消息处理错误: ${err.message}`);
       ws.send(JSON.stringify({ type: 'error', message: err.message }));
     }
@@ -179,6 +262,7 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('error', (err) => {
+    metrics.recordError();
     logger.error(`[ASR] WebSocket 错误: ${err.message}`);
   });
 });

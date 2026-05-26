@@ -18,19 +18,35 @@ const PORT = process.env.PORT || 3004;
 app.use(cors());
 app.use(express.json());
 
-// 健康检查
+// 健康检查（含负载指标，供负载均衡器 / 监控大屏使用）
 app.get('/health', (req, res) => {
+  const metrics = coordinatorService.getLoadMetrics();
   res.json({
-    status: 'ok',
+    status: metrics.isOverloaded ? 'overloaded' : 'ok',
     service: 'interview-service',
     uptime: process.uptime(),
-    activeSessions: interviewFlowService.getAllSessions().length
+    activeSessions: metrics.activeSessions,
+    maxCapacity: metrics.maxCapacity,
+    memoryUsageMB: metrics.memoryUsageMB,
+    isOverloaded: metrics.isOverloaded,
   });
 });
 
 // 初始化会话 (用于 WebSocket 重置/续面)
 app.post('/sessions/init', async (req, res) => {
   try {
+    // 前置并发限流：超过上限时直接返回 503，客户端可根据 retryAfterSeconds 重试
+    const metrics = coordinatorService.getLoadMetrics();
+    if (metrics.isOverloaded) {
+      return res.status(503).json({
+        success: false,
+        error: 'server_overloaded',
+        message: '服务器繁忙，请稍后再试',
+        retryAfterSeconds: 30,
+        currentLoad: metrics.activeSessions,
+        maxCapacity: metrics.maxCapacity,
+      });
+    }
     const { sessionId, userId, userName, targetJob, background } = req.body;
     const session = await interviewFlowService.initializeSession(sessionId, userId, userName, targetJob, background);
     res.json({ success: true, session });

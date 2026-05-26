@@ -1,4 +1,5 @@
 import { Redis } from 'ioredis';
+import * as crypto from 'crypto';
 import { redisConnection } from '../config/redis';
 import { redisStreamService } from './redis-stream.service';
 import { serviceDiscoveryService } from './service-discovery.service';
@@ -15,6 +16,17 @@ export class CoordinatorService {
   private streamRunning: boolean = false;
   private sessionQueues: Map<string, Promise<any>> = new Map();
   private sessionPrepareTasks: Map<string, Promise<any>> = new Map();
+  /** TTS interrupt_ack 等待队列：sessionId -> resolve 回调 */
+  private interruptAckResolvers = new Map<string, () => void>();
+
+  // ASR 识别结果去重配置（防止 ASR 服务重传或重复确认导致同一文本被处理多次）
+  private readonly DEDUP_TTL_SECONDS = 60; // Redis 去重窗口：60 秒
+  private readonly DEDUP_KEY_PREFIX = 'interview:dedup:';
+  private readonly MIN_VALID_TEXT_LENGTH = 3; // 最小有效文本长度（短于此值视为噪音）
+
+  // 并发限流配置：单实例最大并发面试会话数
+  // 超过该阈值时拒绝新加入的会话，防止 LLM/TTS 资源耗尽导致整体响应恶化
+  private readonly MAX_CONCURRENT_SESSIONS = parseInt(process.env.MAX_CONCURRENT_SESSIONS || '50');
 
   private constructor() {
     this.workerId = `worker-${uuidv4().slice(0, 8)}`;
@@ -37,14 +49,72 @@ export class CoordinatorService {
 
   private startHeartbeat() {
     setInterval(() => {
+      const metrics = this.getLoadMetrics();
       serviceDiscoveryService.heartbeat({
         id: this.workerId,
         type: 'interview',
         url: '', // Business logic doesn't have a public URL
-        load: this.sessionQueues.size,
-        lastSeen: Date.now()
-      });
+        load: metrics.activeSessions,
+        lastSeen: Date.now(),
+        // 负载详情供注册中心 / 监控大屏展示，便于运维感知过载情况
+        metrics: {
+          activeSessions: metrics.activeSessions,
+          maxCapacity: this.MAX_CONCURRENT_SESSIONS,
+          memoryUsageMB: metrics.memoryUsageMB,
+          isOverloaded: metrics.isOverloaded,
+        },
+      } as any);
     }, 5000);
+  }
+
+  /**
+   * 获取当前负载指标（供心跳上报、健康检查、限流判断使用）
+   * - activeSessions: 当前活跃面试会话数（来自 flow-controller 的会话池）
+   * - memoryUsageMB: Node 进程堆内存占用（MB）
+   * - isOverloaded: 是否已达到并发上限
+   */
+  public getLoadMetrics(): { activeSessions: number; cpuUsage: number; memoryUsageMB: number; maxCapacity: number; isOverloaded: boolean } {
+    const activeSessions = interviewFlowService.getAllSessions().length;
+    const memUsage = process.memoryUsage();
+    const memoryUsageMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+    return {
+      activeSessions,
+      cpuUsage: 0, // Node.js 单线程，CPU 指标在此场景意义有限，预留字段
+      memoryUsageMB,
+      maxCapacity: this.MAX_CONCURRENT_SESSIONS,
+      isOverloaded: activeSessions >= this.MAX_CONCURRENT_SESSIONS,
+    };
+  }
+
+  /**
+   * 结构化性能日志：输出关键路径耗时，便于后续采集 / 告警
+   * 输出格式为单行 JSON，可被日志采集器直接解析
+   */
+  private logPerformance(operation: string, sessionId: string, durationMs: number, extra?: Record<string, any>): void {
+    const logEntry = {
+      type: 'perf',
+      operation,
+      sessionId,
+      durationMs,
+      timestamp: new Date().toISOString(),
+      ...(extra || {}),
+    };
+    console.log(`[Coordinator][Perf] ${JSON.stringify(logEntry)}`);
+  }
+
+  /**
+   * 结构化业务事件日志：记录关键面试生命周期事件
+   * 输出格式为单行 JSON，使用 type='event' 区分于性能日志
+   */
+  private logEvent(event: string, sessionId: string, extra?: Record<string, any>): void {
+    const logEntry = {
+      type: 'event',
+      event,
+      sessionId,
+      timestamp: new Date().toISOString(),
+      ...(extra || {}),
+    };
+    console.log(JSON.stringify(logEntry));
   }
 
   private async startStreamConsumer() {
@@ -75,9 +145,9 @@ export class CoordinatorService {
     // Keep ASR subscription as it might be broadcast from asr-service
     const asrSubClient = new Redis(redisConnection);
     asrSubClient.on('error', (err) => console.error(`[Coordinator ${this.workerId}] AsrSubClient Redis Error: ${err.message}`));
-    asrSubClient.subscribe('asr:events', (err) => {
-      if (err) console.error('[Coordinator] Failed to subscribe to ASR events:', err);
-      else console.log('[Coordinator] Subscribed to asr:events');
+    asrSubClient.subscribe('asr:events', 'tts:events', (err) => {
+      if (err) console.error('[Coordinator] Failed to subscribe to ASR/TTS events:', err);
+      else console.log('[Coordinator] Subscribed to asr:events + tts:events');
     });
 
     asrSubClient.on('message', async (channel, message) => {
@@ -89,6 +159,18 @@ export class CoordinatorService {
           }
         } catch (e) {
           console.error('[Coordinator] Error handling ASR message:', e);
+        }
+      } else if (channel === 'tts:events') {
+        try {
+          const data = JSON.parse(message);
+          if (data.event === 'interrupt_ack') {
+            const resolver = this.interruptAckResolvers.get(data.sessionId);
+            if (resolver) {
+              resolver();
+            }
+          }
+        } catch (e) {
+          console.error('[Coordinator] Error handling TTS event:', e);
         }
       }
     });
@@ -150,11 +232,52 @@ export class CoordinatorService {
     }
 
     switch (type) {
-      case 'JOIN_SESSION':
-        this.runInQueue(sessionId, () => this.handleJoinSession(sessionId, userId, jobPosition, background, socketId, gatewayId));
+      case 'JOIN_SESSION': {
+        // 并发限流：达到上限时直接拒绝新会话，避免下游 LLM / TTS 资源耗尽
+        const currentLoad = this.getLoadMetrics();
+        if (currentLoad.isOverloaded) {
+          console.warn(`[Coordinator] 并发限流: 当前 ${currentLoad.activeSessions}/${this.MAX_CONCURRENT_SESSIONS} 会话, 拒绝新会话 ${sessionId}`);
+          this.logEvent('session_rejected', sessionId, {
+            reason: 'server_overloaded',
+            activeSessions: currentLoad.activeSessions,
+            maxCapacity: this.MAX_CONCURRENT_SESSIONS,
+          });
+          this.emitToGateway(sessionId, 'session_rejected', {
+            reason: 'server_overloaded',
+            message: '当前面试人数较多，请稍后再试',
+            currentLoad: currentLoad.activeSessions,
+            maxCapacity: this.MAX_CONCURRENT_SESSIONS,
+            retryAfterSeconds: 30,
+          }, gatewayId);
+          break;
+        }
+        const joinStart = Date.now();
+        this.runInQueue(sessionId, async () => {
+          await this.handleJoinSession(sessionId, userId, jobPosition, background, socketId, gatewayId);
+          this.logPerformance('join_session', sessionId, Date.now() - joinStart, {
+            userId: userId || 'anonymous',
+            jobPosition: jobPosition || '通用职位',
+          });
+        });
         break;
+      }
       case 'TEXT_MESSAGE':
-        this.runInQueue(sessionId, () => this.processUserResponse(sessionId, text, 'text'));
+        // ASR/文本消息去重检查（基于 Redis SET NX EX，防止重传/重复确认）
+        if (await this.isDuplicateMessage(sessionId, text || '')) {
+          console.log(`[Coordinator] 跳过重复/无效 TEXT_MESSAGE (${sessionId})`);
+          break;
+        }
+        {
+          const textStart = Date.now();
+          const textLen = (text || '').length;
+          this.runInQueue(sessionId, async () => {
+            await this.processUserResponse(sessionId, text, 'text');
+            this.logPerformance('process_text_message', sessionId, Date.now() - textStart, {
+              textLength: textLen,
+              source: 'text',
+            });
+          });
+        }
         break;
       case 'PLAYBACK_DONE':
         this.runInQueue(sessionId, async () => {
@@ -166,17 +289,30 @@ export class CoordinatorService {
         break;
       case 'DISCONNECT':
         console.log(`[Coordinator] Client disconnected: ${sessionId} (Gateway: ${gatewayId}, Socket: ${socketId})`);
+        // 会话断开时主动清理去重缓存，节省 Redis 内存
+        this.cleanupDedupKeys(sessionId);
         break;
       case 'INTERRUPT':
-        {
-          const session = interviewFlowService.getSession(sessionId);
-          if (session) {
-            session.runtimePhase = 'listening';
-          }
-        }
+        this.runInQueue(sessionId, () => this.handleInterrupt(sessionId, gatewayId));
         break;
       case 'VIDEO_FRAME':
         // Potential logic to handle video analysis tracking
+        break;
+      case 'TIMEOUT':
+        // 超时事件由 flow-controller 在本进程内部产生，这里主要负责记录日志与转发给网关，
+        // 让客户端可以感知超时状态（提醒 / 跳题 / 面试结束）。
+        console.log(`[Coordinator] 会话 ${sessionId} 收到超时事件: ${data.payload?.eventType || 'unknown'}`);
+        this.emitToGateway(
+          sessionId,
+          'timeout_notification',
+          {
+            sessionId,
+            eventType: data.payload?.eventType,
+            text: data.payload?.text,
+            timestamp: data.payload?.timestamp || Date.now(),
+          },
+          gatewayId
+        );
         break;
       default:
         console.warn(`[Coordinator] Unknown inbound event type: ${type}`);
@@ -185,6 +321,13 @@ export class CoordinatorService {
 
   private async handleJoinSession(sessionId: string, userId?: string, jobPosition?: string, background?: string, socketId?: string, gatewayId?: string) {
     console.log(`[Coordinator] Handling join_session for ${sessionId}`);
+    // 结构化事件日志：面试开始
+    this.logEvent('interview_started', sessionId, {
+      userId: userId || 'anonymous',
+      jobPosition: jobPosition || '通用职位',
+      socketId,
+      gatewayId,
+    });
     
     // 初始化面试流服务
     await interviewFlowService.initializeSession(
@@ -308,13 +451,131 @@ export class CoordinatorService {
   }
 
 
+  /**
+   * 处理用户打断事件：发送 clear 给 TTS，等待确认后通知客户端可以恢复录音
+   */
+  private async handleInterrupt(sessionId: string, gatewayId?: string): Promise<void> {
+    console.log(`[Coordinator] 收到打断事件 (${sessionId})`);
+
+    const session = interviewFlowService.getSession(sessionId);
+    if (session) {
+      session.runtimePhase = 'listening';
+    }
+
+    // 发送 clear 指令给 TTS 服务
+    qwen3TTSClient.clearSynthesis(sessionId);
+
+    // 等待 TTS interrupt_ack（带超时保护）
+    const ackReceived = await this.waitForInterruptAck(sessionId, 3000);
+
+    if (!ackReceived) {
+      console.warn(`[Coordinator] TTS interrupt_ack 超时 (${sessionId}), 强制继续`);
+    }
+
+    // 通知客户端可以恢复录音
+    this.emitToGateway(sessionId, 'interrupt_complete', {
+      sessionId,
+      ackReceived,
+      timestamp: Date.now(),
+    }, gatewayId);
+  }
+
+  /**
+   * 等待 TTS 中断确认（基于 Redis 订阅，带超时）
+   */
+  private waitForInterruptAck(sessionId: string, timeoutMs: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.interruptAckResolvers.delete(sessionId);
+        resolve(false);
+      }, timeoutMs);
+
+      this.interruptAckResolvers.set(sessionId, () => {
+        clearTimeout(timer);
+        this.interruptAckResolvers.delete(sessionId);
+        resolve(true);
+      });
+    });
+  }
+
+
   private async handleAsrTranscription(data: any) {
     const { sessionId, payload } = data;
     const text = (payload.text || '').trim();
     if (!text) return;
-    
+
+    // ASR 识别结果去重检查（防止 transcription_completed 事件重传）
+    if (await this.isDuplicateMessage(sessionId, text)) {
+      console.log(`[Coordinator] 跳过重复/无效 ASR 识别结果 (${sessionId})`);
+      return;
+    }
+
     console.log(`[Coordinator] ASR 识别完成 (${sessionId}): "${text}"`);
-    this.runInQueue(sessionId, () => this.processUserResponse(sessionId, text, 'asr'));
+    const asrStart = Date.now();
+    this.runInQueue(sessionId, async () => {
+      await this.processUserResponse(sessionId, text, 'asr');
+      this.logPerformance('process_asr_response', sessionId, Date.now() - asrStart, {
+        textLength: text.length,
+        source: 'asr',
+      });
+    });
+  }
+
+  /**
+   * 检查文本消息是否为重复（基于 Redis SET NX EX 原子操作 + TTL）
+   * - 空消息 / 过短消息 直接视为无效（返回 true 让上层跳过）
+   * - Redis 不可用时降级放行（返回 false），保证主流程不被阻断
+   */
+  private async isDuplicateMessage(sessionId: string, text: string): Promise<boolean> {
+    if (!text || text.trim().length === 0) {
+      return true; // 空消息直接忽略
+    }
+
+    const trimmed = text.trim();
+    // 短文本额外过滤（噪音 / 误识别）
+    if (trimmed.length < this.MIN_VALID_TEXT_LENGTH) {
+      console.log(`[Coordinator] 短文本过滤 (${sessionId}): "${trimmed}" (${trimmed.length}字)`);
+      return true;
+    }
+
+    // 生成去重键：sessionId + 文本 md5 哈希前 16 位
+    const textHash = crypto.createHash('md5').update(trimmed).digest('hex').slice(0, 16);
+    const dedupKey = `${this.DEDUP_KEY_PREFIX}${sessionId}:${textHash}`;
+
+    try {
+      // SET NX EX：仅当 key 不存在时写入并设置 TTL，原子操作
+      const result = await this.pubClient.set(dedupKey, '1', 'EX', this.DEDUP_TTL_SECONDS, 'NX');
+
+      if (result === null) {
+        // key 已存在，命中重复
+        console.warn(`[Coordinator] 去重拦截 (${sessionId}): "${trimmed.slice(0, 50)}..." (hash: ${textHash})`);
+        return true;
+      }
+
+      return false; // 首次出现，非重复
+    } catch (err: any) {
+      // Redis 异常时降级为不去重，避免阻塞主流程
+      console.warn(`[Coordinator] 去重检查失败，放行: ${err?.message || err}`);
+      return false;
+    }
+  }
+
+  /**
+   * 清理指定会话的所有去重缓存键（会话结束 / 断开时调用，节省 Redis 内存）
+   * 非关键路径，失败时静默忽略
+   */
+  private async cleanupDedupKeys(sessionId: string): Promise<void> {
+    try {
+      const pattern = `${this.DEDUP_KEY_PREFIX}${sessionId}:*`;
+      const keys = await this.pubClient.keys(pattern);
+      if (keys.length > 0) {
+        await this.pubClient.del(...keys);
+        console.log(`[Coordinator] 清除去重缓存 (${sessionId}): ${keys.length} 个`);
+      }
+    } catch (err: any) {
+      // 非关键路径，仅记录
+      console.warn(`[Coordinator] 清除去重缓存失败 (${sessionId}): ${err?.message || err}`);
+    }
   }
 
   private async processUserResponse(sessionId: string, text: string, source: 'asr' | 'text') {
@@ -402,6 +663,11 @@ export class CoordinatorService {
          state: 'playing'
        }, (session as any)?.gatewayId as string);
        this.persistAvatarVoice(sessionId, closingText);
+       // 结构化事件日志：面试结束（主动结束）
+       this.logEvent('interview_completed', sessionId, {
+         reason: 'user_initiated',
+         questionsAsked: (interviewFlowService.getSession(sessionId)?.rounds || []).length,
+       });
        return;
     }
 
@@ -419,6 +685,11 @@ export class CoordinatorService {
            state: 'playing'
          }, (session as any)?.gatewayId as string);
          this.persistAvatarVoice(sessionId, closingText);
+         // 结构化事件日志：面试结束（自然完成）
+         this.logEvent('interview_completed', sessionId, {
+           reason: 'auto_completed',
+           questionsAsked: (interviewFlowService.getSession(sessionId)?.rounds || []).length,
+         });
       } else if (result.nextRound) {
          await this.emitRoundVoiceResponse(sessionId, result.nextRound);
       }

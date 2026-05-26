@@ -1,6 +1,11 @@
 import Redis from 'ioredis';
 import { logger } from './logger';
 
+/** TTS 待执行指令持久化 Key 前缀 */
+const TTS_PENDING_KEY_PREFIX = 'tts:pending:';
+/** TTS 待执行指令的 TTL（秒），每次写入会刷新过期时间 */
+const TTS_PENDING_TTL_SECONDS = 600;
+
 /**
  * Redis 事件总线
  * 用于 TTS 微服务与 backend-api 之间的跨服务事件通信
@@ -174,5 +179,65 @@ export class RedisEventBus {
     this.publisher?.disconnect();
     this.subscriber?.disconnect();
     this.isConnected = false;
+  }
+
+  /** 是否已可用于持久化操作 */
+  get available(): boolean {
+    return this.isConnected && this.publisher !== null;
+  }
+
+  /**
+   * 将 TTS 待执行指令持久化到 Redis（崩溃恢复用）
+   *
+   * 使用 Redis List 存储同一 session 下按时间顺序的暂存指令，
+   * 每次写入都刷新 TTL，避免会话长时间未建连导致永久堆积。
+   */
+  async persistPendingCommand(sessionId: string, command: any): Promise<void> {
+    if (!this.available || !this.publisher) return;
+    const key = `${TTS_PENDING_KEY_PREFIX}${sessionId}`;
+    await this.publisher.rpush(key, JSON.stringify(command));
+    await this.publisher.expire(key, TTS_PENDING_TTL_SECONDS);
+  }
+
+  /**
+   * 原子地获取并清空某个 session 的所有待执行指令
+   *
+   * 通过 pipeline 串联 lrange + del，保证读取与清空在同一批次完成，
+   * 避免与新写入之间出现竞争（重复重放）。
+   */
+  async consumePendingCommands(sessionId: string): Promise<any[]> {
+    if (!this.available || !this.publisher) return [];
+    const key = `${TTS_PENDING_KEY_PREFIX}${sessionId}`;
+    const pipeline = this.publisher.pipeline();
+    pipeline.lrange(key, 0, -1);
+    pipeline.del(key);
+    const results = await pipeline.exec();
+
+    if (!results || !results[0] || !results[0][1]) return [];
+
+    const rawCommands = results[0][1] as string[];
+    return rawCommands
+      .map((raw) => {
+        try {
+          return JSON.parse(raw);
+        } catch {
+          return null;
+        }
+      })
+      .filter((v) => v !== null);
+  }
+
+  /** 清除某个 session 的待执行指令（会话销毁/已重放后调用） */
+  async clearPendingCommands(sessionId: string): Promise<void> {
+    if (!this.available || !this.publisher) return;
+    const key = `${TTS_PENDING_KEY_PREFIX}${sessionId}`;
+    await this.publisher.del(key);
+  }
+
+  /** 列出所有仍存在待执行指令的 session ID */
+  async getAllPendingSessions(): Promise<string[]> {
+    if (!this.available || !this.publisher) return [];
+    const keys = await this.publisher.keys(`${TTS_PENDING_KEY_PREFIX}*`);
+    return keys.map((k) => k.replace(TTS_PENDING_KEY_PREFIX, ''));
   }
 }

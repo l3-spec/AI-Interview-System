@@ -37,7 +37,46 @@ export class ASRSessionManager {
   private sessions = new Map<string, ASRSession>();
   private redisBus: RedisEventBus | null = null;
 
-  private constructor() {}
+  // 合法参数定义：用于校验客户端传入的 session 配置
+  private static readonly VALID_VAD_MODES = ['server_vad', 'manual'];
+  private static readonly VALID_SAMPLE_RATES = [8000, 16000, 24000];
+  private static readonly VALID_LANGUAGES = ['zh', 'en', 'ja', 'ko'];
+
+  private constructor() {
+    this.startZombieSessionCleaner();
+  }
+
+  /**
+   * 校验 session 创建参数
+   * 返回 valid=false 时附带可读的中文错误信息，用于回传客户端
+   */
+  private validateSessionConfig(config: CreateSessionOptions): { valid: boolean; error?: string } {
+    // VAD 模式校验
+    if (config.vadMode && !ASRSessionManager.VALID_VAD_MODES.includes(config.vadMode)) {
+      return {
+        valid: false,
+        error: `无效的 VAD 模式: "${config.vadMode}", 支持: ${ASRSessionManager.VALID_VAD_MODES.join('/')}`,
+      };
+    }
+
+    // 采样率校验
+    if (config.sampleRate && !ASRSessionManager.VALID_SAMPLE_RATES.includes(config.sampleRate)) {
+      return {
+        valid: false,
+        error: `无效的采样率: ${config.sampleRate}, 支持: ${ASRSessionManager.VALID_SAMPLE_RATES.join('/')}`,
+      };
+    }
+
+    // 语言校验
+    if (config.language && !ASRSessionManager.VALID_LANGUAGES.includes(config.language)) {
+      return {
+        valid: false,
+        error: `无效的语言: "${config.language}", 支持: ${ASRSessionManager.VALID_LANGUAGES.join('/')}`,
+      };
+    }
+
+    return { valid: true };
+  }
 
   static getInstance(): ASRSessionManager {
     if (!ASRSessionManager.instance) {
@@ -59,8 +98,29 @@ export class ASRSessionManager {
   async createSession(clientWs: WebSocket, options: CreateSessionOptions): Promise<string> {
     const sessionId = options.sessionId || uuidv4();
 
-    // 如果该 session 已存在，先销毁旧连接
+    // 参数校验：vadMode / sampleRate / language 必须落在白名单内
+    const validation = this.validateSessionConfig(options);
+    if (!validation.valid) {
+      logger.warn(`[ASR-Manager] 参数校验失败 (${sessionId}): ${validation.error}`);
+      // 发送错误给客户端
+      if (clientWs.readyState === WebSocket.OPEN) {
+        try {
+          clientWs.send(JSON.stringify({
+            type: 'asr.error',
+            sessionId,
+            error: 'invalid_config',
+            message: validation.error,
+          }));
+        } catch (e: any) {
+          logger.warn(`[ASR-Manager] 回送 invalid_config 失败 (${sessionId}): ${e?.message || e}`);
+        }
+      }
+      throw new Error(validation.error);
+    }
+
+    // 幂等检测：如果已存在相同 sessionId 的会话，先销毁旧的
     if (this.sessions.has(sessionId)) {
+      logger.warn(`[ASR-Manager] 检测到重复 sessionId: ${sessionId}, 先销毁旧会话`);
       await this.destroySession(sessionId);
     }
 
@@ -189,6 +249,8 @@ export class ASRSessionManager {
     } catch (err: any) {
       session.state = 'closed';
       this.sessions.delete(sessionId);
+      // 确保 asrClient 也被正确关闭
+      try { asrClient.close?.(); } catch (_) {}
       throw new Error(`建立 ASR 连接失败 (${provider}): ${err.message}`);
     }
 
@@ -240,14 +302,23 @@ export class ASRSessionManager {
 
   /**
    * 销毁指定会话（强制断开连接并清理）
+   * 安全地关闭所有资源，不向已关闭的 clientWs 发送消息
    */
   async destroySession(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) return;
 
-    session.asrClient.close();
+    // 先标记为关闭，防止回调继续发送消息
     session.state = 'closed';
     this.sessions.delete(sessionId);
+
+    // 安全关闭 asrClient 连接
+    try {
+      session.asrClient.close();
+    } catch (err: any) {
+      logger.warn(`[ASR-Manager] 关闭 asrClient 时出错 (sessionId=${sessionId}): ${err.message}`);
+    }
+
     logger.info(`[ASR-Manager] 会话 ${sessionId} 已销毁`);
   }
 
@@ -306,6 +377,23 @@ export class ASRSessionManager {
       timestamp: Date.now(),
       source: 'asr-service',
     });
+  }
+
+  /**
+   * 僵尸会话定时清理器
+   * 每 5 分钟检查一次，清理创建时间超过 30 分钟的会话
+   */
+  private startZombieSessionCleaner(): void {
+    setInterval(() => {
+      const now = Date.now();
+      const MAX_SESSION_AGE_MS = 30 * 60 * 1000; // 30分钟
+      for (const [sessionId, session] of this.sessions.entries()) {
+        if (now - session.createdAt.getTime() > MAX_SESSION_AGE_MS) {
+          logger.warn(`[ASR-Manager] 清理僵尸会话: ${sessionId}, 存活时间: ${Math.round((now - session.createdAt.getTime()) / 60000)}分钟`);
+          this.destroySession(sessionId);
+        }
+      }
+    }, 5 * 60 * 1000); // 每5分钟检查
   }
 
   getActiveSessionCount(): number {

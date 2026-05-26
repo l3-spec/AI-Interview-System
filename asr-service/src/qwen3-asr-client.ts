@@ -32,7 +32,86 @@ export interface ASREventCallbacks {
 
 export class Qwen3ASRClient {
   private static globalModelIndex = 0;
-  
+
+  // ============== 并发安全：模型轮换互斥与健康度追踪 ==============
+  /** 模型轮换互斥锁（Promise 链）：避免多个会话同时修改 globalModelIndex 造成错乱 */
+  private static modelRotationLock: Promise<void> = Promise.resolve();
+  /** 各模型最近一次失败时间戳（毫秒） */
+  private static modelFailureTimestamps: Map<string, number> = new Map();
+  /** 模型失败后的冷却期：30 秒内不重复选中同一模型 */
+  private static readonly MODEL_COOLDOWN_MS = 30_000;
+
+  /**
+   * 安全地将全局模型索引轮换到下一个模型。
+   * 通过 Promise 链实现互斥，确保并发调用时按顺序执行。
+   */
+  private static async rotateModelSafely(modelsLength: number): Promise<number> {
+    let resolveRelease: () => void = () => {};
+    const prevLock = Qwen3ASRClient.modelRotationLock;
+    Qwen3ASRClient.modelRotationLock = new Promise<void>((resolve) => {
+      resolveRelease = resolve;
+    });
+
+    await prevLock; // 等待前一个轮换完成
+    try {
+      const newIndex = (Qwen3ASRClient.globalModelIndex + 1) % modelsLength;
+      Qwen3ASRClient.globalModelIndex = newIndex;
+      return newIndex;
+    } finally {
+      resolveRelease();
+    }
+  }
+
+  /**
+   * 从全局索引开始，找出第一个不在冷却期的模型；若全部在冷却中，返回最早失败的。
+   */
+  private static getHealthyModelIndex(models: string[]): number {
+    const now = Date.now();
+    const len = models.length;
+    for (let i = 0; i < len; i++) {
+      const idx = (Qwen3ASRClient.globalModelIndex + i) % len;
+      const modelName = models[idx];
+      const lastFailure = Qwen3ASRClient.modelFailureTimestamps.get(modelName);
+      if (!lastFailure || now - lastFailure > Qwen3ASRClient.MODEL_COOLDOWN_MS) {
+        return idx;
+      }
+    }
+    // 所有模型均处于冷却期，回退到最早失败的（通常即最久没失败的）
+    let oldestFailureIdx = Qwen3ASRClient.globalModelIndex;
+    let oldestTime = Infinity;
+    for (let i = 0; i < len; i++) {
+      const failTime = Qwen3ASRClient.modelFailureTimestamps.get(models[i]) ?? 0;
+      if (failTime < oldestTime) {
+        oldestTime = failTime;
+        oldestFailureIdx = i;
+      }
+    }
+    return oldestFailureIdx;
+  }
+
+  /** 记录模型失败时间戳并打印健康度日志 */
+  private static recordModelFailure(modelName: string): void {
+    Qwen3ASRClient.modelFailureTimestamps.set(modelName, Date.now());
+    logger.warn(
+      `[模型健康][ASR] 模型 ${modelName} 标记为失败, 冷却 ${Qwen3ASRClient.MODEL_COOLDOWN_MS / 1000}s`,
+    );
+  }
+
+  /** 输出当前模型健康度汇总日志 */
+  private static logModelHealthSummary(): void {
+    const failures: Record<string, number> = {};
+    Qwen3ASRClient.modelFailureTimestamps.forEach((ts, name) => {
+      failures[name] = ts;
+    });
+    logger.info(
+      `[模型健康][ASR] 状态汇总: ${JSON.stringify({
+        currentIndex: Qwen3ASRClient.globalModelIndex,
+        failures,
+      })}`,
+    );
+  }
+  // ===============================================================
+
   private ws: WebSocket | null = null;
   private dashscopeUrl: string;
   private apiKey: string;
@@ -68,8 +147,8 @@ export class Qwen3ASRClient {
       }
     }
     
-    // 初始化为全局索引
-    this.currentModelIndex = Qwen3ASRClient.globalModelIndex % this.models.length;
+    // 初始化为健康模型索引（避开冷却期内的失败模型）
+    this.currentModelIndex = Qwen3ASRClient.getHealthyModelIndex(this.models);
     this.dashscopeUrl = process.env.DASHSCOPE_WS_URL || 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime';
     this.config = config;
     this.callbacks = callbacks;
@@ -85,32 +164,41 @@ export class Qwen3ASRClient {
    */
   async connect(): Promise<void> {
     let lastError: Error | null = null;
-    
+
+    // 入口先选一个健康模型（避开冷却期内的失败模型）
+    this.currentModelIndex = Qwen3ASRClient.getHealthyModelIndex(this.models);
+
     // 尝试列表中每个模型，最多尝试 models.length 次
     for (let i = 0; i < this.models.length; i++) {
       const currentModel = this.models[this.currentModelIndex];
       try {
         await this.connectWithModel(currentModel);
+        // 连接成功：更新全局索引为当前实例使用的健康模型
+        Qwen3ASRClient.globalModelIndex = this.currentModelIndex;
         if (i > 0) {
           logger.info(`[Qwen3-ASR] 轮换成功：当前使用模型 ${currentModel}`);
-          Qwen3ASRClient.globalModelIndex = this.currentModelIndex;
         }
+        logger.info(`[模型健康][ASR] 模型 ${currentModel} 连接成功`);
+        Qwen3ASRClient.logModelHealthSummary();
         return; // 连接成功
       } catch (err: any) {
         lastError = err;
         logger.warn(`[Qwen3-ASR] 模型 ${currentModel} 连接失败: ${err.message}`);
-        
-        // 轮换至下一个模型
-        this.currentModelIndex = (this.currentModelIndex + 1) % this.models.length;
-        if (i === 0) {
-          Qwen3ASRClient.globalModelIndex = this.currentModelIndex;
-        }
+
+        // 记录失败时间戳，进入冷却期
+        Qwen3ASRClient.recordModelFailure(currentModel);
+
+        // 通过互斥锁安全地轮换全局索引到下一个模型，避免并发会话竞争
+        const newIndex = await Qwen3ASRClient.rotateModelSafely(this.models.length);
+        this.currentModelIndex = newIndex;
+
         if (i < this.models.length - 1) {
           logger.info(`[Qwen3-ASR] 尝试轮换至下一个备选模型: ${this.models[this.currentModelIndex]}`);
         }
       }
     }
-    
+
+    Qwen3ASRClient.logModelHealthSummary();
     throw lastError || new Error('所有 ASR 模型均连接失败');
   }
 

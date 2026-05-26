@@ -62,7 +62,47 @@ export class TTSSessionManager {
   /** sessionId -> 等待移动端建连的 Redis 指令（避免「后端已 synthesize、TTS 侧尚无会话」丢字） */
   private pendingRedisCommands = new Map<string, PendingRedisCmd[]>();
 
+  // 合法参数定义：用于校验客户端传入的 session 配置
+  private static readonly VALID_SAMPLE_RATES = [8000, 16000, 24000];
+  private static readonly VALID_VOICES = [
+    'Cherry', 'Serena', 'Ethan', 'Chelsie',
+    'alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer',
+    // 可根据实际支持的音色列表扩充
+  ];
+  private static readonly VALID_MODES = ['server_commit', 'commit'];
+
   private constructor() {}
+
+  /**
+   * 校验 TTS session 创建参数
+   * - 采样率/模式校验为强校验（不通过则拒绝创建）
+   * - 音色校验采用宽松策略：未知音色仅打 warning 并回退到默认 Cherry，避免阻塞未来新增音色
+   */
+  private validateSessionConfig(config: CreateTTSSessionOptions): { valid: boolean; error?: string } {
+    // 采样率校验
+    if (config.sampleRate && !TTSSessionManager.VALID_SAMPLE_RATES.includes(config.sampleRate)) {
+      return {
+        valid: false,
+        error: `无效的采样率: ${config.sampleRate}, 支持: ${TTSSessionManager.VALID_SAMPLE_RATES.join('/')}`,
+      };
+    }
+
+    // 音色校验（宽松：未知音色回退到默认 Cherry，不直接拒绝）
+    if (config.voice && !TTSSessionManager.VALID_VOICES.includes(config.voice)) {
+      logger.warn(`[TTS-Manager] 未知音色 "${config.voice}", 将使用默认音色 Cherry`);
+      config.voice = 'Cherry';
+    }
+
+    // 模式校验
+    if (config.mode && !TTSSessionManager.VALID_MODES.includes(config.mode)) {
+      return {
+        valid: false,
+        error: `无效的 TTS 模式: "${config.mode}", 支持: ${TTSSessionManager.VALID_MODES.join('/')}`,
+      };
+    }
+
+    return { valid: true };
+  }
 
   static getInstance(): TTSSessionManager {
     if (!TTSSessionManager.instance) {
@@ -89,6 +129,26 @@ export class TTSSessionManager {
    */
   async createSession(clientWs: WebSocket, options: CreateTTSSessionOptions): Promise<string> {
     const sessionId = options.sessionId || uuidv4();
+
+    // 参数校验：sampleRate / mode 强校验，voice 宽松（已在 validate 内做回退）
+    const validation = this.validateSessionConfig(options);
+    if (!validation.valid) {
+      logger.warn(`[TTS-Manager] 参数校验失败 (${sessionId}): ${validation.error}`);
+      if (clientWs.readyState === WebSocket.OPEN) {
+        try {
+          clientWs.send(JSON.stringify({
+            type: 'tts.error',
+            sessionId,
+            error: 'invalid_config',
+            message: validation.error,
+          }));
+        } catch (e: any) {
+          logger.warn(`[TTS-Manager] 回送 invalid_config 失败 (${sessionId}): ${e?.message || e}`);
+        }
+      }
+      // 不创建会话，直接抛错由调用方决定是否进一步关闭客户端连接
+      throw new Error(validation.error);
+    }
 
     if (this.sessions.has(sessionId)) {
       await this.destroySession(sessionId);
@@ -221,6 +281,10 @@ export class TTSSessionManager {
 
   /**
    * backend-api 比 App 更早发出 Redis synthesize 时暂存指令，待同一 sessionId 的 WebSocket 建连后顺序执行。
+   *
+   * 暂存采用「内存 + Redis 双写」：
+   *  - 内存：进程未崩溃时的快速访问与重放
+   *  - Redis List：tts-service 进程崩溃 / 重启后仍可在客户端重连时恢复指令
    */
   enqueueRedisCommand(sessionId: string, cmd: PendingRedisCmd): void {
     const max = parseInt(process.env.TTS_PENDING_REDIS_MAX || '128', 10);
@@ -234,14 +298,48 @@ export class TTSSessionManager {
     logger.info(
       `[TTS-Manager] Redis 指令已暂存（等待客户端建连）session=${sessionId} cmd=${cmd.command} queueLen=${list.length}`,
     );
+
+    // Redis 持久化：fire-and-forget，失败仅告警，不影响主流程
+    if (this.redisBus) {
+      this.redisBus.persistPendingCommand(sessionId, cmd).catch((err: any) => {
+        logger.warn(`[TTS-Manager] Redis 持久化暂存指令失败 (${sessionId}): ${err?.message || err}`);
+      });
+    }
   }
 
   private async replayPendingRedisCommands(sessionId: string): Promise<void> {
-    const list = this.pendingRedisCommands.get(sessionId);
-    if (!list?.length) {
-      return;
+    let list = this.pendingRedisCommands.get(sessionId) ?? [];
+
+    if (list.length === 0) {
+      // 内存为空：可能是进程刚启动 / 崩溃后重建，从 Redis 恢复
+      if (this.redisBus) {
+        try {
+          const recovered = (await this.redisBus.consumePendingCommands(sessionId)) as PendingRedisCmd[];
+          if (recovered.length > 0) {
+            logger.info(
+              `[TTS-Manager] 从 Redis 恢复 ${recovered.length} 条待执行指令 session=${sessionId}`,
+            );
+            list = recovered;
+          }
+        } catch (err: any) {
+          logger.warn(
+            `[TTS-Manager] 从 Redis 恢复暂存指令失败 (${sessionId}): ${err?.message || err}`,
+          );
+        }
+      }
+    } else {
+      // 内存中已有指令（即将被消费）：清空 Redis 副本，避免后续重复重放
+      if (this.redisBus) {
+        this.redisBus.clearPendingCommands(sessionId).catch(() => {
+          // 忽略清理失败
+        });
+      }
     }
+
     this.pendingRedisCommands.delete(sessionId);
+
+    if (!list.length) return;
+
     logger.info(`[TTS-Manager] 重放暂存 Redis 指令 session=${sessionId} count=${list.length}`);
     for (const item of list) {
       try {
@@ -260,35 +358,97 @@ export class TTSSessionManager {
 
   /**
    * 首次需要向上游送文本时再连接 DashScope，避免「仅建立会话、无文本」导致 Idle timeout。
+   *
+   * 增加超时保护与有限重试：
+   *  - 单次 connect 超过 DASHSCOPE_CONNECT_TIMEOUT_MS 视为失败
+   *  - 最多重试 MAX_CONNECT_RETRIES 次，失败间隔逐次拉长
+   *  - 全部失败后向客户端下发可识别的降级错误，并保留会话以便后续再次触发
    */
   private async ensureDashScopeConnected(session: TTSSession): Promise<boolean> {
     if (session.dashscopeConnected && session.ttsClient.connected) return true;
     if (session.state === 'closed') return false;
 
+    // 已有连接 Promise 在执行，直接复用，避免并发重复 connect
     if (session.dashscopeConnectPromise) {
       return session.dashscopeConnectPromise;
     }
 
+    const DASHSCOPE_CONNECT_TIMEOUT_MS = 15000; // 单次连接超时（15 秒）
+    const MAX_CONNECT_RETRIES = 2; // 失败后最多重试 2 次（合计最多尝试 3 次）
+
     session.dashscopeConnectPromise = (async () => {
-      try {
-        await session.ttsClient.connect();
-        session.dashscopeConnected = true;
-        logger.info(`[TTS-Manager] 会话 ${session.sessionId} 已连接 DashScope`);
-        return true;
-      } catch (err: any) {
-        logger.error(`[TTS-Manager] DashScope 连接失败 (${session.sessionId}): ${err.message}`);
-        this.sendToClient(session.sessionId, {
-          type: 'tts.error',
-          sessionId: session.sessionId,
-          error: `建立上游 TTS 失败: ${err.message}`,
-        });
-        return false;
-      } finally {
-        session.dashscopeConnectPromise = null;
+      for (let attempt = 0; attempt <= MAX_CONNECT_RETRIES; attempt++) {
+        try {
+          await Promise.race([
+            session.ttsClient.connect(),
+            new Promise<never>((_, reject) =>
+              setTimeout(
+                () => reject(new Error(`DashScope 连接超时 (${DASHSCOPE_CONNECT_TIMEOUT_MS}ms)`)),
+                DASHSCOPE_CONNECT_TIMEOUT_MS,
+              ),
+            ),
+          ]);
+          session.dashscopeConnected = true;
+          logger.info(
+            `[TTS-Manager] 会话 ${session.sessionId} 已连接 DashScope (尝试 ${attempt + 1}/${MAX_CONNECT_RETRIES + 1})`,
+          );
+          return true;
+        } catch (err: any) {
+          logger.warn(
+            `[TTS-Manager] DashScope 连接失败 (${session.sessionId}) 尝试 ${attempt + 1}/${MAX_CONNECT_RETRIES + 1}: ${err?.message || err}`,
+          );
+          // 超时或异常后清理底层连接状态，避免下次复用半开 WebSocket
+          session.dashscopeConnected = false;
+          try {
+            session.ttsClient.close?.();
+          } catch (_) {
+            // 忽略清理过程中的异常
+          }
+
+          if (attempt < MAX_CONNECT_RETRIES) {
+            // 重试前等待，按尝试次数线性退避（1s、2s）
+            await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+          }
+        }
       }
+
+      // 所有重试均失败，降级通知客户端，但保留会话本身以支持下次再次触发
+      logger.error(`[TTS-Manager] DashScope 连接彻底失败 (${session.sessionId})，已通知客户端降级`);
+      session.dashscopeConnected = false;
+      this.notifyClientError(
+        session,
+        'dashscope_connect_failed',
+        'TTS 上游服务暂时不可用，请稍后重试',
+      );
+      return false;
     })();
 
-    return session.dashscopeConnectPromise;
+    try {
+      return await session.dashscopeConnectPromise;
+    } finally {
+      // 不论成功失败都清空 Promise 引用，允许后续再次触发连接尝试
+      session.dashscopeConnectPromise = null;
+    }
+  }
+
+  /**
+   * 向客户端 WebSocket 发送结构化错误通知（用于上游连接失败等可降级场景）
+   */
+  private notifyClientError(session: TTSSession, errorCode: string, message: string): void {
+    if (session.clientWs && session.clientWs.readyState === WebSocket.OPEN) {
+      try {
+        session.clientWs.send(
+          JSON.stringify({
+            type: 'tts.error',
+            error: errorCode,
+            message,
+            sessionId: session.sessionId,
+          }),
+        );
+      } catch (e: any) {
+        logger.warn(`[TTS-Manager] 发送错误通知失败 (${session.sessionId}): ${e?.message || e}`);
+      }
+    }
   }
 
   /**
@@ -334,7 +494,7 @@ export class TTSSessionManager {
   }
 
   /**
-   * 清空文本缓冲区（中断当前合成）
+   * 清空文本缓冲区（中断当前合成）并发送确认
    */
   async clearText(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
@@ -343,8 +503,25 @@ export class TTSSessionManager {
     // 广播中断指令到客户端（移动端收到后立即清理缓冲区和 AudioTrack）
     this.sendToClient(sessionId, { type: 'tts.clear', sessionId });
 
-    if (!session.dashscopeConnected) return;
-    session.ttsClient.clearTextBuffer();
+    // 清理 DashScope 上游（如果正在合成）
+    if (session.dashscopeConnected) {
+      try {
+        session.ttsClient.clearTextBuffer();
+      } catch (e: any) {
+        logger.warn(`[TTS-Manager] 清理上游失败 (${sessionId}): ${e?.message || e}`);
+      }
+    }
+
+    // 发送 interrupt_ack 给客户端确认中断已完成
+    this.sendToClient(sessionId, {
+      type: 'tts.interrupt_ack',
+      sessionId,
+      timestamp: Date.now(),
+    });
+    logger.info(`[TTS-Manager] 中断确认已发送 (${sessionId})`);
+
+    // 通过 Redis 通知 interview-service 中断已完成
+    this.publishEvent(sessionId, 'interrupt_ack', { timestamp: Date.now() });
   }
 
   /**
@@ -368,6 +545,16 @@ export class TTSSessionManager {
    */
   async destroySession(sessionId: string): Promise<void> {
     this.pendingRedisCommands.delete(sessionId);
+    // 同步清除 Redis 中持久化的暂存指令，避免下次同 sessionId 建连时被错误重放
+    if (this.redisBus) {
+      try {
+        await this.redisBus.clearPendingCommands(sessionId);
+      } catch (err: any) {
+        logger.warn(
+          `[TTS-Manager] 清除 Redis 暂存指令失败 (${sessionId}): ${err?.message || err}`,
+        );
+      }
+    }
     const session = this.sessions.get(sessionId);
     if (!session) return;
 

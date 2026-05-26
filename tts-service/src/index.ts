@@ -17,6 +17,76 @@ import { logger } from './logger';
 const serviceId = `tts-${uuidv4().slice(0, 8)}`;
 const SERVICE_URL = process.env.TTS_SERVICE_EXTERNAL_URL || `ws://localhost:${process.env.TTS_SERVICE_PORT || '3003'}/ws/tts`;
 
+/**
+ * 简化版业务指标收集器
+ * - 计数器累加，不引入额外依赖
+ * - TTS 额外统计处理字符总量及首包音频延迟
+ * - 每小时重置一次，防止计数无限增长
+ */
+class MetricsCollector {
+  private requestCount = 0;
+  private errorCount = 0;
+  private totalLatencyMs = 0;
+  private latencySamples = 0;
+  private totalCharsProcessed = 0;
+  private totalFirstAudioLatencyMs = 0;
+  private firstAudioSamples = 0;
+
+  recordRequest(): void { this.requestCount++; }
+  recordError(): void { this.errorCount++; }
+  recordLatency(ms: number): void {
+    if (!Number.isFinite(ms) || ms < 0) return;
+    this.totalLatencyMs += ms;
+    this.latencySamples++;
+  }
+  recordChars(count: number): void {
+    if (!Number.isFinite(count) || count <= 0) return;
+    this.totalCharsProcessed += count;
+  }
+  recordFirstAudioLatency(ms: number): void {
+    if (!Number.isFinite(ms) || ms < 0) return;
+    this.totalFirstAudioLatencyMs += ms;
+    this.firstAudioSamples++;
+  }
+
+  getMetrics() {
+    return {
+      totalRequests: this.requestCount,
+      totalErrors: this.errorCount,
+      errorRate: this.requestCount > 0
+        ? (this.errorCount / this.requestCount * 100).toFixed(2) + '%'
+        : '0%',
+      avgLatencyMs: this.latencySamples > 0
+        ? Math.round(this.totalLatencyMs / this.latencySamples)
+        : 0,
+      latencySamples: this.latencySamples,
+    };
+  }
+
+  getTotalCharsProcessed(): number { return this.totalCharsProcessed; }
+  getAvgFirstAudioLatency(): number {
+    return this.firstAudioSamples > 0
+      ? Math.round(this.totalFirstAudioLatencyMs / this.firstAudioSamples)
+      : 0;
+  }
+
+  /** 每小时重置一次，避免无限增长 */
+  startPeriodicReset(): void {
+    setInterval(() => {
+      this.requestCount = 0;
+      this.errorCount = 0;
+      this.totalLatencyMs = 0;
+      this.latencySamples = 0;
+      this.totalCharsProcessed = 0;
+      this.totalFirstAudioLatencyMs = 0;
+      this.firstAudioSamples = 0;
+    }, 3600 * 1000);
+  }
+}
+
+const metrics = new MetricsCollector();
+metrics.startPeriodicReset();
+
 function startHeartbeat() {
   setInterval(() => {
     serviceDiscoveryService.heartbeat({
@@ -37,9 +107,10 @@ const corsOrigins = (process.env.CORS_ORIGINS || '*').split(',').map(s => s.trim
 app.use(cors({ origin: corsOrigins.length === 1 && corsOrigins[0] === '*' ? true : corsOrigins }));
 app.use(express.json());
 
-// 健康检查
+// 健康检查（含业务指标）
 app.get('/health', (_req, res) => {
   const manager = TTSSessionManager.getInstance();
+  const memUsage = process.memoryUsage();
   res.json({
     status: 'ok',
     service: 'tts-service',
@@ -47,7 +118,18 @@ app.get('/health', (_req, res) => {
     voice: process.env.TTS_VOICE || 'cherry',
     mode: process.env.TTS_MODE || 'server_commit',
     activeSessions: manager.getActiveSessionCount(),
-    uptime: process.uptime(),
+    uptime: Math.round(process.uptime()),
+    metrics: metrics.getMetrics(),
+    memory: {
+      heapUsedMB: Math.round(memUsage.heapUsed / 1024 / 1024),
+      rssMB: Math.round(memUsage.rss / 1024 / 1024),
+    },
+    // TTS 特有指标：合成字符总数、首包音频平均延迟
+    ttsSpecific: {
+      totalCharsProcessed: metrics.getTotalCharsProcessed(),
+      avgFirstAudioLatencyMs: metrics.getAvgFirstAudioLatency(),
+    },
+    timestamp: new Date().toISOString(),
   });
 });
 
@@ -63,9 +145,12 @@ app.get('/sessions', (_req, res) => {
  * 或通过 Redis tts:events 频道广播
  */
 app.post('/synthesize', async (req, res) => {
+  const startTime = Date.now();
+  metrics.recordRequest();
   try {
     const { sessionId, text, commit } = req.body;
     if (!sessionId || !text) {
+      metrics.recordError();
       return res.status(400).json({ error: '缺少 sessionId 或 text' });
     }
 
@@ -76,6 +161,8 @@ app.post('/synthesize', async (req, res) => {
         text,
         commit,
       });
+      metrics.recordChars(text.length);
+      metrics.recordLatency(Date.now() - startTime);
       return res.json({ success: true, sessionId, charCount: text.length, queued: true });
     }
     await manager.appendText(sessionId, text);
@@ -83,8 +170,11 @@ app.post('/synthesize', async (req, res) => {
       await manager.commitText(sessionId);
     }
 
+    metrics.recordChars(text.length);
+    metrics.recordLatency(Date.now() - startTime);
     res.json({ success: true, sessionId, charCount: text.length });
   } catch (err: any) {
+    metrics.recordError();
     res.status(500).json({ error: err.message });
   }
 });
@@ -113,6 +203,7 @@ wss.on('connection', (ws, req) => {
       switch (message.type) {
         case 'session.create': {
           const config = message.config || {};
+          metrics.recordRequest();
           try {
             sessionId = await sessionManager.createSession(ws, {
               sessionId: message.sessionId,
@@ -124,6 +215,16 @@ wss.on('connection', (ws, req) => {
               instructions: config.instructions,
             });
 
+            // 结构化业务事件日志：TTS 会话创建
+            console.log(JSON.stringify({
+              type: 'event',
+              event: 'tts_session_created',
+              sessionId,
+              voice: config.voice || process.env.TTS_VOICE || 'cherry',
+              mode: config.mode || process.env.TTS_MODE || 'server_commit',
+              timestamp: new Date().toISOString(),
+            }));
+
             ws.send(JSON.stringify({
               type: 'session.created',
               sessionId,
@@ -131,6 +232,7 @@ wss.on('connection', (ws, req) => {
             }));
           } catch (createErr: any) {
             sessionId = null;
+            metrics.recordError();
             logger.error(`[TTS] 创建会话失败: ${createErr.message}`);
             ws.send(JSON.stringify({
               type: 'error',
@@ -148,7 +250,11 @@ wss.on('connection', (ws, req) => {
           }
           const appendOk = await sessionManager.appendText(sessionId, message.text);
           if (!appendOk) {
+            metrics.recordError();
             ws.send(JSON.stringify({ type: 'error', code: 'SESSION_CLOSED', message: 'TTS 会话已关闭，请重新创建' }));
+          } else if (typeof message.text === 'string') {
+            // 累计合成字符总量
+            metrics.recordChars(message.text.length);
           }
           break;
         }
@@ -158,9 +264,15 @@ wss.on('connection', (ws, req) => {
             ws.send(JSON.stringify({ type: 'error', code: 'NO_SESSION', message: '请先创建会话' }));
             return;
           }
+          // 记录 commit 起始时间作为合成延迟起点
+          const commitT0 = Date.now();
           const commitOk = await sessionManager.commitText(sessionId);
           if (!commitOk) {
+            metrics.recordError();
             ws.send(JSON.stringify({ type: 'error', code: 'SESSION_CLOSED', message: 'TTS 会话已关闭，请重新创建' }));
+          } else {
+            // 以 commit 后的合成调度耗时作为平均延迟样本（近似首包调度延迟）
+            metrics.recordFirstAudioLatency(Date.now() - commitT0);
           }
           break;
         }
@@ -176,6 +288,13 @@ wss.on('connection', (ws, req) => {
         // 结束会话
         case 'session.finish': {
           if (sessionId) {
+            // 结构化业务事件日志：TTS 会话结束
+            console.log(JSON.stringify({
+              type: 'event',
+              event: 'tts_session_finished',
+              sessionId,
+              timestamp: new Date().toISOString(),
+            }));
             await sessionManager.finishSession(sessionId);
             sessionId = null;
           }
@@ -186,6 +305,7 @@ wss.on('connection', (ws, req) => {
           ws.send(JSON.stringify({ type: 'error', message: `未知消息类型: ${message.type}` }));
       }
     } catch (err: any) {
+      metrics.recordError();
       logger.error(`[TTS] 消息处理错误: ${err.message}`);
       ws.send(JSON.stringify({ type: 'error', message: err.message }));
     }
@@ -201,6 +321,7 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('error', (err) => {
+    metrics.recordError();
     logger.error(`[TTS] WebSocket 错误: ${err.message}`);
   });
 });

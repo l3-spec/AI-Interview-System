@@ -53,6 +53,85 @@ export class Qwen3TTSClient {
   private static globalModelIndex = 0;
   private static lastGlobalFailureAt = 0;
 
+  // ============== 并发安全：模型轮换互斥与健康度追踪 ==============
+  /** 模型轮换互斥锁（Promise 链）：避免多个会话同时修改 globalModelIndex 造成错乱 */
+  private static modelRotationLock: Promise<void> = Promise.resolve();
+  /** 各模型最近一次失败时间戳（毫秒） */
+  private static modelFailureTimestamps: Map<string, number> = new Map();
+  /** 模型失败后的冷却期：30 秒内不重复选中同一模型 */
+  private static readonly MODEL_COOLDOWN_MS = 30_000;
+
+  /**
+   * 安全地将全局模型索引轮换到下一个模型。
+   * 通过 Promise 链实现互斥，确保并发调用时按顺序执行。
+   */
+  private static async rotateModelSafely(modelsLength: number): Promise<number> {
+    let resolveRelease: () => void = () => {};
+    const prevLock = Qwen3TTSClient.modelRotationLock;
+    Qwen3TTSClient.modelRotationLock = new Promise<void>((resolve) => {
+      resolveRelease = resolve;
+    });
+
+    await prevLock; // 等待前一个轮换完成
+    try {
+      const newIndex = (Qwen3TTSClient.globalModelIndex + 1) % modelsLength;
+      Qwen3TTSClient.globalModelIndex = newIndex;
+      return newIndex;
+    } finally {
+      resolveRelease();
+    }
+  }
+
+  /**
+   * 从全局索引开始，找出第一个不在冷却期的模型；若全部在冷却中，返回最早失败的。
+   */
+  private static getHealthyModelIndex(models: string[]): number {
+    const now = Date.now();
+    const len = models.length;
+    for (let i = 0; i < len; i++) {
+      const idx = (Qwen3TTSClient.globalModelIndex + i) % len;
+      const modelName = models[idx];
+      const lastFailure = Qwen3TTSClient.modelFailureTimestamps.get(modelName);
+      if (!lastFailure || now - lastFailure > Qwen3TTSClient.MODEL_COOLDOWN_MS) {
+        return idx;
+      }
+    }
+    // 所有模型均处于冷却期，回退到最早失败的（通常即最久没失败的）
+    let oldestFailureIdx = Qwen3TTSClient.globalModelIndex;
+    let oldestTime = Infinity;
+    for (let i = 0; i < len; i++) {
+      const failTime = Qwen3TTSClient.modelFailureTimestamps.get(models[i]) ?? 0;
+      if (failTime < oldestTime) {
+        oldestTime = failTime;
+        oldestFailureIdx = i;
+      }
+    }
+    return oldestFailureIdx;
+  }
+
+  /** 记录模型失败时间戳并打印健康度日志 */
+  private static recordModelFailure(modelName: string): void {
+    Qwen3TTSClient.modelFailureTimestamps.set(modelName, Date.now());
+    logger.warn(
+      `[模型健康][TTS] 模型 ${modelName} 标记为失败, 冷却 ${Qwen3TTSClient.MODEL_COOLDOWN_MS / 1000}s`,
+    );
+  }
+
+  /** 输出当前模型健康度汇总日志 */
+  private static logModelHealthSummary(): void {
+    const failures: Record<string, number> = {};
+    Qwen3TTSClient.modelFailureTimestamps.forEach((ts, name) => {
+      failures[name] = ts;
+    });
+    logger.info(
+      `[模型健康][TTS] 状态汇总: ${JSON.stringify({
+        currentIndex: Qwen3TTSClient.globalModelIndex,
+        failures,
+      })}`,
+    );
+  }
+  // ===============================================================
+
   private ws: WebSocket | null = null;
   private dashscopeUrl: string;
   private apiKey: string;
@@ -97,8 +176,8 @@ export class Qwen3TTSClient {
     this.config = config;
     this.callbacks = callbacks;
     
-    // 初始化当前实例的模型索引为全局索引，确保从上一次已知的“健康”模型开始
-    this.currentModelIndex = Qwen3TTSClient.globalModelIndex % this.models.length;
+    // 初始化当前实例的模型索引为“健康模型”（避开冷却期内的失败模型）
+    this.currentModelIndex = Qwen3TTSClient.getHealthyModelIndex(this.models);
 
     if (!this.apiKey) {
       throw new Error('DASHSCOPE_API_KEY 环境变量未配置');
@@ -111,35 +190,42 @@ export class Qwen3TTSClient {
    */
   async connect(): Promise<void> {
     let lastError: Error | null = null;
-    
+
+    // 入口先选一个健康模型（避开冷却期内的失败模型）
+    this.currentModelIndex = Qwen3TTSClient.getHealthyModelIndex(this.models);
+
     // 尝试列表中每个模型，最多尝试 models.length 次
     for (let i = 0; i < this.models.length; i++) {
       const currentModel = this.models[this.currentModelIndex];
       try {
         await this.connectWithModel(currentModel);
+        // 连接成功：同步更新全局索引，让后续新会话直接使用此模型
+        Qwen3TTSClient.globalModelIndex = this.currentModelIndex;
         if (i > 0) {
           logger.info(`[Qwen3-TTS] 轮换成功：当前使用模型 ${currentModel}`);
-          // 同步更新全局索引，让后续新会话直接使用此模型
-          Qwen3TTSClient.globalModelIndex = this.currentModelIndex;
-          // ...
         }
+        logger.info(`[模型健康][TTS] 模型 ${currentModel} 连接成功`);
+        Qwen3TTSClient.logModelHealthSummary();
         return; // 连接成功
       } catch (err: any) {
         lastError = err;
         logger.warn(`[Qwen3-TTS] 模型 ${currentModel} 连接失败: ${err.message}`);
-        
-        // 轮换至下一个模型
-        this.currentModelIndex = (this.currentModelIndex + 1) % this.models.length;
-        // 如果是首次连接就失败，同步更新全局索引
-        if (i === 0) {
-          Qwen3TTSClient.globalModelIndex = this.currentModelIndex;
-        }
+
+        // 记录失败时间戳，进入冷却期
+        Qwen3TTSClient.recordModelFailure(currentModel);
+        Qwen3TTSClient.lastGlobalFailureAt = Date.now();
+
+        // 通过互斥锁安全地轮换全局索引到下一个模型，避免并发会话竞争
+        const newIndex = await Qwen3TTSClient.rotateModelSafely(this.models.length);
+        this.currentModelIndex = newIndex;
+
         if (i < this.models.length - 1) {
           logger.info(`[Qwen3-TTS] 尝试轮换至下一个备选模型: ${this.models[this.currentModelIndex]}`);
         }
       }
     }
-    
+
+    Qwen3TTSClient.logModelHealthSummary();
     throw lastError || new Error('所有 TTS 模型均连接失败');
   }
 
@@ -292,8 +378,10 @@ export class Qwen3TTSClient {
         // invalid control payload 是 DashScope 返回了超长 close reason，真实原因通常在参数校验。
         if (!isInvalidControlPayload && this.isConnected && (Date.now() - (this.connectTime || 0) < 5000)) {
           logger.warn(`[Qwen3-TTS] 检测到模型 ${modelName} 疑似额度耗尽（短时间内断开），将全局轮换至下一个模型`);
-          Qwen3TTSClient.globalModelIndex = (Qwen3TTSClient.globalModelIndex + 1) % this.models.length;
+          // 记录失败时间戳并通过互斥锁安全轮换（异步触发，不阻塞 error 回调）
+          Qwen3TTSClient.recordModelFailure(modelName);
           Qwen3TTSClient.lastGlobalFailureAt = Date.now();
+          Qwen3TTSClient.rotateModelSafely(this.models.length).catch(() => {});
         }
         
         // 针对 WS_ERR_INVALID_CONTROL_PAYLOAD_LENGTH 错误提供专门的排查建议

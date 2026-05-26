@@ -15,6 +15,10 @@ export class RealtimeVoiceWebSocketServer {
   private gatewayId: string;
   private sessions: Map<string, { sessionId: string; userId?: string; connectedAt: Date; socketId: string }> = new Map();
 
+  // 网关层并发限流：作为第一道防线，避免洪水请求冲击 interview-service
+  // 阈值应高于 interview-service 的 MAX_CONCURRENT_SESSIONS，留出一定缓冲
+  private readonly MAX_GATEWAY_SESSIONS = parseInt(process.env.MAX_GATEWAY_SESSIONS || '200');
+
   constructor(io: Server) {
     this.io = io;
     this.gatewayId = `gw-${uuidv4().slice(0, 8)}`;
@@ -79,11 +83,28 @@ export class RealtimeVoiceWebSocketServer {
 
            // We emit to the session room. If the socket is on this instance, it will receive it.
            this.io.to(sessionId).emit(type, payload);
+
+           // 业务侧拒绝事件需额外释放网关側 sessions 缓存，防止被这个拒绝的会话长期占名额
+           if (type === 'session_rejected') {
+             this.releaseSessionEntry(sessionId);
+           }
         }
       } catch (e) {
         console.error('[Gateway] Failed to parse outbound message', e);
       }
     });
+  }
+
+  /**
+   * 释放 sessions 缓存中指定 sessionId 的条目
+   * 使用场景：interview-service 拒绝了该会话 / 会话异常结束，避免过期条目占用限流额度
+   */
+  private releaseSessionEntry(sessionId: string): void {
+    for (const [socketId, info] of this.sessions.entries()) {
+      if (info.sessionId === sessionId) {
+        this.sessions.delete(socketId);
+      }
+    }
   }
 
   private async publishInbound(event: Record<string, any>) {
@@ -139,6 +160,20 @@ export class RealtimeVoiceWebSocketServer {
       }) => {
         try {
           const { sessionId, userId, jobPosition, background } = data;
+
+          // 网关级限流（第一道防线）：超过阈值时直接拒绝，不再下发到 interview-service
+          if (this.sessions.size >= this.MAX_GATEWAY_SESSIONS) {
+            console.warn(`[Gateway ${this.gatewayId}] 网关限流: 当前 ${this.sessions.size}/${this.MAX_GATEWAY_SESSIONS} 会话, 拒绝 ${sessionId}`);
+            socket.emit('session_rejected', {
+              reason: 'gateway_overloaded',
+              message: '系统繁忙，请稍后重试',
+              currentLoad: this.sessions.size,
+              maxCapacity: this.MAX_GATEWAY_SESSIONS,
+              retryAfterSeconds: 15,
+            });
+            return;
+          }
+
           socket.join(sessionId);
           this.sessions.set(socket.id, { sessionId, userId, connectedAt: new Date(), socketId: socket.id });
           

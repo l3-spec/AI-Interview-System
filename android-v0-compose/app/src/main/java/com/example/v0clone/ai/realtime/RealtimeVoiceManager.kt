@@ -397,6 +397,11 @@ class RealtimeVoiceManager(private val context: Context) {
     val transcriptDelta: SharedFlow<com.xlwl.AiMian.ai.realtime.TranscriptDelta> = _transcriptDelta.asSharedFlow()
 
     private var mediaProgressJob: Job? = null
+    /** 中断确认超时保护 Job */
+    private var interruptAckTimeoutJob: Job? = null
+    /** 标记是否正在等待后端 interrupt_complete 确认 */
+    @Volatile
+    private var isWaitingInterruptAck = false
 
     private val completionKeywords = listOf(
         "面试结束",
@@ -536,6 +541,9 @@ class RealtimeVoiceManager(private val context: Context) {
                         )
                     }
                 }
+            }
+            newSocket.on("interrupt_complete") { args ->
+                safeHandleEvent("interrupt_complete", args) { handleInterruptComplete(it) }
             }
 
             Log.d(TAG, "尝试连接实时语音服务: $serverUrl (session=$sessionId)")
@@ -914,8 +922,23 @@ class RealtimeVoiceManager(private val context: Context) {
             stopAllAudio()
             runCatching { digitalHumanController?.interruptPlayback() }
             socket?.emit("interrupt")
+
+            // 设置等待 ack 状态（不立即恢复 ASR）
+            isWaitingInterruptAck = true
+
+            // 启动超时保护（3秒后强制恢复）
+            interruptAckTimeoutJob?.cancel()
+            interruptAckTimeoutJob = scope.launch {
+                delay(3000L)
+                if (isWaitingInterruptAck) {
+                    Log.w(TAG, "interrupt_complete 超时, 强制恢复 ASR")
+                    isWaitingInterruptAck = false
+                    resumeAsrAfterInterrupt()
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "发送打断请求失败", e)
+            isWaitingInterruptAck = false
         }
     }
 
@@ -1736,6 +1759,39 @@ class RealtimeVoiceManager(private val context: Context) {
         if (isRecording) return
         Log.d(TAG, "ensureRecordingForBargeIn: 拉起采麦用于抢话检测")
         startRecording()
+    }
+
+    /**
+     * 收到后端 interrupt_complete 事件：确认 TTS 已完成清理，可以安全恢复 ASR
+     */
+    private fun handleInterruptComplete(data: JSONObject) {
+        interruptAckTimeoutJob?.cancel()
+        interruptAckTimeoutJob = null
+        isWaitingInterruptAck = false
+
+        val ackReceived = data.optBoolean("ackReceived", true)
+        Log.i(TAG, "收到 interrupt_complete (ackReceived=$ackReceived), 恢复 ASR 录音")
+        resumeAsrAfterInterrupt()
+    }
+
+    /**
+     * 中断确认后恢复 ASR 录音：重连 Qwen3 ASR 并开放麦克风推流
+     */
+    private fun resumeAsrAfterInterrupt() {
+        micToAsrAllowedAfterElapsedRealtime = 0L
+        bargeInVadDetector.reset()
+        scope.launch {
+            if (useQwen3Asr && currentSessionId != null) {
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        qwen3Asr.disconnect()
+                        delay(ASR_RECONNECT_GAP_MS)
+                        qwen3Asr.connect(AppConfig.asrServiceWsUrl, currentSessionId!!)
+                    }.onFailure { e -> Log.e(TAG, "中断确认后重连 ASR 失败: ${e.message}") }
+                }
+                delay(ASR_POST_CONNECT_WAIT_MS)
+            }
+        }
     }
 
     /**
