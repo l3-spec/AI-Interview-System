@@ -1341,9 +1341,28 @@ class RealtimeVoiceManager(private val context: Context) {
                     qwen3Tts.state.value != Qwen3TtsWsClient.State.CONNECTED) {
                     Log.w(TAG, "⚠️ TTS WebSocket 尚未就绪，尝试建立连接并等待数据...")
                     initQwen3Services(sessionId)
-                    
-                    // 流式模式下只等待 TTS WebSocket；不要立刻本地兜底，否则服务端流随后到达会双播。
                 }
+
+                // 超时保护：若 TTS 流式音频长时间未到达，降级到客户端本地 TTS，避免面试永久卡死
+                scope.launch {
+                    delay(8_000)
+                    // 仍然在等待 TTS 播放（isSpeaking 未触发）、数字人仍在说话状态、且面试未结束
+                    if (awaitingTtsPlayback && _isDigitalHumanSpeaking.value && !_interviewCompleted.value) {
+                        Log.w(TAG, "⚠️ [FLOW] qwen3_streaming 超时（8s）未收到音频，降级到客户端 TTS")
+                        if (text.isNotBlank() && useQwen3Tts) {
+                            qwen3Tts.speak(text)
+                        } else if (text.isNotBlank()) {
+                            playClientSideTts(text, textHash)
+                        } else {
+                            // 无文本可降级，直接恢复录音
+                            awaitingTtsPlayback = false
+                            _isDigitalHumanSpeaking.value = false
+                            currentPlayingTextHash = null
+                            tryAutoStartRecordingIfIdle()
+                        }
+                    }
+                }
+
                 // 流程交给 qwen3Tts 内部解决，不要再往下跑
                 return
             } else if (ttsMode.equals("client", ignoreCase = true)) {

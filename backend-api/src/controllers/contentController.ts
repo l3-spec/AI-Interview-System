@@ -5,6 +5,7 @@ import * as path from 'path';
 import { ossService } from '../services/ossService';
 import { prisma } from '../lib/prisma';
 import { withRetry } from '../utils/prismaUtils';
+import { toMediaUrl } from '../utils/ossUtils';
 
 const parseJsonArray = (value?: string | null) => {
   if (!value) return [] as string[];
@@ -142,7 +143,7 @@ const mapUserPostResponse = (post: any) => {
       ? {
           id: user.id,
           name: user.name,
-          avatar: normalizeMediaPath(user.avatar),
+          avatar: toMediaUrl(user.avatar) ?? null,
           headline: buildUserHeadline(user),
         }
       : null,
@@ -393,7 +394,7 @@ const buildCommentResponse = (comment: PostCommentRecord) => ({
   author: {
     id: comment.authorId ?? null,
     name: (comment.authorName ?? 'STAR-LINK 用户').trim(),
-    avatar: normalizeMediaPath(comment.authorAvatar),
+    avatar: toMediaUrl(comment.authorAvatar) ?? null,
   },
 });
 
@@ -1108,6 +1109,7 @@ export const getExpertPosts = async (req: Request, res: Response) => {
     const formattedPosts = posts.map((post) => ({
       ...post,
       tags: post.tags ? JSON.parse(post.tags) : [],
+      expertAvatar: toMediaUrl(post.expertAvatar) ?? null,
     }));
 
     res.json({

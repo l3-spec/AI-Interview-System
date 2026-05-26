@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { toMediaUrl } from '../utils/ossUtils';
 
 /**
  * 获取公开职位列表（不需要认证）
@@ -449,7 +450,7 @@ export const getPublicCompanyShowcases = async (_req: Request, res: Response) =>
           hiringCount: showcase.hiringCount,
           gradient: parseGradient(showcase.company.themeColors),
           tagline: showcase.company.tagline ?? '',
-          logo: showcase.company.logo,
+          logo: toMediaUrl(showcase.company.logo) ?? null,
           focusArea: showcase.company.focusArea ?? '',
           stats: parseJsonArray<CompanyStatPayload[]>(showcase.company.stats, [] as CompanyStatPayload[]),
           highlights: parseJsonArray<string[]>(showcase.company.highlights, [] as string[]),
@@ -740,7 +741,7 @@ function formatJobSummary(job: JobWithRelations) {
     title: job.title,
     companyId: job.companyId,
     companyName: job.company?.name ?? '',
-    companyLogo: job.company?.logo ?? null,
+    companyLogo: toMediaUrl(job.company?.logo) ?? null,
     companyTagline: job.company?.tagline ?? '',
     badgeColor: ensureBadgeColor(job.badgeColor),
     location: job.location ?? '',
@@ -780,7 +781,7 @@ function formatJobDetail(job: JobWithRelations) {
       ? {
           id: job.company.id,
           name: job.company.name,
-          logo: job.company.logo,
+          logo: toMediaUrl(job.company.logo) ?? null,
           tagline: job.company.tagline ?? '',
           themeColors: parseGradient(job.company.themeColors),
           locations: parseJsonArray<string[]>(job.company.locations, [] as string[]),
@@ -800,7 +801,7 @@ function formatCompanyProfile(
   return {
     id: company.id,
     name: company.name,
-    logo: company.logo,
+    logo: toMediaUrl(company.logo) ?? null,
     tagline: company.tagline ?? '',
     description: company.description ?? '',
     industry: company.industry ?? '',

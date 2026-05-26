@@ -74,9 +74,10 @@ export class Qwen3TTSClient {
     const modelEnv = process.env.QWEN_TTS_MODEL || 'qwen3-tts-flash-realtime';
     this.models = modelEnv.split(',').map(m => m.trim()).filter(Boolean);
     
-    // 核心兜底逻辑：如果用户只配置了一个模型（通常是 flash-realtime），
-    // 且该模型已经欠费，我们需要确保有备选模型可以轮换。
+    // 核心兜底逻辑：如果用户只配置了一个模型，
+    // 且该模型已经欠费或不可用，我们需要确保有备选模型可以轮换。
     const defaultFallbacks = [
+      'qwen3-tts-vd-realtime-2026-01-15',
       'qwen3-tts-flash-realtime-2025-11-27',
       'qwen3-tts-flash-realtime-2025-09-18',
       'qwen3-tts-flash-2025-09-18',

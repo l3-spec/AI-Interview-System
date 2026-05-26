@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
+import { toMediaUrl } from '../utils/ossUtils';
 const COMPANY_STAGE_LABEL = '融资阶段';
 
 const parseJsonArray = <T>(value: string | null, fallback: T[]): T[] => {
@@ -113,6 +114,7 @@ export const getCompanyProfile = async (req: Request, res: Response) => {
 
     const formattedCompany = {
       ...company,
+      logo: toMediaUrl(company.logo) ?? null,
       themeColors: parseJsonArray<string>(company.themeColors, []),
       highlights: parseJsonArray<string>(company.highlights, []),
       culture: parseJsonArray<string>(company.culture, []),
@@ -238,6 +240,7 @@ export const updateCompanyProfile = async (req: Request, res: Response) => {
       message: '企业信息更新成功',
       data: {
         ...updatedCompany,
+        logo: toMediaUrl(updatedCompany.logo) ?? null,
         themeColors: filteredData.themeColors
           ? JSON.parse(filteredData.themeColors)
           : (updatedCompany.themeColors ? JSON.parse(updatedCompany.themeColors) : []),

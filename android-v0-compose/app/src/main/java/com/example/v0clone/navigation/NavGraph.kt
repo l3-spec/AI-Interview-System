@@ -245,9 +245,9 @@ fun AppNavHost(navController: NavHostController) {
                 "external", "webview", "third_party" -> {
                     banner.linkId?.let { url ->
                         if (url.isNotBlank()) {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            runCatching { context.startActivity(intent) }
-                                .onFailure { Toast.makeText(context, "无法打开链接", Toast.LENGTH_SHORT).show() }
+                            val encodedUrl = URLEncoder.encode(url, "UTF-8")
+                            val encodedTitle = URLEncoder.encode(banner.title.ifBlank { "网页" }, "UTF-8")
+                            navController.navigate("${Routes.WEBVIEW}?url=$encodedUrl&title=$encodedTitle")
                         }
                     }
                 }
@@ -1303,6 +1303,33 @@ fun AppNavHost(navController: NavHostController) {
                     agreementsAgreed = true
                     navController.popBackStack()
                 }
+            )
+        }
+
+        // 通用 WebView 页面：用于 Banner 等外部链接在 App 内展示
+        composable(
+            route = "${Routes.WEBVIEW}?url={url}&title={title}",
+            arguments = listOf(
+                navArgument("url") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument("title") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { entry ->
+            val rawUrl = entry.arguments?.getString("url")
+            val url = rawUrl?.let { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrNull() } ?: rawUrl ?: ""
+            val rawTitle = entry.arguments?.getString("title")
+            val title = rawTitle?.let { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrNull() } ?: rawTitle ?: "网页"
+            com.xlwl.AiMian.ui.components.WebViewScreen(
+                url = url,
+                title = title,
+                onBack = { navController.popBackStack() }
             )
         }
         }

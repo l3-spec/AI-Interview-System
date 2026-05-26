@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { withRetry } from '../utils/prismaUtils';
+import { toMediaUrl } from '../utils/ossUtils';
 
 // 获取职岗列表
 export const getJobs = async (req: Request, res: Response) => {
@@ -83,9 +84,17 @@ export const getJobs = async (req: Request, res: Response) => {
       prisma.job.count({ where })
     ]));
 
+    const processedJobs = jobs.map((job: any) => ({
+      ...job,
+      company: job.company ? {
+        ...job.company,
+        logo: toMediaUrl(job.company.logo) ?? null,
+      } : null,
+    }));
+
     res.json({
       success: true,
-      data: jobs,
+      data: processedJobs,
       total,
       page: Number(page),
       pageSize: Number(pageSize)
@@ -229,7 +238,15 @@ export const getJobById = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: '职岗不存在' });
     }
 
-    res.json({ success: true, data: job });
+    const processedJob = job ? {
+      ...job,
+      company: job.company ? {
+        ...job.company,
+        logo: toMediaUrl(job.company.logo) ?? null,
+      } : null,
+    } : null;
+
+    res.json({ success: true, data: processedJob });
   } catch (error) {
     console.error('获取职岗详情失败:', error);
     res.status(500).json({ success: false, message: '服务器错误' });
