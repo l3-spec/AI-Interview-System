@@ -189,7 +189,8 @@ export class RealtimeVoiceWebSocketServer {
           socket.join(sessionId);
           this.sessions.set(socket.id, { sessionId, userId, connectedAt: new Date(), socketId: socket.id });
           
-          console.log(`✅ [Gateway] 代理 join_session: ${sessionId}`);
+          const clientIp = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
+          console.log(`✅ [Gateway] 客户端会话建立成功 (join_session): 客户端IP=${clientIp}, sessionId=${sessionId}, 岗位=${jobPosition || '未提供'}`);
 
           // 通知客户端加入成功并进入准备状态 (Loading UI)
           socket.emit('session_joined', { sessionId, status: 'success', state: 'preparing' });
@@ -289,16 +290,29 @@ export class RealtimeVoiceWebSocketServer {
           
           const ai = await getMergedPlatformAiConfig();
 
+          // 动态获取当前网关主机的被访问 IP（局域网自适应）
+          const requestHost = socket.handshake.headers.host || '';
+          const hostIp = requestHost.split(':')[0] || 'localhost';
+
+          let asrUrl = bestAsr?.url || qwen3ASRClient.getWebSocketUrl();
+          let ttsUrl = bestTts?.url || qwen3TTSClient.getWebSocketUrl();
+
+          // 如果是通过真实 IP 访问网关且 WS 注册地址为 localhost/127.0.0.1，则进行动态替换
+          if (hostIp !== 'localhost' && hostIp !== '127.0.0.1' && hostIp !== '::1') {
+            asrUrl = asrUrl.replace(/(localhost|127\.0\.0\.1|::1)/g, hostIp);
+            ttsUrl = ttsUrl.replace(/(localhost|127\.0\.0\.1|::1)/g, hostIp);
+          }
+
           socket.emit('service_config', {
             sessionId,
             sessionToken,
             asr: {
-              wsUrl: bestAsr?.url || qwen3ASRClient.getWebSocketUrl(),
+              wsUrl: asrUrl,
               available: !!bestAsr,
               model: ai.qwenAsrModel,
             },
             tts: {
-              wsUrl: bestTts?.url || qwen3TTSClient.getWebSocketUrl(),
+              wsUrl: ttsUrl,
               available: !!bestTts,
               model: ai.qwenTtsModel,
               voice: ai.ttsVoice,
@@ -315,9 +329,20 @@ export class RealtimeVoiceWebSocketServer {
           const expireTime = Date.now() + 30 * 60 * 1000;
           const sessionToken = generateSessionToken(sessionId, expireTime);
 
-          const asrWsUrl = qwen3ASRClient.getWebSocketUrl();
-          const ttsWsUrl = qwen3TTSClient.getWebSocketUrl();
+          const asrWsUrlOrig = qwen3ASRClient.getWebSocketUrl();
+          const ttsWsUrlOrig = qwen3TTSClient.getWebSocketUrl();
           const ai = await getMergedPlatformAiConfig();
+
+          const requestHost = socket.handshake.headers.host || '';
+          const hostIp = requestHost.split(':')[0] || 'localhost';
+
+          let asrWsUrl = asrWsUrlOrig;
+          let ttsWsUrl = ttsWsUrlOrig;
+
+          if (hostIp !== 'localhost' && hostIp !== '127.0.0.1' && hostIp !== '::1') {
+            asrWsUrl = asrWsUrl.replace(/(localhost|127\.0\.0\.1|::1)/g, hostIp);
+            ttsWsUrl = ttsWsUrl.replace(/(localhost|127\.0\.0\.1|::1)/g, hostIp);
+          }
 
           socket.emit('qwen3_config', {
             sessionId,

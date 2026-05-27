@@ -270,6 +270,7 @@ wss.on('connection', (ws, req) => {
             });
 
             // 结构化业务事件日志：TTS 会话创建
+            logger.info(`[TTS] 客户端会话建立成功: 客户端IP=${clientIp}, sessionId=${sessionId}, 音色=${config.voice || 'cherry'}`);
             console.log(JSON.stringify({
               type: 'event',
               event: 'tts_session_created',

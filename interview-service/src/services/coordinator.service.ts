@@ -433,7 +433,7 @@ export class CoordinatorService {
   }
 
   private async handleClientReady(sessionId: string, gatewayId?: string) {
-    console.log(`[Coordinator] Handling client_ready for ${sessionId}`);
+    console.log(`✅ [Coordinator] 客户端三通道连接已确认就绪 (client_ready): sessionId=${sessionId}, 接入网关=${gatewayId || 'unknown'}`);
     const session = interviewFlowService.getSession(sessionId);
     if (!session) {
       console.warn(`[Coordinator] handleClientReady 找不到 session: ${sessionId}`);
@@ -472,7 +472,7 @@ export class CoordinatorService {
         }
         session.runtimePhase = 'speaking';
 
-        const jobPosText = session.jobPosition || '这个职位';
+        const jobPosText = (session as any).jobPosition || '这个职位';
         const resumeText = `欢迎回来，我们继续${jobPosText}的面试。现在是第${resumeRoundNum}题，请听题：`;
         const combinedText = `${resumeText} ${currentRound.question}`;
 
@@ -506,7 +506,7 @@ export class CoordinatorService {
     }
 
     // 首次进入面试的欢迎语
-    const jobPosText = (session.jobPosition || '这个职位').trim().length <= 40 ? (session.jobPosition || '这个职位').trim() : '本岗位';
+    const jobPosText = ((session as any).jobPosition || '这个职位').trim().length <= 40 ? ((session as any).jobPosition || '这个职位').trim() : '本岗位';
     const welcomeText = `让我陪您一起完成这个面试流程。请简单介绍一下您自己，并说明为什么想要应聘「${jobPosText}」。`;
 
     console.log(`🎤 [Coordinator] 就绪触发初始欢迎问题: ${sessionId}`);

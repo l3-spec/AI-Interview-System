@@ -207,6 +207,7 @@ wss.on('connection', (ws, req) => {
 
             droppedAudioCount = 0;
             sessionStartTime = Date.now();
+            logger.info(`[ASR] 客户端会话建立成功: 客户端IP=${clientIp}, sessionId=${sessionId}, 语言=${config.language || 'zh'}`);
             // 结构化业务事件日志：会话创建
             console.log(JSON.stringify({
               type: 'event',
