@@ -203,6 +203,27 @@ export class CoordinatorService {
     console.log(`[Coordinator] Published ${type} for session=${sessionId}${gatewayId ? ` gw=${gatewayId}` : ''} (session+broadcast)`);
   }
 
+  /**
+   * 发布面试控制消息到 TTS WebSocket 通道
+   * tts-service 订阅 `interview:control:{sessionId}` 频道并转发给 App 的 WebSocket 连接
+   * 与 emitToGateway 并行使用，不替代后者；任何失败仅记录日志，不阻塞面试主流程
+   */
+  private async emitControlToTTS(sessionId: string, event: string, data: Record<string, any>): Promise<void> {
+    const message = JSON.stringify({
+      type: 'control',
+      event,
+      data: { ...data, sessionId },
+    });
+
+    try {
+      // 使用现有 publisher 连接（pubClient），避免误用 subscriber 客户端
+      await this.pubClient.publish(`interview:control:${sessionId}`, message);
+      console.log(`[Coordinator] 控制消息已发送 → TTS通道: sessionId=${sessionId}, event=${event}`);
+    } catch (err) {
+      console.error(`[Coordinator] 控制消息发送失败: sessionId=${sessionId}, event=${event}`, err);
+    }
+  }
+
   private async runInQueue(sessionId: string, task: () => Promise<any>) {
     const previousTask = this.sessionQueues.get(sessionId) || Promise.resolve();
     const nextTask = previousTask.then(task).catch(err => {
@@ -313,6 +334,13 @@ export class CoordinatorService {
           },
           gatewayId
         );
+        // 整场面试超时：额外向 TTS 通道下发 interview_error 控制消息
+        if (data.payload?.eventType === 'interview_timeout') {
+          this.emitControlToTTS(sessionId, 'interview_error', {
+            reason: 'timeout',
+            message: data.payload?.text || '面试超时已结束',
+          }).catch(() => undefined);
+        }
         break;
       default:
         console.warn(`[Coordinator] Unknown inbound event type: ${type}`);
@@ -339,6 +367,12 @@ export class CoordinatorService {
     );
 
     const session = interviewFlowService.getSession(sessionId);
+
+    // 面试初始化成功后，立即向 TTS 通道发送控制消息，App 据此进入面试态
+    // 首次进入时 rounds 尚未生成，使用默认 5；断点续面时使用实际题目数
+    await this.emitControlToTTS(sessionId, 'interview_started', {
+      totalQuestions: session?.rounds?.length || 5,
+    });
 
     // 检查是否断点续面
     const isResume = interviewFlowService.isWarmResumeEligible(session!);
@@ -374,6 +408,14 @@ export class CoordinatorService {
         // 续面时必须只有一个播报出口：把续面提示和题干合并成一条 TTS。
         // 旧逻辑在已有 audioUrl 时不触发 Qwen3 synthesize，却仍下发 qwen3_streaming，App 会一直等不到音频。
         const scene = interviewConductor.inferScene(currentRound.question, { isFollowUp: (currentRound.followupCount || 0) > 0 });
+
+        // 续面：先发送 question_start 控制消息，再触发 TTS 合成，确保 App 先收到控制再收到音频
+        await this.emitControlToTTS(sessionId, 'question_start', {
+          questionIndex: Math.max(0, currentRound.roundNumber - 1),
+          timeLimit: currentRound.suggestedTime || 300,
+          isLast: currentRound.roundNumber >= totalRounds,
+        });
+
         const ttsMode = await this.synthesizeQwen3TtsSegments(sessionId, combinedText, scene);
 
       this.emitToGateway(sessionId, 'voice_response', {
@@ -668,6 +710,10 @@ export class CoordinatorService {
          reason: 'user_initiated',
          questionsAsked: (interviewFlowService.getSession(sessionId)?.rounds || []).length,
        });
+       // 主动结束：通知 TTS 通道转发 interview_ended 控制消息给 App
+       await this.emitControlToTTS(sessionId, 'interview_ended', {
+         reason: 'completed',
+       });
        return;
     }
 
@@ -689,6 +735,10 @@ export class CoordinatorService {
          this.logEvent('interview_completed', sessionId, {
            reason: 'auto_completed',
            questionsAsked: (interviewFlowService.getSession(sessionId)?.rounds || []).length,
+         });
+         // 自然完成：通知 TTS 通道转发 interview_ended 控制消息给 App
+         await this.emitControlToTTS(sessionId, 'interview_ended', {
+           reason: 'completed',
          });
       } else if (result.nextRound) {
          await this.emitRoundVoiceResponse(sessionId, result.nextRound);
@@ -712,6 +762,16 @@ export class CoordinatorService {
 
   private async emitRoundVoiceResponse(sessionId: string, round: any) {
     const session = interviewFlowService.getSession(sessionId);
+
+    // 题目准备就绪：先向 TTS 通道下发 question_start 控制消息，确保 App 先收到控制再收到音频
+    const totalRounds = session?.rounds?.length || 5;
+    const currentRoundIndex = Math.max(0, (round.roundNumber || 1) - 1);
+    await this.emitControlToTTS(sessionId, 'question_start', {
+      questionIndex: currentRoundIndex,
+      timeLimit: round.suggestedTime || 300,
+      isLast: currentRoundIndex >= totalRounds - 1,
+    });
+
     let ttsMode = 'client';
     if (round.audioUrl) {
       ttsMode = 'server';

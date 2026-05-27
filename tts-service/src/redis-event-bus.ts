@@ -22,6 +22,8 @@ export class RedisEventBus {
   private isConnected = false;
   private commandHandler: ((cmd: any) => void | Promise<void>) | null = null;
   private outboundHandler: ((sessionId: string, type: string, payload: any) => void | Promise<void>) | null = null;
+  /** 面试控制消息处理器：interview-service 通过 interview:control:{sessionId} 频道推送的原始 JSON */
+  private controlHandler: ((sessionId: string, rawMessage: string) => void | Promise<void>) | null = null;
   /** 串行处理 Redis 指令，避免 synthesize 与 commit 并发导致 commit 先于 append 到达 DashScope */
   private commandChain: Promise<void> = Promise.resolve();
 
@@ -71,6 +73,10 @@ export class RedisEventBus {
           this.handleOutboundEvent(channel, message);
           return;
         }
+        if (channel.startsWith('interview:control:')) {
+          this.handleControlMessage(channel, message);
+          return;
+        }
         this.handleCommand(channel, message);
       });
 
@@ -110,6 +116,55 @@ export class RedisEventBus {
 
   onOutboundEvent(handler: (sessionId: string, type: string, payload: any) => void | Promise<void>): void {
     this.outboundHandler = handler;
+  }
+
+  /**
+   * 注册面试控制消息处理器
+   * 控制消息由 interview-service 发布到 interview:control:{sessionId} 频道，
+   * 由 TTS 服务转发给对应 App 的 WebSocket 连接（单向：Redis → TTS → App）
+   */
+  onControlMessage(handler: (sessionId: string, rawMessage: string) => void | Promise<void>): void {
+    this.controlHandler = handler;
+  }
+
+  /** 订阅指定会话的面试控制消息频道 */
+  async subscribeControl(sessionId: string): Promise<void> {
+    if (!this.isConnected || !this.subscriber) return;
+    const channel = `interview:control:${sessionId}`;
+    try {
+      await this.subscriber.subscribe(channel);
+      logger.info(`[TTS-Control] 已订阅控制频道: ${channel}`);
+    } catch (err: any) {
+      // 控制频道订阅失败不应影响 TTS 核心功能（语音合成）
+      logger.warn(`[TTS-Control] 订阅控制频道失败 ${channel}: ${err?.message || err}`);
+    }
+  }
+
+  /** 取消订阅指定会话的面试控制消息频道 */
+  async unsubscribeControl(sessionId: string): Promise<void> {
+    if (!this.isConnected || !this.subscriber) return;
+    const channel = `interview:control:${sessionId}`;
+    try {
+      await this.subscriber.unsubscribe(channel);
+      logger.info(`[TTS-Control] 已取消订阅控制频道: ${channel}`);
+    } catch (err: any) {
+      logger.warn(`[TTS-Control] 取消订阅控制频道失败 ${channel}: ${err?.message || err}`);
+    }
+  }
+
+  private handleControlMessage(channel: string, message: string): void {
+    try {
+      const sessionId = channel.replace('interview:control:', '');
+      if (!sessionId) return;
+      if (this.controlHandler) {
+        // 直接透传原始 JSON 字符串，避免反序列化-序列化往返开销
+        Promise.resolve(this.controlHandler(sessionId, message)).catch((err: any) => {
+          logger.error(`[TTS-Control] 控制消息处理器执行失败: ${err?.message || err}`);
+        });
+      }
+    } catch (err: any) {
+      logger.error(`[TTS-Control] 处理控制消息失败: ${err?.message || err}`);
+    }
   }
 
   async subscribeSession(sessionId: string): Promise<void> {

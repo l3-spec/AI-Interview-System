@@ -39,6 +39,15 @@ data class TranscriptDelta(
 )
 
 /**
+ * 面试控制事件（由 tts-service 转发的 `{type:"control", event, data}`）。
+ * 事件名示例：interview_started / question_start / interview_ended / interview_error。
+ */
+data class InterviewControlEvent(
+    val event: String,
+    val data: JSONObject
+)
+
+/**
  * Qwen3 TTS WebSocket 客户端
  *
  * 直连 TTS 微服务（ws://host:3003/ws/tts），实现双轨混合流式语音合成。
@@ -91,6 +100,10 @@ class Qwen3TtsWsClient(
     /** 实时增量字幕事件（用于KTV效果） */
     private val _transcriptDelta = MutableSharedFlow<TranscriptDelta>(extraBufferCapacity = 10)
     val transcriptDelta: SharedFlow<TranscriptDelta> = _transcriptDelta.asSharedFlow()
+
+    /** 面试控制消息事件（TTS WebSocket 转发的 control） */
+    private val _controlEvents = MutableSharedFlow<InterviewControlEvent>(extraBufferCapacity = 16)
+    val controlEvents: SharedFlow<InterviewControlEvent> = _controlEvents.asSharedFlow()
 
     /** 是否正在播放音频 */
     private val _isSpeaking = MutableStateFlow(false)
@@ -439,6 +452,16 @@ class Qwen3TtsWsClient(
                     val error = json.optString("error", json.optString("message", "未知TTS错误"))
                     Log.e(TAG, "TTS 错误: $error")
                     _errors.tryEmit(error)
+                }
+
+                // 面试流程控制消息（interview_started / question_start / interview_ended / interview_error）
+                "control" -> {
+                    val event = json.optString("event")
+                    val data = json.optJSONObject("data") ?: JSONObject()
+                    if (event.isNotBlank()) {
+                        Log.i(TAG, "收到面试控制消息: event=$event, data=$data")
+                        _controlEvents.tryEmit(InterviewControlEvent(event, data))
+                    }
                 }
 
                 else -> Log.d(TAG, "TTS 未知消息: ${json.optString("type")}")

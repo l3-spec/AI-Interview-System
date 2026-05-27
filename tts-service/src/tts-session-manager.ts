@@ -122,6 +122,30 @@ export class TTSSessionManager {
         payload
       });
     });
+
+    // 面试控制消息转发：interview:control:{sessionId} → 对应 App 的 WebSocket
+    // 控制消息作为文本 WebSocket 帧下发（App 通过帧类型区分：二进制=音频，文本=JSON 控制/转录）
+    this.redisBus.onControlMessage((sessionId, rawMessage) => {
+      const session = this.sessions.get(sessionId);
+      if (!session || session.clientWs.readyState !== WebSocket.OPEN) {
+        logger.warn(`[TTS-Control] 会话不存在或 WebSocket 未连接，丢弃控制消息 session=${sessionId}`);
+        return;
+      }
+      let event = 'unknown';
+      try {
+        const parsed = JSON.parse(rawMessage);
+        event = parsed?.event || parsed?.type || 'unknown';
+      } catch {
+        // 解析失败不阻断转发：原始报文仍可作为文本帧下发
+      }
+      try {
+        // 直接透传原始 JSON，默认 send(string) 会走文本帧
+        session.clientWs.send(rawMessage);
+        logger.info(`[TTS-Control] 转发控制消息给会话 ${sessionId}: ${event}`);
+      } catch (err: any) {
+        logger.error(`[TTS-Control] 转发控制消息失败 (${sessionId}): ${err?.message || err}`);
+      }
+    });
   }
 
   /**
@@ -269,6 +293,9 @@ export class TTSSessionManager {
     // Subscribe to session-specific outbound channel for signal proxying
     if (this.redisBus) {
       await this.redisBus.subscribeSession(sessionId);
+      // 同时订阅面试控制消息频道（interview-service → App 的单向控制通道）
+      // 订阅失败不会报错（在 RedisEventBus 内部已吃掉异常），避免影响 TTS 核心功能
+      await this.redisBus.subscribeControl(sessionId);
     }
     logger.info(
       `[TTS-Manager] 会话 ${sessionId} 已注册（DashScope 将在首次 append/commit 时按需连接，避免空闲超时）`,
@@ -562,6 +589,7 @@ export class TTSSessionManager {
     session.state = 'closed';
     if (this.redisBus) {
       await this.redisBus.unsubscribeSession(sessionId);
+      await this.redisBus.unsubscribeControl(sessionId);
     }
     this.sessions.delete(sessionId);
     logger.info(`[TTS-Manager] 会话 ${sessionId} 已销毁`);

@@ -128,7 +128,10 @@ const io = new Server(httpServer, {
 });
 
 const fayWebSocket = new FayWebSocketServer(io);
-// RealtimeVoiceWebSocketServer removed - using HTTPS Gateway instead
+// [2026-05-26] 面试通信架构改造：App 改为 REST + TTS WebSocket 控制通道
+// RealtimeVoiceWebSocketServer 不再需要，App 不再通过 Socket.IO 连接
+// const realtimeVoiceWebSocket = new RealtimeVoiceWebSocketServer(io);
+// console.log('🎤 [WebSocket] RealtimeVoiceWebSocketServer 已初始化');
 
 // 设置系统状态 WebSocket 推送
 function setupSystemStatusPush() {
@@ -217,10 +220,12 @@ console.log('[Route Registration] voiceRoutes 已注册到 /api/voice 和 /voice
 app.use('/api', routes);
 app.use('/api/fay', fayRoutes); // Fay数字人API路由
 
-// HTTPS Gateway Routes
+// HTTPS Gateway Routes —— App 与 backend-api 的统一 REST 入口
 app.post('/api/gateway/join', GatewayController.joinSession);
 app.post('/api/gateway/message', GatewayController.sendMessage);
+app.post('/api/gateway/playback-done', GatewayController.playbackDone);
 app.post('/api/gateway/interrupt', GatewayController.interrupt);
+app.get('/api/gateway/session/:sessionId', GatewayController.getSessionState);
 app.get('/api/gateway/discover', GatewayController.discoverServices);
 
 // 数字人测试路由

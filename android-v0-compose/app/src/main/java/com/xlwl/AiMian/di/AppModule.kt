@@ -2,6 +2,7 @@ package com.xlwl.AiMian.di
 
 import android.app.Application
 import com.example.v0clone.data.api.ApiService
+import com.example.v0clone.data.api.GatewayApi
 import com.example.v0clone.data.api.RetrofitClient
 import com.xlwl.AiMian.data.local.EncryptedConfigStore
 import com.xlwl.AiMian.data.repository.ClientRuntimeConfigRepository
@@ -20,6 +21,10 @@ object AppModule {
     
     // API Service（ Retrofit 实例）
     lateinit var apiService: ApiService
+        private set
+
+    // 面试网关 REST API（与 backend-api 通信，替代 Socket.IO）
+    lateinit var gatewayApi: GatewayApi
         private set
     
     // 加密配置存储
@@ -40,6 +45,7 @@ object AppModule {
             onUnauthorized = null
         )
         apiService = RetrofitClient.createService(ApiService::class.java, client)
+        gatewayApi = RetrofitClient.createService(GatewayApi::class.java, client)
         
         // 初始化加密存储
         configStore = EncryptedConfigStore(application)

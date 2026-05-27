@@ -258,8 +258,11 @@ fun DuixAvatarInterviewScreen(
     // Connect to websocket when Duix session is ready
     LaunchedEffect(isReady) {
         if (isReady && connectionState == ConnectionState.DISCONNECTED) {
-            val serverUrl = AppConfig.realtimeVoiceWsUrl
-            Log.i("DuixAvatarScreen", "📡 Initiating WebSocket connection to: $serverUrl")
+            // 面试通信架构改造后：RealtimeVoiceManager.initialize 不再走 Socket.IO，
+            // 而是调用 backend-api /api/gateway/join 获取 TTS/ASR WebSocket 地址，再直连 WS。
+            // 所以 serverUrl 这里传入 REST 基础地址（AppConfig.apiBaseUrl）仅用于日志/保留。
+            val serverUrl = AppConfig.apiBaseUrl
+            Log.i("DuixAvatarScreen", "📡 Initiating gateway join via REST: $serverUrl")
             
             scope.launch {
                 realtimeVoiceManager.initialize(

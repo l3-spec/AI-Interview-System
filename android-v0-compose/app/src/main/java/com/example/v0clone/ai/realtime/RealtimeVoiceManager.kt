@@ -19,6 +19,11 @@ import com.xlwl.AiMian.ai.realtime.VolcanoTtsService
 import com.xlwl.AiMian.ai.realtime.Qwen3AsrWsClient
 import com.xlwl.AiMian.ai.realtime.Qwen3TtsWsClient
 import com.example.v0clone.config.AppConfig
+import com.example.v0clone.data.api.GatewayApi
+import com.example.v0clone.data.api.GatewayJoinRequest
+import com.example.v0clone.data.api.InterruptRequest
+import com.example.v0clone.data.api.PlaybackDoneRequest
+import com.xlwl.AiMian.di.AppModule
 import com.xlwl.AiMian.digitalhuman.DigitalHumanController
 import io.socket.client.IO
 import io.socket.client.Socket
@@ -379,6 +384,14 @@ class RealtimeVoiceManager(private val context: Context) {
     private val _currentQuestionIndex = MutableStateFlow<Int?>(null)
     val currentQuestionIndex: StateFlow<Int?> = _currentQuestionIndex.asStateFlow()
 
+    /** 面试是否已启动（收到 control:interview_started 后置位） */
+    private val _interviewStarted = MutableStateFlow(false)
+    val interviewStarted: StateFlow<Boolean> = _interviewStarted.asStateFlow()
+
+    /** 面试总题数（由 control:interview_started 下发） */
+    private val _totalQuestions = MutableStateFlow<Int?>(null)
+    val totalQuestions: StateFlow<Int?> = _totalQuestions.asStateFlow()
+
     private val _timeLimit = MutableStateFlow<Int?>(null)
     val timeLimit: StateFlow<Int?> = _timeLimit.asStateFlow()
 
@@ -429,6 +442,13 @@ class RealtimeVoiceManager(private val context: Context) {
             .build()
     }
 
+    /** 面试网关 REST API（替代 Socket.IO） */
+    private val gatewayApi: GatewayApi
+        get() = AppModule.gatewayApi
+
+    /** 设置过的 TTS 控制事件订阅 Job，用于重连时避免重复订阅 */
+    private var ttsControlListenerJob: Job? = null
+
     suspend fun initialize(
         serverUrl: String,
         sessionId: String,
@@ -438,14 +458,14 @@ class RealtimeVoiceManager(private val context: Context) {
     ): Boolean = withContext(Dispatchers.IO) {
         try {
             if (isInitializingSocket) {
-                Log.w(TAG, "已有WebSocket初始化进行中，忽略重复请求")
+                Log.w(TAG, "已有初始化进行中，忽略重复请求")
                 return@withContext false
             }
             if (_connectionState.value == ConnectionState.CONNECTING) {
-                Log.w(TAG, "WebSocket正在连接，忽略重复初始化请求")
+                Log.w(TAG, "已在连接中，忽略重复初始化请求")
                 return@withContext false
             }
-            if (socket?.connected() == true && currentSessionId == sessionId) {
+            if (_connectionState.value == ConnectionState.CONNECTED && currentSessionId == sessionId) {
                 Log.d(TAG, "已连接到相同会话，跳过重复初始化")
                 return@withContext true
             }
@@ -457,7 +477,7 @@ class RealtimeVoiceManager(private val context: Context) {
             lastInitAttemptAt = now
             isInitializingSocket = true
 
-            // 清理旧连接，避免多个Socket并行重连导致连接风暴
+            // 清理旧 Socket.IO 连接（面试流程已改为 REST + TTS/ASR 直连 WS，仅作防御性清理）
             try {
                 socket?.off()
                 socket?.disconnect()
@@ -471,92 +491,59 @@ class RealtimeVoiceManager(private val context: Context) {
             currentBackground = background
             _connectionState.value = ConnectionState.CONNECTING
             _interviewCompleted.value = false
+            _interviewStarted.value = false
+            _totalQuestions.value = null
             playedTextHashes.clear()
             currentPlayingTextHash = null
             lastVoiceResponseKey = null
             lastVoiceResponseAtMs = 0L
 
-            val options = IO.Options().apply {
-                forceNew = true
-                // 禁用自动重连，避免同时存在多个Socket重连导致连接风暴。由上层显式控制重连节奏。
-                reconnection = false
-                reconnectionAttempts = 0
-                reconnectionDelay = 0
-                reconnectionDelayMax = 0
-                randomizationFactor = 0.0
-                transports = arrayOf("websocket") // 强制使用websocket，避免polling导致的transport error
-            }
+            Log.i(TAG, "调用 backend-api /api/gateway/join: serverUrl=$serverUrl, session=$sessionId")
 
-            val newSocket = IO.socket(serverUrl, options)
-            newSocket.on(Socket.EVENT_CONNECT) {
-                Log.i(TAG, "✅ WebSocket连接成功: $serverUrl, SocketID: ${newSocket.id()}")
-                _connectionState.value = ConnectionState.CONNECTED
-                joinSession(sessionId, userId, jobPosition, background)
-            }
-            newSocket.on(Socket.EVENT_DISCONNECT) {
-                Log.w(TAG, "❌ WebSocket连接断开: $serverUrl")
+            // 1. REST 调用面试网关，由服务端返回 TTS / ASR WebSocket 地址
+            val response = try {
+                gatewayApi.joinGateway(
+                    GatewayJoinRequest(
+                        sessionId = sessionId,
+                        userId = userId,
+                        jobPosition = jobPosition,
+                        background = background
+                    )
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "gateway/join 请求异常", e)
                 _connectionState.value = ConnectionState.DISCONNECTED
-                socket = null
+                _errors.tryEmit(e.message ?: "面试网关调用失败")
+                return@withContext false
             }
-            newSocket.on(Socket.EVENT_CONNECT_ERROR) { args ->
-                val err = args.getOrNull(0)
-                Log.e(TAG, "❌ WebSocket连接错误: $err, URL: $serverUrl")
+
+            if (!response.isSuccessful || response.body()?.success != true) {
+                Log.e(TAG, "gateway/join 失败: code=${response.code()}, body=${response.errorBody()?.string()}")
                 _connectionState.value = ConnectionState.DISCONNECTED
-                socket = null
-                showToast("连接服务器失败，请检查网络")
-                err?.toString()?.let { _errors.tryEmit(it) }
-            }
-            newSocket.on("text_chunk") { args ->
-                safeHandleEvent("text_chunk", args) { handleTextChunk(it) }
-            }
-            newSocket.on("asr_partial") { args ->
-                safeHandleEvent("asr_partial", args) { handleAsrPartial(it) }
-            }
-            newSocket.on("voice_response") { args ->
-                safeHandleEvent("voice_response", args) { handleVoiceResponse(it) }
-            }
-            newSocket.on("status") { args ->
-                safeHandleEvent("status", args) { handleStatus(it) }
-            }
-            newSocket.on("audio_chunk") { args ->
-                safeHandleEvent("audio_chunk", args) { handleAudioChunk(it) }
-            }
-            newSocket.on("error") { args ->
-                handleError(args.getOrNull(0))
-            }
-            newSocket.on("candidate_turn_recorded") { args ->
-                safeHandleEvent("candidate_turn_recorded", args) { jo ->
-                    val sid = jo.optString("sessionId")
-                    val seq = jo.optInt("sequence", -1)
-                    if (sid.isBlank() || seq < 0) return@safeHandleEvent
-                    val tid = jo.optString("turnId").takeIf { it.isNotBlank() }
-                    val qRaw = if (jo.isNull("questionIndex")) null else jo.opt("questionIndex")
-                    val qIdx = when (qRaw) {
-                        is Number -> qRaw.toInt().takeIf { it >= 0 }
-                        else -> null
-                    }
-                    scope.launch {
-                        _candidateTurnRecorded.emit(
-                            CandidateTurnRecorded(sid, seq, tid, qIdx)
-                        )
-                    }
-                }
-            }
-            newSocket.on("interrupt_complete") { args ->
-                safeHandleEvent("interrupt_complete", args) { handleInterruptComplete(it) }
+                _errors.tryEmit("面试网关连接失败 (HTTP ${response.code()})")
+                return@withContext false
             }
 
-            Log.d(TAG, "尝试连接实时语音服务: $serverUrl (session=$sessionId)")
-            newSocket.connect()
-            socket = newSocket
+            val joinResult = response.body()!!
+            val ttsWsUrl = joinResult.services.tts.wsUrl.takeIf { it.isNotBlank() } ?: AppConfig.ttsServiceWsUrl
+            val asrWsUrl = joinResult.services.asr.wsUrl.takeIf { it.isNotBlank() } ?: AppConfig.asrServiceWsUrl
+            val ttsAvailable = joinResult.services.tts.available
+            val asrAvailable = joinResult.services.asr.available
+            Log.i(TAG, "gateway/join 成功: ttsWs=$ttsWsUrl(available=$ttsAvailable), asrWs=$asrWsUrl(available=$asrAvailable)")
 
-            // 异步连接 Qwen3 ASR/TTS 微服务
-            initQwen3Services(sessionId)
+            // 2. 在 TTS 连接前订阅控制事件（面试开始 / 题目推进 / 面试结束）
+            registerTtsControlListener()
+
+            // 3. 连接 TTS / ASR WebSocket（复用现有逻辑，地址改为 REST 响应返回的值）
+            initQwen3Services(sessionId, ttsWsUrl, asrWsUrl, ttsAvailable, asrAvailable)
+
+            // 4. 更新连接状态
+            _connectionState.value = ConnectionState.CONNECTED
 
             true
         } catch (e: Exception) {
-            Log.e(TAG, "初始化实时语音服务失败", e)
-            _errors.tryEmit(e.message ?: "实时语音服务连接失败")
+            Log.e(TAG, "初始化面试通信失败", e)
+            _errors.tryEmit(e.message ?: "面试通信初始化失败")
             _connectionState.value = ConnectionState.DISCONNECTED
             false
         } finally {
@@ -565,154 +552,217 @@ class RealtimeVoiceManager(private val context: Context) {
     }
 
     /**
-     * 初始化 Qwen3 ASR/TTS 微服务连接
-     * 先做健康检查，可用则建立 WebSocket 长连接
+     * 订阅 TTS WebSocket 上转发的面试控制消息（`{type:"control", event, data}`）。
+     * 重复调用会取消旧订阅。
      */
-    private fun initQwen3Services(sessionId: String) {
-        scope.launch {
-            // 检查 TTS 微服务是否可用
-            try {
-                val ttsHealthUrl = "${AppConfig.ttsServiceHttpUrl}/health"
-                val request = Request.Builder().url(ttsHealthUrl).build()
-                val response = downloadClient.newCall(request).execute()
-                if (response.isSuccessful) {
-                    Log.i(TAG, "Qwen3 TTS 微服务可用，建立 WebSocket 连接")
-                    useQwen3Tts = true
+    private fun registerTtsControlListener() {
+        ttsControlListenerJob?.cancel()
+        ttsControlListenerJob = scope.launch {
+            qwen3Tts.controlEvents.collect { evt ->
+                handleControlMessage(evt.event, evt.data)
+            }
+        }
+    }
 
-                    // 将 DUIX 音频回调桥接给 Qwen3 TTS
-                    qwen3Tts.duixAudioSink = duixAudioSink
-
-                    qwen3Tts.connect(AppConfig.ttsServiceWsUrl, sessionId)
-
-                    launch {
-                        qwen3Tts.playbackProgress.collect { p ->
-                            _ttsPlaybackProgress.value = p
-                        }
-                    }
-
-                    // 监听实时增量字幕
-                    launch {
-                        qwen3Tts.transcriptDelta.collect { delta ->
-                            _transcriptDelta.emit(delta)
-                            // Robust incremental text reconstruction as a fallback for missing initial text
-                            val currentText = _latestDigitalHumanText.value ?: ""
-                            if (delta.text.isNotBlank() && !currentText.endsWith(delta.text)) {
-                                if (currentText.isEmpty()) {
-                                    _latestDigitalHumanText.value = delta.text
-                                } else {
-                                    // Only append if it's not already there (simple check)
-                                    if (!currentText.contains(delta.text)) {
-                                        _latestDigitalHumanText.value = currentText + delta.text
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // 监听 TTS 说话状态 → 驱动数字人嘴型
-                    launch {
-                        qwen3Tts.mouthRms.collect { rms ->
-                            digitalHumanController?.updateMouthOpenness(rms)
-                        }
-                    }
-                    // 监听 TTS 说话状态 → 控制录音
-                    launch {
-                        qwen3Tts.isSpeaking.collect { speaking ->
-                            if (speaking) {
-                                // TTS 开始播放 → 标记数字人正在说话，清除等待标志
-                                awaitingTtsPlayback = false
-                                micToAsrAllowedAfterElapsedRealtime = Long.MAX_VALUE
-                                _isDigitalHumanSpeaking.value = true
-                                if (vadEnabled) {
-                                    bargeInVadDetector.reset()
-                                    Log.i(TAG, "🎙️ [FLOW] Qwen3 TTS 播放正式开始 -> 保持采麦以支持 VAD 抢话")
-                                    ensureRecordingForBargeIn()
-                                } else {
-                                    Log.i(TAG, "🎙️ [FLOW] Qwen3 TTS 播放正式开始 -> 关闭录音（VAD 已关闭）")
-                                    stopRecordingInternal()
-                                }
-                            } else {
-                                // TTS 停止播放：只有在没有等待中的新响应时才标记说话结束
-                                if (awaitingTtsPlayback) {
-                                    Log.d(TAG, "TTS isSpeaking=false 但仍在等待新响应音频，忽略此处状态重置")
-                                    return@collect
-                                }
-                                
-                                Log.i(TAG, "🎙️ [FLOW] Qwen3 TTS 播报结束")
-                                val wasSpeaking = _isDigitalHumanSpeaking.value
-                                _isDigitalHumanSpeaking.value = false
-                                if (wasSpeaking) {
-                                    notifyPlaybackDone("qwen3-tts")
-                                }
-                                if (!_interviewCompleted.value && vadEnabled) {
-                                    scheduleResumeListeningAfterSpeakerPlayback()
-                                }
-
-                                if (pendingCompletion) {
-                                    Log.i(TAG, "TTS 播报结束，且有待处理的面试完成请求，执行最终完成逻辑")
-                                    executeFinalCompletion()
-                                }
-                            }
-                        }
-                    }
-                    launch {
-                        qwen3Tts.responseDone.collect { responseId ->
-                            Log.i(TAG, "Qwen3 TTS 合成完成: responseId=$responseId")
-                        }
-                    }
-                } else {
-                    Log.w(TAG, "Qwen3 TTS 微服务不可用 (code=${response.code})，使用火山引擎 TTS")
+    /** 处理 TTS WebSocket 下发的面试控制事件 */
+    private fun handleControlMessage(event: String, data: JSONObject) {
+        when (event) {
+            "interview_started" -> {
+                val totalQuestions = data.optInt("totalQuestions", 5)
+                Log.i(TAG, "面试已启动，共 $totalQuestions 题")
+                _interviewStarted.value = true
+                _totalQuestions.value = totalQuestions
+                _interviewCompleted.value = false
+            }
+            "question_start" -> {
+                val questionIndex = data.optInt("questionIndex", -1)
+                val timeLimit = data.optInt("timeLimit", 300)
+                val isLast = data.optBoolean("isLast", false)
+                Log.i(TAG, "第 ${questionIndex + 1} 题开始, 限时 ${timeLimit}s, 最后一题: $isLast")
+                if (questionIndex >= 0) {
+                    _currentQuestionIndex.value = questionIndex
                 }
-                response.close()
-            } catch (e: Exception) {
-                Log.w(TAG, "Qwen3 TTS 健康检查失败: ${e.message}，使用火山引擎 TTS")
+                if (timeLimit > 0) {
+                    _timeLimit.value = timeLimit
+                }
+            }
+            "interview_ended" -> {
+                val reason = data.optString("reason", "completed")
+                Log.i(TAG, "面试结束: $reason")
+                markInterviewCompleted("control-${reason}", speakFarewell = false, stopCurrentAudio = false)
+            }
+            "interview_error" -> {
+                val reason = data.optString("reason")
+                val msg = data.optString("message")
+                Log.e(TAG, "面试异常: $reason - $msg")
+                _errors.tryEmit(msg.ifBlank { reason }.ifBlank { "面试异常" })
+                markInterviewCompleted("control-error", speakFarewell = false, stopCurrentAudio = false)
+            }
+            else -> {
+                Log.d(TAG, "未处理的 control 事件: $event")
+            }
+        }
+    }
+
+    /**
+     * 初始化 Qwen3 ASR/TTS 微服务连接
+     *
+     * 使用 backend-api /api/gateway/join 返回的 WebSocket 地址作为首选；
+     * 未传递时退回 AppConfig（保留原路径以防小范围调用）。
+     */
+    private fun initQwen3Services(
+        sessionId: String,
+        ttsWsUrlOverride: String? = null,
+        asrWsUrlOverride: String? = null,
+        ttsAvailableHint: Boolean? = null,
+        asrAvailableHint: Boolean? = null
+    ) {
+        scope.launch {
+            // ============= TTS 微服务 =============
+            val ttsWsUrl = ttsWsUrlOverride?.takeIf { it.isNotBlank() } ?: AppConfig.ttsServiceWsUrl
+            val ttsAvailable = ttsAvailableHint ?: runCatching {
+                val ttsHealthUrl = "${AppConfig.ttsServiceHttpUrl}/health"
+                val resp = downloadClient.newCall(Request.Builder().url(ttsHealthUrl).build()).execute()
+                val ok = resp.isSuccessful
+                resp.close()
+                ok
+            }.getOrDefault(false)
+
+            if (ttsAvailable) {
+                Log.i(TAG, "Qwen3 TTS 微服务可用，建立 WebSocket 连接: $ttsWsUrl")
+                useQwen3Tts = true
+
+                // 将 DUIX 音频回调桥接给 Qwen3 TTS
+                qwen3Tts.duixAudioSink = duixAudioSink
+
+                qwen3Tts.connect(ttsWsUrl, sessionId)
+
+                launch {
+                    qwen3Tts.playbackProgress.collect { p ->
+                        _ttsPlaybackProgress.value = p
+                    }
+                }
+
+                // 监听实时增量字幕
+                launch {
+                    qwen3Tts.transcriptDelta.collect { delta ->
+                        _transcriptDelta.emit(delta)
+                        // Robust incremental text reconstruction as a fallback for missing initial text
+                        val currentText = _latestDigitalHumanText.value ?: ""
+                        if (delta.text.isNotBlank() && !currentText.endsWith(delta.text)) {
+                            if (currentText.isEmpty()) {
+                                _latestDigitalHumanText.value = delta.text
+                            } else {
+                                // Only append if it's not already there (simple check)
+                                if (!currentText.contains(delta.text)) {
+                                    _latestDigitalHumanText.value = currentText + delta.text
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 监听 TTS 说话状态 → 驱动数字人嘴型
+                launch {
+                    qwen3Tts.mouthRms.collect { rms ->
+                        digitalHumanController?.updateMouthOpenness(rms)
+                    }
+                }
+                // 监听 TTS 说话状态 → 控制录音
+                launch {
+                    qwen3Tts.isSpeaking.collect { speaking ->
+                        if (speaking) {
+                            // TTS 开始播放 → 标记数字人正在说话，清除等待标志
+                            awaitingTtsPlayback = false
+                            micToAsrAllowedAfterElapsedRealtime = Long.MAX_VALUE
+                            _isDigitalHumanSpeaking.value = true
+                            if (vadEnabled) {
+                                bargeInVadDetector.reset()
+                                Log.i(TAG, "🎙️ [FLOW] Qwen3 TTS 播放正式开始 -> 保持采麦以支持 VAD 抢话")
+                                ensureRecordingForBargeIn()
+                            } else {
+                                Log.i(TAG, "🎙️ [FLOW] Qwen3 TTS 播放正式开始 -> 关闭录音（VAD 已关闭）")
+                                stopRecordingInternal()
+                            }
+                        } else {
+                            // TTS 停止播放：只有在没有等待中的新响应时才标记说话结束
+                            if (awaitingTtsPlayback) {
+                                Log.d(TAG, "TTS isSpeaking=false 但仍在等待新响应音频，忽略此处状态重置")
+                                return@collect
+                            }
+
+                            Log.i(TAG, "🎙️ [FLOW] Qwen3 TTS 播报结束")
+                            val wasSpeaking = _isDigitalHumanSpeaking.value
+                            _isDigitalHumanSpeaking.value = false
+                            if (wasSpeaking) {
+                                notifyPlaybackDone("qwen3-tts")
+                            }
+                            if (!_interviewCompleted.value && vadEnabled) {
+                                scheduleResumeListeningAfterSpeakerPlayback()
+                            }
+
+                            if (pendingCompletion) {
+                                Log.i(TAG, "TTS 播报结束，且有待处理的面试完成请求，执行最终完成逻辑")
+                                executeFinalCompletion()
+                            }
+                        }
+                    }
+                }
+                launch {
+                    qwen3Tts.responseDone.collect { responseId ->
+                        Log.i(TAG, "Qwen3 TTS 合成完成: responseId=$responseId")
+                    }
+                }
+            } else {
+                Log.w(TAG, "Qwen3 TTS 微服务不可用，使用火山引擎 TTS")
             }
 
-            // 检查 ASR 微服务是否可用
-            try {
+            // ============= ASR 微服务 =============
+            val asrWsUrl = asrWsUrlOverride?.takeIf { it.isNotBlank() } ?: AppConfig.asrServiceWsUrl
+            val asrAvailable = asrAvailableHint ?: runCatching {
                 val asrHealthUrl = "${AppConfig.asrServiceHttpUrl}/health"
-                val request = Request.Builder().url(asrHealthUrl).build()
-                val response = downloadClient.newCall(request).execute()
-                if (response.isSuccessful) {
-                    Log.i(TAG, "Qwen3 ASR 微服务可用，建立 WebSocket 连接")
-                    useQwen3Asr = true
-                    qwen3Asr.connect(AppConfig.asrServiceWsUrl, sessionId)
+                val resp = downloadClient.newCall(Request.Builder().url(asrHealthUrl).build()).execute()
+                val ok = resp.isSuccessful
+                resp.close()
+                ok
+            }.getOrDefault(false)
 
-                    // 监听完整识别结果 → 自动提交
-                    launch {
-                        qwen3Asr.transcriptionCompleted.collect { result ->
-                            Log.i(TAG, "Qwen3 ASR 识别完成: ${result.text}")
-                            if (result.text.isBlank()) return@collect
-                            val nowRt = SystemClock.elapsedRealtime()
-                            if (nowRt < micToAsrAllowedAfterElapsedRealtime) {
-                                Log.w(TAG, "丢弃 ASR（仍在扬声器/缓冲冷却内）: ${result.text}")
-                                return@collect
-                            }
-                            if (looksLikeAcousticEchoOfLastAvatar(result.text)) {
-                                Log.w(TAG, "丢弃 ASR（与最近面试官字幕高度相似，疑外放回声）: ${result.text}")
-                                return@collect
-                            }
-                            withContext(Dispatchers.Main) {
-                                _partialTranscript.value = result.text
-                            }
-                            // Qwen3 ASR final 已由 asr-service 通过 Redis 发布给 interview-service。
-                            // 客户端只更新字幕，不再回发 text_message，避免同一句回答从 ASR Redis 和 Socket 双入口推进两次。
+            if (asrAvailable) {
+                Log.i(TAG, "Qwen3 ASR 微服务可用，建立 WebSocket 连接: $asrWsUrl")
+                useQwen3Asr = true
+                qwen3Asr.connect(asrWsUrl, sessionId)
+
+                // 监听完整识别结果 → 自动提交
+                launch {
+                    qwen3Asr.transcriptionCompleted.collect { result ->
+                        Log.i(TAG, "Qwen3 ASR 识别完成: ${result.text}")
+                        if (result.text.isBlank()) return@collect
+                        val nowRt = SystemClock.elapsedRealtime()
+                        if (nowRt < micToAsrAllowedAfterElapsedRealtime) {
+                            Log.w(TAG, "丢弃 ASR（仍在扬声器/缓冲冷却内）: ${result.text}")
+                            return@collect
                         }
-                    }
-                    // 监听部分识别 → 更新字幕
-                    launch {
-                        qwen3Asr.partialResult.collect { partial ->
-                            if (partial.isNotEmpty()) {
-                                _partialTranscript.value = partial
-                            }
+                        if (looksLikeAcousticEchoOfLastAvatar(result.text)) {
+                            Log.w(TAG, "丢弃 ASR（与最近面试官字幕高度相似，疑外放回声）: ${result.text}")
+                            return@collect
                         }
+                        withContext(Dispatchers.Main) {
+                            _partialTranscript.value = result.text
+                        }
+                        // Qwen3 ASR final 已由 asr-service 通过 Redis 发布给 interview-service。
+                        // 客户端只更新字幕，不再回发 text_message。
                     }
-                } else {
-                    Log.w(TAG, "Qwen3 ASR 微服务不可用 (code=${response.code})，使用阿里云 ASR")
                 }
-                response.close()
-            } catch (e: Exception) {
-                Log.w(TAG, "Qwen3 ASR 健康检查失败: ${e.message}，使用阿里云 ASR")
+                // 监听部分识别 → 更新字幕
+                launch {
+                    qwen3Asr.partialResult.collect { partial ->
+                        if (partial.isNotEmpty()) {
+                            _partialTranscript.value = partial
+                        }
+                    }
+                }
+            } else {
+                Log.w(TAG, "Qwen3 ASR 微服务不可用，使用阿里云 ASR")
             }
 
             Log.i(TAG, "Qwen3 服务初始化完成 - ASR=${if (useQwen3Asr) "Qwen3" else "Aliyun"}, TTS=${if (useQwen3Tts) "Qwen3" else "Volcano"}")
@@ -921,7 +971,23 @@ class RealtimeVoiceManager(private val context: Context) {
             // 与 stopAllAudio 一致：覆盖所有播音路径；并额外 stopAudio() 停掉 DUIX 文件播放等
             stopAllAudio()
             runCatching { digitalHumanController?.interruptPlayback() }
-            socket?.emit("interrupt")
+
+            // 面试打断改走 REST（替代 socket.emit("interrupt")）
+            val sid = currentSessionId
+            if (sid != null) {
+                scope.launch {
+                    try {
+                        val resp = gatewayApi.interruptInterview(
+                            InterruptRequest(sessionId = sid, reason = "user_interrupt")
+                        )
+                        if (!resp.isSuccessful) {
+                            Log.w(TAG, "interrupt REST 调用失败: code=${resp.code()}")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "interrupt REST 调用异常", e)
+                    }
+                }
+            }
 
             // 设置等待 ack 状态（不立即恢复 ASR）
             isWaitingInterruptAck = true
@@ -2168,13 +2234,24 @@ class RealtimeVoiceManager(private val context: Context) {
 
     private fun notifyPlaybackDone(reason: String) {
         val sessionId = currentSessionId ?: return
-        val payload = JSONObject().apply {
-            put("sessionId", sessionId)
-            put("reason", reason)
-            _currentQuestionIndex.value?.let { put("questionIndex", it) }
+        val questionIndex = _currentQuestionIndex.value
+        Log.d(TAG, "上报播报完成 playback_done(REST) - sessionId=$sessionId, reason=$reason, questionIndex=$questionIndex")
+        scope.launch {
+            try {
+                val resp = gatewayApi.playbackDone(
+                    PlaybackDoneRequest(
+                        sessionId = sessionId,
+                        reason = reason,
+                        questionIndex = questionIndex
+                    )
+                )
+                if (!resp.isSuccessful) {
+                    Log.w(TAG, "playback_done REST 调用失败: code=${resp.code()}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "playback_done REST 调用异常", e)
+            }
         }
-        Log.d(TAG, "上报播报完成 playback_done - sessionId=$sessionId, reason=$reason")
-        socket?.emit("playback_done", payload)
     }
 
     fun submitUserText(text: String) {
