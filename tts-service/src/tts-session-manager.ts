@@ -22,7 +22,7 @@ interface TTSSession {
   charCount: number;
   /** 已发送的音频块数 */
   audioChunkCount: number;
-  state: 'connecting' | 'active' | 'finishing' | 'closed';
+  state: 'connecting' | 'active' | 'suspended' | 'finishing' | 'closed';
   /**
    * 是否已与 DashScope 建立上游连接。
    * 延迟连接：避免客户端建会话后长时间只有「服务端 URL 播放」、无文本上行时触发上游 Idle timeout。
@@ -30,6 +30,7 @@ interface TTSSession {
   dashscopeConnected: boolean;
   /** 并发 append 时共用的上游连接 Promise，避免重复 connect */
   dashscopeConnectPromise: Promise<boolean> | null;
+  suspendedAt?: number;
 }
 
 export interface CreateTTSSessionOptions {
@@ -175,6 +176,35 @@ export class TTSSessionManager {
     }
 
     if (this.sessions.has(sessionId)) {
+      const existing = this.sessions.get(sessionId);
+      if (existing && existing.state === 'suspended') {
+        logger.info(`[TTS-Manager] 恢复挂起的 TTS 会话: ${sessionId}`);
+        existing.clientWs = clientWs;
+        existing.state = 'active';
+        delete existing.suspendedAt;
+        
+        // 重新订阅 Session 和 Control
+        if (this.redisBus) {
+          await this.redisBus.subscribeSession(sessionId);
+          await this.redisBus.subscribeControl(sessionId);
+        }
+
+        // 通知客户端会话已恢复
+        if (clientWs.readyState === WebSocket.OPEN) {
+          try {
+            clientWs.send(JSON.stringify({
+              type: 'session.created',
+              sessionId,
+              message: 'TTS 会话已恢复，可以继续发送文本',
+              isResumed: true,
+            }));
+          } catch (e: any) {
+            logger.warn(`[TTS-Manager] 回送 session.created 失败 (${sessionId}): ${e?.message || e}`);
+          }
+        }
+        await this.replayPendingRedisCommands(sessionId);
+        return sessionId;
+      }
       await this.destroySession(sessionId);
     }
 
@@ -543,12 +573,18 @@ export class TTSSessionManager {
     this.sendToClient(sessionId, {
       type: 'tts.interrupt_ack',
       sessionId,
+      charCount: session.charCount,
+      audioChunkCount: session.audioChunkCount,
       timestamp: Date.now(),
     });
-    logger.info(`[TTS-Manager] 中断确认已发送 (${sessionId})`);
+    logger.info(`[TTS-Manager] 中断确认已发送 (${sessionId}) - chars=${session.charCount} chunks=${session.audioChunkCount}`);
 
     // 通过 Redis 通知 interview-service 中断已完成
-    this.publishEvent(sessionId, 'interrupt_ack', { timestamp: Date.now() });
+    this.publishEvent(sessionId, 'interrupt_ack', {
+      charCount: session.charCount,
+      audioChunkCount: session.audioChunkCount,
+      timestamp: Date.now(),
+    });
   }
 
   /**
@@ -664,5 +700,26 @@ export class TTSSessionManager {
       charCount: s.charCount,
       audioChunks: s.audioChunkCount,
     }));
+  }
+
+  /**
+   * 将会话置于挂起状态（弱网断连宽限期），启动 30 秒倒计时清理
+   */
+  async suspendSession(sessionId: string): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.state !== 'active') return;
+
+    session.state = 'suspended';
+    const timestamp = Date.now();
+    session.suspendedAt = timestamp;
+    logger.info(`[TTS-Manager] TTS 会话 ${sessionId} 已挂起（进入 30 秒重连宽限期）`);
+
+    setTimeout(async () => {
+      const current = this.sessions.get(sessionId);
+      if (current && current.state === 'suspended' && current.suspendedAt === timestamp) {
+        logger.info(`[TTS-Manager] TTS 会话 ${sessionId} 宽限期满未重连，执行销毁`);
+        await this.destroySession(sessionId);
+      }
+    }, 30000);
   }
 }

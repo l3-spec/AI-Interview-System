@@ -7,12 +7,32 @@ initServiceLogger('asr-service');
 import http from 'http';
 import express from 'express';
 import cors from 'cors';
+import crypto from 'crypto';
 import { WebSocketServer } from 'ws';
 import { ASRSessionManager } from './asr-session-manager';
 import { RedisEventBus } from './redis-event-bus';
 import { serviceDiscoveryService } from './service-discovery.service';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from './logger';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'ai-interview-system-default-secret';
+
+/**
+ * 校验客户端直连 ASR/TTS 服务的临时签名 Token
+ */
+function verifySessionToken(sessionId: string, token: string): boolean {
+  if (!token) return false;
+  const parts = token.split('.');
+  if (parts.length !== 2) return false;
+  const [expireTimeStr, signature] = parts;
+  const expireTime = parseInt(expireTimeStr, 10);
+  if (isNaN(expireTime) || Date.now() > expireTime) {
+    return false; // 已过期
+  }
+  const message = `${sessionId}:${expireTime}`;
+  const expectedSignature = crypto.createHmac('sha256', JWT_SECRET).update(message).digest('hex');
+  return signature === expectedSignature;
+}
 
 const serviceId = `asr-${uuidv4().slice(0, 8)}`;
 const SERVICE_URL = process.env.ASR_SERVICE_EXTERNAL_URL || `ws://localhost:${process.env.ASR_SERVICE_PORT || '3002'}/ws/asr`;
@@ -138,8 +158,42 @@ wss.on('connection', (ws, req) => {
       switch (message.type) {
         case 'session.create': {
           const config = message.config || {};
+          const token = message.sessionToken;
           // 记录一次会话创建请求（无论成功失败都计入 totalRequests）
           metrics.recordRequest();
+          
+          if (!message.sessionId) {
+            metrics.recordError();
+            ws.send(JSON.stringify({ type: 'error', code: 'INVALID_SESSION', message: '缺少 sessionId' }));
+            ws.close(4002, 'Invalid Session');
+            break;
+          }
+
+          const requireAuth = process.env.REQUIRE_SESSION_TOKEN_AUTH === 'true';
+          if (!token) {
+            logger.warn(`⚠️ [ASR] 客户端连接未携带 sessionToken! (sessionId=${message.sessionId})。当前环境已放行，生产环境请开启 REQUIRE_SESSION_TOKEN_AUTH 强制拦截。`);
+            if (requireAuth) {
+              metrics.recordError();
+              ws.send(JSON.stringify({
+                type: 'error',
+                code: 'UNAUTHORIZED',
+                message: '直连 ASR 鉴权失败：缺少必要的 sessionToken',
+              }));
+              ws.close(4001, 'Unauthorized');
+              break;
+            }
+          } else if (!verifySessionToken(message.sessionId, token)) {
+            metrics.recordError();
+            logger.warn(`[ASR] 鉴权 Token 校验不匹配: sessionId=${message.sessionId}, token=${token}`);
+            ws.send(JSON.stringify({
+              type: 'error',
+              code: 'UNAUTHORIZED',
+              message: '直连 ASR 鉴权失败：无效或已过期的 sessionToken',
+            }));
+            ws.close(4001, 'Unauthorized');
+            break;
+          }
+
           try {
             sessionId = await sessionManager.createSession(ws, {
               sessionId: message.sessionId,
@@ -255,8 +309,8 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => {
     logger.info(`[ASR] 客户端断开: ${clientIp}`);
     if (sessionId) {
-      sessionManager.destroySession(sessionId).catch(err => {
-        logger.error(`[ASR] 清理会话失败: ${err.message}`);
+      sessionManager.suspendSession(sessionId).catch(err => {
+        logger.error(`[ASR] 挂起会话失败: ${err.message}`);
       });
     }
   });

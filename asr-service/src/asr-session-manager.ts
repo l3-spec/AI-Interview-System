@@ -15,7 +15,8 @@ interface ASRSession {
   createdAt: Date;
   /** 累计已发送的音频时长(ms)估算 */
   audioMs: number;
-  state: 'connecting' | 'active' | 'finishing' | 'closed';
+  state: 'connecting' | 'active' | 'suspended' | 'finishing' | 'closed';
+  suspendedAt?: number;
 }
 
 export interface CreateSessionOptions {
@@ -118,8 +119,30 @@ export class ASRSessionManager {
       throw new Error(validation.error);
     }
 
-    // 幂等检测：如果已存在相同 sessionId 的会话，先销毁旧的
+    // 幂等检测：如果已存在相同 sessionId 的会话
     if (this.sessions.has(sessionId)) {
+      const existing = this.sessions.get(sessionId);
+      if (existing && existing.state === 'suspended') {
+        logger.info(`[ASR-Manager] 恢复挂起的 ASR 会话: ${sessionId}`);
+        existing.clientWs = clientWs;
+        existing.state = 'active';
+        delete existing.suspendedAt;
+        
+        // 通知客户端会话已恢复
+        if (clientWs.readyState === WebSocket.OPEN) {
+          try {
+            clientWs.send(JSON.stringify({
+              type: 'session.created',
+              sessionId,
+              message: 'ASR 会话已恢复，可以继续发送音频数据',
+              isResumed: true,
+            }));
+          } catch (e: any) {
+            logger.warn(`[ASR-Manager] 回送 session.created 失败 (${sessionId}): ${e?.message || e}`);
+          }
+        }
+        return sessionId;
+      }
       logger.warn(`[ASR-Manager] 检测到重复 sessionId: ${sessionId}, 先销毁旧会话`);
       await this.destroySession(sessionId);
     }
@@ -407,5 +430,26 @@ export class ASRSessionManager {
       createdAt: s.createdAt,
       audioMs: Math.round(s.audioMs),
     }));
+  }
+
+  /**
+   * 将会话置于挂起状态（弱网断连宽限期），启动 30 秒倒计时清理
+   */
+  async suspendSession(sessionId: string): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.state !== 'active') return;
+
+    session.state = 'suspended';
+    const timestamp = Date.now();
+    session.suspendedAt = timestamp;
+    logger.info(`[ASR-Manager] ASR 会话 ${sessionId} 已挂起（进入 30 秒重连宽限期）`);
+
+    setTimeout(async () => {
+      const current = this.sessions.get(sessionId);
+      if (current && current.state === 'suspended' && current.suspendedAt === timestamp) {
+        logger.info(`[ASR-Manager] ASR 会话 ${sessionId} 宽限期满未重连，执行销毁`);
+        await this.destroySession(sessionId);
+      }
+    }, 30000);
   }
 }

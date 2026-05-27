@@ -1,5 +1,6 @@
 import { Server } from 'socket.io';
 import Redis from 'ioredis';
+import crypto from 'crypto';
 import { redisStreamService } from '../services/redis-stream.service';
 import { serviceDiscoveryService } from '../services/service-discovery.service';
 import { redisConnection } from '../config/redis';
@@ -7,6 +8,17 @@ import { getMergedPlatformAiConfig } from '../services/platformAiSettings.servic
 import { qwen3ASRClient } from '../services/qwen3-asr-service-client';
 import { qwen3TTSClient } from '../services/qwen3-tts-service-client';
 import { v4 as uuidv4 } from 'uuid';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'ai-interview-system-default-secret';
+
+/**
+ * 为直连 ASR/TTS 服务的客户端生成临时签名 Token
+ */
+function generateSessionToken(sessionId: string, expireTime: number): string {
+  const message = `${sessionId}:${expireTime}`;
+  const signature = crypto.createHmac('sha256', JWT_SECRET).update(message).digest('hex');
+  return `${expireTime}.${signature}`;
+}
 
 export class RealtimeVoiceWebSocketServer {
   private io: Server;
@@ -210,6 +222,21 @@ export class RealtimeVoiceWebSocketServer {
         }
       });
 
+      socket.on('client_ready', async (data: { sessionId: string }) => {
+        try {
+          const { sessionId } = data;
+          if (!sessionId) return;
+          console.log(`✅ [Gateway] 收到客户端 client_ready 通知: ${sessionId}`);
+          this.publishInbound({
+            type: 'CLIENT_READY',
+            sessionId,
+            socketId: socket.id
+          });
+        } catch (error: any) {
+          console.error('[Gateway] 处理 client_ready 失败:', error);
+        }
+      });
+
       socket.on('text_message', async (data: { sessionId: string; text: string }) => {
         const { sessionId, text } = data;
         if (!text || !text.trim()) return;
@@ -252,6 +279,10 @@ export class RealtimeVoiceWebSocketServer {
 
       socket.on('get_service_config', async (data: { sessionId?: string }) => {
         try {
+          const sessionId = data?.sessionId || uuidv4();
+          const expireTime = Date.now() + 30 * 60 * 1000; // 30分钟有效
+          const sessionToken = generateSessionToken(sessionId, expireTime);
+
           // Dynamic service discovery
           const bestAsr = await serviceDiscoveryService.getBestService('asr');
           const bestTts = await serviceDiscoveryService.getBestService('tts');
@@ -259,7 +290,8 @@ export class RealtimeVoiceWebSocketServer {
           const ai = await getMergedPlatformAiConfig();
 
           socket.emit('service_config', {
-            sessionId: data?.sessionId,
+            sessionId,
+            sessionToken,
             asr: {
               wsUrl: bestAsr?.url || qwen3ASRClient.getWebSocketUrl(),
               available: !!bestAsr,
@@ -279,12 +311,17 @@ export class RealtimeVoiceWebSocketServer {
 
       socket.on('get_qwen3_config', async (data: { sessionId?: string }) => {
         try {
+          const sessionId = data?.sessionId || uuidv4();
+          const expireTime = Date.now() + 30 * 60 * 1000;
+          const sessionToken = generateSessionToken(sessionId, expireTime);
+
           const asrWsUrl = qwen3ASRClient.getWebSocketUrl();
           const ttsWsUrl = qwen3TTSClient.getWebSocketUrl();
           const ai = await getMergedPlatformAiConfig();
 
           socket.emit('qwen3_config', {
-            sessionId: data?.sessionId,
+            sessionId,
+            sessionToken,
             asr: {
               wsUrl: asrWsUrl,
               available: true,
