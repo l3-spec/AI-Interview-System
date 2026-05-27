@@ -5,7 +5,7 @@ require('dotenv').config();
 
 async function runMigration() {
   // 从 DATABASE_URL 解析连接信息
-  const dbUrl = process.env.DATABASE_URL || 'mysql://root:zhiyun100@db.ks.qfpek.com:3306/ai_interview_db';
+  const dbUrl = process.env.DATABASE_URL || 'mysql://root:zhiyun100@db.s.relinktech.cn:3306/ai_interview_db';
   const urlMatch = dbUrl.match(/mysql:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/(.+)/);
   
   if (!urlMatch) {

@@ -22,7 +22,7 @@ async function test() {
   const prisma = new PrismaClient({
     datasources: {
       db: {
-        url: "mysql://ai_interview_db:6BiFhGL7tG4r46Dz@db.ks.qfpek.com:3306/ai_interview_db?connection_limit=1"
+        url: "mysql://ai_interview_db:6BiFhGL7tG4r46Dz@db.s.relinktech.cn:3306/ai_interview_db?connection_limit=1"
       }
     }
   });
