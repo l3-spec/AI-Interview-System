@@ -67,7 +67,7 @@ export async function getMergedPlatformAiConfig(): Promise<MergedPlatformAiConfi
         process.env.QWEN_TTS_MODEL ||
         'qwen3-tts-flash-realtime,qwen3-tts-flash-realtime-2025-11-27,qwen3-tts-flash-realtime-2025-09-18,qwen3-tts-flash-2025-09-18,qwen3-tts-flash-2025-11-27,qwen3-tts-flash'
       ).trim(),
-    ttsVoice: trimStr(db.ttsVoice) || (process.env.TTS_VOICE || 'Cherry').trim(),
+    ttsVoice: trimStr(db.ttsVoice) || (process.env.TTS_VOICE || 'Ethan').trim(),
     ttsLanguage: trimStr(db.ttsLanguage) || (process.env.TTS_LANGUAGE || 'Chinese').trim(),
     deepseekApiKey:
       trimStr(db.deepseekApiKey) ||

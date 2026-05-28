@@ -71,8 +71,10 @@ extern "C" {
 
   JNIEXPORT jint JNICALL Java_ai_guiji_duix_DuixNcnn_free(JNIEnv *env, jobject thiz,jint taskid){
     if(g_taskid==taskid){
-      dhduix_free(g_digit);
-      g_digit = nullptr;
+      if(g_digit){
+        dhduix_free(g_digit);
+        g_digit = nullptr;
+      }
     }
     return 0;
   }

@@ -49,14 +49,16 @@ export class Qwen3TTSServiceClient {
     }
 
     try {
-      this.publisher = new Redis(redisUrl, {
-        maxRetriesPerRequest: null,
+      const retryOpts = {
+        maxRetriesPerRequest: 3,
+        retryStrategy: (times: number) => {
+          if (times > 5) return null; // 5 次后停止重试
+          return Math.min(times * 1000, 5000);
+        },
         lazyConnect: true,
-      });
-      this.subscriber = new Redis(redisUrl, {
-        maxRetriesPerRequest: null,
-        lazyConnect: true,
-      });
+      };
+      this.publisher = new Redis(redisUrl, retryOpts);
+      this.subscriber = new Redis(redisUrl, retryOpts);
 
       this.publisher.on('error', (err) => console.error(`[TTS-Client Publisher] Redis Error: ${err.message}`));
       this.subscriber.on('error', (err) => console.error(`[TTS-Client Subscriber] Redis Error: ${err.message}`));

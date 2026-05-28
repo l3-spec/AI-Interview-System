@@ -8,6 +8,11 @@ const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefi
 
 export const prisma: PrismaClient = globalForPrisma.prisma ?? new PrismaClient();
 
+// 监听 Prisma 客户端级别的错误事件，防止未捕获的错误导致进程崩溃
+(prisma as any).$on('error', (e: any) => {
+  console.error('[Prisma] 客户端错误:', e?.message || e);
+});
+
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
 }

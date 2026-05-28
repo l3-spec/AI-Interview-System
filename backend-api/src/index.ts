@@ -1,6 +1,24 @@
 import { initServiceLogger, logEmitter } from './utils/service-logger';
 initServiceLogger('backend-api');
 
+// ────────────────────────────────────────────────
+// 全局异常兜底：防止未捕获的异常/拒绝导致进程崩溃
+// ────────────────────────────────────────────────
+process.on('uncaughtException', (err: Error) => {
+  console.error('❌ [FATAL] uncaughtException:', err.message);
+  console.error(err.stack);
+  // 不退出进程，让 nodemon/pm2/Docker 的重启策略决定是否重启
+});
+
+process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
+  const msg = reason instanceof Error ? reason.message : String(reason);
+  console.error('❌ [FATAL] unhandledRejection:', msg);
+  if (reason instanceof Error && reason.stack) {
+    console.error(reason.stack);
+  }
+  // 不退出进程，避免瞬时网络抖动引发雪崩式重启
+});
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -164,7 +182,13 @@ function setupServiceLogsPush() {
       const Redis = require('ioredis');
       const redisSub = new Redis(redisUrl, {
         maxRetriesPerRequest: 3,
-        retryStrategy: (times: number) => Math.min(times * 200, 3000),
+        retryStrategy: (times: number) => {
+          if (times > 10) {
+            console.warn(`[Redis] 日志订阅已重连 ${times} 次，停止重试`);
+            return null;
+          }
+          return Math.min(times * 500, 5000);
+        },
         lazyConnect: true,
       });
 
@@ -180,6 +204,8 @@ function setupServiceLogsPush() {
           } else {
             console.log('[Redis] 已成功订阅日志频道 system:service_logs');
           }
+        }).catch((err: any) => {
+          console.warn('[Redis] subscribe 失败:', err.message);
         });
       }).catch((err: any) => {
         console.warn('[Redis] 日志订阅 Redis 连接失败:', err.message);
@@ -309,7 +335,7 @@ httpServer.listen(PORT, async () => {
   // 启动子服务管理器
   try {
     const { serviceSupervisor } = require('./services/service-supervisor');
-    serviceSupervisor.startAll();
+    await serviceSupervisor.startAll();
   } catch (e: any) {
     console.warn('⚠️ ServiceSupervisor 启动失败:', e?.message || e);
   }

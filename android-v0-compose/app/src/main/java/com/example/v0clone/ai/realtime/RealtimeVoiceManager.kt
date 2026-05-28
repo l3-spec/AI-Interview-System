@@ -381,6 +381,9 @@ class RealtimeVoiceManager(private val context: Context) {
     private val _interviewCompleted = MutableStateFlow(false)
     val interviewCompleted: StateFlow<Boolean> = _interviewCompleted.asStateFlow()
 
+    private val _isInterviewCompletedSuccessfully = MutableStateFlow(true)
+    val isInterviewCompletedSuccessfully: StateFlow<Boolean> = _isInterviewCompletedSuccessfully.asStateFlow()
+
     private val _currentQuestionIndex = MutableStateFlow<Int?>(null)
     val currentQuestionIndex: StateFlow<Int?> = _currentQuestionIndex.asStateFlow()
 
@@ -491,6 +494,7 @@ class RealtimeVoiceManager(private val context: Context) {
             currentBackground = background
             _connectionState.value = ConnectionState.CONNECTING
             _interviewCompleted.value = false
+            _isInterviewCompletedSuccessfully.value = true
             _interviewStarted.value = false
             _totalQuestions.value = null
             playedTextHashes.clear()
@@ -573,22 +577,30 @@ class RealtimeVoiceManager(private val context: Context) {
                 _interviewStarted.value = true
                 _totalQuestions.value = totalQuestions
                 _interviewCompleted.value = false
+                _isInterviewCompletedSuccessfully.value = true
             }
             "question_start" -> {
                 val questionIndex = data.optInt("questionIndex", -1)
                 val timeLimit = data.optInt("timeLimit", 300)
                 val isLast = data.optBoolean("isLast", false)
-                Log.i(TAG, "第 ${questionIndex + 1} 题开始, 限时 ${timeLimit}s, 最后一题: $isLast")
+                val questionText = data.optString("text", "")
+                Log.i(TAG, "第 ${questionIndex + 1} 题开始, 限时 ${timeLimit}s, 最后一题: $isLast, 题目文本: ${questionText.take(30)}")
                 if (questionIndex >= 0) {
                     _currentQuestionIndex.value = questionIndex
                 }
                 if (timeLimit > 0) {
                     _timeLimit.value = timeLimit
                 }
+                // KTV 字幕：如果 question_start 携带了题目文本，提前设置供字幕立即显示
+                if (questionText.isNotBlank() && _latestDigitalHumanText.value.isNullOrBlank()) {
+                    _latestDigitalHumanText.value = questionText
+                }
             }
             "interview_ended" -> {
                 val reason = data.optString("reason", "completed")
-                Log.i(TAG, "面试结束: $reason")
+                val isCompleted = data.optBoolean("isCompleted", true)
+                Log.i(TAG, "面试结束: $reason, isCompleted: $isCompleted")
+                _isInterviewCompletedSuccessfully.value = isCompleted
                 markInterviewCompleted("control-${reason}", speakFarewell = false, stopCurrentAudio = false)
             }
             "interview_error" -> {
@@ -596,6 +608,7 @@ class RealtimeVoiceManager(private val context: Context) {
                 val msg = data.optString("message")
                 Log.e(TAG, "面试异常: $reason - $msg")
                 _errors.tryEmit(msg.ifBlank { reason }.ifBlank { "面试异常" })
+                _isInterviewCompletedSuccessfully.value = false
                 markInterviewCompleted("control-error", speakFarewell = false, stopCurrentAudio = false)
             }
             else -> {
@@ -659,6 +672,14 @@ class RealtimeVoiceManager(private val context: Context) {
                                 }
                             }
                         }
+                    }
+                }
+
+                // KTV 字幕：监听完整文本下发（subtitle_text 控制消息），立即设置全文供字幕显示
+                launch {
+                    qwen3Tts.subtitleText.collect { fullText ->
+                        Log.i(TAG, "KTV字幕全文已设置: len=${fullText.length}, text=${fullText.take(30)}...")
+                        _latestDigitalHumanText.value = fullText
                     }
                 }
 
@@ -918,7 +939,7 @@ class RealtimeVoiceManager(private val context: Context) {
                 recorder.startRecording()
                 isRecording = true
                 _isRecordingFlow.value = true
-                _partialTranscript.value = if (vadEnabled) "正在聆听，请开始说话..." else ""
+                _partialTranscript.value = ""
                 // 不再清除 AI 字幕，让面试官最后一句话保持显示，
                 // 直到下一次 voice_response 到来时自然更新
                 
@@ -1065,6 +1086,7 @@ class RealtimeVoiceManager(private val context: Context) {
         awaitingTtsPlayback = false
         micToAsrAllowedAfterElapsedRealtime = 0L
         _interviewCompleted.value = false
+        _isInterviewCompletedSuccessfully.value = true
 
         scope.cancel()
     }
@@ -1079,7 +1101,7 @@ class RealtimeVoiceManager(private val context: Context) {
         var recordingStartTime = System.currentTimeMillis()
         
         Log.d(TAG, "开始VAD智能录音循环 - sessionId=$sessionId")
-        _partialTranscript.value = "正在聆听，请开始说话..."
+        _partialTranscript.value = ""
         
         try {
             while (isRecording) {
@@ -1124,7 +1146,7 @@ class RealtimeVoiceManager(private val context: Context) {
                         when (vadResult.state) {
                             VoiceActivityDetector.State.IDLE -> {
                                 if (!useQwen3Asr) {
-                                    _partialTranscript.value = "正在聆听，请开始说话..."
+                                    _partialTranscript.value = ""
                                 }
                             }
 
@@ -1134,14 +1156,14 @@ class RealtimeVoiceManager(private val context: Context) {
                                     Log.i(TAG, "检测到说话，开始录音缓冲")
                                 }
                                 if (!useQwen3Asr) {
-                                    _partialTranscript.value = "检测到说话，正在录音... (${vadResult.db.toInt()}dB)"
+                                    _partialTranscript.value = ""
                                 }
                             }
 
                             VoiceActivityDetector.State.SPEECH -> {
                                 val durationSec = vadResult.speechDuration / 1000
                                 if (!useQwen3Asr) {
-                                    _partialTranscript.value = "正在录音... ${durationSec}秒 (${vadResult.db.toInt()}dB)"
+                                    _partialTranscript.value = ""
                                     recordedBuffer?.write(buffer, 0, bytesRead)
                                     totalBytes += bytesRead
                                 }
@@ -1154,7 +1176,7 @@ class RealtimeVoiceManager(private val context: Context) {
                             VoiceActivityDetector.State.SPEECH_END -> {
                                 if (!useQwen3Asr) {
                                     Log.i(TAG, "检测到说话结束 - 时长: ${vadResult.speechDuration}ms, 数据: ${totalBytes}字节")
-                                    _partialTranscript.value = "说话结束，正在识别..."
+                                    _partialTranscript.value = ""
                                     isRecording = false
                                     break
                                 }
@@ -1289,7 +1311,7 @@ class RealtimeVoiceManager(private val context: Context) {
             return
         }
         
-        _partialTranscript.value = "正在识别..."
+        _partialTranscript.value = ""
         _isProcessing.value = true
         
         try {

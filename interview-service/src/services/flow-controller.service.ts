@@ -36,8 +36,8 @@ export class InterviewFlowService {
   private readonly QUESTION_REMINDER_TIMEOUT_MS = parseInt(process.env.QUESTION_REMINDER_TIMEOUT_MS || '300000', 10);
   /** 提醒后跳题等待时长（默认 2 分钟） */
   private readonly QUESTION_SKIP_TIMEOUT_MS = parseInt(process.env.QUESTION_SKIP_TIMEOUT_MS || '120000', 10);
-  /** 面试整体最长时长（默认 60 分钟） */
-  private readonly INTERVIEW_MAX_DURATION_MS = parseInt(process.env.INTERVIEW_MAX_DURATION_MS || '3600000', 10);
+  /** 面试整体最长时长（默认 15 分钟） */
+  private readonly INTERVIEW_MAX_DURATION_MS = parseInt(process.env.INTERVIEW_MAX_DURATION_MS || '900000', 10);
 
   /** 单题级超时计时器：sessionId -> { reminderTimer, skipTimer } */
   private questionTimers = new Map<string, { reminderTimer: NodeJS.Timeout | null; skipTimer: NodeJS.Timeout | null }>();
@@ -85,7 +85,7 @@ export class InterviewFlowService {
     return Math.max(0, round.roundNumber - 1);
   }
 
-  private async persistRoundStarted(session: InterviewSession, round: InterviewRound): Promise<void> {
+  async persistRoundStarted(session: InterviewSession, round: InterviewRound): Promise<void> {
     try {
       // 使用事务 + 乐观锁，避免并发场景下覆盖已结束/已取消会话的状态
       await prisma.$transaction(async (tx) => {
@@ -338,6 +338,7 @@ export class InterviewFlowService {
 
     session.userInfo.targetJob = db.jobTarget || session.userInfo.targetJob;
     session.userInfo.background = db.background || session.userInfo.background;
+    session.userInfo.companyTarget = db.companyTarget || undefined;
     session.dbMirror = {
       status: db.status,
       currentQuestion: db.currentQuestion,
@@ -618,31 +619,32 @@ export class InterviewFlowService {
    * 使用DeepSeek AI生成面试内容
    */
   private async generateInterviewContent(session: InterviewSession) {
+    const companyText = session.userInfo.companyTarget ? `\n- 目标公司/企业：${session.userInfo.companyTarget}` : '';
     const prompt = `作为一位专业、公正且严肃的AI面试官（10年资深HR总监形象），请为以下候选人生成一套完整的面试问题：
 
 候选人信息：
 - 姓名：${session.userInfo.name}
-- 目标职位：${session.userInfo.targetJob}
+- 目标职位：${session.userInfo.targetJob}${companyText}
 - 背景：${session.userInfo.background}
 - 经验：${session.userInfo.experience || '未指定'}
 - 技能：${session.userInfo.skills?.join(', ') || '未指定'}
 
 请生成包含以下内容的面试：
-1. 开场介绍（1个问题）
+1. 开场介绍与首个提问（1个问题，结合候选人姓名、职位以及目标公司信息生成一段自然且亲切的面试问候，同时包含第一个正式面试提问。请确保把问候与第一道提问融合在同一个回合内，作为整场面试的第 1 个问题输出）
 2. 专业技能评估（3-4个问题）
 3. 项目经验询问（2个问题）
 4. 行为面试问题（2个问题）
 5. 总结和反问环节（1个问题）
 
 【重要】每个问题请用 [emotion:标签] 标记语气，用于 TTS 情感合成：
-- [emotion:opening] — 开场问候
+- [emotion:opening] — 开场问候与首个提问（仅用于第 1 个问题）
 - [emotion:question] — 正式提问
 - [emotion:challenge] — 压力测试/质疑
 - [emotion:transition] — 话题切换
 - [emotion:closing] — 结束语
 
 示例：
-"[emotion:opening]${session.userInfo.name}您好，欢迎参加今天的面试。我是您的面试官，接下来我们将围绕${session.userInfo.targetJob}这个岗位进行深入交流。"
+"[emotion:opening]${session.userInfo.name}您好，欢迎参加今天应聘${session.userInfo.companyTarget || ''}${session.userInfo.targetJob}的面试。我是您的面试官，很开心与您深入交流。首先，请您结合自身的最突出的工作亮点，谈谈您为什么觉得自己是这个岗位的最佳人选？"
 "[emotion:question]请您详细描述一下您在上一份工作中最有挑战性的项目。"
 
 每个问题后请提供：
@@ -1040,12 +1042,25 @@ ${currentRound.followupCount || 0}
       console.log(`[InterviewFlow] 会话 ${sessionId} 面试结束，原因=${reason}`);
     }
 
-    // 生成总结
-    const summary = await this.generateSummary(session);
+    // 统计已回答（即 completed）且回答不是空或超时未作答的题目数量
+    const validAnswers = session.rounds.filter(
+      r => r.status === 'completed' && r.userResponse && r.userResponse !== '[超时未作答]' && r.userResponse.trim().length > 2
+    ).length;
+
+    // 判定是否真正成功完成
+    const isSuccessfulCompleted = reason === 'normal' && validAnswers > 0;
 
     // 生成并发送结束语
-    const closingResult = await deepseekService.generateClosing(summary);
-    await this.sendToAvatarAndTTS(sessionId, session.userId, closingResult.closing);
+    let closingText = '';
+    let summary = '';
+    if (reason === 'unsuitable') {
+      closingText = '由于检测到您的回答音量较小、背景噪音过大，或内容与本次面试职位极不匹配，我们将暂停本次面试。期待您准备好后再继续。';
+    } else {
+      summary = await this.generateSummary(session);
+      const closingResult = await deepseekService.generateClosing(summary);
+      closingText = closingResult.closing;
+    }
+    await this.sendToAvatarAndTTS(sessionId, session.userId, closingText);
 
     // 停止数字人生命周期
     await avatarService.stopAvatarInstance(sessionId, session.userId);
@@ -1055,7 +1070,8 @@ ${currentRound.followupCount || 0}
       summary,
       reason,
       totalRounds: session.rounds.length,
-      completedRounds: session.rounds.filter(r => r.status === 'completed').length
+      completedRounds: session.rounds.filter(r => r.status === 'completed').length,
+      isCompleted: isSuccessfulCompleted
     };
   }
 
@@ -1103,6 +1119,10 @@ ${currentRound.followupCount || 0}
    */
   isWarmResumeEligible(session: InterviewSession): boolean {
     if (session.rounds.some(r => r.status === 'completed')) {
+      return true;
+    }
+    // 内存判定：如果有任何题目处于进行中，也属于续面
+    if (session.rounds.some(r => r.status === 'in_progress')) {
       return true;
     }
     // 如果已经有生成的题目（即使状态是 PREPARING），且当前不是第0题，也认为是续面

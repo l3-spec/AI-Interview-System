@@ -88,10 +88,9 @@ export class TTSSessionManager {
       };
     }
 
-    // 音色校验（宽松：未知音色回退到默认 Cherry，不直接拒绝）
+    // 音色校验（宽松：未知音色仅记录警告，不强行重置，以支持自定义克隆音色）
     if (config.voice && !TTSSessionManager.VALID_VOICES.includes(config.voice)) {
-      logger.warn(`[TTS-Manager] 未知音色 "${config.voice}", 将使用默认音色 Cherry`);
-      config.voice = 'Cherry';
+      logger.warn(`[TTS-Manager] 未知音色 "${config.voice}"，可能是自定义克隆音色或百炼新支持音色，继续使用`);
     }
 
     // 模式校验
@@ -183,10 +182,14 @@ export class TTSSessionManager {
         existing.state = 'active';
         delete existing.suspendedAt;
         
-        // 重新订阅 Session 和 Control
+        // 重新订阅 Session 和 Control（异步订阅，防止阻塞）
         if (this.redisBus) {
-          await this.redisBus.subscribeSession(sessionId);
-          await this.redisBus.subscribeControl(sessionId);
+          this.redisBus.subscribeSession(sessionId).catch(err => {
+            logger.error(`[TTS-Manager] subscribeSession 异步恢复失败: ${err?.message || err}`);
+          });
+          this.redisBus.subscribeControl(sessionId).catch(err => {
+            logger.error(`[TTS-Manager] subscribeControl 异步恢复失败: ${err?.message || err}`);
+          });
         }
 
         // 通知客户端会话已恢复
@@ -208,7 +211,7 @@ export class TTSSessionManager {
       await this.destroySession(sessionId);
     }
 
-    const resolvedVoice = (options.voice || process.env.TTS_VOICE || 'Cherry').trim();
+    const resolvedVoice = (options.voice || process.env.TTS_VOICE || 'Ethan').trim();
     let resolvedLang = (options.language || process.env.TTS_LANGUAGE || 'zh').trim();
     
     // Map human readable names to ISO codes expected by DashScope
@@ -320,16 +323,24 @@ export class TTSSessionManager {
 
     this.sessions.set(sessionId, session);
     
-    // Subscribe to session-specific outbound channel for signal proxying
+    // Subscribe to session-specific outbound channel for signal proxying（异步订阅，防止阻塞）
     if (this.redisBus) {
-      await this.redisBus.subscribeSession(sessionId);
+      this.redisBus.subscribeSession(sessionId).catch(err => {
+        logger.error(`[TTS-Manager] subscribeSession 异步失败: ${err?.message || err}`);
+      });
       // 同时订阅面试控制消息频道（interview-service → App 的单向控制通道）
-      // 订阅失败不会报错（在 RedisEventBus 内部已吃掉异常），避免影响 TTS 核心功能
-      await this.redisBus.subscribeControl(sessionId);
+      this.redisBus.subscribeControl(sessionId).catch(err => {
+        logger.error(`[TTS-Manager] subscribeControl 异步失败: ${err?.message || err}`);
+      });
     }
     logger.info(
-      `[TTS-Manager] 会话 ${sessionId} 已注册（DashScope 将在首次 append/commit 时按需连接，避免空闲超时）`,
+      `[TTS-Manager] 会话 ${sessionId} 已注册，开始后台异步预热连接 DashScope`,
     );
+
+    // 性能优化：异步预热连接 DashScope，防止在首次发送文字时才连接导致的数秒延迟，显著降低进入页面时的首包播放等待时间。
+    this.ensureDashScopeConnected(session).catch(err => {
+      logger.warn(`[TTS-Manager] 预热连接 DashScope 失败 (sessionId=${sessionId}): ${err?.message || err}`);
+    });
 
     await this.replayPendingRedisCommands(sessionId);
 
@@ -624,8 +635,12 @@ export class TTSSessionManager {
     session.ttsClient.close();
     session.state = 'closed';
     if (this.redisBus) {
-      await this.redisBus.unsubscribeSession(sessionId);
-      await this.redisBus.unsubscribeControl(sessionId);
+      this.redisBus.unsubscribeSession(sessionId).catch(err => {
+        logger.error(`[TTS-Manager] unsubscribeSession 异步失败: ${err?.message || err}`);
+      });
+      this.redisBus.unsubscribeControl(sessionId).catch(err => {
+        logger.error(`[TTS-Manager] unsubscribeControl 异步失败: ${err?.message || err}`);
+      });
     }
     this.sessions.delete(sessionId);
     logger.info(`[TTS-Manager] 会话 ${sessionId} 已销毁`);

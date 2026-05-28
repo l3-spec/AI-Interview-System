@@ -257,6 +257,7 @@ int dhduix_finsession(dhduix_t* dg,uint64_t sessid){
 }
 
 int dhduix_free(dhduix_t* dg){
+  if (!dg) return 0; // 防护：避免空指针崩溃
   dg->running = 0;
   pthread_join(*dg->calcthread, NULL);
   if(dg->slist){

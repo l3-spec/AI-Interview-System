@@ -107,10 +107,16 @@ export class ServiceSupervisor {
     console.log('🔍 [Supervisor] 启动服务健康监控...');
     
     // 首次立即检查一次
-    await this.checkHealthAll();
+    await this.checkHealthAll().catch(err =>
+      console.warn('[Supervisor] 首次健康检查异常:', err?.message || err)
+    );
     
-    // 每 10 秒检查一次
-    setInterval(() => this.checkHealthAll(), 10000);
+    // 每 10 秒检查一次，用 .catch 包裹防止未处理的拒绝导致进程崩溃
+    setInterval(() => {
+      this.checkHealthAll().catch(err =>
+        console.warn('[Supervisor] 健康检查周期异常:', err?.message || err)
+      );
+    }, 10000);
   }
 
   /**

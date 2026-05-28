@@ -96,6 +96,7 @@ import com.xlwl.AiMian.ui.jobs.EditIntentionJobScreen
 import com.xlwl.AiMian.ui.jobs.JobDetailRoute
 import com.xlwl.AiMian.ui.jobs.JobSelectionScreen
 import com.xlwl.AiMian.ui.assessment.InterviewEndScreen
+import com.xlwl.AiMian.ui.assessment.InterviewUnfinishedScreen
 import com.xlwl.AiMian.ui.jobs.JobsScreen
 import com.xlwl.AiMian.ui.assessment.AssessmentCategoryRoute
 import com.xlwl.AiMian.ui.assessment.AssessmentHomeRoute
@@ -1245,19 +1246,25 @@ fun AppNavHost(navController: NavHostController) {
                                     interviewSessionId = data.sessionId,
                                     candidateUserId = currentUserId,
                                     aiInterviewRepository = aiInterviewRepository,
-                                    onInterviewComplete = { sessionId ->
-                                        Log.i("DigitalInterview", "收到面试完成回调，准备跳转。sessionId=$sessionId")
+                                    onInterviewComplete = { sessionId, isCompleted ->
+                                        Log.i("DigitalInterview", "收到面试完成回调，准备跳转。sessionId=$sessionId, isCompleted=$isCompleted")
                                         coroutineScope.launch {
                                             runCatching {
-                                                if (sessionId.isNotBlank()) {
+                                                if (sessionId.isNotBlank() && isCompleted) {
                                                     aiInterviewRepository.complete(sessionId)
                                                 }
                                             }.onFailure { error ->
                                                 Log.w("DigitalInterview", "标记面试完成失败", error)
                                             }
                                         }
-                                        navController.navigate(Routes.INTERVIEW_COMPLETE) {
-                                            popUpTo(Routes.DIGITAL_INTERVIEW) { inclusive = true }
+                                        if (isCompleted) {
+                                            navController.navigate(Routes.INTERVIEW_COMPLETE) {
+                                                popUpTo(Routes.DIGITAL_INTERVIEW) { inclusive = true }
+                                            }
+                                        } else {
+                                            navController.navigate("${Routes.INTERVIEW_UNFINISHED}?sessionId=$sessionId") {
+                                                popUpTo(Routes.DIGITAL_INTERVIEW) { inclusive = true }
+                                            }
                                         }
                                     },
                                     onBack = {
@@ -1282,6 +1289,39 @@ fun AppNavHost(navController: NavHostController) {
                         navController.navigate(Routes.HOME) {
                             popUpTo(Routes.HOME) { inclusive = false }
                             launchSingleTop = true
+                        }
+                    }
+                }
+            )
+        }
+
+        composable(
+            route = "${Routes.INTERVIEW_UNFINISHED}?sessionId={sessionId}",
+            arguments = listOf(
+                navArgument("sessionId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { backStackEntry ->
+            val sessionId = backStackEntry.arguments?.getString("sessionId")
+            InterviewUnfinishedScreen(
+                sessionId = sessionId,
+                onNavigateHome = {
+                    val popped = navController.popBackStack(Routes.HOME, false)
+                    if (!popped) {
+                        navController.navigate(Routes.HOME) {
+                            popUpTo(Routes.HOME) { inclusive = false }
+                            launchSingleTop = true
+                        }
+                    }
+                },
+                onRetry = {
+                    val popped = navController.popBackStack(Routes.PREP, false)
+                    if (!popped) {
+                        navController.navigate(Routes.HOME) {
+                            popUpTo(Routes.HOME) { inclusive = true }
                         }
                     }
                 }

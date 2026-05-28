@@ -15,6 +15,13 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.camera.video.FileOutputOptions
+import androidx.camera.video.Quality
+import androidx.camera.video.QualitySelector
+import androidx.camera.video.Recorder
+import androidx.camera.video.Recording
+import androidx.camera.video.VideoCapture
+import androidx.camera.video.VideoRecordEvent
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -29,6 +36,8 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import com.example.v0clone.config.AppConfig
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,6 +72,10 @@ import com.example.v0clone.model.DimensionScore
 import com.example.v0clone.model.InterviewReport
 import com.example.v0clone.model.MultimodalSummary
 import com.example.v0clone.model.QuestionDetail
+import java.io.File
+import java.util.concurrent.Executors
+import android.widget.Toast
+import kotlinx.coroutines.isActive
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.lazy.LazyColumn
@@ -103,7 +116,7 @@ fun DuixAvatarInterviewScreen(
     candidateUserId: String? = null,
     /** 可选：收到 `candidate_turn_recorded` 后可将本地录像上传并调用 [AiInterviewRepository.uploadConversationTurnVideoFile] */
     aiInterviewRepository: AiInterviewRepository? = null,
-    onInterviewComplete: (sessionId: String) -> Unit = {},
+    onInterviewComplete: (sessionId: String, isCompleted: Boolean) -> Unit = { _, _ -> },
     onBack: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -136,6 +149,15 @@ fun DuixAvatarInterviewScreen(
 
     val scope = rememberCoroutineScope()
 
+    var videoCapture by remember { mutableStateOf<VideoCapture<Recorder>?>(null) }
+    var activeRecording by remember { mutableStateOf<Recording?>(null) }
+    var currentVideoFile by remember { mutableStateOf<File?>(null) }
+    var currentRecordingQuestionIndex by remember { mutableStateOf<Int?>(null) }
+    val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
+
+    // 每一题答题计时器状态
+    var secondsLeft by remember { mutableIntStateOf(0) }
+
     val realtimeVoiceManager = remember(context) { 
         RealtimeVoiceManager(context).apply {
             setVadEnabled(true)
@@ -150,6 +172,130 @@ fun DuixAvatarInterviewScreen(
     val ttsProgress by realtimeVoiceManager.ttsPlaybackProgress.collectAsState()
     val isDhSpeaking by realtimeVoiceManager.isDigitalHumanSpeaking.collectAsState()
     val timeLimit by realtimeVoiceManager.timeLimit.collectAsState()
+    val currentQuestionIndex by realtimeVoiceManager.currentQuestionIndex.collectAsState()
+
+    // 记录是否已收到首包语音（用于首页加载转圈控制）
+    var isFirstVoiceReceived by remember { mutableStateOf(false) }
+
+    // 监听 isDhSpeaking，一旦数字人开始说话（收到并播放第一个语音包），隐藏加载转圈
+    LaunchedEffect(isDhSpeaking) {
+        if (isDhSpeaking) {
+            isFirstVoiceReceived = true
+        }
+    }
+
+
+
+    // 开始录制视频
+    fun startVideoRecording(ctx: Context, questionIndex: Int) {
+        val capture = videoCapture
+        if (capture == null) {
+            Log.w("DuixAvatarScreen", "videoCapture 尚未就绪，无法录像")
+            return
+        }
+        if (activeRecording != null) {
+            Log.d("DuixAvatarScreen", "已有正在进行的录像，忽略")
+            return
+        }
+        
+        try {
+            val outputFile = File.createTempFile(
+                "interview_q_${questionIndex}_",
+                ".mp4",
+                ctx.cacheDir
+            )
+            currentVideoFile = outputFile
+            currentRecordingQuestionIndex = questionIndex
+            
+            val outputOptions = FileOutputOptions.Builder(outputFile).build()
+            
+            activeRecording = capture.output
+                .prepareRecording(ctx, outputOptions)
+                .withAudioEnabled()
+                .start(cameraExecutor) { event ->
+                    when (event) {
+                        is VideoRecordEvent.Finalize -> {
+                            if (event.hasError()) {
+                                Log.e("DuixAvatarScreen", "视频录制失败: ${event.error}")
+                                if (currentVideoFile == outputFile) {
+                                    currentVideoFile = null
+                                    currentRecordingQuestionIndex = null
+                                }
+                            } else {
+                                Log.i("DuixAvatarScreen", "视频录制成功，文件: ${outputFile.absolutePath}")
+                            }
+                        }
+                    }
+                }
+            Log.i("DuixAvatarScreen", "已拉起答题视频录像：questionIndex=$questionIndex")
+        } catch (e: Exception) {
+            Log.e("DuixAvatarScreen", "开始录像出错", e)
+        }
+    }
+
+    // 停止录制视频
+    fun stopVideoRecording() {
+        val r = activeRecording
+        if (r != null) {
+            Log.i("DuixAvatarScreen", "触发停止录像")
+            r.stop()
+            activeRecording = null
+        }
+    }
+
+    // 答题倒计时控制器
+    LaunchedEffect(timeLimit, isDhSpeaking) {
+        val limit = timeLimit
+        if (!isDhSpeaking && limit != null && limit > 0) {
+            secondsLeft = limit
+        } else {
+            secondsLeft = 0
+        }
+    }
+
+    LaunchedEffect(secondsLeft) {
+        if (secondsLeft > 0) {
+            delay(1000L)
+            secondsLeft--
+            if (secondsLeft == 0) {
+                Log.w("DuixAvatarScreen", "答题倒计时结束，强制结束当前题目作答")
+                Toast.makeText(context, "答题时间到，已自动提交并进入下一题", Toast.LENGTH_SHORT).show()
+                
+                // 1. 获取当前已经识别的内容，提交给后端
+                val currentText = realtimeVoiceManager.partialTranscript.value.trim()
+                val textToSubmit = currentText.ifBlank { "[超时未作答]" }
+                
+                // 2. 停止录音与录像
+                realtimeVoiceManager.stopRecording()
+                stopVideoRecording()
+                
+                // 3. 提交答案，触发下一题
+                realtimeVoiceManager.submitUserText(textToSubmit)
+            }
+        }
+    }
+
+    // 客户端防挂起兜底：如果面试总时长超过 20 分钟（1200 秒），自动结束面试
+    LaunchedEffect(Unit) {
+        delay(1200 * 1000L) // 20分钟
+        if (!interviewCompleted) {
+            Log.w("DuixAvatarScreen", "面试达到 20 分钟客户端最大时长限制，强制退出")
+            Toast.makeText(context, "面试已达到最大时长，自动为您结束面试", Toast.LENGTH_LONG).show()
+            realtimeVoiceManager.release()
+            onInterviewComplete(interviewSessionId.orEmpty(), false)
+        }
+    }
+
+    // 视频录制生命周期控制器
+    LaunchedEffect(isDhSpeaking, timeLimit, interviewCompleted) {
+        val limit = timeLimit
+        if (!isDhSpeaking && limit != null && limit > 0 && !interviewCompleted) {
+            val qIdx = currentQuestionIndex ?: 0
+            startVideoRecording(context, qIdx)
+        } else {
+            stopVideoRecording()
+        }
+    }
 
     val avatarController = remember(activity, realtimeVoiceManager) {
         if (activity == null) {
@@ -171,10 +317,23 @@ fun DuixAvatarInterviewScreen(
 
     val isReady = avatarController?.isReady?.collectAsState()?.value ?: false
 
+    // 超时保护兜底：如果连接建立后 15 秒仍未收到首包音频，自动关闭加载转圈，防止网络卡死
+    LaunchedEffect(isReady, connectionState) {
+        if (isReady && connectionState == ConnectionState.CONNECTED) {
+            delay(15000L)
+            if (!isFirstVoiceReceived) {
+                Log.w("DuixAvatarScreen", "等待首包语音超时(15s)，强行关闭加载框进入交互")
+                isFirstVoiceReceived = true
+            }
+        }
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             realtimeVoiceManager.setDigitalHumanController(null)
             realtimeVoiceManager.release()
+            stopVideoRecording()
+            cameraExecutor.shutdown()
         }
     }
 
@@ -185,10 +344,12 @@ fun DuixAvatarInterviewScreen(
         }
     }
 
+    val isCompletedSuccessfully by realtimeVoiceManager.isInterviewCompletedSuccessfully.collectAsState()
+
     LaunchedEffect(interviewCompleted, interviewSessionId) {
         if (interviewCompleted) {
             realtimeVoiceManager.release()
-            onInterviewComplete(interviewSessionId.orEmpty())
+            onInterviewComplete(interviewSessionId.orEmpty(), isCompletedSuccessfully)
         }
     }
 
@@ -199,8 +360,28 @@ fun DuixAvatarInterviewScreen(
             if (ev.sessionId == sid) {
                 Log.i(
                     "DuixAvatarScreen",
-                    "沟通回合已落库 sequence=${ev.sequence} qIdx=${ev.questionIndex} — 录像就绪后可 uploadConversationTurnVideoFile / attachConversationTurnVideoUrl"
+                    "沟通回合已落库 sequence=${ev.sequence} qIdx=${ev.questionIndex}，准备上传临时视频文件"
                 )
+                scope.launch(Dispatchers.IO) {
+                    delay(800) // 延迟等待 CameraX 完成文件落盘并 finalize
+                    val fileToUpload = currentVideoFile
+                    if (fileToUpload != null && fileToUpload.exists() && fileToUpload.length() > 0) {
+                        Log.i("DuixAvatarScreen", "开始上传本地临时视频文件: ${fileToUpload.absolutePath} 绑定 sequence=${ev.sequence}")
+                        val result = repo.uploadConversationTurnVideoFile(
+                            sessionId = sid,
+                            sequence = ev.sequence,
+                            file = fileToUpload
+                        )
+                        result.onSuccess { videoUrl ->
+                            Log.i("DuixAvatarScreen", "视频上传并绑定成功，OSS URL: $videoUrl")
+                            fileToUpload.delete()
+                        }.onFailure { throwable ->
+                            Log.e("DuixAvatarScreen", "视频上传绑定失败: ${throwable.message}", throwable)
+                        }
+                    } else {
+                        Log.w("DuixAvatarScreen", "未找到有效的临时视频文件或文件大小为 0，跳过直传绑定")
+                    }
+                }
             }
         }
     }
@@ -368,7 +549,10 @@ fun DuixAvatarInterviewScreen(
         // Local Camera Video
         Box(modifier = if (isCameraMaximized) MAX_MODIFIER else PIP_MODIFIER) {
             if (hasCameraPermission) {
-                LocalCameraPreview(lifecycleOwner = lifecycleOwner)
+                LocalCameraPreview(
+                    lifecycleOwner = lifecycleOwner,
+                    onVideoCaptureCreated = { videoCapture = it }
+                )
             } else {
                 Box(modifier = Modifier.fillMaxSize().background(Color.DarkGray), contentAlignment = Alignment.Center) {
                     Icon(imageVector = Icons.Default.Person, contentDescription = null, tint = Color.LightGray)
@@ -387,33 +571,63 @@ fun DuixAvatarInterviewScreen(
             Log.d("DuixAvatarScreen", "UI State: displayAIText=${displayAIText?.length ?: 0} chars, isDhSpeaking=$isDhSpeaking, timeLimit=$timeLimit")
         }
         val transcriptDelta by realtimeVoiceManager.transcriptDelta.collectAsState(initial = null)
-        
-        // Track the current highlit index based on transcript deltas
-        var ktvHighlightIndex by remember { mutableStateOf(0) }
-        
-        // Reset or update highlight index when delta arrives
-        LaunchedEffect(transcriptDelta, isDhSpeaking) {
-            if (!isDhSpeaking) {
-                ktvHighlightIndex = 0
-            } else {
+
+        // KTV 字幕：基于时间的进度估算（适用于 DUIX 模式 + transcriptDelta 不可用时）
+        var ktvTimeBasedIndex by remember { mutableStateOf(0) }
+        var ktvSpeakingStartMs by remember { mutableStateOf(0L) }
+        val charsPerSecond = 4.0  // 中文 TTS 平均语速
+
+        // KTV 字幕：当显示文本变化时重置
+        LaunchedEffect(displayAIText) {
+            ktvTimeBasedIndex = 0
+        }
+
+        // KTV 字幕：数字人说话状态变化时处理
+        LaunchedEffect(isDhSpeaking, displayAIText) {
+            if (isDhSpeaking && !displayAIText.isNullOrEmpty()) {
+                ktvSpeakingStartMs = System.currentTimeMillis()
+                ktvTimeBasedIndex = 0
+                val text = displayAIText
+                val estimatedDurationMs = (text.length / charsPerSecond * 1000).toLong()
+                // 定时器循环：每 100ms 推进高亮位置
+                while (isActive && System.currentTimeMillis() - ktvSpeakingStartMs < estimatedDurationMs + 3000) {
+                    kotlinx.coroutines.delay(100)
+                    val elapsedMs = System.currentTimeMillis() - ktvSpeakingStartMs
+                    val estimatedIdx = (elapsedMs / 1000.0 * charsPerSecond).toInt()
+                    ktvTimeBasedIndex = estimatedIdx.coerceIn(0, text.length)
+                }
+            } else if (!isDhSpeaking) {
+                ktvTimeBasedIndex = 0
+            }
+        }
+
+        // KTV 字幕：根据 transcriptDelta 精确校正（如果可用）
+        LaunchedEffect(transcriptDelta) {
+            if (isDhSpeaking) {
                 transcriptDelta?.let { delta ->
-                    // Use the delta text length to advance highlight index
-                    // Note: This is a simplified approach, real KTV might need precise timing
                     val fullText = displayAIText ?: ""
-                    val foundIdx = fullText.indexOf(delta.text, ktvHighlightIndex)
-                    if (foundIdx != -1) {
-                        ktvHighlightIndex = foundIdx + delta.text.length
+                    if (fullText.isNotEmpty() && delta.text.isNotBlank()) {
+                        val foundIdx = fullText.indexOf(delta.text, ktvTimeBasedIndex)
+                        if (foundIdx != -1) {
+                            ktvTimeBasedIndex = foundIdx + delta.text.length
+                        }
                     }
                 }
             }
         }
 
-        // Use either KTV index or linear progress for highlighting
-        val finalHighlightProgress = if (ktvHighlightIndex > 0 && (displayAIText?.length ?: 0) > 0) {
-            ktvHighlightIndex.toFloat() / displayAIText!!.length.toFloat()
+        // 计算最终高亮进度：时间估算为主，ttsProgress 为辅
+        val rawProgress = if (ktvTimeBasedIndex > 0 && (displayAIText?.length ?: 0) > 0) {
+            ktvTimeBasedIndex.toFloat() / displayAIText!!.length.toFloat()
         } else {
             ttsProgress
         }
+        // KTV 字幕：平滑动画过渡
+        val finalHighlightProgress by animateFloatAsState(
+            targetValue = if (isDhSpeaking) rawProgress.coerceIn(0f, 1f) else 1f,
+            animationSpec = tween(durationMillis = 120, easing = LinearEasing),
+            label = "ktv_highlight_progress"
+        )
 
         // Real-time Subtitles Overlay (bottom area) — 仅在有字幕内容时才显示，避免空透明黑条
         val showUserSubtitle = userTranscript.isNotBlank() && userTranscript != "正在聆听，请开始说话..."
@@ -466,10 +680,11 @@ fun DuixAvatarInterviewScreen(
                         }
                                 
                         // Circular Countdown
-                        if (showCountdown) {
+                        if (showCountdown && secondsLeft > 0) {
                             Spacer(modifier = Modifier.height(16.dp))
                             CircularCountdown(
                                 totalTimeSeconds = timeLimit!!,
+                                secondsLeft = secondsLeft,
                                 modifier = Modifier.size(60.dp)
                             )
                         }
@@ -569,6 +784,17 @@ fun DuixAvatarInterviewScreen(
                     ) {
                         CircularProgressIndicator(color = Color(0xFF00C78A))
                         Text("连接到实时语音服务...", color = Color.White, fontSize = 14.sp)
+                    }
+                }
+            }
+            !isFirstVoiceReceived -> {
+                Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).zIndex(30f), contentAlignment = Alignment.Center) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        CircularProgressIndicator(color = Color(0xFF00C78A))
+                        Text("面试官正在准备题目，请稍候...", color = Color.White, fontSize = 14.sp)
                     }
                 }
             }
@@ -1156,7 +1382,10 @@ private fun DimensionDetailItem(dimension: DimensionScore) {
 }
 
 @Composable
-fun LocalCameraPreview(lifecycleOwner: LifecycleOwner) {
+fun LocalCameraPreview(
+    lifecycleOwner: LifecycleOwner,
+    onVideoCaptureCreated: (VideoCapture<Recorder>?) -> Unit
+) {
     AndroidView(
         factory = { ctx ->
             val previewView = PreviewView(ctx).apply {
@@ -1165,20 +1394,23 @@ fun LocalCameraPreview(lifecycleOwner: LifecycleOwner) {
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
                 scaleType = PreviewView.ScaleType.FILL_CENTER
-                // 关键修正1：强制使用 TextureView (COMPATIBLE 模式)。
-                // 避免与 Aliyun 数字人的 SurfaceView 发生底层窗口争夺导致的黑屏/覆盖问题
                 implementationMode = PreviewView.ImplementationMode.COMPATIBLE
             }
             
-            // 关键修正2：将相机绑定逻辑放在 factory 中，只执行一次。
-            // 原先在 update 中，由于界面的音量动画导致每秒重绘数十次，会疯狂触发 unbindAll/bindToLifecycle
-            // 最终导致系统 Binder 通信过载 (Too many transaction errors) 并引发闪退和黑屏
             val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
             cameraProviderFuture.addListener({
                 val cameraProvider = cameraProviderFuture.get()
                 val preview = Preview.Builder().build().also {
                     it.setSurfaceProvider(previewView.surfaceProvider)
                 }
+                
+                val recorder = Recorder.Builder()
+                    .setQualitySelector(QualitySelector.from(Quality.HD))
+                    .build()
+                val videoCapture = VideoCapture.withOutput(recorder)
+                
+                onVideoCaptureCreated(videoCapture)
+
                 val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
 
                 try {
@@ -1244,52 +1476,63 @@ private fun InterviewerTwoLineSubtitle(
     modifier: Modifier = Modifier
 ) {
     if (fullText.isEmpty()) return
-    
+
     val p = if (isSpeaking) progress.coerceIn(0f, 1f) else 1f
-    
-    // Calculate the reading index
+
+    // 计算当前阅读位置
     val readIdx = (fullText.length * p).roundToInt().coerceIn(0, fullText.length)
-    
-    // Window configuration
-    val maxChars = 44
-    val halfWindow = maxChars / 2
-    
-    // Calculate start and end index to keep readIdx somewhat centered when it exceeds halfWindow
-    var start = max(0, readIdx - halfWindow)
+
+    // 窗口配置：显示更多文字，提供更好的 KTV 滚动体验
+    val maxChars = 80
+    val highlightPositionRatio = 0.35f  // 高亮点保持在窗口 35% 处（视觉偏上）
+
+    // 计算窗口：让 readIdx 保持在窗口的 35% 位置
+    val idealStart = (readIdx - maxChars * highlightPositionRatio).toInt()
+    var start = idealStart.coerceIn(0, max(0, fullText.length - maxChars))
     var end = min(fullText.length, start + maxChars)
-    
-    // Ensure window is always filled if there are enough characters
+
+    // 确保窗口始终填满
     if (end - start < maxChars && fullText.length >= maxChars) {
-        start = end - maxChars
+        start = max(0, end - maxChars)
     }
-    
+
     val windowText = fullText.substring(start, end)
-    val relativeReadIdx = readIdx - start
+    val relativeReadIdx = (readIdx - start).coerceIn(0, windowText.length)
 
     val annotatedString = buildAnnotatedString {
-        withStyle(style = SpanStyle(color = Color(0xFF00C78A))) {
+        // 已读部分：绿色高亮
+        withStyle(style = SpanStyle(color = Color(0xFF00E5A0))) {
             append("面试官: ")
             append(windowText.substring(0, max(0, relativeReadIdx)))
         }
-        withStyle(style = SpanStyle(color = Color.White)) {
-            append(windowText.substring(max(0, relativeReadIdx)))
+        // 当前字：过渡色（微亮白色），提供视觉引导
+        if (relativeReadIdx < windowText.length) {
+            withStyle(style = SpanStyle(color = Color.White.copy(alpha = 0.95f))) {
+                append(windowText.substring(relativeReadIdx, min(relativeReadIdx + 1, windowText.length)))
+            }
+        }
+        // 未读部分：半透明白色
+        if (relativeReadIdx + 1 < windowText.length) {
+            withStyle(style = SpanStyle(color = Color.White.copy(alpha = 0.55f))) {
+                append(windowText.substring(relativeReadIdx + 1))
+            }
         }
     }
 
     Text(
         text = annotatedString,
-        fontSize = 16.sp,
-        lineHeight = 22.sp,
-        maxLines = 2,
-        overflow = TextOverflow.Clip,
-        textAlign = TextAlign.Center,
+        fontSize = 17.sp,
+        lineHeight = 26.sp,
+        maxLines = 4,
+        overflow = TextOverflow.Ellipsis,
+        textAlign = TextAlign.Start,
         fontWeight = FontWeight.Normal,
         modifier = modifier,
         style = TextStyle(
             shadow = Shadow(
-                color = Color.Black.copy(alpha = 0.8f),
-                offset = Offset(2f, 2f),
-                blurRadius = 4f
+                color = Color.Black.copy(alpha = 0.85f),
+                offset = Offset(1f, 2f),
+                blurRadius = 6f
             )
         )
     )
@@ -1298,21 +1541,12 @@ private fun InterviewerTwoLineSubtitle(
 @Composable
 fun CircularCountdown(
     totalTimeSeconds: Int,
+    secondsLeft: Int,
     modifier: Modifier = Modifier
 ) {
-    // 倒计时状态
-    var timeLeft by remember(totalTimeSeconds) { mutableStateOf(totalTimeSeconds) }
-    
-    LaunchedEffect(totalTimeSeconds) {
-        while (timeLeft > 0) {
-            kotlinx.coroutines.delay(1000L)
-            timeLeft--
-        }
-    }
-
     val progress by animateFloatAsState(
-        targetValue = timeLeft.toFloat() / totalTimeSeconds.toFloat(),
-        animationSpec = tween(durationMillis = 1000, easing = LinearEasing),
+        targetValue = secondsLeft.toFloat() / totalTimeSeconds.toFloat(),
+        animationSpec = tween(durationMillis = 500, easing = LinearEasing),
         label = "countdown_progress"
     )
 
@@ -1339,7 +1573,7 @@ fun CircularCountdown(
         }
         
         Text(
-            text = timeLeft.toString(),
+            text = secondsLeft.toString(),
             color = Color.White,
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,

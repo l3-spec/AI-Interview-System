@@ -34,6 +34,7 @@ export interface UserInfo {
   skills?: string[];
   education?: string;
   yearsOfExperience?: number;
+  companyTarget?: string;
 }
 
 export interface InterviewRound {

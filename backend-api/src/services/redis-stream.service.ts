@@ -8,6 +8,10 @@ export class RedisStreamService {
   private constructor() {
     this.redis = new Redis(redisConnection);
     this.redis.on('error', (err) => console.error(`[RedisStream] Redis Error: ${err.message}`));
+    // 显式连接，捕获初始连接失败
+    this.redis.connect().catch((err) => {
+      console.warn(`[RedisStream] 初始连接失败，将在后续命令时自动重连: ${err.message}`);
+    });
   }
 
   public static getInstance(): RedisStreamService {

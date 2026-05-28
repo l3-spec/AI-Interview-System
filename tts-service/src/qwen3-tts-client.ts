@@ -156,15 +156,13 @@ export class Qwen3TTSClient {
     // 核心兜底逻辑：如果用户只配置了一个模型，
     // 且该模型已经欠费或不可用，我们需要确保有备选模型可以轮换。
     const defaultFallbacks = [
-      'qwen3-tts-vd-realtime-2026-01-15',
+      'qwen3-tts-instruct-flash-realtime-2026-01-22',
       'qwen3-tts-flash-realtime-2025-11-27',
-      'qwen3-tts-flash-realtime-2025-09-18',
-      'qwen3-tts-flash-2025-09-18',
-      'qwen3-tts-flash-2025-11-27',
-      'qwen3-tts-flash'
+      'qwen3-tts-flash-realtime-2025-09-18'
     ];
     
-    if (this.models.length <= 1) {
+    const disableFallback = process.env.QWEN_TTS_DISABLE_FALLBACK === 'true';
+    if (!disableFallback && this.models.length <= 1) {
       // 将备选模型追加到列表，除非它们已经存在
       for (const fallback of defaultFallbacks) {
         if (!this.models.includes(fallback)) {
@@ -374,20 +372,22 @@ export class Qwen3TTSClient {
           err.code === 'WS_ERR_INVALID_CONTROL_PAYLOAD_LENGTH' ||
           (typeof err.message === 'string' && err.message.includes('invalid payload length 126'));
 
-        // 连接刚建立就被关闭且不是协议帧解析错误时，才按模型/额度类失败轮换。
-        // invalid control payload 是 DashScope 返回了超长 close reason，真实原因通常在参数校验。
-        if (!isInvalidControlPayload && this.isConnected && (Date.now() - (this.connectTime || 0) < 5000)) {
-          logger.warn(`[Qwen3-TTS] 检测到模型 ${modelName} 疑似额度耗尽（短时间内断开），将全局轮换至下一个模型`);
+        // 无论是普通连接出错，还是由于超长关闭原因（如额度耗尽）导致协议帧解析出错 (isInvalidControlPayload)，
+        // 只要是刚建立连接（5s 内）就被关闭或出错，都应当将其视为当前模型当前不可用，记录失败并触发轮换。
+        if (this.isConnected && (Date.now() - (this.connectTime || 0) < 5000)) {
+          logger.warn(`[Qwen3-TTS] 检测到模型 ${modelName} 无法正常服务（短时间内连接出错/断开），将全局轮换至下一个模型`);
           // 记录失败时间戳并通过互斥锁安全轮换（异步触发，不阻塞 error 回调）
           Qwen3TTSClient.recordModelFailure(modelName);
           Qwen3TTSClient.lastGlobalFailureAt = Date.now();
           Qwen3TTSClient.rotateModelSafely(this.models.length).catch(() => {});
         }
         
-        // 针对 WS_ERR_INVALID_CONTROL_PAYLOAD_LENGTH 错误提供专门的排查建议
+        // 针对 WS_ERR_INVALID_CONTROL_PAYLOAD_LENGTH 错误提供详细的排查诊断引导
         if (isInvalidControlPayload) {
-          logger.error('[Qwen3-TTS] 诊断：DashScope 返回了超长关闭原因，ws 无法解析真实错误。通常是 session.update 参数不被服务端接受。');
-          logger.error(`[Qwen3-TTS] 请检查 .env 或客户端传入参数。当前 voice="${this.config.voice}", language_type="${this.config.language}"`);
+          logger.error('[Qwen3-TTS] 诊断：DashScope 返回了超长关闭原因（超过 125 字节），ws 库由于 RFC 6455 限制无法解析真实错误。');
+          logger.error('此超长关闭原因通常为【模型免费额度已耗尽 (The free tier of the model has been exhausted)】或【session.update 会话配置参数错误】。');
+          logger.error('请到阿里云百炼控制台进行核对：若为额度用尽，请关闭“仅使用免费额度”模式，并确保账号内有充足余额。');
+          logger.error(`[Qwen3-TTS] 当前客户端连接参数: voice="${this.config.voice}", language_type="${this.config.language}"`);
         }
         
         logger.error(`[Qwen3-TTS] 连接参数: url=${url}, model=${modelName}`);
@@ -403,11 +403,12 @@ export class Qwen3TTSClient {
   private sendSessionUpdate(): void {
     // 历史上部分音色在个别地域曾触发 DashScope 报错，仅对仍不稳定的旧名做回退；Neil 等已在百炼 Qwen3 实时 TTS 文档中支持，勿再拦截。
     // 历史上部分音色在个别地域曾触发 DashScope 报错，仅对仍不稳定的旧名做回退
-    const invalidVoices = ['bill', 'george', 'ben', 'steven', 'xiaoxiao', 'siri', 'moon'];
+    const invalidVoices = ['bill', 'george', 'ben', 'steven', 'xiaoxiao', 'siri', 'moon', 'loongdavid_v3', 'loongdavid'];
     if (invalidVoices.includes(this.config.voice.toLowerCase())) {
-      logger.warn(`[Qwen3-TTS] 检测到不合规或未授权的音色: "${this.config.voice}"，强制回退到官方标准音色 "Cherry" 以确保连接通畅。`);
-      this.config.voice = 'Cherry';
+      logger.warn(`[Qwen3-TTS] 检测到不合规或未授权的音色: "${this.config.voice}"，强制回退到官方标准音色 "Ethan" 以确保连接通畅。`);
+      this.config.voice = 'Ethan';
     }
+    // DashScope 要求音色首字母大写（如 Cherry、Ethan、Serena），保持原始大小写
     const safeVoice = this.config.voice;
 
     const sessionConfig: any = {
@@ -420,8 +421,8 @@ export class Qwen3TTSClient {
       language_type: this.config.language,
     };
 
-    // 如果使用 instruct 模型且配置了指令
-    if (this.config.instructions) {
+    // 仅当使用支持 instructions 的 instruct 或 vd 专属模型时，才在 session.update 中注入该控制指令，避免普通模型（如 vc、flash 等）因不兼容该参数报错。
+    if (this.config.instructions && (this.activeModel.includes('instruct') || this.activeModel.includes('vd'))) {
       sessionConfig.instructions = this.config.instructions;
       sessionConfig.optimize_instructions = true;
     }
@@ -514,6 +515,13 @@ export class Qwen3TTSClient {
               data.message ||
               (typeof data.error === 'string' ? data.error : JSON.stringify(data.error ?? data));
             logger.error(`[Qwen3-TTS] DashScope 错误(可读): ${errMsg}`);
+
+            // 核心容错：若合成阶段报错（说明该模型不支持当前配置或存在额度问题），立即将当前模型记为失败，触发冷却轮换
+            const currentModel = this.activeModel;
+            Qwen3TTSClient.recordModelFailure(currentModel);
+            Qwen3TTSClient.lastGlobalFailureAt = Date.now();
+            Qwen3TTSClient.rotateModelSafely(this.models.length).catch(() => {});
+
             this.callbacks.onError(errMsg);
           }
           break;

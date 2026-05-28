@@ -105,6 +105,10 @@ class Qwen3TtsWsClient(
     private val _controlEvents = MutableSharedFlow<InterviewControlEvent>(extraBufferCapacity = 16)
     val controlEvents: SharedFlow<InterviewControlEvent> = _controlEvents.asSharedFlow()
 
+    /** KTV 字幕全文事件（由 subtitle_text 控制消息下发，App 可立即显示全文） */
+    private val _subtitleText = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    val subtitleText: SharedFlow<String> = _subtitleText.asSharedFlow()
+
     /** 是否正在播放音频 */
     private val _isSpeaking = MutableStateFlow(false)
     val isSpeaking: StateFlow<Boolean> = _isSpeaking.asStateFlow()
@@ -118,6 +122,8 @@ class Qwen3TtsWsClient(
     val playbackProgress: StateFlow<Float> = _playbackProgress.asStateFlow()
 
     private var playbackPollJob: Job? = null
+    private var duixProgressJob: Job? = null
+    private var firstAudioChunkTimeMs: Long = 0L
     private var finalUtterancePcmBytes = 0
 
     /**
@@ -298,7 +304,9 @@ class Qwen3TtsWsClient(
     fun resetPlaybackProgress() {
         _playbackProgress.value = 0f
         finalUtterancePcmBytes = 0
+        firstAudioChunkTimeMs = 0L
         stopPlaybackPoll()
+        stopDuixProgressPoll()
     }
 
     // ===================== 内部实现 =====================
@@ -306,6 +314,30 @@ class Qwen3TtsWsClient(
     private fun stopPlaybackPoll() {
         playbackPollJob?.cancel()
         playbackPollJob = null
+    }
+
+    /** DUIX 模式：基于时间估算播放进度（AudioTrack 未启用时的回退方案） */
+    private fun startDuixProgressPoll() {
+        duixProgressJob?.cancel()
+        firstAudioChunkTimeMs = System.currentTimeMillis()
+        duixProgressJob = scope.launch {
+            while (isActive) {
+                kotlinx.coroutines.delay(100)
+                val elapsed = System.currentTimeMillis() - firstAudioChunkTimeMs
+                val bytes = totalPcmBytes
+                if (bytes > 0) {
+                    val totalDurationMs = (bytes.toLong() * 1000) / (sampleRate * 2)
+                    if (totalDurationMs > 0) {
+                        _playbackProgress.value = (elapsed.toFloat() / totalDurationMs).coerceIn(0f, 0.999f)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun stopDuixProgressPoll() {
+        duixProgressJob?.cancel()
+        duixProgressJob = null
     }
 
     private fun startPlaybackPoll() {
@@ -352,7 +384,9 @@ class Qwen3TtsWsClient(
     private fun resetUtterancePlaybackState() {
         _playbackProgress.value = 0f
         finalUtterancePcmBytes = 0
+        firstAudioChunkTimeMs = 0L
         stopPlaybackPoll()
+        stopDuixProgressPoll()
     }
 
     /**
@@ -394,12 +428,8 @@ class Qwen3TtsWsClient(
                     _sessionId.value = sid
                     _state.value = State.SESSION_ACTIVE
                     Log.i(TAG, "TTS 会话已创建: sessionId=$sid")
-                    // 数字人流式 PCM 与本地扬声器二选一，避免同一路 TTS 听感「双重播放」
-                    if (onDuixPcmChunk == null) {
-                        initAudioTrack()
-                    } else {
-                        Log.i(TAG, "已连接数字人流式 PCM，跳过 AudioTrack（仅 DUIX 出声）")
-                    }
+                    // 统一初始化 AudioTrack，数字人流式与本地 AudioTrack 并行发声
+                    initAudioTrack()
                     flushPendingTexts()
                 }
 
@@ -454,12 +484,20 @@ class Qwen3TtsWsClient(
                     _errors.tryEmit(error)
                 }
 
-                // 面试流程控制消息（interview_started / question_start / interview_ended / interview_error）
+                // 面试流程控制消息（interview_started / question_start / interview_ended / interview_error / subtitle_text）
                 "control" -> {
                     val event = json.optString("event")
                     val data = json.optJSONObject("data") ?: JSONObject()
                     if (event.isNotBlank()) {
                         Log.i(TAG, "收到面试控制消息: event=$event, data=$data")
+                        // KTV 字幕：subtitle_text 事件携带完整合成文本，App 立即显示全文
+                        if (event == "subtitle_text") {
+                            val fullText = data.optString("text", "")
+                            if (fullText.isNotBlank()) {
+                                Log.i(TAG, "KTV字幕全文已接收: len=${fullText.length}")
+                                _subtitleText.tryEmit(fullText)
+                            }
+                        }
                         _controlEvents.tryEmit(InterviewControlEvent(event, data))
                     }
                 }
@@ -473,8 +511,6 @@ class Qwen3TtsWsClient(
 
     /**
      * 处理收到的 PCM 音频块
-     * - 若已绑定 [onDuixPcmChunk]：只推数字人，不写 AudioTrack（避免扬声器+数字人双路重音）
-     * - 否则：写入 AudioTrack；并缓存 PCM / RMS 供 DUIX 整段 WAV 等逻辑使用
      */
     private fun processAudioChunk(audioBase64: String) {
         try {
@@ -484,20 +520,6 @@ class Qwen3TtsWsClient(
             val pcmData = Base64.decode(audioBase64, Base64.DEFAULT)
             audioChunkCount++
 
-            // 核心修复：只要设置了数字人回调（onDuixPcmChunk），就绝不使用本地 AudioTrack 播音
-            // 防止 AudioTrack + DUiX 双重播报
-            if (onDuixPcmChunk != null) {
-                if (audioTrack != null) {
-                    try {
-                        audioTrack?.stop()
-                        audioTrack?.release()
-                    } catch (_: Exception) {
-                    }
-                    audioTrack = null
-                    stopPlaybackPoll()
-                    Log.i(TAG, "DETECTED DH SINK: Disabling local AudioTrack playback to prevent double-voice.")
-                }
-            }
 
             ensureDuixStreamStarted()
             try {
@@ -506,19 +528,26 @@ class Qwen3TtsWsClient(
                 Log.e(TAG, "DUIX pushPcm 失败: ${e.message}")
             }
 
-            // 如果没有设置数字人回调，则走本地 AudioTrack 播放。
-            // 注意：这里只初始化播放器，实际写入在下方统一执行一次，避免同一个 PCM chunk 双写导致重复播报。
-            if (onDuixPcmChunk == null) {
+            // 2. 出声播放：使用本地 AudioTrack 播放
+            // 核心修复：如果 onDuixPcmChunk != null，说明设置了数字人口型与播放回调，由 DUIX 发声，
+            // 此时必须释放本地 AudioTrack 并不写数据，以彻底去掉本地多余发声，解决一前一后双重语音的 Bug。
+            if (onDuixPcmChunk != null) {
+                if (audioTrack != null) {
+                    try {
+                        audioTrack?.stop()
+                        audioTrack?.release()
+                    } catch (_: Exception) {}
+                    audioTrack = null
+                    stopPlaybackPoll()
+                }
+                if (audioChunkCount == 1) {
+                    _isSpeaking.value = true
+                    startDuixProgressPoll()
+                }
+            } else {
                 if (audioTrack == null) {
                     initAudioTrack()
                 }
-            }
-            
-            if (onDuixPcmChunk != null) {
-                if (audioChunkCount == 1) {
-                    _isSpeaking.value = true
-                }
-            } else {
                 audioTrack?.let { track ->
                     if (track.playState != AudioTrack.PLAYSTATE_PLAYING) {
                         Log.i(TAG, "AudioTrack 开始播放流式音频 ($sampleRate Hz)")
@@ -711,6 +740,7 @@ class Qwen3TtsWsClient(
     private fun stopAudioPlayback() {
         try {
             stopPlaybackPoll()
+            stopDuixProgressPoll()
             endDuixStream()
             audioTrack?.pause()
             audioTrack?.flush()
@@ -725,6 +755,7 @@ class Qwen3TtsWsClient(
     private fun cleanup() {
         try {
             stopPlaybackPoll()
+            stopDuixProgressPoll()
             endDuixStream()
             audioTrack?.release()
             audioTrack = null

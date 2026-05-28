@@ -24,6 +24,7 @@ object Routes {
     const val DIGITAL_INTERVIEW_CAMERA_TEST = "digitalInterviewCameraTest"
     const val DIGITAL_INTERVIEW_DEVICE_TEST = "digitalInterviewDeviceTest"
     const val INTERVIEW_COMPLETE = "interviewComplete"
+    const val INTERVIEW_UNFINISHED = "interviewUnfinished"
     const val JOB_SELECTION = "jobSelection"
     const val PROFILE_SETTINGS = "profileSettings"
     const val PROFILE_MY_POSTS = "profileMyPosts"
