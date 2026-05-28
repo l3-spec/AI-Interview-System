@@ -1482,8 +1482,41 @@ private fun InterviewerTwoLineSubtitle(
     // 计算当前阅读位置
     val readIdx = (fullText.length * p).roundToInt().coerceIn(0, fullText.length)
 
-    // 窗口配置：显示更多文字，提供更好的 KTV 滚动体验
-    val maxChars = 80
+    // 根据文本总长度动态调整字体、行高、窗口大小与最大行数
+    // 短文本（≤40字）：大字体，少行数；中等文本（≤80字）：标准字体；长文本（>80字）：缩小字体，扩展行数
+    val textLen = fullText.length
+    val dynamicFontSize: Float
+    val dynamicLineHeight: Float
+    val maxChars: Int
+    val maxDisplayLines: Int
+    when {
+        textLen <= 40 -> {
+            dynamicFontSize = 17f
+            dynamicLineHeight = 26f
+            maxChars = 80
+            maxDisplayLines = 3
+        }
+        textLen <= 80 -> {
+            dynamicFontSize = 16f
+            dynamicLineHeight = 24f
+            maxChars = 100
+            maxDisplayLines = 4
+        }
+        textLen <= 120 -> {
+            dynamicFontSize = 14.5f
+            dynamicLineHeight = 22f
+            maxChars = 130
+            maxDisplayLines = 5
+        }
+        else -> {
+            // 超长文本：进一步缩小，保证尽可能多的内容可见
+            dynamicFontSize = 13f
+            dynamicLineHeight = 20f
+            maxChars = 160
+            maxDisplayLines = 6
+        }
+    }
+
     val highlightPositionRatio = 0.35f  // 高亮点保持在窗口 35% 处（视觉偏上）
 
     // 计算窗口：让 readIdx 保持在窗口的 35% 位置
@@ -1521,9 +1554,9 @@ private fun InterviewerTwoLineSubtitle(
 
     Text(
         text = annotatedString,
-        fontSize = 17.sp,
-        lineHeight = 26.sp,
-        maxLines = 4,
+        fontSize = dynamicFontSize.sp,
+        lineHeight = dynamicLineHeight.sp,
+        maxLines = maxDisplayLines,
         overflow = TextOverflow.Ellipsis,
         textAlign = TextAlign.Start,
         fontWeight = FontWeight.Normal,

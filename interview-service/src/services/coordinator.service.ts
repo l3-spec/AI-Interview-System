@@ -197,6 +197,32 @@ export class CoordinatorService {
           const data = JSON.parse(message);
           if (data.event === 'transcription_completed') {
             await this.handleAsrTranscription(data);
+          } else if (data.event === 'speech_started') {
+            // 用户开始说话（VAD 检测到语音活动），立即重置静音超时计时器
+            // 这是解决「用户正在回答但仍然收到催问」的关键：
+            // 不必等到最终识别结果，VAD 触发即刻证明用户并非静默
+            const { sessionId } = data;
+            if (sessionId) {
+              const session = interviewFlowService.getSession(sessionId);
+              if (session && session.runtimePhase === 'listening') {
+                this.clearSilenceDetection(sessionId);
+                this.silenceCounts.delete(sessionId);
+                // 重新启动一个新的静音超时计时器（用户可能中途停顿后又继续说）
+                this.startSilenceDetection(sessionId);
+                console.log(`[Coordinator] ASR speech_started → 重置静音计时器 (${sessionId})`);
+              }
+            }
+          } else if (data.event === 'speech_stopped') {
+            // 用户停止说话但尚未有最终识别结果，重启静音计时器
+            const { sessionId } = data;
+            if (sessionId) {
+              const session = interviewFlowService.getSession(sessionId);
+              if (session && session.runtimePhase === 'listening') {
+                this.clearSilenceDetection(sessionId);
+                this.startSilenceDetection(sessionId);
+                console.log(`[Coordinator] ASR speech_stopped → 重启静音计时器 (${sessionId})`);
+              }
+            }
           }
         } catch (e) {
           console.error('[Coordinator] Error handling ASR message:', e);
