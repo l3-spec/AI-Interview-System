@@ -67,7 +67,13 @@ export async function getMergedPlatformAiConfig(): Promise<MergedPlatformAiConfi
         process.env.QWEN_TTS_MODEL ||
         'qwen3-tts-instruct-flash-realtime-2026-01-22'
       ).trim(),
-    ttsVoice: trimStr(db.ttsVoice) || (process.env.TTS_VOICE || 'Ethan').trim(),
+    ttsVoice: (() => {
+      // 音色白名单 - 只允许 qwen3-tts-instruct-flash-realtime 支持的音色
+      // 防止 DB 残留的旧值（如 loongdavid_v3）导致 DashScope 连接失败
+      const VALID_VOICES = ['Ethan', 'Cherry', 'Serena', 'Chelsie', 'Neil'];
+      const rawVoice = trimStr(db.ttsVoice) || (process.env.TTS_VOICE || 'Ethan').trim();
+      return VALID_VOICES.includes(rawVoice) ? rawVoice : 'Ethan';
+    })(),
     ttsLanguage: trimStr(db.ttsLanguage) || (process.env.TTS_LANGUAGE || 'Chinese').trim(),
     deepseekApiKey:
       trimStr(db.deepseekApiKey) ||

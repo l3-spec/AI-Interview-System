@@ -31,6 +31,10 @@ export class CoordinatorService {
   private silenceCounts = new Map<string, number>();
   private clientReadyTimers = new Map<string, NodeJS.Timeout>();
   private speakingTimers = new Map<string, NodeJS.Timeout>();
+  /** ASR 语音冷却定时器：防止 VAD 过早判定导致追问在用户仍在说话时下发 */
+  private asrCooldownTimers = new Map<string, NodeJS.Timeout>();
+  /** ASR 冷却期间暂存的最新识别文本 */
+  private asrPendingText = new Map<string, string>();
   private readonly SILENCE_TIMEOUT_MS = parseInt(process.env.SILENCE_TIMEOUT_MS || '30000', 10); // 30秒静音超时
 
   // userId:deviceId → sessionId 的映射，用于重连检测
@@ -501,11 +505,28 @@ export class CoordinatorService {
       deviceId: deviceId || undefined,
     });
     
+    // 从数据库查询用户的真实姓名，避免在题目生成中使用硬编码的"面试者"
+    let userName = '面试者';
+    try {
+      if (userId && userId !== 'anonymous') {
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { name: true }
+        });
+        if (user?.name && user.name.trim().length > 0) {
+          userName = user.name.trim();
+          console.log(`[Coordinator] 已解析用户真实名: ${userName} (userId=${userId})`);
+        }
+      }
+    } catch (e: any) {
+      console.warn(`[Coordinator] 查询用户名失败，使用默认“面试者”: ${e?.message || e}`);
+    }
+
     // 初始化面试流服务
     await interviewFlowService.initializeSession(
       sessionId, 
       userId || 'anonymous', 
-      '面试者', 
+      userName, 
       jobPosition || '通用职位',
       background
     );
@@ -858,6 +879,13 @@ export class CoordinatorService {
       }
       this.clearSilenceDetection(sessionId);
       this.clearSpeakingTimeout(sessionId);
+      // 清理 ASR 冷却定时器
+      const cooldownTimer = this.asrCooldownTimers.get(sessionId);
+      if (cooldownTimer) {
+        clearTimeout(cooldownTimer);
+        this.asrCooldownTimers.delete(sessionId);
+      }
+      this.asrPendingText.delete(sessionId);
       this.silenceCounts.delete(sessionId);
 
       // 清理映射
@@ -902,15 +930,38 @@ export class CoordinatorService {
       return;
     }
 
-    console.log(`[Coordinator] ASR 识别完成 (${sessionId}): "${text}"`);
-    const asrStart = Date.now();
-    this.runInQueue(sessionId, async () => {
-      await this.processUserResponse(sessionId, text, 'asr');
-      this.logPerformance('process_asr_response', sessionId, Date.now() - asrStart, {
-        textLength: text.length,
-        source: 'asr',
+    console.log(`[Coordinator] ASR 识别完成 (${sessionId}): "${text.slice(0, 80)}..."`);
+
+    // === 语音冷却机制 ===
+    // ASR VAD 可能在用户短暂停顿时误判为语音结束，导致追问在用户仍在说话时下发。
+    // 收到 transcription_completed 后不立即处理，而是启动 1.5 秒冷却定时器：
+    // - 若冷却期内有新的 ASR 结果到达，重置定时器并以最新文本为准
+    // - 冷却期满（用户确实停止说话）后才真正调用 processUserResponse
+    this.asrPendingText.set(sessionId, text);
+
+    const existingTimer = this.asrCooldownTimers.get(sessionId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+
+    const cooldownMs = 1500; // 1.5 秒语音冷却窗口
+    const timer = setTimeout(async () => {
+      this.asrCooldownTimers.delete(sessionId);
+      const finalText = this.asrPendingText.get(sessionId) || text;
+      this.asrPendingText.delete(sessionId);
+
+      console.log(`[Coordinator] ASR 冷却期满，开始处理回答 (${sessionId}): "${finalText.slice(0, 50)}..."`);
+      const asrStart = Date.now();
+      this.runInQueue(sessionId, async () => {
+        await this.processUserResponse(sessionId, finalText, 'asr');
+        this.logPerformance('process_asr_response', sessionId, Date.now() - asrStart, {
+          textLength: finalText.length,
+          source: 'asr',
+        });
       });
-    });
+    }, cooldownMs);
+
+    this.asrCooldownTimers.set(sessionId, timer);
   }
 
   /**
@@ -1300,6 +1351,14 @@ export class CoordinatorService {
 
   private async emitRoundVoiceResponse(sessionId: string, round: any, transitionText?: string) {
     const session = interviewFlowService.getSession(sessionId);
+
+    // ✅ 【P0 修复】下发新题前先清空 TTS 微服务中本会话的待合成队列，
+    // 防止上一题尚未合成完毕的残留分片与新题混在一起播放（典型表现：第二题音频中夹杂第一题片段）。
+    try {
+      qwen3TTSClient.clearSynthesis(sessionId);
+    } catch (err: any) {
+      console.warn(`[Coordinator] clearSynthesis 调用失败 (可忽略): ${err?.message || err}`);
+    }
 
     // 题目准备就绪：先向 TTS 通道下发 question_start 控制消息，确保 App 先收到控制再收到音频
     const totalRounds = session?.rounds?.length || 5;

@@ -430,7 +430,7 @@ export class DeepseekService {
    */
   private async callDeepseekAPI(
     prompt: string,
-    options?: { timeoutMs?: number; isThinking?: boolean; reasoningEffort?: 'high' | 'max' }
+    options?: { timeoutMs?: number; isThinking?: boolean; reasoningEffort?: 'high' | 'max'; maxTokens?: number }
   ): Promise<DeepseekResponse> {
     const isThinking = options?.isThinking ?? false;
     const model = isThinking ? this.thinkingModel : this.model;
@@ -443,7 +443,7 @@ export class DeepseekService {
           content: prompt,
         },
       ],
-      max_tokens: this.maxTokens,
+      max_tokens: options?.maxTokens || this.maxTokens,
       temperature: isThinking ? undefined : this.temperature,
       stream: false,
     };
@@ -624,6 +624,7 @@ export class DeepseekService {
     try {
       const response = await this.callDeepseekAPI(prompt, {
         timeoutMs: this.longGenerationTimeoutMs,
+        maxTokens: this.maxTokens,
       });
       const content = response.choices[0]?.message?.content || '';
       return { content };

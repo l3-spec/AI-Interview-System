@@ -91,6 +91,19 @@ export class RedisEventBus {
   private applyPlatformAiSettings(message: string): void {
     try {
       const patch = JSON.parse(message) as Record<string, string>;
+
+      // 音色白名单 - 只允许 qwen3-tts-instruct-flash-realtime 支持的音色
+      // 不在白名单内的值（如旧版 loongdavid_v3）会导致 DashScope 连接失败，强制回退为 Ethan
+      const VALID_VOICES = ['Ethan', 'Cherry', 'Serena', 'Chelsie', 'Neil', 'ethan', 'cherry', 'serena', 'chelsie', 'neil'];
+      if (patch.TTS_VOICE || (patch as any).ttsVoice) {
+        const voice = patch.TTS_VOICE || (patch as any).ttsVoice;
+        if (!VALID_VOICES.includes(voice)) {
+          logger.warn(`[Redis] 音色 "${voice}" 不被 qwen3-tts-instruct-flash-realtime 模型支持，强制使用 Ethan`);
+          patch.TTS_VOICE = 'Ethan';
+          if ((patch as any).ttsVoice) (patch as any).ttsVoice = 'Ethan';
+        }
+      }
+
       const keys = [
         'DASHSCOPE_API_KEY',
         'DASHSCOPE_WS_URL',

@@ -67,6 +67,7 @@ import androidx.lifecycle.LifecycleOwner
 import com.xlwl.AiMian.ai.realtime.RealtimeVoiceManager
 import com.xlwl.AiMian.ai.realtime.TranscriptDelta
 import com.xlwl.AiMian.ai.realtime.ConnectionState
+import com.xlwl.AiMian.ai.realtime.ConnectionPhase
 import com.xlwl.AiMian.data.repository.AiInterviewRepository
 import com.xlwl.AiMian.utils.DeviceIdManager
 import com.example.v0clone.model.DimensionScore
@@ -166,6 +167,7 @@ fun DuixAvatarInterviewScreen(
     }
     
     val connectionState by realtimeVoiceManager.connectionState.collectAsState()
+    val connectionPhase by realtimeVoiceManager.connectionPhase.collectAsState()
     val isRecording by realtimeVoiceManager.isRecordingFlow.collectAsState()
     val partialTranscript by realtimeVoiceManager.partialTranscript.collectAsState()
     val _messages by realtimeVoiceManager.conversation.collectAsState()
@@ -342,22 +344,8 @@ fun DuixAvatarInterviewScreen(
 
     val isReady = avatarController?.isReady?.collectAsState()?.value ?: false
 
-    // 超时保护兜底：如果连接建立后 30 秒仍未收到首题音频，自动关闭加载转圈，
-    // 防止后端题目准备异常时用户被卡死在 loading 界面
-    LaunchedEffect(isReady, connectionState) {
-        if (isReady && connectionState == ConnectionState.CONNECTED) {
-            delay(30_000L)
-            if (!isFirstVoiceReceived) {
-                Log.w("DuixAvatarScreen", "等待首题语音超时(30s)，强行关闭加载框进入交互")
-                Toast.makeText(
-                    context,
-                    "题目加载较慢，已为您进入面试界面，请稍候",
-                    Toast.LENGTH_LONG
-                ).show()
-                isFirstVoiceReceived = true
-            }
-        }
-    }
+    // 加载遮罩仅由「数字人开始说话」触发关闭，不做超时兜底，
+    // 确保 App 只在收到真实语音流后才隐藏"面试官准备"提示。
 
     DisposableEffect(Unit) {
         onDispose {
@@ -672,7 +660,8 @@ fun DuixAvatarInterviewScreen(
 
         // Real-time Subtitles Overlay (bottom area) — 仅在有字幕内容时才显示，避免空透明黑条
         val showUserSubtitle = userTranscript.isNotBlank() && userTranscript != "正在聆听，请开始说话..."
-        val showAISubtitle = !displayAIText.isNullOrEmpty()
+        // 字幕仅在语音流到达后才显示（避免 question_start 控制消息先到时提前展示文本）
+        val showAISubtitle = !displayAIText.isNullOrEmpty() && isFirstVoiceReceived
         val showCountdown = !isDhSpeaking && timeLimit != null && (timeLimit ?: 0) > 0 && !interviewCompleted
         
         if (showUserSubtitle || showAISubtitle || showCountdown) {
@@ -817,27 +806,22 @@ fun DuixAvatarInterviewScreen(
                     }
                 }
             }
-            // 连接阶段（含未发起、连接中）：覆盖 DISCONNECTED + CONNECTING 两种状态
-            connectionState != ConnectionState.CONNECTED -> {
-                Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).zIndex(30f), contentAlignment = Alignment.Center) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        CircularProgressIndicator(color = Color(0xFF00C78A))
-                        Text("连接到实时语音服务...", color = Color.White, fontSize = 14.sp)
+            // 首题语音尚未到达前的加载蒙版，根据连接阶段展示不同提示
+            !isFirstVoiceReceived -> {
+                val phaseMessage = remember(connectionPhase) {
+                    when (connectionPhase) {
+                        ConnectionPhase.CONNECTING_TTS -> "连接到实时语音服务..."
+                        ConnectionPhase.CONNECTING_ASR -> "连接到语音实时服务..."
+                        else -> "面试官正在准备面试，请稍后..."
                     }
                 }
-            }
-            // 已连接但首题尚未开始播放：题目准备阶段，loading 继续保持
-            !isFirstVoiceReceived -> {
                 Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).zIndex(30f), contentAlignment = Alignment.Center) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         CircularProgressIndicator(color = Color(0xFF00C78A))
-                        Text("面试官正在准备题目，请稍候...", color = Color.White, fontSize = 14.sp)
+                        Text(phaseMessage, color = Color.White, fontSize = 14.sp)
                     }
                 }
             }
@@ -1574,14 +1558,20 @@ private fun InterviewerTwoLineSubtitle(
         }
     }
 
-    // 优化3：溢出顶替 — 高亮点固定在窗口 35% 处，readIdx 推进时窗口自动前移
-    // 视觉上等价于 LazyColumn.scrollTo(highlightLine)，确保高亮始终在视野内
+    // 滑动窗口：高亮点固定在窗口 35% 处，readIdx 推进时窗口自动前移
+    // 当文本超过窗口容量时，旧文本随着高亮推进被顶出视野
     val highlightPositionRatio = 0.35f
-    val idealStart = (readIdx - maxChars * highlightPositionRatio).toInt()
-    var start = idealStart.coerceIn(0, max(0, fullText.length - maxChars))
-    val end = min(fullText.length, start + maxChars)
-    if (end - start < maxChars && fullText.length >= maxChars) {
-        start = max(0, end - maxChars)
+    val idealStart = (readIdx - (maxChars * highlightPositionRatio).toInt()).coerceIn(0, fullText.length)
+    val start: Int
+    val end: Int
+    if (fullText.length <= maxChars) {
+        // 文本短于窗口，显示全部
+        start = 0
+        end = fullText.length
+    } else {
+        // 文本长于窗口：窗口跟随高亮滑动，到达末尾后锁定显示最后 maxChars 个字符
+        start = idealStart.coerceIn(0, fullText.length - maxChars)
+        end = start + maxChars
     }
 
     val windowText = fullText.substring(start, end)

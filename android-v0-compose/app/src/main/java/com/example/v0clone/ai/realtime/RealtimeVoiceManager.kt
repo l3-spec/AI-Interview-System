@@ -42,6 +42,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -72,6 +73,14 @@ data class CandidateTurnRecorded(
 )
 
 enum class ConnectionState { DISCONNECTED, CONNECTING, CONNECTED }
+
+/** 连接阶段，用于面试页加载蒙版展示不同提示文案 */
+enum class ConnectionPhase {
+    IDLE,
+    CONNECTING_TTS,
+    CONNECTING_ASR,
+    SERVICES_CONNECTED
+}
 
 class RealtimeVoiceManager(private val context: Context) {
     companion object {
@@ -362,6 +371,9 @@ class RealtimeVoiceManager(private val context: Context) {
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
+    private val _connectionPhase = MutableStateFlow(ConnectionPhase.IDLE)
+    val connectionPhase: StateFlow<ConnectionPhase> = _connectionPhase.asStateFlow()
+
     private val _isRecordingFlow = MutableStateFlow(false)
     val isRecordingFlow: StateFlow<Boolean> = _isRecordingFlow.asStateFlow()
 
@@ -499,6 +511,7 @@ class RealtimeVoiceManager(private val context: Context) {
             currentDeviceId = deviceId
             currentJobId = jobId
             _connectionState.value = ConnectionState.CONNECTING
+            _connectionPhase.value = ConnectionPhase.IDLE
             _interviewCompleted.value = false
             _isInterviewCompletedSuccessfully.value = true
             _interviewStarted.value = false
@@ -525,6 +538,7 @@ class RealtimeVoiceManager(private val context: Context) {
             } catch (e: Exception) {
                 Log.e(TAG, "gateway/join 请求异常", e)
                 _connectionState.value = ConnectionState.DISCONNECTED
+                _connectionPhase.value = ConnectionPhase.IDLE
                 _errors.tryEmit(e.message ?: "面试网关调用失败")
                 return@withContext false
             }
@@ -532,6 +546,7 @@ class RealtimeVoiceManager(private val context: Context) {
             if (!response.isSuccessful || response.body()?.success != true) {
                 Log.e(TAG, "gateway/join 失败: code=${response.code()}, body=${response.errorBody()?.string()}")
                 _connectionState.value = ConnectionState.DISCONNECTED
+                _connectionPhase.value = ConnectionPhase.IDLE
                 _errors.tryEmit("面试网关连接失败 (HTTP ${response.code()})")
                 return@withContext false
             }
@@ -546,11 +561,8 @@ class RealtimeVoiceManager(private val context: Context) {
             // 2. 在 TTS 连接前订阅控制事件（面试开始 / 题目推进 / 面试结束）
             registerTtsControlListener()
 
-            // 3. 连接 TTS / ASR WebSocket（复用现有逻辑，地址改为 REST 响应返回的值）
+            // 3. 连接 TTS / ASR WebSocket（顺序连接，连接状态通过 connectionPhase 对外暴露）
             initQwen3Services(sessionId, ttsWsUrl, asrWsUrl, ttsAvailable, asrAvailable)
-
-            // 4. 更新连接状态
-            _connectionState.value = ConnectionState.CONNECTED
 
             true
         } catch (e: Exception) {
@@ -656,8 +668,11 @@ class RealtimeVoiceManager(private val context: Context) {
                 // 将 DUIX 音频回调桥接给 Qwen3 TTS
                 qwen3Tts.duixAudioSink = duixAudioSink
 
+                // 更新连接阶段 → TTS 连接中
+                _connectionPhase.value = ConnectionPhase.CONNECTING_TTS
                 qwen3Tts.connect(ttsWsUrl, sessionId)
 
+                // 先启动所有收集器（并行运行），再等待连接建立
                 launch {
                     qwen3Tts.playbackProgress.collect { p ->
                         _ttsPlaybackProgress.value = p
@@ -742,6 +757,11 @@ class RealtimeVoiceManager(private val context: Context) {
                         Log.i(TAG, "Qwen3 TTS 合成完成: responseId=$responseId")
                     }
                 }
+
+                // 等待 TTS WebSocket 连接建立（CONNECTED 或 SESSION_ACTIVE）
+                Log.i(TAG, "等待 TTS WebSocket 连接就绪...")
+                qwen3Tts.state.first { it == Qwen3TtsWsClient.State.CONNECTED || it == Qwen3TtsWsClient.State.SESSION_ACTIVE }
+                Log.i(TAG, "TTS WebSocket 已就绪")
             } else {
                 Log.w(TAG, "Qwen3 TTS 微服务不可用，使用火山引擎 TTS")
             }
@@ -759,8 +779,12 @@ class RealtimeVoiceManager(private val context: Context) {
             if (asrAvailable) {
                 Log.i(TAG, "Qwen3 ASR 微服务可用，建立 WebSocket 连接: $asrWsUrl")
                 useQwen3Asr = true
+
+                // 更新连接阶段 → ASR 连接中
+                _connectionPhase.value = ConnectionPhase.CONNECTING_ASR
                 qwen3Asr.connect(asrWsUrl, sessionId)
 
+                // 先启动所有收集器，再等待连接建立
                 // 监听完整识别结果 → 自动提交
                 launch {
                     qwen3Asr.transcriptionCompleted.collect { result ->
@@ -790,10 +814,18 @@ class RealtimeVoiceManager(private val context: Context) {
                         }
                     }
                 }
+
+                // 等待 ASR WebSocket 连接建立
+                Log.i(TAG, "等待 ASR WebSocket 连接就绪...")
+                qwen3Asr.state.first { it == Qwen3AsrWsClient.State.CONNECTED || it == Qwen3AsrWsClient.State.SESSION_ACTIVE }
+                Log.i(TAG, "ASR WebSocket 已就绪")
             } else {
                 Log.w(TAG, "Qwen3 ASR 微服务不可用，使用阿里云 ASR")
             }
 
+            // 双方均已就绪（或跳过不可用服务）
+            _connectionPhase.value = ConnectionPhase.SERVICES_CONNECTED
+            _connectionState.value = ConnectionState.CONNECTED
             Log.i(TAG, "Qwen3 服务初始化完成 - ASR=${if (useQwen3Asr) "Qwen3" else "Aliyun"}, TTS=${if (useQwen3Tts) "Qwen3" else "Volcano"}")
         }
     }

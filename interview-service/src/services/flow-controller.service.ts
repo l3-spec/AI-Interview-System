@@ -722,20 +722,10 @@ export class InterviewFlowService {
       });
       const emotionInstruction = interviewConductor.getEmotionInstruction(scene, cleanText);
 
-      // 优先使用旧 ttsService 预生成音频文件（兼容无 TTS 微服务的情况）
-      // 如果 Qwen3 TTS 微服务可用，客户端会通过 WebSocket 直连获取流式音频
-      let audioUrl: string | undefined;
+      // 跳过旧 ttsService 预生成：实际播放由 Qwen3-TTS 流式处理，
+      // 旧同步预生成（每题目耗时 1-3 秒）是首题响应延迟的主因，已废弃。
+      let audioUrl: string | undefined = undefined;
       let duration = 0;
-      try {
-        const ttsResult = await ttsService.textToSpeech({
-          text: cleanText,
-          voice: 'siqi',
-        });
-        audioUrl = ttsResult.audioUrl;
-        duration = ttsResult.duration || 0;
-      } catch (ttsError: any) {
-        console.warn(`⚠️ 预生成TTS失败(round ${i + 1})，将依赖 Qwen3-TTS 流式播放: ${ttsError.message}`);
-      }
 
       const round: InterviewRound = {
         roundNumber: i + 1,
@@ -850,31 +840,84 @@ export class InterviewFlowService {
       questions.push({ text, ...defaults, suggestedTime, internalMetadata });
     };
 
-    // 1) 标准 Markdown：**[emotion:…] ……**（非贪婪到成对 **，可跨行）
-    const boldBlocks = content.matchAll(/\*\*\s*\[emotion:[^\]]+\][\s\S]*?\*\*/g);
-    for (const m of boldBlocks) {
-      pushQuestion(m[0], content, m.index || 0);
-    }
+    // === 解析策略：按 [emotion:xxx] 标记切分，逐题提取 ===
+    // 旧正则 /\*\*\s*\[emotion:[^\]]+\][\s\S]*?\*\*/g 的 .*? 会跨过题干匹配到
+    // 内部评估字段（如 **预期考察点**）的 **，导致贪婪吞掉后续所有题目。
+    // 新策略：先用 [emotion:xxx] 标记切分内容，每段独立解析。
+    const emotionPattern = /\[emotion:[^\]]+\]/g;
+    const emotionMatches = [...content.matchAll(emotionPattern)];
 
-    // 2) 模型偶发省略闭合 **，或输出被 max_tokens 截断：从 **[emotion 起到行尾/文尾
-    if (questions.length === 0) {
-      const looseBlocks = content.matchAll(/\*\*\s*\[emotion:[^\]]+\][\s\S]*?(?=\n\s*\*\*\s*\[emotion:]|$)/g);
-      for (const m of looseBlocks) {
-        pushQuestion(m[0].replace(/\s+$/, ''), content, m.index || 0);
+    for (let i = 0; i < emotionMatches.length; i++) {
+      const startIdx = emotionMatches[i].index || 0;
+      const endIdx = i + 1 < emotionMatches.length
+        ? (emotionMatches[i + 1].index || content.length)
+        : content.length;
+
+      // 提取当前题目区块（从当前 [emotion:] 到下一个 [emotion:] 之前）
+      let block = content.slice(startIdx, endIdx).trim();
+
+      // 移除开头的 [emotion:xxx] 标记
+      const emotionTag = emotionMatches[i][0];
+      block = block.replace(emotionTag, '').trim();
+
+      // 去掉首尾多余的 ** 标记
+      block = block.replace(/^\*{1,2}\s*/, '').replace(/\s*\*{1,2}\s*$/, '').trim();
+
+      // 在下一个 [emotion:] 出现前截断（防止段落标题泄漏到本题）
+      const nextEmotionIdx = block.search(/\[emotion:[^\]]+\]/);
+      if (nextEmotionIdx > 0) {
+        block = block.slice(0, nextEmotionIdx).trim();
       }
-    }
 
-    // 3) 无 ** 包裹：以 [emotion: 分段
-    if (questions.length === 0) {
-      const parts = content.split(/(?=\[emotion:[^\]]+\])/);
-      let currentIndex = 0;
-      for (const p of parts) {
-        const t = p.trim();
-        if (t.startsWith('[emotion:')) {
-          pushQuestion(t, content, currentIndex);
+      // 去掉 markdown 标记（**、*），TTS 不需要朝读这些符号
+      block = block.replace(/\*{1,2}([^*]+)\*{1,2}/g, '$1').trim();
+
+      if (block.length < 12) {
+        continue;
+      }
+
+      const key = block.slice(0, 96);
+      if (dedupeKeys.has(key)) {
+        continue;
+      }
+      dedupeKeys.add(key);
+
+      // 从题干区块中剥离内部评估字段（预期考察点、建议回答时间、评分标准等）
+      const internalFieldPatterns = [
+        /\n\s*-?\s*\*{0,2}预期考察点\*{0,2}/,
+        /\n\s*-?\s*\*{0,2}建议回答时间\*{0,2}/,
+        /\n\s*-?\s*\*{0,2}评分标准\*{0,2}/,
+        /\n\s*-?\s*\*{0,2}考察维度\*{0,2}/,
+        /\n\s*-?\s*\*{0,2}考察要点\*{0,2}/,
+      ];
+
+      let cutoffIndex = block.length;
+      for (const pattern of internalFieldPatterns) {
+        const match = block.match(pattern);
+        if (match && match.index !== undefined && match.index < cutoffIndex) {
+          cutoffIndex = match.index;
         }
-        currentIndex += p.length;
       }
+
+      const internalMetadata = cutoffIndex < block.length ? block.substring(cutoffIndex).trim() : '';
+      const text = block.substring(0, cutoffIndex).trim();
+
+      if (text.length < 12) {
+        continue;
+      }
+
+      // 在原文中前瞻查找建议回答时间
+      let suggestedTime = defaults.suggestedTime;
+      const lookaheadText = content.slice(startIdx, startIdx + 800);
+      const timeMatch = lookaheadText.match(/建议回答时间[^\d]*(\d+)/);
+      if (timeMatch && timeMatch[1]) {
+        const timeVal = parseInt(timeMatch[1], 10);
+        if (timeVal > 10 && timeVal <= 600) {
+          suggestedTime = timeVal;
+        }
+      }
+
+      questions.push({ text, ...defaults, suggestedTime, internalMetadata });
     }
 
     if (questions.length === 0) {
@@ -1303,6 +1346,25 @@ ${currentRound.followupCount || 0}
   private handleQuestionTimeout(sessionId: string, stage: 'reminder' | 'skip'): void {
     const session = this.sessions.get(sessionId);
     if (!session || session.state === InterviewState.COMPLETED) {
+      this.clearQuestionTimers(sessionId);
+      return;
+    }
+
+    // ✅ 【P1 修复】避免单题超时定时器与正常出题/回答流程双发。
+    // 场景：用户刚回答完毕、coordinator 正在推进下一题时，超时定时器也刚好触发，
+    // 会造成语音提示语/跳题与正常题干同时下发。此时需提前退出。
+    if (session.isProcessing) {
+      console.log(
+        `[InterviewFlow] 会话 ${sessionId} 定时器触发但题目正在处理中 (stage=${stage})，忽略`
+      );
+      this.clearQuestionTimers(sessionId);
+      return;
+    }
+    const inProgressRound = session.rounds.find((r) => r.status === 'in_progress');
+    if (!inProgressRound) {
+      console.log(
+        `[InterviewFlow] 会话 ${sessionId} 定时器触发但当前无 in_progress 题目 (stage=${stage})，忽略`
+      );
       this.clearQuestionTimers(sessionId);
       return;
     }
