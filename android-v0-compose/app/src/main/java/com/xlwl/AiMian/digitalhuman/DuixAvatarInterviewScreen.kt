@@ -68,6 +68,7 @@ import com.xlwl.AiMian.ai.realtime.RealtimeVoiceManager
 import com.xlwl.AiMian.ai.realtime.TranscriptDelta
 import com.xlwl.AiMian.ai.realtime.ConnectionState
 import com.xlwl.AiMian.data.repository.AiInterviewRepository
+import com.xlwl.AiMian.utils.DeviceIdManager
 import com.example.v0clone.model.DimensionScore
 import com.example.v0clone.model.InterviewReport
 import com.example.v0clone.model.MultimodalSummary
@@ -174,12 +175,14 @@ fun DuixAvatarInterviewScreen(
     val timeLimit by realtimeVoiceManager.timeLimit.collectAsState()
     val currentQuestionIndex by realtimeVoiceManager.currentQuestionIndex.collectAsState()
 
-    // 记录是否已收到首包语音（用于首页加载转圈控制）
+    // 标记首题是否已开始播放（只触发一次，用于控制 loading 遮罩消失时机）
+    // 期望流程：连接中 → 连接成功（题目准备中） → 首题 TTS 开始播放（loading 消失）
     var isFirstVoiceReceived by remember { mutableStateOf(false) }
 
-    // 监听 isDhSpeaking，一旦数字人开始说话（收到并播放第一个语音包），隐藏加载转圈
+    // 监听 isDhSpeaking，一旦数字人开始说话（收到并播放首题第一个语音包），隐藏加载转圈
     LaunchedEffect(isDhSpeaking) {
-        if (isDhSpeaking) {
+        if (isDhSpeaking && !isFirstVoiceReceived) {
+            Log.i("DuixAvatarScreen", "首题 TTS 开始播放，关闭准备中 loading 遮罩")
             isFirstVoiceReceived = true
         }
     }
@@ -244,12 +247,31 @@ fun DuixAvatarInterviewScreen(
     }
 
     // 答题倒计时控制器
-    LaunchedEffect(timeLimit, isDhSpeaking) {
+    // 标记当前题目的倒计时是否已经启动（避免 isDhSpeaking 反复变化时重复触发）
+    var countdownStarted by remember { mutableStateOf(false) }
+    // 记录上一帧的 isDhSpeaking 状态，用于做「true→false」边缘检测
+    var prevIsDhSpeaking by remember { mutableStateOf(false) }
+
+    // 收到新题目（timeLimit 变化）时重置倒计时与启动标记
+    LaunchedEffect(timeLimit) {
+        countdownStarted = false
+        secondsLeft = 0
+        // 重置上一帧状态：question_start 时数字人通常即将开始读题
+        prevIsDhSpeaking = false
+        Log.d("DuixAvatarScreen", "收到新题目 timeLimit=$timeLimit，重置倒计时状态")
+    }
+
+    // 当数字人「刚读完题」（isDhSpeaking 由 true 变为 false）时启动倒计时
+    // 边缘检测保证只触发一次，即使后续 isDhSpeaking 再次抖动也不会重启
+    LaunchedEffect(isDhSpeaking, timeLimit) {
         val limit = timeLimit
-        if (!isDhSpeaking && limit != null && limit > 0) {
+        val justFinishedSpeaking = prevIsDhSpeaking && !isDhSpeaking
+        prevIsDhSpeaking = isDhSpeaking
+
+        if (justFinishedSpeaking && limit != null && limit > 0 && !countdownStarted) {
+            countdownStarted = true
             secondsLeft = limit
-        } else {
-            secondsLeft = 0
+            Log.i("DuixAvatarScreen", "数字人读题完毕，启动答题倒计时 ${limit}s")
         }
     }
 
@@ -258,19 +280,22 @@ fun DuixAvatarInterviewScreen(
             delay(1000L)
             secondsLeft--
             if (secondsLeft == 0) {
-                Log.w("DuixAvatarScreen", "答题倒计时结束，强制结束当前题目作答")
+                Log.w("DuixAvatarScreen", "答题倒计时结束，按当前已识别文本正常提交")
                 Toast.makeText(context, "答题时间到，已自动提交并进入下一题", Toast.LENGTH_SHORT).show()
-                
-                // 1. 获取当前已经识别的内容，提交给后端
+
+                // 1. 获取当前已经识别的内容（可能为空字符串，表示用户超时未作答）
                 val currentText = realtimeVoiceManager.partialTranscript.value.trim()
-                val textToSubmit = currentText.ifBlank { "[超时未作答]" }
-                
-                // 2. 停止录音与录像
+
+                // 2. 停止录音与录像，让本题答题流程正常收尾
                 realtimeVoiceManager.stopRecording()
                 stopVideoRecording()
-                
-                // 3. 提交答案，触发下一题
-                realtimeVoiceManager.submitUserText(textToSubmit)
+
+                // 3. 提交答案，并通过 isTimeout=true 标志告知后端为「超时正常完成」
+                //    后端据此区分「超时」与「主动跳过」，无需在文本中夹带 [超时未作答] 占位符
+                realtimeVoiceManager.submitUserText(
+                    text = currentText,
+                    isTimeout = true
+                )
             }
         }
     }
@@ -317,12 +342,18 @@ fun DuixAvatarInterviewScreen(
 
     val isReady = avatarController?.isReady?.collectAsState()?.value ?: false
 
-    // 超时保护兜底：如果连接建立后 15 秒仍未收到首包音频，自动关闭加载转圈，防止网络卡死
+    // 超时保护兜底：如果连接建立后 30 秒仍未收到首题音频，自动关闭加载转圈，
+    // 防止后端题目准备异常时用户被卡死在 loading 界面
     LaunchedEffect(isReady, connectionState) {
         if (isReady && connectionState == ConnectionState.CONNECTED) {
-            delay(15000L)
+            delay(30_000L)
             if (!isFirstVoiceReceived) {
-                Log.w("DuixAvatarScreen", "等待首包语音超时(15s)，强行关闭加载框进入交互")
+                Log.w("DuixAvatarScreen", "等待首题语音超时(30s)，强行关闭加载框进入交互")
+                Toast.makeText(
+                    context,
+                    "题目加载较慢，已为您进入面试界面，请稍候",
+                    Toast.LENGTH_LONG
+                ).show()
                 isFirstVoiceReceived = true
             }
         }
@@ -446,6 +477,7 @@ fun DuixAvatarInterviewScreen(
             Log.i("DuixAvatarScreen", "📡 Initiating gateway join via REST: $serverUrl")
             
             scope.launch {
+                val deviceId = DeviceIdManager.getDeviceId(context)
                 realtimeVoiceManager.initialize(
                     serverUrl = serverUrl,
                     sessionId = interviewSessionId?.takeIf { it.isNotBlank() }
@@ -454,7 +486,8 @@ fun DuixAvatarInterviewScreen(
                         ?: interviewQuestion?.takeIf { it.length <= 40 }
                         ?: "AI面试官",
                     userId = candidateUserId?.takeIf { it.isNotBlank() }
-                        ?: "user_${System.currentTimeMillis()}"
+                        ?: "user_${System.currentTimeMillis()}",
+                    deviceId = deviceId
                 )
             }
         }
@@ -564,7 +597,9 @@ fun DuixAvatarInterviewScreen(
         val userTranscript by realtimeVoiceManager.partialTranscript.collectAsState()
         val latestAIStreamingText by realtimeVoiceManager.latestDigitalHumanText.collectAsState()
         val latestAIHistoryMessage = _messages.lastOrNull { it.role == com.xlwl.AiMian.ai.realtime.ConversationRole.DIGITAL_HUMAN }?.text
-        val displayAIText = latestAIStreamingText?.takeIf { it.isNotBlank() } ?: latestAIHistoryMessage
+        val rawDisplayAIText = latestAIStreamingText?.takeIf { it.isNotBlank() } ?: latestAIHistoryMessage
+        // 优化4：清理 markdown 标记 (**, *, #, [text](url) 等)，避免未渲染符号污染字幕
+        val displayAIText = remember(rawDisplayAIText) { rawDisplayAIText?.let { cleanMarkdownForSubtitle(it) } }
         
         // Debug logging for UI state
         LaunchedEffect(displayAIText, isDhSpeaking, timeLimit) {
@@ -572,10 +607,8 @@ fun DuixAvatarInterviewScreen(
         }
         val transcriptDelta by realtimeVoiceManager.transcriptDelta.collectAsState(initial = null)
 
-        // KTV 字幕：基于时间的进度估算（适用于 DUIX 模式 + transcriptDelta 不可用时）
+        // KTV 字幕：基于字符类型的逐字推进（中文约 4-5 字/秒，标点处自动停顿）
         var ktvTimeBasedIndex by remember { mutableStateOf(0) }
-        var ktvSpeakingStartMs by remember { mutableStateOf(0L) }
-        val charsPerSecond = 4.0  // 中文 TTS 平均语速
 
         // KTV 字幕：当显示文本变化时重置
         LaunchedEffect(displayAIText) {
@@ -583,18 +616,26 @@ fun DuixAvatarInterviewScreen(
         }
 
         // KTV 字幕：数字人说话状态变化时处理
+        // 优化2：动态语速 + 标点停顿，使高亮节奏更贴近真实语音
         LaunchedEffect(isDhSpeaking, displayAIText) {
             if (isDhSpeaking && !displayAIText.isNullOrEmpty()) {
-                ktvSpeakingStartMs = System.currentTimeMillis()
                 ktvTimeBasedIndex = 0
                 val text = displayAIText
-                val estimatedDurationMs = (text.length / charsPerSecond * 1000).toLong()
-                // 定时器循环：每 100ms 推进高亮位置
-                while (isActive && System.currentTimeMillis() - ktvSpeakingStartMs < estimatedDurationMs + 3000) {
-                    kotlinx.coroutines.delay(100)
-                    val elapsedMs = System.currentTimeMillis() - ktvSpeakingStartMs
-                    val estimatedIdx = (elapsedMs / 1000.0 * charsPerSecond).toInt()
-                    ktvTimeBasedIndex = estimatedIdx.coerceIn(0, text.length)
+                var i = 0
+                while (isActive && i < text.length) {
+                    val c = text[i]
+                    // 基础间隔 ~220ms/字（约 4.5 字/秒）
+                    val baseDelay = 220L
+                    // 标点后额外停顿
+                    val pause = when (c) {
+                        '，', ',' -> 300L
+                        '。', '！', '？', '!', '?', '；', ';' -> 500L
+                        '：', ':', '、' -> 200L
+                        else -> 0L
+                    }
+                    kotlinx.coroutines.delay(baseDelay + pause)
+                    i++
+                    ktvTimeBasedIndex = i
                 }
             } else if (!isDhSpeaking) {
                 ktvTimeBasedIndex = 0
@@ -776,7 +817,8 @@ fun DuixAvatarInterviewScreen(
                     }
                 }
             }
-            connectionState == ConnectionState.CONNECTING -> {
+            // 连接阶段（含未发起、连接中）：覆盖 DISCONNECTED + CONNECTING 两种状态
+            connectionState != ConnectionState.CONNECTED -> {
                 Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).zIndex(30f), contentAlignment = Alignment.Center) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -787,6 +829,7 @@ fun DuixAvatarInterviewScreen(
                     }
                 }
             }
+            // 已连接但首题尚未开始播放：题目准备阶段，loading 继续保持
             !isFirstVoiceReceived -> {
                 Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).zIndex(30f), contentAlignment = Alignment.Center) {
                     Column(
@@ -1468,6 +1511,16 @@ private fun UserRealtimeSubtitle(
     )
 }
 
+/**
+ * 优化4：清理字幕文本中的 markdown 标记（**、*、#、[text](url)），避免未渲染符号污染字幕
+ */
+private fun cleanMarkdownForSubtitle(rawText: String): String {
+    return rawText
+        .replace(Regex("\\*\\*|\\*|#{1,6}\\s?"), "")
+        .replace(Regex("\\[([^]]+)]\\([^)]+\\)"), "$1") // [text](url) -> text
+        .trim()
+}
+
 @Composable
 private fun InterviewerTwoLineSubtitle(
     fullText: String,
@@ -1482,49 +1535,51 @@ private fun InterviewerTwoLineSubtitle(
     // 计算当前阅读位置
     val readIdx = (fullText.length * p).roundToInt().coerceIn(0, fullText.length)
 
-    // 根据文本总长度动态调整字体、行高、窗口大小与最大行数
-    // 短文本（≤40字）：大字体，少行数；中等文本（≤80字）：标准字体；长文本（>80字）：缩小字体，扩展行数
     val textLen = fullText.length
-    val dynamicFontSize: Float
-    val dynamicLineHeight: Float
+
+    // 优化1：动态字号
+    //   ≤30 字 → 22sp（短文本大字清晰）
+    //   30-80 字 → 22sp 线性过渡到 18sp
+    //   >80 字 → 16sp（长文本紧凑可读）
+    val targetFontSize = when {
+        textLen <= 30 -> 22f
+        textLen <= 80 -> {
+            val t = (textLen - 30).toFloat() / (80f - 30f)
+            22f - t * (22f - 18f)
+        }
+        else -> 16f
+    }
+    val animatedFontSize by animateFloatAsState(
+        targetValue = targetFontSize,
+        animationSpec = tween(durationMillis = 250, easing = FastOutSlowInEasing),
+        label = "subtitle_font_size"
+    )
+    val animatedLineHeight = animatedFontSize * 1.45f
+
+    // 显示窗口配置：根据字号档位决定窗口字符数与最大行数
     val maxChars: Int
     val maxDisplayLines: Int
     when {
-        textLen <= 40 -> {
-            dynamicFontSize = 17f
-            dynamicLineHeight = 26f
-            maxChars = 80
+        textLen <= 30 -> {
+            maxChars = 60
             maxDisplayLines = 3
         }
         textLen <= 80 -> {
-            dynamicFontSize = 16f
-            dynamicLineHeight = 24f
             maxChars = 100
             maxDisplayLines = 4
         }
-        textLen <= 120 -> {
-            dynamicFontSize = 14.5f
-            dynamicLineHeight = 22f
-            maxChars = 130
-            maxDisplayLines = 5
-        }
         else -> {
-            // 超长文本：进一步缩小，保证尽可能多的内容可见
-            dynamicFontSize = 13f
-            dynamicLineHeight = 20f
-            maxChars = 160
-            maxDisplayLines = 6
+            maxChars = 130
+            maxDisplayLines = 4
         }
     }
 
-    val highlightPositionRatio = 0.35f  // 高亮点保持在窗口 35% 处（视觉偏上）
-
-    // 计算窗口：让 readIdx 保持在窗口的 35% 位置
+    // 优化3：溢出顶替 — 高亮点固定在窗口 35% 处，readIdx 推进时窗口自动前移
+    // 视觉上等价于 LazyColumn.scrollTo(highlightLine)，确保高亮始终在视野内
+    val highlightPositionRatio = 0.35f
     val idealStart = (readIdx - maxChars * highlightPositionRatio).toInt()
     var start = idealStart.coerceIn(0, max(0, fullText.length - maxChars))
-    var end = min(fullText.length, start + maxChars)
-
-    // 确保窗口始终填满
+    val end = min(fullText.length, start + maxChars)
     if (end - start < maxChars && fullText.length >= maxChars) {
         start = max(0, end - maxChars)
     }
@@ -1532,21 +1587,39 @@ private fun InterviewerTwoLineSubtitle(
     val windowText = fullText.substring(start, end)
     val relativeReadIdx = (readIdx - start).coerceIn(0, windowText.length)
 
+    // 优化2：高亮颜色配色
+    //   已读 → 绿 (#4CAF50)，当前字 → 白色加粗，未读 → 灰 (#BBBBBB)
+    val readColor = Color(0xFF4CAF50)
+    val unreadColor = Color(0xFFBBBBBB)
+    val currentColor = Color.White
+
+    // 优化3：顶部渐隐 — 当窗口已经向后移（start>0）时，最前面 6 个字 alpha 1.0→0.3
+    val fadeCount = 6
     val annotatedString = buildAnnotatedString {
-        // 已读部分：绿色高亮
-        withStyle(style = SpanStyle(color = Color(0xFF00E5A0))) {
+        // 前缀
+        withStyle(style = SpanStyle(color = readColor, fontWeight = FontWeight.Medium)) {
             append("面试官: ")
-            append(windowText.substring(0, max(0, relativeReadIdx)))
         }
-        // 当前字：过渡色（微亮白色），提供视觉引导
-        if (relativeReadIdx < windowText.length) {
-            withStyle(style = SpanStyle(color = Color.White.copy(alpha = 0.95f))) {
-                append(windowText.substring(relativeReadIdx, min(relativeReadIdx + 1, windowText.length)))
+        // 已读部分（含渐隐）
+        val readEnd = min(relativeReadIdx, windowText.length)
+        for (i in 0 until readEnd) {
+            val isFading = start > 0 && i < fadeCount
+            val alphaVal = if (isFading) {
+                0.3f + (i.toFloat() / fadeCount.toFloat()) * 0.7f
+            } else 1f
+            withStyle(style = SpanStyle(color = readColor.copy(alpha = alphaVal))) {
+                append(windowText[i].toString())
             }
         }
-        // 未读部分：半透明白色
+        // 当前字：白色加粗，强烈视觉引导
+        if (relativeReadIdx < windowText.length) {
+            withStyle(style = SpanStyle(color = currentColor, fontWeight = FontWeight.Bold)) {
+                append(windowText[relativeReadIdx].toString())
+            }
+        }
+        // 未读部分：灰色
         if (relativeReadIdx + 1 < windowText.length) {
-            withStyle(style = SpanStyle(color = Color.White.copy(alpha = 0.55f))) {
+            withStyle(style = SpanStyle(color = unreadColor)) {
                 append(windowText.substring(relativeReadIdx + 1))
             }
         }
@@ -1554,8 +1627,8 @@ private fun InterviewerTwoLineSubtitle(
 
     Text(
         text = annotatedString,
-        fontSize = dynamicFontSize.sp,
-        lineHeight = dynamicLineHeight.sp,
+        fontSize = animatedFontSize.sp,
+        lineHeight = animatedLineHeight.sp,
         maxLines = maxDisplayLines,
         overflow = TextOverflow.Ellipsis,
         textAlign = TextAlign.Start,

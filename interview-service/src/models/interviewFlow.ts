@@ -55,6 +55,8 @@ export interface InterviewRound {
   followupCount?: number;
   emotionScene?: string;
   emotionInstruction?: string;
+  /** 内部评估信息（预期考察点、建议回答时间、评分标准等），仅供后台分析，禁止下发给候选人 */
+  internalMetadata?: string;
 }
 
 export interface ResponseAnalysis {

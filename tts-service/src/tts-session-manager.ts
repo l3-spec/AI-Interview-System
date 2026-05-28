@@ -150,11 +150,25 @@ export class TTSSessionManager {
 
   /**
    * 创建新的 TTS 会话
+   *
+   * 会话建立时会同步清理该 sessionId 在内存与 Redis 中的旧暂存指令，
+   * 避免上轮会话 / 服务重启遗留的 synthesize 指令被重放导致客户端收到过期音频。
    */
   async createSession(clientWs: WebSocket, options: CreateTTSSessionOptions): Promise<string> {
     const sessionId = options.sessionId || uuidv4();
-
-    // 参数校验：sampleRate / mode 强校验，voice 宽松（已在 validate 内做回退）
+  
+    // 清理旧暂存指令：包含内存 Map 与 Redis List 两处
+    // 设计意图：避免上次会话崩溃 / 服务重启后残留的过期指令被新客户端重放。
+    // 如需重发，应由 interview-service 重新生成文本，而非依赖这里的暂存重放。
+    this.pendingRedisCommands.delete(sessionId);
+    if (this.redisBus) {
+      this.redisBus.clearPendingCommands(sessionId).catch((err: any) => {
+        logger.warn(`[TTS-Manager] 清理 Redis 旧暂存指令失败 (${sessionId}): ${err?.message || err}`);
+      });
+    }
+    logger.info(`[TTS-Manager] 清理旧暂存指令: sessionId=${sessionId}`);
+  
+    // 参数校验：sampleRate / mode 强校验，voice 宽松（已在 validate 内做了回退）
     const validation = this.validateSessionConfig(options);
     if (!validation.valid) {
       logger.warn(`[TTS-Manager] 参数校验失败 (${sessionId}): ${validation.error}`);
@@ -375,53 +389,18 @@ export class TTSSessionManager {
     }
   }
 
+  /**
+   * 重放暂存 Redis 指令（已禁用）
+   *
+   * 不重放旧指令，避免客户端收到过期音频。如果需要重发，由 interview-service 负责重新生成。
+   *
+   * 保留方法签名以定位老调用点，内部仅同步清理内存 Map、不产生任何合成动作。
+   * 后续如需完全移除该机制，可进一步删除调用点（createSession / suspended 恢复处）。
+   */
   private async replayPendingRedisCommands(sessionId: string): Promise<void> {
-    let list = this.pendingRedisCommands.get(sessionId) ?? [];
-
-    if (list.length === 0) {
-      // 内存为空：可能是进程刚启动 / 崩溃后重建，从 Redis 恢复
-      if (this.redisBus) {
-        try {
-          const recovered = (await this.redisBus.consumePendingCommands(sessionId)) as PendingRedisCmd[];
-          if (recovered.length > 0) {
-            logger.info(
-              `[TTS-Manager] 从 Redis 恢复 ${recovered.length} 条待执行指令 session=${sessionId}`,
-            );
-            list = recovered;
-          }
-        } catch (err: any) {
-          logger.warn(
-            `[TTS-Manager] 从 Redis 恢复暂存指令失败 (${sessionId}): ${err?.message || err}`,
-          );
-        }
-      }
-    } else {
-      // 内存中已有指令（即将被消费）：清空 Redis 副本，避免后续重复重放
-      if (this.redisBus) {
-        this.redisBus.clearPendingCommands(sessionId).catch(() => {
-          // 忽略清理失败
-        });
-      }
-    }
-
+    // 仅清理内存中可能遗留的条目；Redis 侧由 createSession 同步清理。
     this.pendingRedisCommands.delete(sessionId);
-
-    if (!list.length) return;
-
-    logger.info(`[TTS-Manager] 重放暂存 Redis 指令 session=${sessionId} count=${list.length}`);
-    for (const item of list) {
-      try {
-        if (item.command === 'synthesize') {
-          await this.handleRedisTextCommand(sessionId, item.text, item.commit);
-        } else if (item.command === 'commit') {
-          await this.commitText(sessionId);
-        } else if (item.command === 'clear') {
-          await this.clearText(sessionId);
-        }
-      } catch (err: any) {
-        logger.error(`[TTS-Manager] 重放 Redis 指令失败 (${item.command}): ${err?.message || err}`);
-      }
-    }
+    // 不重放旧指令，避免客户端收到过期音频。如果需要重发，由 interview-service 负责重新生成
   }
 
   /**

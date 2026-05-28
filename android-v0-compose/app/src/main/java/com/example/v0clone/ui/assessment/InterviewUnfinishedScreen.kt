@@ -54,7 +54,7 @@ fun InterviewUnfinishedScreen(
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             // ── 顶部占位 ──
-            Spacer(modifier = Modifier.height(60.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             // ── 核心插画区域 ──
             Column(
@@ -136,7 +136,7 @@ fun InterviewUnfinishedScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(48.dp))
+                Spacer(modifier = Modifier.height(32.dp))
 
                 // ── 标题 ──
                 Text(
@@ -187,7 +187,7 @@ fun InterviewUnfinishedScreen(
                         .height(44.dp)
                 ) {
                     Text(
-                        text = "重新测试",
+                        text = "重新面试",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold
                     )

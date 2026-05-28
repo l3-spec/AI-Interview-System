@@ -332,6 +332,8 @@ class RealtimeVoiceManager(private val context: Context) {
     private var currentUserId: String? = null
     private var currentJobPosition: String? = null
     private var currentBackground: String? = null
+    private var currentDeviceId: String? = null
+    private var currentJobId: String? = null
     private var isInitializingSocket = false
     private var lastInitAttemptAt: Long = 0
     private var isRecording = false
@@ -457,7 +459,9 @@ class RealtimeVoiceManager(private val context: Context) {
         sessionId: String,
         userId: String? = null,
         jobPosition: String? = null,
-        background: String? = null
+        background: String? = null,
+        deviceId: String? = null,
+        jobId: String? = null
     ): Boolean = withContext(Dispatchers.IO) {
         try {
             if (isInitializingSocket) {
@@ -492,6 +496,8 @@ class RealtimeVoiceManager(private val context: Context) {
             currentUserId = userId
             currentJobPosition = jobPosition
             currentBackground = background
+            currentDeviceId = deviceId
+            currentJobId = jobId
             _connectionState.value = ConnectionState.CONNECTING
             _interviewCompleted.value = false
             _isInterviewCompletedSuccessfully.value = true
@@ -511,7 +517,9 @@ class RealtimeVoiceManager(private val context: Context) {
                         sessionId = sessionId,
                         userId = userId,
                         jobPosition = jobPosition,
-                        background = background
+                        background = background,
+                        deviceId = deviceId,
+                        jobId = jobId
                     )
                 )
             } catch (e: Exception) {
@@ -2276,16 +2284,25 @@ class RealtimeVoiceManager(private val context: Context) {
         }
     }
 
-    fun submitUserText(text: String) {
-        Log.d(TAG, "submitUserText被调用 - text=$text")
-        
+    /**
+     * 提交用户答题文本到后端。
+     *
+     * @param text 用户答题文本（可为空，仅当 isTimeout=true 时允许空文本提交）
+     * @param isTimeout 是否为答题倒计时超时触发的提交。超时提交时：
+     *                  1) 允许 text 为空（即用户超时未作答）
+     *                  2) payload 中附带 isTimeout=true，后端据此判定为正常完成而非跳过
+     */
+    fun submitUserText(text: String, isTimeout: Boolean = false) {
+        Log.d(TAG, "submitUserText被调用 - text=$text, isTimeout=$isTimeout")
+
         val normalized = text.trim()
-        if (normalized.isEmpty()) {
+        // 非超时提交时，空文本直接返回；超时提交允许空文本（视为未作答但要走正常流程）
+        if (normalized.isEmpty() && !isTimeout) {
             Log.w(TAG, "文本为空，取消提交")
             _isProcessing.value = false
             return
         }
-        
+
         val sessionId = currentSessionId
         if (sessionId.isNullOrBlank()) {
             Log.e(TAG, "会话未初始化，无法提交文本")
@@ -2293,16 +2310,19 @@ class RealtimeVoiceManager(private val context: Context) {
             _isProcessing.value = false
             return
         }
-        
+
         if (socket == null || !socket!!.connected()) {
             Log.e(TAG, "WebSocket未连接，无法提交文本")
             _errors.tryEmit("WebSocket未连接")
             _isProcessing.value = false
             return
         }
-        
-        appendMessage(ConversationMessage(role = ConversationRole.USER, text = normalized))
-        
+
+        // 仅在有实际识别文本时才追加到对话历史，避免空气泡
+        if (normalized.isNotEmpty()) {
+            appendMessage(ConversationMessage(role = ConversationRole.USER, text = normalized))
+        }
+
         val payload = JSONObject().apply {
             put("text", normalized)
             put("sessionId", sessionId)
@@ -2313,9 +2333,13 @@ class RealtimeVoiceManager(private val context: Context) {
             if (useQwen3Tts) {
                 qwen3Tts.sessionId.value?.let { put("ttsSessionId", it) }
             }
+            // 超时标志：后端据此区分「超时正常完成」与「主动跳过」
+            if (isTimeout) {
+                put("isTimeout", true)
+            }
         }
-        
-        Log.i(TAG, "通过WebSocket发送text_message - sessionId=$sessionId, text=$normalized, useQwen3Tts=$useQwen3Tts")
+
+        Log.i(TAG, "通过WebSocket发送text_message - sessionId=$sessionId, text=$normalized, useQwen3Tts=$useQwen3Tts, isTimeout=$isTimeout")
         socket?.emit("text_message", payload)
         _isProcessing.value = true
         stopStreamingAudio() // 发送新消息前停止之前的流

@@ -433,7 +433,25 @@ server.listen(PORT, () => {
   logger.info(`🔊 TTS 微服务已启动 [${serviceId}] - 端口: ${PORT}`);
   logger.info(`   WebSocket 路径: ${SERVICE_URL}`);
   logger.info(`   健康检查: http://localhost:${PORT}/health`);
-  
+
+  // 启动后全局清理上一轮进程可能遗留的 tts:pending:* 指令，
+  // 避免服务崩溃 / 重启后旧暂存被新客户端重放（过期音频）。
+  // 采用 fire-and-forget：启动不被 Redis 临时不可用阻塞，如未连上则跳过。
+  setTimeout(() => {
+    redisEventBus
+      .clearAllPendingCommands()
+      .then((count) => {
+        if (count > 0) {
+          logger.info(`[TTS] 启动清理：已删除 ${count} 个残留 tts:pending:* key`);
+        } else {
+          logger.info('[TTS] 启动清理：无残留 tts:pending:* key');
+        }
+      })
+      .catch((err: any) => {
+        logger.warn(`[TTS] 启动清理暂存指令失败（不阻塞服务启动）: ${err?.message || err}`);
+      });
+  }, 1000); // 延迟 1s 等待 RedisEventBus init() 完成订阅/连接
+
   startHeartbeat();
 });
 

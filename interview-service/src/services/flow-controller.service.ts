@@ -242,9 +242,8 @@ export class InterviewFlowService {
   private async markNextRoundInProgress(session: InterviewSession): Promise<InterviewRound | null> {
     const nextRound = session.rounds.find(r => r.status === 'pending');
     if (!nextRound) {
-      session.state = InterviewState.COMPLETED;
-      session.runtimePhase = 'completed';
-      await this.persistInterviewCompleted(session);
+      // 不再直接将会话置为 COMPLETED，
+      // 面试是否已完成交由 evaluateAndFinalizeCompletion 综合评估（有效回答数与库存状态）。
       return null;
     }
 
@@ -254,6 +253,45 @@ export class InterviewFlowService {
     session.runtimePhase = 'speaking';
     await this.persistRoundStarted(session, nextRound);
     return nextRound;
+  }
+
+  /**
+   * 面试完成判定。
+   *
+   * 设计原则（Task #12）：
+   *   - 走到本方法即代表 markNextRoundInProgress 返回 null，即题库已经全部问完；
+   *   - 题库耗尽 = 面试正常完成，始终返回 isCompleted: true；
+   *   - 回答数量/质量不再影响完成状态，仅写入日志供分析服务后续使用；
+   *   - 「面试未完成（isCompleted=false）」只发生在服务端主动中断、客户端长时间断开、
+   *     用户主动退出等真正非正常中断的路径上，不在本方法内处理。
+   */
+  private async evaluateAndFinalizeCompletion(
+    session: InterviewSession
+  ): Promise<{ isCompleted: boolean; reason: string }> {
+    // 有效回答：只要非空且不是系统占位符，就视为有效（不再按长度门槛过滤）
+    const validAnswers = session.rounds.filter(
+      r => r.userResponse &&
+           r.userResponse !== '[超时未作答]' &&
+           r.userResponse.trim().length > 0
+    );
+
+    const totalAsked = session.rounds.filter(r => r.question).length;
+
+    // 题库耗尽 = 面试正常完成。只记录数量到日志，供分析服务参考。
+    console.log(
+      `[FlowController] 面试完成评估: sessionId=${session.sessionId}, 总题数=${totalAsked}, 有效回答=${validAnswers.length}`
+    );
+
+    if (session.state !== InterviewState.COMPLETED) {
+      session.state = InterviewState.COMPLETED;
+      session.runtimePhase = 'completed';
+      await this.persistInterviewCompleted(session);
+    }
+
+    return {
+      isCompleted: true,
+      reason: `面试正常完成：共提问${totalAsked}题，有效回答${validAnswers.length}个`,
+    };
   }
   
   /**
@@ -293,11 +331,14 @@ export class InterviewFlowService {
 
     this.sessions.set(sessionId, session);
 
-    try {
-      await this.tryRehydrateFromPrisma(session, userId);
-    } catch (err: any) {
-      console.warn(`[InterviewFlow] tryRehydrateFromPrisma 跳过: ${err?.message || err}`);
-    }
+    // 服务重启后禁用自动断点续面：不再从 DB 主动恢复旧会话到内存，
+    // 避免旧面试会话的状态干扰新面试流程。DB 记录仍然保留，
+    // 如需恢复旧会话请由客户端主动发起恢复请求。
+    // try {
+    //   await this.tryRehydrateFromPrisma(session, userId);
+    // } catch (err: any) {
+    //   console.warn(`[InterviewFlow] tryRehydrateFromPrisma 跳过: ${err?.message || err}`);
+    // }
 
     console.log(`✅ InterviewFlowService: 成功为会话 ${sessionId} 初始化职位 [${targetJob}]`);
 
@@ -517,11 +558,13 @@ export class InterviewFlowService {
     const autoStart = options.autoStart !== false;
 
     if (session.rounds.length === 0) {
-      try {
-        await this.tryRehydrateFromPrisma(session, session.userId);
-      } catch (err: any) {
-        console.warn(`[InterviewFlow] startInterviewPhase 内 DB 恢复跳过: ${err?.message || err}`);
-      }
+      // 服务重启后禁用自动断点续面：不再自动从 DB 恢复题目，
+      // 避免旧面试会话的题目被重复下发。请依靠后续 DeepSeek 重新生成。
+      // try {
+      //   await this.tryRehydrateFromPrisma(session, session.userId);
+      // } catch (err: any) {
+      //   console.warn(`[InterviewFlow] startInterviewPhase 内 DB 恢复跳过: ${err?.message || err}`);
+      // }
     }
 
     if (session.rounds.length > 0) {
@@ -669,8 +712,9 @@ export class InterviewFlowService {
     for (let i = 0; i < questions.length; i++) {
       const question = questions[i];
 
-      // 清除情感标注，保留纯文本用于存储
-      const cleanText = question.text.replace(/\[emotion:[^\]]+\]/g, '').trim();
+      // pushQuestion 已经剥离了 [emotion:xxx]、内部评估字段以及 markdown 标记，
+      // 这里拿到的 question.text 已是可直接用于 TTS 朝读 / 字幕显示的纯净题干。
+      const cleanText = question.text;
 
       // 推断该问题的场景类型（用于 Qwen3-TTS 情感指令）
       const scene = interviewConductor.inferScene(cleanText, {
@@ -704,6 +748,8 @@ export class InterviewFlowService {
         status: 'pending',
         emotionScene: scene,
         emotionInstruction,
+        // 内部评估信息（预期考察点、评分标准等）仅供后台分析，不下发给候选人
+        internalMetadata: question.internalMetadata || undefined,
       };
 
       rounds.push(round);
@@ -740,14 +786,47 @@ export class InterviewFlowService {
       expectedPoints: string[];
       suggestedTime: number;
       scoringCriteria: string[];
+      internalMetadata: string;
     }> = [];
 
     const pushQuestion = (rawBlock: string, fullContent: string, matchIndex: number) => {
-      const text = stripOuterBold(rawBlock);
+      let text = stripOuterBold(rawBlock);
       if (!/\[emotion:[^\]]+\]/.test(text)) {
         return;
       }
-      const bodyForLen = text.replace(/\[emotion:[^\]]+\]/g, '').trim();
+
+      // 去掉 [emotion:xxx] 标记（不需要朝读也不需要字幕展示）
+      text = text.replace(/\[emotion:[^\]]+\]/g, '').trim();
+
+      // *** 新增：剥离内部评估字段 ***
+      // LLM 可能在题干后附上「预期考察点」「建议回答时间」「评分标准」等评估字段，
+      // 这些信息不可下发给候选人（TTS 朝读 / 字幕显示）。这里找到首个评估字段标记后截断。
+      const internalFieldPatterns = [
+        /\n\s*-?\s*\*{0,2}预期考察点\*{0,2}/,
+        /\n\s*-?\s*\*{0,2}建议回答时间\*{0,2}/,
+        /\n\s*-?\s*\*{0,2}评分标准\*{0,2}/,
+        /\n\s*-?\s*\*{0,2}考察维度\*{0,2}/,
+        /\n\s*-?\s*\*{0,2}考察要点\*{0,2}/,
+      ];
+
+      let cutoffIndex = text.length;
+      for (const pattern of internalFieldPatterns) {
+        const match = text.match(pattern);
+        if (match && match.index !== undefined && match.index < cutoffIndex) {
+          cutoffIndex = match.index;
+        }
+      }
+
+      // 提取内部评估信息（仅供后台分析使用，不下发给候选人）
+      const internalMetadata = cutoffIndex < text.length ? text.substring(cutoffIndex).trim() : '';
+
+      // 截断文本，只保留纯净的题干
+      text = text.substring(0, cutoffIndex).trim();
+
+      // 去掉 markdown 标记（**、*），TTS 不需要朝读这些符号
+      text = text.replace(/\*{1,2}([^*]+)\*{1,2}/g, '$1').trim();
+
+      const bodyForLen = text;
       if (bodyForLen.length < 12) {
         return;
       }
@@ -756,7 +835,7 @@ export class InterviewFlowService {
         return;
       }
       dedupeKeys.add(key);
-      
+
       // Look ahead in the full content for suggested time
       let suggestedTime = defaults.suggestedTime;
       const lookaheadText = fullContent.slice(matchIndex, matchIndex + 500); // Look at the next 500 characters
@@ -767,8 +846,8 @@ export class InterviewFlowService {
           suggestedTime = timeVal;
         }
       }
-      
-      questions.push({ text, ...defaults, suggestedTime });
+
+      questions.push({ text, ...defaults, suggestedTime, internalMetadata });
     };
 
     // 1) 标准 Markdown：**[emotion:…] ……**（非贪婪到成对 **，可跨行）
@@ -818,9 +897,10 @@ export class InterviewFlowService {
 
     const nextRound = await this.markNextRoundInProgress(session);
     if (!nextRound) {
-      // 所有题目均已完成，清除整场超时计时器
+      // 所有题目均已处理完，清除超时计时器并综合评估是否可以判定面试完成
       this.clearInterviewTimer(sessionId);
       this.clearQuestionTimers(sessionId);
+      await this.evaluateAndFinalizeCompletion(session);
       return null;
     }
 
@@ -940,6 +1020,17 @@ ${currentRound.followupCount || 0}
     // 开始下一轮（或者是刚才插入的追问）；实时链路中由 coordinator 统一播报，避免双 TTS。
     const nextRound = await this.markNextRoundInProgress(session);
 
+    // 题库耗尽 = 面试正常完成；isCompleted 仅由「是否已无下一题」决定，
+    // 不再受回答数量/长度等质量指标影响（质量仅用于决定追问/换题方向）。
+    let isCompleted = false;
+    if (!nextRound) {
+      const evalResult = await this.evaluateAndFinalizeCompletion(session);
+      isCompleted = evalResult.isCompleted;
+      console.log(
+        `[InterviewFlow] processUserResponse 判定面试完成 (${sessionId}): ${evalResult.reason}`
+      );
+    }
+
     // 进入「下一道主题题」时，用上一轮回答轻量润色预生成题干（追问回合 roundNumber 不变，不触发）
     if (
       nextRound &&
@@ -972,7 +1063,7 @@ ${currentRound.followupCount || 0}
 
       return {
         nextRound,
-        isCompleted: !nextRound,
+        isCompleted,
         feedback: analysisResult?.feedback,
         score: analysisResult?.score
       };
@@ -1111,6 +1202,16 @@ ${currentRound.followupCount || 0}
    */
   getSession(sessionId: string): InterviewSession | undefined {
     return this.sessions.get(sessionId);
+  }
+
+  /**
+   * 移除指定会话（重连踢掉旧 session / 超时清理时调用）
+   */
+  removeSession(sessionId: string): void {
+    this.clearQuestionTimers(sessionId);
+    this.clearInterviewTimer(sessionId);
+    this.sessions.delete(sessionId);
+    console.log(`[FlowController] Session ${sessionId} 已移除，当前活跃: ${this.sessions.size}`);
   }
 
   /**

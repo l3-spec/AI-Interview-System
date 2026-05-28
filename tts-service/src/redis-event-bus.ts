@@ -295,4 +295,40 @@ export class RedisEventBus {
     const keys = await this.publisher.keys(`${TTS_PENDING_KEY_PREFIX}*`);
     return keys.map((k) => k.replace(TTS_PENDING_KEY_PREFIX, ''));
   }
+
+  /**
+   * 清除所有 TTS 暂存指令（服务启动时调用）
+   *
+   * 用途：避免上次进程崩溃 / 异常退出导致 Redis 中残留的旧暂存指令
+   * 在新客户端建连后被错误重放，造成「过期音频」混入。
+   *
+   * 返回被清理的 key 数量，便于启动日志观察。
+   */
+  async clearAllPendingCommands(): Promise<number> {
+    if (!this.available || !this.publisher) return 0;
+    // 使用 SCAN 而非 KEYS 以减少对 Redis 主线程的阻塞影响
+    const stream = this.publisher.scanStream({
+      match: `${TTS_PENDING_KEY_PREFIX}*`,
+      count: 200,
+    });
+    let removed = 0;
+    return new Promise<number>((resolve, reject) => {
+      stream.on('data', (keys: string[]) => {
+        if (!keys || keys.length === 0) return;
+        // 暂停消费、批量删除完成后再恢复
+        stream.pause();
+        this.publisher!.del(...keys)
+          .then((count) => {
+            removed += count;
+            stream.resume();
+          })
+          .catch((err: any) => {
+            logger.warn(`[Redis] 批量删除暂存 key 失败: ${err?.message || err}`);
+            stream.resume();
+          });
+      });
+      stream.on('end', () => resolve(removed));
+      stream.on('error', (err: any) => reject(err));
+    });
+  }
 }

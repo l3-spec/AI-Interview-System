@@ -28,7 +28,7 @@ export class GatewayController {
    */
   static async joinSession(req: Request, res: Response) {
     try {
-      const { sessionId, userId, jobPosition, background, resumeText } = req.body;
+      const { sessionId, userId, jobPosition, background, resumeText, deviceId } = req.body;
       if (!sessionId) return res.status(400).json({ error: 'Missing sessionId' });
 
       // 转发到 interview-service
@@ -39,6 +39,7 @@ export class GatewayController {
         jobPosition,
         background,
         resumeText,
+        deviceId: deviceId || '',  // 支持 deviceId 区分同设备重连 vs 多设备并行
         timestamp: Date.now(),
       });
 
@@ -96,14 +97,19 @@ export class GatewayController {
    */
   static async sendMessage(req: Request, res: Response) {
     try {
-      const { sessionId, text } = req.body;
-      if (!sessionId || !text) return res.status(400).json({ error: 'Missing params' });
+      const { sessionId, text, isTimeout } = req.body;
+      if (!sessionId) return res.status(400).json({ error: 'Missing sessionId' });
+      // 超时提交允许空文本；非超时仍要求传 text
+      const isTimeoutFlag = isTimeout === true || isTimeout === 'true';
+      if (!isTimeoutFlag && !text) return res.status(400).json({ error: 'Missing params' });
 
       await redisStreamService.add('interview:inbound_stream', {
         type: 'TEXT_MESSAGE',
         sessionId,
-        text,
+        text: text || '',
         source: 'text',
+        // 透传 isTimeout 标志，interview-service 据此在下一题前插入过渡语
+        isTimeout: isTimeoutFlag,
         timestamp: Date.now(),
       });
 

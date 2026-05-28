@@ -105,6 +105,7 @@ fun V0App(initialDeepLink: String? = null) {
         currentRoute == Routes.AI ||
         currentRoute.startsWith(Routes.DIGITAL_INTERVIEW) ||
         currentRoute == Routes.INTERVIEW_COMPLETE ||
+        currentRoute.startsWith(Routes.INTERVIEW_UNFINISHED) ||
         currentRoute == Routes.EDIT_INTENTION ||
         currentRoute.startsWith(Routes.JOB_DETAIL) ||
         currentRoute == Routes.PROFILE_VERIFICATION ||

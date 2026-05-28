@@ -57,15 +57,20 @@ export class FayWebSocketServer {
       socket.on('text_message', async (data) => {
         if (!data) return;
         console.log('💬 [FayGateway] 收到文本消息:', data);
-        const { sessionId, text } = data;
-        
-        if (!sessionId || !text) return;
+        const { sessionId, text, isTimeout } = data;
+
+        if (!sessionId) return;
+        const isTimeoutFlag = isTimeout === true || isTimeout === 'true';
+        // 超时提交允许空文本；非超时仍要求 text
+        if (!isTimeoutFlag && !text) return;
 
         try {
           await redisStreamService.add('interview:inbound_stream', {
             type: 'TEXT_MESSAGE',
             sessionId,
-            text,
+            text: text || '',
+            // 透传 isTimeout 标志，interview-service 据此插入过渡语并跳到下一题
+            isTimeout: isTimeoutFlag,
             timestamp: Date.now()
           });
         } catch (err) {

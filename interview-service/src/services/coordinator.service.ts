@@ -33,6 +33,14 @@ export class CoordinatorService {
   private speakingTimers = new Map<string, NodeJS.Timeout>();
   private readonly SILENCE_TIMEOUT_MS = parseInt(process.env.SILENCE_TIMEOUT_MS || '30000', 10); // 30秒静音超时
 
+  // userId:deviceId → sessionId 的映射，用于重连检测
+  private userSessionMap: Map<string, string> = new Map();
+  // session 最后活跃时间，用于超时清理
+  private sessionLastActive: Map<string, number> = new Map();
+  // 超时清理定时器
+  private sessionTimeoutTimer: NodeJS.Timer | null = null;
+  private readonly SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5分钟无心跳超时
+
   private startSpeakingTimeout(sessionId: string, text: string) {
     this.clearSpeakingTimeout(sessionId);
     const textLength = text ? text.length : 10;
@@ -76,9 +84,43 @@ export class CoordinatorService {
     const redisTarget = `${redisConnection.host || 'localhost'}:${redisConnection.port || 6379}/${redisConnection.db ?? 0}`;
     console.log(`[Coordinator ${this.workerId}] Redis connection target: ${redisTarget}`);
 
+    // 启动时清理 Redis 中遗留的旧面试会话数据，禁止断点续面
+    // 防止服务重启后旧会话的恢复指令干扰新面试流程
+    this.cleanupLegacyRedisData().catch((err) =>
+      console.warn(`[Coordinator] 启动清理 Redis 旧键失败 (可忽略): ${err?.message || err}`)
+    );
+
     this.startStreamConsumer();
     this.setupSubscriptions();
     this.startHeartbeat();
+    this.startSessionTimeoutChecker();
+  }
+
+  /**
+   * 服务启动时清理 Redis 中遗留的旧面试相关键，禁止自动断点续面。
+   * - tts:pending:*       — TTS 待执行指令
+   * - interview:session:* — 面试会话上下文
+   * - interview:dedup:*   — ASR 去重缓存
+   * 数据库记录保留不动，旧会话仅在客户端主动恢复请求时才会被读取。
+   */
+  private async cleanupLegacyRedisData(): Promise<void> {
+    const patterns = ['tts:pending:*', 'interview:session:*', 'interview:dedup:*'];
+    for (const pattern of patterns) {
+      try {
+        const keys = await this.pubClient.keys(pattern);
+        if (keys.length > 0) {
+          // 分批 del，避免单次删除参数过多
+          const batchSize = 500;
+          for (let i = 0; i < keys.length; i += batchSize) {
+            const batch = keys.slice(i, i + batchSize);
+            await this.pubClient.del(...batch);
+          }
+          console.log(`[Coordinator] 启动清理: 移除 ${keys.length} 个 Redis 旧键 (pattern=${pattern})`);
+        }
+      } catch (err: any) {
+        console.warn(`[Coordinator] 启动清理失败 (pattern=${pattern}): ${err?.message || err}`);
+      }
+    }
   }
 
   static getInstance(): CoordinatorService {
@@ -311,7 +353,9 @@ export class CoordinatorService {
   }
 
   private async handleInboundEvent(data: any) {
-    const { type, sessionId, userId, jobPosition, background, text, socketId, gatewayId } = data;
+    const { type, sessionId, userId, jobPosition, background, text, socketId, gatewayId, deviceId } = data;
+    // 兼容布尔值与字符串两种格式（部分网关在序列化时会把布尔转成字符串）
+    const isTimeout = data?.isTimeout === true || data?.isTimeout === 'true';
 
     // Cache gatewayId for this session if available
     const session = interviewFlowService.getSession(sessionId);
@@ -341,7 +385,7 @@ export class CoordinatorService {
         }
         const joinStart = Date.now();
         this.runInQueue(sessionId, async () => {
-          await this.handleJoinSession(sessionId, userId, jobPosition, background, socketId, gatewayId);
+          await this.handleJoinSession(sessionId, userId, jobPosition, background, socketId, gatewayId, deviceId);
           this.logPerformance('join_session', sessionId, Date.now() - joinStart, {
             userId: userId || 'anonymous',
             jobPosition: jobPosition || '通用职位',
@@ -367,10 +411,11 @@ export class CoordinatorService {
           const textStart = Date.now();
           const textLen = (text || '').length;
           this.runInQueue(sessionId, async () => {
-            await this.processUserResponse(sessionId, text, 'text');
+            await this.processUserResponse(sessionId, text, 'text', { isTimeout });
             this.logPerformance('process_text_message', sessionId, Date.now() - textStart, {
               textLength: textLen,
               source: 'text',
+              isTimeout,
             });
           });
         }
@@ -432,14 +477,28 @@ export class CoordinatorService {
     }
   }
 
-  private async handleJoinSession(sessionId: string, userId?: string, jobPosition?: string, background?: string, socketId?: string, gatewayId?: string) {
+  private async handleJoinSession(sessionId: string, userId?: string, jobPosition?: string, background?: string, socketId?: string, gatewayId?: string, deviceId?: string) {
     console.log(`[Coordinator] Handling join_session for ${sessionId}`);
+
+    // === 重连去重：检查同 userId（+deviceId）是否已有活跃 session ===
+    const effectiveUserId = userId || 'anonymous';
+    const userKey = deviceId ? `${effectiveUserId}:${deviceId}` : effectiveUserId;
+    const existingSessionId = this.userSessionMap.get(userKey);
+    if (existingSessionId && existingSessionId !== sessionId) {
+      console.log(`[Coordinator] 检测到用户 ${userKey} 重连，清理旧 session: ${existingSessionId}`);
+      await this.cleanupSession(existingSessionId);
+    }
+    // 注册新映射
+    this.userSessionMap.set(userKey, sessionId);
+    this.sessionLastActive.set(sessionId, Date.now());
+
     // 结构化事件日志：面试开始
     this.logEvent('interview_started', sessionId, {
       userId: userId || 'anonymous',
       jobPosition: jobPosition || '通用职位',
       socketId,
       gatewayId,
+      deviceId: deviceId || undefined,
     });
     
     // 初始化面试流服务
@@ -490,6 +549,8 @@ export class CoordinatorService {
 
   private async handleClientReady(sessionId: string, gatewayId?: string) {
     console.log(`✅ [Coordinator] 客户端三通道连接已确认就绪 (client_ready): sessionId=${sessionId}, 接入网关=${gatewayId || 'unknown'}`);
+    // 刷新会话活跃时间
+    this.sessionLastActive.set(sessionId, Date.now());
     const session = interviewFlowService.getSession(sessionId);
     if (!session) {
       console.warn(`[Coordinator] handleClientReady 找不到 session: ${sessionId}`);
@@ -509,8 +570,11 @@ export class CoordinatorService {
       this.clientReadyTimers.delete(sessionId);
     }
 
-    // 检查是否断点续面
-    const isResume = interviewFlowService.isWarmResumeEligible(session);
+    // 禁用服务端自动断点续面：
+    // 原逻辑会在客户端就绪后从 DB 恢复 IN_PROGRESS 会话并下发 TTS 恢复指令，
+    // 导致服务重启后旧会话干扰新面试。现仅走首访欢迎流程，
+    // 若需恢复旧会话可由客户端主动发起请求。
+    const isResume = false;
 
     if (isResume && session.rounds.length > 0) {
       const currentRound = session.rounds.find((r: any) => r.status === 'in_progress' || r.status === 'pending');
@@ -772,6 +836,61 @@ export class CoordinatorService {
   }
 
 
+  /**
+   * 清理指定 session（重连踢掉旧会话 / 超时自动清理时调用）
+   */
+  private async cleanupSession(sessionId: string): Promise<void> {
+    try {
+      const session = interviewFlowService.getSession(sessionId);
+      if (session) {
+        // 通知客户端旧会话已被替换（如果还连着）
+        await this.emitControlToTTS(sessionId, 'session_replaced', {
+          reason: 'new_connection_from_same_device',
+        });
+      }
+      interviewFlowService.removeSession(sessionId);
+
+      // 清理相关定时器
+      const forceTimer = this.clientReadyTimers.get(sessionId);
+      if (forceTimer) {
+        clearTimeout(forceTimer);
+        this.clientReadyTimers.delete(sessionId);
+      }
+      this.clearSilenceDetection(sessionId);
+      this.clearSpeakingTimeout(sessionId);
+      this.silenceCounts.delete(sessionId);
+
+      // 清理映射
+      this.sessionLastActive.delete(sessionId);
+
+      console.log(`[Coordinator] 已清理旧 session: ${sessionId}`);
+    } catch (err: any) {
+      console.warn(`[Coordinator] 清理 session ${sessionId} 失败: ${err?.message}`);
+    }
+  }
+
+  /**
+   * 定时检查并清理超时无心跳的 session（每分钟执行一次）
+   */
+  private startSessionTimeoutChecker(): void {
+    this.sessionTimeoutTimer = setInterval(() => {
+      const now = Date.now();
+      for (const [sessionId, lastActive] of this.sessionLastActive) {
+        if (now - lastActive > this.SESSION_TIMEOUT_MS) {
+          console.log(`[Coordinator] Session ${sessionId} 超时 ${Math.round((now - lastActive) / 1000)}s，自动清理`);
+          this.cleanupSession(sessionId);
+          // 从 userSessionMap 中也移除
+          for (const [key, sid] of this.userSessionMap) {
+            if (sid === sessionId) {
+              this.userSessionMap.delete(key);
+              break;
+            }
+          }
+        }
+      }
+    }, 60_000); // 每分钟检查一次
+  }
+
   private async handleAsrTranscription(data: any) {
     const { sessionId, payload } = data;
     const text = (payload.text || '').trim();
@@ -851,18 +970,34 @@ export class CoordinatorService {
     }
   }
 
-  private async processUserResponse(sessionId: string, text: string, source: 'asr' | 'text') {
-    if (!text.trim()) return;
+  private async processUserResponse(
+    sessionId: string,
+    text: string,
+    source: 'asr' | 'text',
+    options: { isTimeout?: boolean } = {}
+  ) {
+    // 超时提交：即便答案为空也要走完正常流程（标记 completed、过渡到下一题），不直接 return
+    const isTimeout = options.isTimeout === true;
+    if (!text.trim() && !isTimeout) return;
+    // 超时未作答时统一占位文本，避免下游分析/持久化收到空字符串
+    const effectiveText = text.trim() ? text : '[超时未作答]';
+    if (isTimeout) {
+      console.log(`[Coordinator] 收到超时提交 (${source}, sessionId=${sessionId}): "${effectiveText}"`);
+    }
 
     // 清除静音超时检测
     this.clearSilenceDetection(sessionId);
     this.silenceCounts.delete(sessionId);
 
+    // 刷新会话活跃时间
+    this.sessionLastActive.set(sessionId, Date.now());
+
     const session = interviewFlowService.getSession(sessionId);
-    const normalizedForDedupe = text.replace(/\s+/g, '').trim();
+    const normalizedForDedupe = effectiveText.replace(/\s+/g, '').trim();
     const candidateTextKey = `${normalizedForDedupe.length}:${normalizedForDedupe.slice(0, 80)}`;
     const now = Date.now();
     if (
+      !isTimeout &&
       session?.lastCandidateTextKey === candidateTextKey &&
       session.lastCandidateTextAt &&
       now - session.lastCandidateTextAt < 8000
@@ -871,7 +1006,7 @@ export class CoordinatorService {
       return;
     }
     if (session) {
-      if (source === 'asr' && session.runtimePhase === 'speaking') {
+      if (!isTimeout && source === 'asr' && session.runtimePhase === 'speaking') {
         console.log(`[Coordinator] 丢弃播报期间 ASR final，疑似回声/尾包 session=${sessionId}: "${text}"`);
         return;
       }
@@ -905,8 +1040,8 @@ export class CoordinatorService {
       return;
     }
     
-    // UI 回显
-    this.emitToGateway(sessionId, 'asr_partial', { text, isFinal: true, sessionId }, (session as any)?.gatewayId as string);
+    // UI 回显（使用真实的提交内容，超时空答用占位文本，避免前端字幕错乱）
+    this.emitToGateway(sessionId, 'asr_partial', { text: effectiveText, isFinal: true, sessionId }, (session as any)?.gatewayId as string);
 
     // 处理用户记录
     const currentSession = interviewFlowService.getSession(sessionId);
@@ -916,7 +1051,7 @@ export class CoordinatorService {
       if (currentRound) questionIndex = Math.max(0, currentRound.roundNumber - 1);
     }
     
-    const turnMeta = await this.recordConversationTurn(sessionId, { speaker: 'CANDIDATE', candidateText: text, questionIndex });
+    const turnMeta = await this.recordConversationTurn(sessionId, { speaker: 'CANDIDATE', candidateText: effectiveText, questionIndex });
     
     if (turnMeta) {
       this.emitToGateway(sessionId, 'candidate_turn_recorded', {
@@ -927,8 +1062,16 @@ export class CoordinatorService {
       }, (session as any)?.gatewayId as string);
     }
 
-    // 检查结束意图
-    const normalizedText = text.replace(/\s+/g, '');
+    // 用户主动退出意图检测（语义匹配）：放在去重/echo拦截之后、正常回答处理与推进逻辑之前
+    // 超时提交不进入退出意图判定
+    if (!isTimeout && this.detectExitIntent(effectiveText)) {
+      console.log(`🚪 [Coordinator] 检测到用户主动退出意图 (${sessionId}): "${effectiveText.slice(0, 60)}"`);
+      await this.handleUserExitRequest(sessionId);
+      return;
+    }
+
+    // 检查结束意图（超时提交不进入主动结束意图判定）
+    const normalizedText = isTimeout ? '' : text.replace(/\s+/g, '');
     const completionIntents = ['结束面试', '面试结束', '完成面试', '结束这个面试', '结束这次面试', '我答完了'];
     if (completionIntents.some(k => normalizedText.includes(k))) {
         console.log(`🔚 [Coordinator] 检测到主动结束意图: ${sessionId}`);
@@ -963,10 +1106,12 @@ export class CoordinatorService {
         return;
     }
 
-    // 调用业务逻辑
+    // 调用业务逻辑：将候选人回答交给 flow-controller 进行评估、持久化与推进
+    // flow-controller.processUserResponse 始终把当前回合标记为 'completed'，因此超时提交的答案
+    // 不会被记为 'skipped'，仍然会作为正常回答参与最终评估与汇总。
     try {
       const result = await withTimeout(
-        interviewFlowService.processUserResponse(sessionId, text, { speakNextRound: false }),
+        interviewFlowService.processUserResponse(sessionId, effectiveText, { speakNextRound: false }),
         parseInt(process.env.LLM_TIMEOUT_MS || '5000', 10),
         'LLM_TIMEOUT'
       );
@@ -1032,59 +1177,128 @@ export class CoordinatorService {
            isCompleted: isCompletedSuccessfully,
          });
       } else if (result.nextRound) {
-         await this.emitRoundVoiceResponse(sessionId, result.nextRound);
+         // 超时提交：在下一题前插入过渡语，让节奏更自然
+         const transitionText = isTimeout ? '好的，时间到了，我们继续下一个问题。' : undefined;
+         await this.emitRoundVoiceResponse(sessionId, result.nextRound, transitionText);
       }
     } catch (e: any) {
-      console.warn(`⚠️ [Coordinator] 处理回答异常 (或大模型超时): ${e.message || e}`);
-      
-      let fallbackText = '好的，我已记录您的回答。让我们继续进行下一步。';
-      let forceNextRound = false;
-      const LLM_TIMEOUT_MS = parseInt(process.env.LLM_TIMEOUT_MS || '5000', 10);
+      // DeepSeek / 大模型 / 网络异常：不再尝试强制切下一题或自动完成面试。
+      // 改为通过 Redis 事件总线下发 interview_error 事件，让客户端友好提示并预留后续手动恢复能力。
+      // 保持当前面试会话状态不变：不推进题目、不推进完成、不下发结束语。
+      const errMsg = e?.message || String(e);
+      console.error(`❌ [Coordinator] 处理回答异常 (DeepSeek / 网络): sessionId=${sessionId}, error=${errMsg}`);
+      this.logEvent('interview_error', sessionId, {
+        type: 'network_error',
+        error: errMsg,
+      });
 
-      try {
-        // 大模型评估超时/失败，尝试用 Conductor 生成自由对话对话回复（同样配置 5 秒超时）
-        const conductorResult = await withTimeout(
-          interviewConductor.generateInterviewerResponse({
-            userMessage: text,
-            sessionId,
-            context: { }
-          }),
-          LLM_TIMEOUT_MS,
-          'LLM_TIMEOUT'
-        );
-        fallbackText = conductorResult.text;
-      } catch (err: any) {
-        console.warn(`⚠️ [Coordinator] 大模型自由对话调用失败或超时，启动终极兜底逻辑`);
-        forceNextRound = true;
-      }
+      const errorPayload = {
+        type: 'network_error',
+        message: '网络异常，面试暂时中断。您可以稍后回来继续。',
+        sessionId,
+        canResume: true,
+      };
 
-      if (forceNextRound) {
-        // 终极兜底：如果有待答题目，强制抽取一题下发，防止流程卡死
-        const currentSession = interviewFlowService.getSession(sessionId);
-        const nextRound = currentSession?.rounds.find((r: any) => r.status === 'pending');
-        if (nextRound && currentSession) {
-          console.log(`[Coordinator] 触发终极兜底：强制切入下一题 ${nextRound.roundNumber}`);
-          nextRound.status = 'in_progress';
-          currentSession.currentRound = nextRound.roundNumber;
-          await this.emitRoundVoiceResponse(sessionId, nextRound);
-          return;
-        } else {
-          fallbackText = '好的，我听清了您的回答，网络刚才出现了一点拥堵。我们继续面试。';
-        }
-      }
+      // 1. 通过 outbound 频道给网关 → 客户端发送 interview_error
+      this.emitToGateway(
+        sessionId,
+        'interview_error',
+        errorPayload,
+        (session as any)?.gatewayId as string
+      );
 
-      const ttsMode = await this.synthesizeQwen3TtsSegments(sessionId, fallbackText);
-      this.emitToGateway(sessionId, 'voice_response', {
-         text: fallbackText,
-         sessionId,
-         ttsMode,
-         state: 'playing'
-      }, (session as any)?.gatewayId as string);
-      this.persistAvatarVoice(sessionId, fallbackText);
+      // 2. 通过 TTS 控制通道同步下发一份，确保 App 任一可达通道都能收到错误通知
+      this.emitControlToTTS(sessionId, 'interview_error', errorPayload).catch(() => undefined);
     }
   }
 
-  private async emitRoundVoiceResponse(sessionId: string, round: any) {
+  /**
+   * 检测用户的退出/离开/中断意图
+   * 命中任一模式即视为用户希望结束当前面试，由 handleUserExitRequest 处理后续流程
+   */
+  private detectExitIntent(text: string): boolean {
+    if (!text) return false;
+    const exitPatterns: RegExp[] = [
+      /我(要|想|得)(退出|离开|走了|中断|结束)/,
+      /结束面试/,
+      /不(面|想面|继续)了/,
+      /有事(要走|先走|要离开)/,
+      /(中断|终止|取消)面试/,
+      /我(先|要)走/,
+      /到此为止/,
+      /面试(到此|就到这|结束|停止)/,
+    ];
+    const normalizedText = text.trim();
+    return exitPatterns.some(pattern => pattern.test(normalizedText));
+  }
+
+  /**
+   * 处理用户主动退出面试请求
+   * - 依据已答题进度智能判定：>=70% 视为正常完成，否则视为中断
+   * - 先合成告别语并通过 voice_response 下发，等待 ~2s 让 TTS 播完后下发 interview_ended 控制消息
+   */
+  private async handleUserExitRequest(sessionId: string): Promise<void> {
+    const flowSession = interviewFlowService.getSession(sessionId);
+    if (!flowSession) return;
+
+    const totalPlanned = flowSession.rounds.length || 5;
+    const answeredRounds = flowSession.rounds.filter(
+      (r: any) => r.userResponse && r.userResponse.trim().length > 0 && r.userResponse !== '[超时未作答]'
+    ).length;
+
+    const completionRatio = answeredRounds / Math.max(totalPlanned, 1);
+    const isCompleted = completionRatio >= 0.7;
+
+    const farewell = isCompleted
+      ? '好的，感谢您的参与，面试到此圆满结束。稍后会为您生成面试报告。'
+      : '好的，理解您的情况。面试暂时中断，后续如有需要可以重新发起。感谢您的时间。';
+
+    console.log(`[Coordinator] 用户主动退出面试: session=${sessionId}, 进度=${Math.round(completionRatio * 100)}%, 判定=${isCompleted ? '完成' : '中断'}`);
+
+    this.logEvent('interview_user_exit', sessionId, {
+      isCompleted,
+      answeredRounds,
+      totalPlanned,
+      progress: Math.round(completionRatio * 100),
+    });
+
+    // 标记会话结束并更新 DB（不阻塞告别语播报，失败仅日志）
+    try {
+      await interviewFlowService.endInterview(sessionId, isCompleted ? 'user_exit_completed' : 'user_exit_interrupted');
+    } catch (err: any) {
+      console.warn(`[Coordinator] 用户退出时 endInterview 异常 (${sessionId}): ${err?.message || err}`);
+    }
+
+    // 切到 speaking 阶段，避免静音/超时计时器干扰告别语播放
+    this.clearSilenceDetection(sessionId);
+    this.silenceCounts.delete(sessionId);
+    flowSession.runtimePhase = 'speaking';
+    this.startSpeakingTimeout(sessionId, farewell);
+
+    // 先让面试官说告别语：复用既有 Qwen3 TTS 合成 + voice_response 下发链路
+    const ttsMode = await this.synthesizeQwen3TtsSegments(sessionId, farewell, 'closing');
+    this.emitToGateway(sessionId, 'voice_response', {
+      text: farewell,
+      sessionId,
+      ttsMode,
+      isCompleted: true,
+      status: isCompleted ? 'completed' : 'unfinished',
+      state: 'playing',
+    }, (flowSession as any).gatewayId);
+    this.persistAvatarVoice(sessionId, farewell);
+
+    // 等待 TTS 大致播完（2 秒），避免控制消息抢在告别语之前到达 App
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // 下发面试结束控制消息，App 据此跳转报告 / 中断界面
+    await this.emitControlToTTS(sessionId, 'interview_ended', {
+      isCompleted,
+      reason: isCompleted ? 'user_exit_completed' : 'user_exit_interrupted',
+      progress: Math.round(completionRatio * 100),
+    });
+  }
+
+  private async emitRoundVoiceResponse(sessionId: string, round: any, transitionText?: string) {
     const session = interviewFlowService.getSession(sessionId);
 
     // 题目准备就绪：先向 TTS 通道下发 question_start 控制消息，确保 App 先收到控制再收到音频
@@ -1100,9 +1314,19 @@ export class CoordinatorService {
     let ttsMode = 'client';
     if (round.audioUrl) {
       ttsMode = 'server';
+      // 含预录音频但仍需播放过渡语：先单独合成过渡语，TTS 通道按入队顺序播放
+      if (transitionText) {
+        await this.synthesizeQwen3TtsSegments(sessionId, transitionText, 'transition');
+        this.persistAvatarVoice(sessionId, transitionText, round.roundNumber);
+      }
     } else {
       const scene = interviewConductor.inferScene(round.question, { isFollowUp: (round.followupCount || 0) > 0 });
-      ttsMode = await this.synthesizeQwen3TtsSegments(sessionId, round.question, scene);
+      // 过渡语与下一题题干合并送入 TTS，保证「过渡语→题干」的顺序播放
+      const speakText = transitionText ? `${transitionText} ${round.question}` : round.question;
+      ttsMode = await this.synthesizeQwen3TtsSegments(sessionId, speakText, scene);
+      if (transitionText) {
+        this.persistAvatarVoice(sessionId, transitionText, round.roundNumber);
+      }
     }
 
     this.emitToGateway(sessionId, 'voice_response', {
@@ -1113,7 +1337,9 @@ export class CoordinatorService {
       ttsMode,
       questionIndex: round.roundNumber,
       state: 'playing',
-      timeLimit: round.suggestedTime
+      timeLimit: round.suggestedTime,
+      // 携带过渡语字段，便于前端在字幕区做轻量提示（可选使用）
+      transitionText: transitionText || undefined,
     }, (session as any)?.gatewayId);
     
     if (session) {

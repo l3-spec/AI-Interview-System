@@ -238,16 +238,21 @@ export class RealtimeVoiceWebSocketServer {
         }
       });
 
-      socket.on('text_message', async (data: { sessionId: string; text: string }) => {
-        const { sessionId, text } = data;
-        if (!text || !text.trim()) return;
+      socket.on('text_message', async (data: { sessionId: string; text: string; isTimeout?: boolean | string }) => {
+        const { sessionId, text, isTimeout } = (data || {}) as { sessionId: string; text: string; isTimeout?: boolean | string };
+        // 超时提交允许空文本（占位）；非超时仍然过滤空消息
+        const isTimeoutFlag = isTimeout === true || isTimeout === 'true';
+        if (!sessionId) return;
+        if (!isTimeoutFlag && (!text || !text.trim())) return;
 
-        console.log(`[Gateway] 收到文本 (${sessionId}): ${text}`);
+        console.log(`[Gateway] 收到文本 (${sessionId}): "${text}"${isTimeoutFlag ? ' [isTimeout=true]' : ''}`);
         this.publishInbound({
            type: 'TEXT_MESSAGE',
            sessionId,
-           text,
-           source: 'text'
+           text: text || '',
+           source: 'text',
+           // 透传 isTimeout 标志，由 interview-service 据此插入过渡语并跳到下一题
+           isTimeout: isTimeoutFlag
         });
       });
 

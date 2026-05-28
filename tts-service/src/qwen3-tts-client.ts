@@ -156,9 +156,9 @@ export class Qwen3TTSClient {
     // 核心兜底逻辑：如果用户只配置了一个模型，
     // 且该模型已经欠费或不可用，我们需要确保有备选模型可以轮换。
     const defaultFallbacks = [
-      'qwen3-tts-instruct-flash-realtime-2026-01-22',
+      'qwen3-tts-instruct-flash-realtime',
       'qwen3-tts-flash-realtime-2025-11-27',
-      'qwen3-tts-flash-realtime-2025-09-18'
+      'qwen3-tts-instruct-flash-realtime-2026-01-22'
     ];
     
     const disableFallback = process.env.QWEN_TTS_DISABLE_FALLBACK === 'true';

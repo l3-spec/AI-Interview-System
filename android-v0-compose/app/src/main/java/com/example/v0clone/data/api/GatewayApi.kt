@@ -39,7 +39,9 @@ data class GatewayJoinRequest(
     val userId: String?,
     val jobPosition: String?,
     val background: String? = null,
-    val resumeText: String? = null
+    val resumeText: String? = null,
+    val deviceId: String? = null,
+    val jobId: String? = null
 )
 
 data class GatewayJoinResponse(

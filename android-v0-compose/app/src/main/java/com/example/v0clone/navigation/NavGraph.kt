@@ -1318,11 +1318,10 @@ fun AppNavHost(navController: NavHostController) {
                     }
                 },
                 onRetry = {
-                    val popped = navController.popBackStack(Routes.PREP, false)
-                    if (!popped) {
-                        navController.navigate(Routes.HOME) {
-                            popUpTo(Routes.HOME) { inclusive = true }
-                        }
+                    // 重新面试：回到AI面试选岗页面，重新进入面试流程
+                    navController.navigate(Routes.AI) {
+                        popUpTo(Routes.HOME) { inclusive = false }
+                        launchSingleTop = true
                     }
                 }
             )
