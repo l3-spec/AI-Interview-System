@@ -1539,6 +1539,17 @@ private fun UserRealtimeSubtitle(
     )
 }
 
+/**
+ * 清理字幕文本中的 markdown 标记（**、*、#、[text](url)），避免未渲染符号污染字幕
+ */
+private fun cleanMarkdownForSubtitle(rawText: String): String {
+    return rawText
+        .replace(Regex("\\*\\*|\\*|#{1,6}\\s?"), "")
+        .replace(Regex("\\[([^]]+)]\\([^)]+\\)"), "$1") // [text](url) -> text
+        .trim()
+}
+
+
 
 @Composable
 private fun InterviewerTwoLineSubtitle(

@@ -15,6 +15,7 @@
         <domain includeSubdomains="false">10.0.1.77</domain>
         <domain includeSubdomains="false">10.0.1.33</domain>
         <domain includeSubdomains="false">192.168.124.56</domain>
+        <domain includeSubdomains="false">192.168.3.108</domain>
         <domain includeSubdomains="false">@string/api_host</domain>
     </domain-config>
 

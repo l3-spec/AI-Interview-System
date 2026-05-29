@@ -35,8 +35,6 @@ export class CoordinatorService {
   private asrCooldownTimers = new Map<string, NodeJS.Timeout>();
   /** ASR 冷却期间暂存的最新识别文本 */
   private asrPendingText = new Map<string, string>();
-  /** 首题 Redis 重发定时器：TTS 服务 Redis 订阅可能延迟，4 秒后重发一次确保消息到达 */
-  private questionRedisRetryTimers = new Map<string, NodeJS.Timeout>();
   private readonly SILENCE_TIMEOUT_MS = parseInt(process.env.SILENCE_TIMEOUT_MS || '30000', 10); // 30秒静音超时
 
   // userId:deviceId → sessionId 的映射，用于重连检测
@@ -46,14 +44,6 @@ export class CoordinatorService {
   // 超时清理定时器
   private sessionTimeoutTimer: NodeJS.Timer | null = null;
   private readonly SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5分钟无心跳超时
-
-  private clearQuestionRedisRetry(sessionId: string) {
-    const existing = this.questionRedisRetryTimers.get(sessionId);
-    if (existing) {
-      clearTimeout(existing);
-      this.questionRedisRetryTimers.delete(sessionId);
-    }
-  }
 
   private startSpeakingTimeout(sessionId: string, text: string) {
     this.clearSpeakingTimeout(sessionId);
@@ -482,7 +472,6 @@ export class CoordinatorService {
         this.cleanupDedupKeys(sessionId);
         this.clearSilenceDetection(sessionId);
         this.clearSpeakingTimeout(sessionId);
-        this.clearQuestionRedisRetry(sessionId);
         this.silenceCounts.delete(sessionId);
         const readyTimer = this.clientReadyTimers.get(sessionId);
         if (readyTimer) {
@@ -756,41 +745,6 @@ export class CoordinatorService {
       }, gatewayId || (session as any).gatewayId);
 
       this.persistAvatarVoice(sessionId, welcomeText, 0);
-
-      // === 首题消息重发保护 ===
-      // TTS 服务的 Redis Pub/Sub 订阅可能在 App 连接后延迟数秒才生效，
-      // 导致 interview-service 首次发布的 question_start / voice_response 被丢弃。
-      // 此处在 4 秒后重发一次，确保 TTS 订阅就绪后能收到消息。
-      // 仅在用户尚未回答（仍为首题 + speaking/listening 初始阶段）时重发。
-      this.clearQuestionRedisRetry(sessionId);
-      const retryTimer = setTimeout(() => {
-        const sess = interviewFlowService.getSession(sessionId);
-        if (!sess) return;
-        // 只有仍在第 1 题且用户尚未回答时才重发
-        if (sess.currentRound !== 1 || sess.runtimePhase === 'completed') return;
-        console.log(`🔁 [Coordinator] 首题消息重发保护触发 (4s延迟): sessionId=${sessionId}`);
-        // 重发控制消息（TTS 合成 + question_start + voice_response）
-        this.synthesizeQwen3TtsSegments(sessionId, welcomeText, 'opening', true).catch(() => {});
-        this.emitControlToTTS(sessionId, 'question_start', {
-          questionIndex: 0,
-          timeLimit: firstRound.suggestedTime || 180,
-          isLast: session.rounds.length <= 1,
-          text: welcomeText,
-        }).catch(() => {});
-        this.emitToGateway(sessionId, 'voice_response', {
-          audioUrl: firstRound.audioUrl || null,
-          text: welcomeText,
-          sessionId,
-          duration: firstRound.duration || 0,
-          ttsMode: ttsMode,
-          isWelcome: true,
-          state: 'playing',
-          questionIndex: 1,
-          timeLimit: firstRound.suggestedTime || 180
-        }, gatewayId || (session as any).gatewayId);
-        this.questionRedisRetryTimers.delete(sessionId);
-      }, 4000);
-      this.questionRedisRetryTimers.set(sessionId, retryTimer);
     } else {
       // 兜底（如果真的没有 rounds，采用以前的死文本）
       const jobPosText = ((session as any).jobPosition || '这个职位').trim().length <= 40 ? ((session as any).jobPosition || '这个职位').trim() : '本岗位';
@@ -1028,9 +982,6 @@ export class CoordinatorService {
     }
 
     console.log(`[Coordinator] ASR 识别完成 (${sessionId}): "${text.slice(0, 80)}..."`);
-
-    // 用户已开始回答，取消首题重发保护定时器
-    this.clearQuestionRedisRetry(sessionId);
 
     // === 语音冷却机制 ===
     // ASR VAD 可能在用户短暂停顿时误判为语音结束，导致追问在用户仍在说话时下发。
@@ -1586,20 +1537,12 @@ export class CoordinatorService {
       });
 
       const segments = interviewConductor['parseEmotionSegments'](responseText, scene);
-      console.log(
-        `[Coordinator] Dispatching Qwen3 TTS session=${sessionId}, segments=${segments.length}, textLen=${responseText.length}, redis=${qwen3TTSClient.connected ? 'connected' : 'http-fallback'}`
-      );
-      for (const segment of segments) {
-        if (segment.text.trim()) {
-          qwen3TTSClient.synthesize(sessionId, segment.text, false);
-        }
-  }
-      qwen3TTSClient.commitText(sessionId);
 
-      // HTTP 兜底：首题分发时 Redis Pub/Sub 可能因 TTS 会话尚未就绪而丢消息
+      // HTTP 兜底模式：绕过 Redis Pub/Sub，直接通过 HTTP 调用 TTS 服务
+      // 仅当 useHttpFallback=true 时使用（如首题欢迎语，此时 Redis 订阅可能尚未就绪）
       if (useHttpFallback) {
         const ttsUrl = process.env.TTS_SERVICE_URL || 'http://localhost:3003';
-        console.log(`[Coordinator] HTTP fallback for session=${sessionId}`);
+        console.log(`[Coordinator] HTTP fallback TTS session=${sessionId}, segments=${segments.length}, textLen=${responseText.length}`);
         try {
           for (let i = 0; i < segments.length; i++) {
             const s = segments[i];
@@ -1612,8 +1555,27 @@ export class CoordinatorService {
           }
         } catch (e: any) {
           console.warn(`[Coordinator] HTTP fallback failed: ${e?.message || e}`);
+          // HTTP 兜底失败，尝试 Redis 作为后备
+          console.log(`[Coordinator] Falling back to Redis TTS for session=${sessionId}`);
+          for (const segment of segments) {
+            if (segment.text.trim()) {
+              qwen3TTSClient.synthesize(sessionId, segment.text, false);
+            }
+          }
+          qwen3TTSClient.commitText(sessionId);
         }
-  }
+      } else {
+        // 正常模式：通过 Redis Pub/Sub 下发 TTS 合成指令
+        console.log(
+          `[Coordinator] Redis TTS session=${sessionId}, segments=${segments.length}, textLen=${responseText.length}, redis=${qwen3TTSClient.connected ? 'connected' : 'disconnected'}`
+        );
+        for (const segment of segments) {
+          if (segment.text.trim()) {
+            qwen3TTSClient.synthesize(sessionId, segment.text, false);
+          }
+        }
+        qwen3TTSClient.commitText(sessionId);
+      }
       return 'qwen3_streaming';
     } catch (err: any) {
       console.warn(`[Coordinator] Qwen3 TTS dispatch failed session=${sessionId}: ${err?.message || err}`);

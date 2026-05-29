@@ -95,8 +95,7 @@ class RealtimeVoiceManager(private val context: Context) {
         private const val MAX_RECORDING_DURATION_MS = 60000  // 最长录音60秒
         private const val VISUALIZER_MAX_RETRY = 5
         private const val VISUALIZER_RETRY_DELAY_MS = 150L
-        private const val ASR_RECONNECT_GAP_MS = 220L
-        private const val ASR_POST_CONNECT_WAIT_MS = 400L
+        
         /** 抢话用 VAD：阈值略高减轻外放回声误触，时长略短以更快打断 */
         private const val BARGE_IN_SPEECH_MIN_MS = 350L
     }
@@ -1932,27 +1931,18 @@ class RealtimeVoiceManager(private val context: Context) {
     }
 
     /**
-     * 中断确认后恢复 ASR 录音：重连 Qwen3 ASR 并开放麦克风推流
+     * 中断确认后恢复 ASR 录音：开放麦克风推流（ASR 长连接持续保持，无需重连）
      */
     private fun resumeAsrAfterInterrupt() {
         micToAsrAllowedAfterElapsedRealtime = 0L
         bargeInVadDetector.reset()
-        scope.launch {
-            if (useQwen3Asr && currentSessionId != null) {
-                withContext(Dispatchers.IO) {
-                    runCatching {
-                        qwen3Asr.disconnect()
-                        delay(ASR_RECONNECT_GAP_MS)
-                        qwen3Asr.connect(AppConfig.asrServiceWsUrl, currentSessionId!!)
-                    }.onFailure { e -> Log.e(TAG, "中断确认后重连 ASR 失败: ${e.message}") }
-                }
-                delay(ASR_POST_CONNECT_WAIT_MS)
-            }
-        }
+        // ASR WebSocket 与 TTS 一样全程保持长连接，shouldStreamMicToQwen3Asr() 控制推流开关即可
+        Log.i(TAG, "中断确认后已开放 ASR 推流，无需重连")
     }
 
     /**
-     * 本地 VAD 认定用户正在持续说话且当前不应向 ASR 推流时：打断播音 / 跳过后冷却，并刷新 ASR 会话。
+     * 本地 VAD 认定用户正在持续说话且当前不应向 ASR 推流时：打断播音 / 跳过后冷却。
+     * ASR 长连接持续保持，仅通过 micToAsrAllowedAfterElapsedRealtime 控制推流开关。
      */
     private fun handleUserSpeechBargeIn() {
         val nowRt = SystemClock.elapsedRealtime()
@@ -1969,19 +1959,8 @@ class RealtimeVoiceManager(private val context: Context) {
             Log.i(TAG, "🎙️ [BARGE-IN] 播音后冷却中检测到用户开口，提前恢复 ASR")
         }
         bargeInVadDetector.reset()
-        scope.launch {
-            if (useQwen3Asr && currentSessionId != null) {
-                withContext(Dispatchers.IO) {
-                    runCatching {
-                        qwen3Asr.disconnect()
-                        delay(ASR_RECONNECT_GAP_MS)
-                        qwen3Asr.connect(AppConfig.asrServiceWsUrl, currentSessionId!!)
-                    }.onFailure { e -> Log.e(TAG, "抢话后重连 ASR 失败: ${e.message}") }
-                }
-                delay(ASR_POST_CONNECT_WAIT_MS)
-            }
-            micToAsrAllowedAfterElapsedRealtime = 0L
-        }
+        // ASR 长连接保持不断，仅开放推流时间窗口
+        micToAsrAllowedAfterElapsedRealtime = 0L
     }
 
     /**
@@ -2022,16 +2001,8 @@ class RealtimeVoiceManager(private val context: Context) {
         scope.launch {
             delay(AppConfig.speechCooldownMs)
             if (_interviewCompleted.value) return@launch
-            if (useQwen3Asr && currentSessionId != null) {
-                withContext(Dispatchers.IO) {
-                    runCatching {
-                        qwen3Asr.disconnect()
-                        delay(ASR_RECONNECT_GAP_MS)
-                        qwen3Asr.connect(AppConfig.asrServiceWsUrl, currentSessionId!!)
-                    }.onFailure { Log.e(TAG, "重启 Qwen3 ASR 失败: ${it.message}") }
-                }
-                delay(ASR_POST_CONNECT_WAIT_MS)
-            }
+            // ASR 与 TTS 一样全程保持长连接，无需断开重连；shouldStreamMicToQwen3Asr() 控制推流开关
+            Log.i(TAG, "🎙️ [FLOW] 播放冷却结束，开放 ASR 推流")
             tryAutoStartRecordingIfIdle()
         }
     }

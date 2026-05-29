@@ -28,8 +28,8 @@ plugins {
 //val defaultApiHost = "192.168.0.103"
 //val defaultApiHost = "10.0.1.61"
 //val defaultApiHost = "10.10.1.74"
-//val defaultApiHost = "192.168.10.62"
-val defaultApiHost = "10.0.1.32"
+val defaultApiHost = "192.168.3.108"
+//val defaultApiHost = "10.0.1.32"
 //val defaultApiHost = "192.168.124.150"
 //val defaultApiHost = "192.168.10.84"
 //val defaultApiHost = "10.0.1.22"
@@ -40,7 +40,6 @@ val defaultApiPath = "api"
 // 火山引擎 TTS 配置
 val defaultVolcanoAppId = ""
 val defaultVolcanoApiKey = ""
-
 val defaultDuixBaseConfigUrl = "https://github.com/GuijiAI/duix.ai/releases/download/v1.0.0/gj_dh_res.zip"
 // 预置在 assets/duix/model/Oliver.zip；URL 仅用于标识模型名，实际会优先从本地 assets 解压
 val defaultDuixModelUrl = "https://duix-local/Oliver.zip"
