@@ -36,6 +36,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -76,10 +77,13 @@ enum class ConnectionState { DISCONNECTED, CONNECTING, CONNECTED }
 
 /** 连接阶段，用于面试页加载蒙版展示不同提示文案 */
 enum class ConnectionPhase {
-    IDLE,
-    CONNECTING_TTS,
-    CONNECTING_ASR,
-    SERVICES_CONNECTED
+    IDLE,                       // 未开始
+    JOINING_GATEWAY,            // 正在连接面试网关
+    CONNECTING_TTS,             // 正在连接 TTS 语音服务
+    CONNECTING_ASR,             // 正在连接 ASR 语音识别服务
+    SERVICES_CONNECTED,         // 全部服务已连接
+    WAITING_FIRST_QUESTION,     // 等待面试官发起首题
+    CONNECTION_FAILED           // 连接失败
 }
 
 class RealtimeVoiceManager(private val context: Context) {
@@ -374,6 +378,10 @@ class RealtimeVoiceManager(private val context: Context) {
     private val _connectionPhase = MutableStateFlow(ConnectionPhase.IDLE)
     val connectionPhase: StateFlow<ConnectionPhase> = _connectionPhase.asStateFlow()
 
+    // 连接阶段详细错误信息（用于 UI 展示具体失败原因）
+    private val _connectionError = MutableStateFlow<String?>(null)
+    val connectionError: StateFlow<String?> = _connectionError.asStateFlow()
+
     private val _isRecordingFlow = MutableStateFlow(false)
     val isRecordingFlow: StateFlow<Boolean> = _isRecordingFlow.asStateFlow()
 
@@ -466,6 +474,9 @@ class RealtimeVoiceManager(private val context: Context) {
     /** 设置过的 TTS 控制事件订阅 Job，用于重连时避免重复订阅 */
     private var ttsControlListenerJob: Job? = null
 
+    /** 连接保活监控 Job — 每 10 秒检查 TTS/ASR 连接状态，断开时自动重连 */
+    private var connectionWatchJob: Job? = null
+
     suspend fun initialize(
         serverUrl: String,
         sessionId: String,
@@ -522,6 +533,8 @@ class RealtimeVoiceManager(private val context: Context) {
             lastVoiceResponseAtMs = 0L
 
             Log.i(TAG, "调用 backend-api /api/gateway/join: serverUrl=$serverUrl, session=$sessionId")
+            _connectionPhase.value = ConnectionPhase.JOINING_GATEWAY
+            _connectionError.value = null
 
             // 1. REST 调用面试网关，由服务端返回 TTS / ASR WebSocket 地址
             val response = try {
@@ -653,24 +666,26 @@ class RealtimeVoiceManager(private val context: Context) {
         scope.launch {
             // ============= TTS 微服务 =============
             val ttsWsUrl = ttsWsUrlOverride?.takeIf { it.isNotBlank() } ?: AppConfig.ttsServiceWsUrl
-            val ttsAvailable = ttsAvailableHint ?: runCatching {
-                val ttsHealthUrl = "${AppConfig.ttsServiceHttpUrl}/health"
-                val resp = downloadClient.newCall(Request.Builder().url(ttsHealthUrl).build()).execute()
-                val ok = resp.isSuccessful
-                resp.close()
-                ok
-            }.getOrDefault(false)
+            // TTS 是必须的，只要有有效 URL 就尝试连接
+            val ttsShouldConnect = ttsWsUrl.isNotBlank() && ttsWsUrl.contains("ws")
+            if (!ttsShouldConnect) {
+                Log.e(TAG, "TTS WebSocket URL 无效，无法建立连接: $ttsWsUrl")
+                _connectionPhase.value = ConnectionPhase.CONNECTION_FAILED
+                _connectionError.value = "语音服务地址无效，请重试"
+                _connectionState.value = ConnectionState.DISCONNECTED
+                return@launch
+            }
 
-            if (ttsAvailable) {
-                Log.i(TAG, "Qwen3 TTS 微服务可用，建立 WebSocket 连接: $ttsWsUrl")
-                useQwen3Tts = true
+            Log.i(TAG, "Qwen3 TTS 微服务，建立 WebSocket 连接: $ttsWsUrl")
+            useQwen3Tts = true
 
-                // 将 DUIX 音频回调桥接给 Qwen3 TTS
-                qwen3Tts.duixAudioSink = duixAudioSink
+            // 将 DUIX 音频回调桥接给 Qwen3 TTS
+            qwen3Tts.duixAudioSink = duixAudioSink
 
-                // 更新连接阶段 → TTS 连接中
-                _connectionPhase.value = ConnectionPhase.CONNECTING_TTS
-                qwen3Tts.connect(ttsWsUrl, sessionId)
+            // 更新连接阶段 → TTS 连接中
+            _connectionPhase.value = ConnectionPhase.CONNECTING_TTS
+            _connectionError.value = null
+            qwen3Tts.connect(ttsWsUrl, sessionId)
 
                 // 先启动所有收集器（并行运行），再等待连接建立
                 launch {
@@ -758,75 +773,89 @@ class RealtimeVoiceManager(private val context: Context) {
                     }
                 }
 
-                // 等待 TTS WebSocket 连接建立（CONNECTED 或 SESSION_ACTIVE）
-                Log.i(TAG, "等待 TTS WebSocket 连接就绪...")
-                qwen3Tts.state.first { it == Qwen3TtsWsClient.State.CONNECTED || it == Qwen3TtsWsClient.State.SESSION_ACTIVE }
+                // 等待 TTS WebSocket 连接建立（15 秒超时）
+                Log.i(TAG, "等待 TTS WebSocket 连接就绪（超时 15s）...")
+                val ttsReady = withTimeoutOrNull(15_000L) {
+                    qwen3Tts.state.first { it == Qwen3TtsWsClient.State.CONNECTED || it == Qwen3TtsWsClient.State.SESSION_ACTIVE }
+                }
+                if (ttsReady == null) {
+                    Log.e(TAG, "TTS WebSocket 连接超时(15s): $ttsWsUrl")
+                    _connectionPhase.value = ConnectionPhase.CONNECTION_FAILED
+                    _connectionError.value = "语音服务连接超时(TTS)，请检查网络后重试"
+                    _connectionState.value = ConnectionState.DISCONNECTED
+                    return@launch
+                }
                 Log.i(TAG, "TTS WebSocket 已就绪")
-            } else {
-                Log.w(TAG, "Qwen3 TTS 微服务不可用，使用火山引擎 TTS")
-            }
 
             // ============= ASR 微服务 =============
             val asrWsUrl = asrWsUrlOverride?.takeIf { it.isNotBlank() } ?: AppConfig.asrServiceWsUrl
-            val asrAvailable = asrAvailableHint ?: runCatching {
-                val asrHealthUrl = "${AppConfig.asrServiceHttpUrl}/health"
-                val resp = downloadClient.newCall(Request.Builder().url(asrHealthUrl).build()).execute()
-                val ok = resp.isSuccessful
-                resp.close()
-                ok
-            }.getOrDefault(false)
-
-            if (asrAvailable) {
-                Log.i(TAG, "Qwen3 ASR 微服务可用，建立 WebSocket 连接: $asrWsUrl")
-                useQwen3Asr = true
-
-                // 更新连接阶段 → ASR 连接中
-                _connectionPhase.value = ConnectionPhase.CONNECTING_ASR
-                qwen3Asr.connect(asrWsUrl, sessionId)
-
-                // 先启动所有收集器，再等待连接建立
-                // 监听完整识别结果 → 自动提交
-                launch {
-                    qwen3Asr.transcriptionCompleted.collect { result ->
-                        Log.i(TAG, "Qwen3 ASR 识别完成: ${result.text}")
-                        if (result.text.isBlank()) return@collect
-                        val nowRt = SystemClock.elapsedRealtime()
-                        if (nowRt < micToAsrAllowedAfterElapsedRealtime) {
-                            Log.w(TAG, "丢弃 ASR（仍在扬声器/缓冲冷却内）: ${result.text}")
-                            return@collect
-                        }
-                        if (looksLikeAcousticEchoOfLastAvatar(result.text)) {
-                            Log.w(TAG, "丢弃 ASR（与最近面试官字幕高度相似，疑外放回声）: ${result.text}")
-                            return@collect
-                        }
-                        withContext(Dispatchers.Main) {
-                            _partialTranscript.value = result.text
-                        }
-                        // Qwen3 ASR final 已由 asr-service 通过 Redis 发布给 interview-service。
-                        // 客户端只更新字幕，不再回发 text_message。
-                    }
-                }
-                // 监听部分识别 → 更新字幕
-                launch {
-                    qwen3Asr.partialResult.collect { partial ->
-                        if (partial.isNotEmpty()) {
-                            _partialTranscript.value = partial
-                        }
-                    }
-                }
-
-                // 等待 ASR WebSocket 连接建立
-                Log.i(TAG, "等待 ASR WebSocket 连接就绪...")
-                qwen3Asr.state.first { it == Qwen3AsrWsClient.State.CONNECTED || it == Qwen3AsrWsClient.State.SESSION_ACTIVE }
-                Log.i(TAG, "ASR WebSocket 已就绪")
-            } else {
-                Log.w(TAG, "Qwen3 ASR 微服务不可用，使用阿里云 ASR")
+            val asrShouldConnect = asrWsUrl.isNotBlank() && asrWsUrl.contains("ws")
+            if (!asrShouldConnect) {
+                Log.e(TAG, "ASR WebSocket URL 无效，无法建立连接: $asrWsUrl")
+                _connectionPhase.value = ConnectionPhase.CONNECTION_FAILED
+                _connectionError.value = "语音识别服务地址无效，请重试"
+                _connectionState.value = ConnectionState.DISCONNECTED
+                return@launch
             }
 
-            // 双方均已就绪（或跳过不可用服务）
-            _connectionPhase.value = ConnectionPhase.SERVICES_CONNECTED
+            Log.i(TAG, "Qwen3 ASR 微服务，建立 WebSocket 连接: $asrWsUrl")
+            useQwen3Asr = true
+
+            // 更新连接阶段 → ASR 连接中
+            _connectionPhase.value = ConnectionPhase.CONNECTING_ASR
+            _connectionError.value = null
+            qwen3Asr.connect(asrWsUrl, sessionId)
+
+            // 先启动所有收集器，再等待连接建立
+            // 监听完整识别结果 → 自动提交
+            launch {
+                qwen3Asr.transcriptionCompleted.collect { result ->
+                    Log.i(TAG, "Qwen3 ASR 识别完成: ${result.text}")
+                    if (result.text.isBlank()) return@collect
+                    val nowRt = SystemClock.elapsedRealtime()
+                    if (nowRt < micToAsrAllowedAfterElapsedRealtime) {
+                        Log.w(TAG, "丢弃 ASR（仍在扬声器/缓冲冷却内）: ${result.text}")
+                        return@collect
+                    }
+                    if (looksLikeAcousticEchoOfLastAvatar(result.text)) {
+                        Log.w(TAG, "丢弃 ASR（与最近面试官字幕高度相似，疑外放回声）: ${result.text}")
+                        return@collect
+                    }
+                    withContext(Dispatchers.Main) {
+                        _partialTranscript.value = result.text
+                    }
+                }
+            }
+            // 监听部分识别 → 更新字幕
+            launch {
+                qwen3Asr.partialResult.collect { partial ->
+                    if (partial.isNotEmpty()) {
+                        _partialTranscript.value = partial
+                    }
+                }
+            }
+
+            // 等待 ASR WebSocket 连接建立（15 秒超时）
+            Log.i(TAG, "等待 ASR WebSocket 连接就绪（超时 15s）...")
+            val asrReady = withTimeoutOrNull(15_000L) {
+                qwen3Asr.state.first { it == Qwen3AsrWsClient.State.CONNECTED || it == Qwen3AsrWsClient.State.SESSION_ACTIVE }
+            }
+            if (asrReady == null) {
+                Log.e(TAG, "ASR WebSocket 连接超时(15s): $asrWsUrl")
+                _connectionPhase.value = ConnectionPhase.CONNECTION_FAILED
+                _connectionError.value = "语音识别服务连接超时(ASR)，请检查网络后重试"
+                _connectionState.value = ConnectionState.DISCONNECTED
+                return@launch
+            }
+            Log.i(TAG, "ASR WebSocket 已就绪")
+
+            // 双方均已就绪 → 等待面试官发起首题
+            _connectionPhase.value = ConnectionPhase.WAITING_FIRST_QUESTION
             _connectionState.value = ConnectionState.CONNECTED
-            Log.i(TAG, "Qwen3 服务初始化完成 - ASR=${if (useQwen3Asr) "Qwen3" else "Aliyun"}, TTS=${if (useQwen3Tts) "Qwen3" else "Volcano"}")
+            Log.i(TAG, "Qwen3 服务初始化完成 - TTS=Qwen3, ASR=Qwen3")
+
+            // 启动连接保活监控：每 10 秒检查 TTS/ASR WebSocket 状态，断开时自动重连
+            startConnectionWatch()
         }
     }
 
@@ -1605,7 +1634,7 @@ class RealtimeVoiceManager(private val context: Context) {
 
     private var pendingCompletion = false
 
-    private fun markInterviewCompleted(
+    internal fun markInterviewCompleted(
         reason: String? = null,
         speakFarewell: Boolean = true,
         stopCurrentAudio: Boolean = true
@@ -2519,11 +2548,46 @@ class RealtimeVoiceManager(private val context: Context) {
     }
 
     /**
+     * 连接保活监控：每 10 秒检查 TTS/ASR WebSocket 状态
+     * - 面试进行中时，若检测到连接断开，自动触发重连
+     * - 面试已结束则自动停止监控
+     */
+    private fun startConnectionWatch() {
+        connectionWatchJob?.cancel()
+        connectionWatchJob = scope.launch {
+            Log.i(TAG, "🔒 连接保活监控已启动（每 10s 检查一次）")
+            while (isActive && !_interviewCompleted.value) {
+                delay(10_000L)
+                if (_interviewCompleted.value) break
+
+                // 检查 TTS 连接状态
+                val ttsState = qwen3Tts.state.value
+                if (useQwen3Tts && (ttsState == Qwen3TtsWsClient.State.DISCONNECTED || ttsState == Qwen3TtsWsClient.State.CLOSED)) {
+                    Log.w(TAG, "🚨 连接保活：TTS 已断开 (state=$ttsState)，触发自动重连")
+                    qwen3Tts.tryReconnect()
+                }
+
+                // 检查 ASR 连接状态
+                val asrState = qwen3Asr.state.value
+                if (useQwen3Asr && (asrState == Qwen3AsrWsClient.State.DISCONNECTED || asrState == Qwen3AsrWsClient.State.CLOSED)) {
+                    Log.w(TAG, "🚨 连接保活：ASR 已断开 (state=$asrState)，触发自动重连")
+                    qwen3Asr.tryReconnect()
+                }
+            }
+            Log.i(TAG, "🔒 连接保活监控已停止")
+        }
+    }
+
+    /**
      * 释放所有资源并断开所有服务
      * 到了面试完成页面后，应调用此方法销毁数字人、停止语音、断开 ASR/TTS 服务
      */
     fun release() {
         Log.i(TAG, "♻️ 正在断开所有服务并释放资源...")
+
+        // 0. 停止连接保活监控
+        connectionWatchJob?.cancel()
+        connectionWatchJob = null
         
         // 1. 停止所有音频播放 (MediaPlayer, Qwen3)
         stopAllAudio()

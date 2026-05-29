@@ -91,7 +91,8 @@ export class DeepseekService {
       this.apiUrl = process.env.LLM_API_URL || process.env.DEEPSEEK_API_URL || 'https://api.deepseek.com/v1/chat/completions';
       this.model = process.env.LLM_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
       this.thinkingModel = process.env.DEEPSEEK_THINKING_MODEL || 'deepseek-v4-pro';
-      this.analysisModel = process.env.DEEPSEEK_ANALYSIS_MODEL || this.thinkingModel;
+      // 分析模型统一使用 deepseek-v4-flash（与生成模型一致，降低延迟和成本）
+      this.analysisModel = process.env.DEEPSEEK_ANALYSIS_MODEL || this.model;
     }
     
     this.maxTokens = parseInt(process.env.LLM_MAX_TOKENS || process.env.DEEPSEEK_MAX_TOKENS || process.env.VOLCENGINE_MAX_TOKENS || '4096');
@@ -287,21 +288,20 @@ export class DeepseekService {
         timeoutMs: this.longGenerationTimeoutMs,
       });
 
-      // 解析返回的问题
+      // 解析返回的问题（不再截断，由 DeepSeek 自行决定题目数量）
       const questions = this.parseQuestionsFromResponse(response.choices[0].message.content);
-      const trimmedQuestions = questions.slice(0, questionCount);
 
-      console.log(`成功生成 ${trimmedQuestions.length} 个面试问题`);
-      this.auditPrompt(builtPrompt, trimmedQuestions, {
+      console.log(`成功生成 ${questions.length} 个面试问题`);
+      this.auditPrompt(builtPrompt, questions, {
         mode: 'api',
         jobTarget,
         jobCategory,
         jobSubCategory,
-        questionCount: trimmedQuestions.length,
+        questionCount: questions.length,
       });
 
       return {
-        questions: trimmedQuestions,
+        questions: questions,
         prompt: builtPrompt,
       };
 
@@ -614,6 +614,50 @@ export class DeepseekService {
    * 生成面试内容 (Placeholder)
    */
   /**
+   * 生成首题（开场白 + 第一道面试题）— 快速响应，用于减少用户等待
+   */
+  async generateFirstQuestion(params: {
+    name: string;
+    targetJob: string;
+    companyTarget?: string;
+    background?: string;
+  }): Promise<{ content: string }> {
+    const { name, targetJob, companyTarget, background } = params;
+    const companyText = companyTarget ? `\n- 目标公司/企业：${companyTarget}` : '';
+    const prompt = `作为一位专业、公正且严肃的AI面试官（10年资深HR总监形象），请为以下候选人生成面试的开场白与首个提问：
+
+候选人信息：
+- 姓名：${name}
+- 目标职位：${targetJob}${companyText}
+- 背景：${background || '未指定'}
+
+请生成包含以下内容的面试开场：
+1. 开场介绍与首个提问（1个问题，结合候选人姓名、职位以及目标公司信息生成一段自然且亲切的面试问候，同时包含第一个正式面试提问）
+
+【重要】请用 [emotion:opening] 标记语气，用于 TTS 情感合成：
+- [emotion:opening] — 开场问候与首个提问
+
+示例：
+"[emotion:opening]${name}您好，欢迎参加今天应聘${companyTarget || ''}${targetJob}的面试。我是您的面试官，很开心与您深入交流。首先，请您结合自身的最突出的工作亮点，谈谈您为什么觉得自己是这个岗位的最佳人选？"
+
+请直接输出开场白和首题，不要包含预期考察点、评分标准等评估字段。
+请用中文回答，保持专业严肃但不失礼貌的面试官语气。`.trim();
+
+    try {
+      const response = await this.callDeepseekAPI(prompt, {
+        timeoutMs: 60_000, // 首题超时较短（60秒）
+        maxTokens: 1024,
+      });
+      const content = response.choices[0]?.message?.content || '';
+      return { content };
+    } catch (error) {
+      console.error('生成首题失败:', error);
+      // 降级到默认首题
+      return { content: `[emotion:opening]${name}您好，欢迎参加${targetJob}的面试。请先简单介绍一下您自己，包括您的教育背景和工作经历。` };
+    }
+  }
+
+  /**
    * 生成面试内容
    */
   async generateInterview(prompt: string): Promise<{ content: string }> {
@@ -698,12 +742,12 @@ export class DeepseekService {
         { role: 'user', content: prompt }
       ];
 
-      const isThinking = process.env.DEEPSEEK_ANALYSIS_THINKING === 'true';
+      const isThinking = false; // 统一使用 flash 模型，禁用思维链
       const content = await this.chatCompletion(messages, {
         response_format: { type: 'json_object' },
         isThinking: isThinking,
         model: this.analysisModel,
-        reasoning_effort: isThinking ? 'high' : undefined
+        reasoning_effort: undefined
       });
 
       // 尝试解析JSON

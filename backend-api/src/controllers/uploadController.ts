@@ -31,7 +31,7 @@ export const uploadFile = async (req: Request, res: Response) => {
     }
 
     // 验证文件类型
-    const allowedTypes = ['logo', 'license', 'resume', 'avatar', 'banner', 'other'];
+    const allowedTypes = ['logo', 'license', 'resume', 'avatar', 'banner', 'apk', 'other'];
     if (!allowedTypes.includes(type)) {
       return res.status(400).json({
         success: false,

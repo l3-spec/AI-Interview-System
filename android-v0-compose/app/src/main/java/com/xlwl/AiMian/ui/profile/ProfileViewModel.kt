@@ -29,6 +29,7 @@ data class ProfileUiState(
     val currentBannerIndex: Int = 0,
     val isUpdating: Boolean = false,
     val isLoading: Boolean = false,
+    val isUploadingAvatar: Boolean = false,
     val error: String? = null
 )
 
@@ -64,17 +65,15 @@ class ProfileViewModel(
 
     fun refreshBanners() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
+            _uiState.update { it.copy(isLoading = true) }
             contentRepository.getProfileBanners().onSuccess { banners ->
                 _uiState.update { it.copy(
                     banners = banners.map { b -> b.toBannerData() },
                     isLoading = false
                 )}
-            }.onFailure { error ->
-                _uiState.update { it.copy(
-                    isLoading = false,
-                    error = error.message ?: "加载Banner失败"
-                )}
+            }.onFailure {
+                // Banner加载失败静默处理，不阻塞页面也不弹错误提示
+                _uiState.update { it.copy(isLoading = false) }
             }
         }
     }
@@ -90,6 +89,13 @@ class ProfileViewModel(
                     )}
                 }
             }
+        }
+    }
+
+    private suspend fun updateProfileInternal(request: UpdateProfileRequest): Result<User> {
+        return userRepository.updateProfile(request).onSuccess { updatedUser ->
+            authManager.updateUser(updatedUser)
+            _uiState.update { it.copy(user = updatedUser) }
         }
     }
 
@@ -115,23 +121,35 @@ class ProfileViewModel(
                 openToCompanies = openToCompanies,
                 autoPublish = autoPublish
             )
-            userRepository.updateProfile(request).onSuccess { updatedUser ->
-                authManager.updateUser(updatedUser)
-                _uiState.update { it.copy(user = updatedUser) }
-            }
+            updateProfileInternal(request)
             _uiState.update { it.copy(isUpdating = false) }
         }
     }
 
     fun uploadAvatar(context: Context, uri: Uri) {
         viewModelScope.launch {
-            val file = uriToFile(context, uri) ?: return@launch
+            _uiState.update { it.copy(isUploadingAvatar = true, error = null) }
+            val file = uriToFile(context, uri)
+            if (file == null) {
+                _uiState.update { it.copy(isUploadingAvatar = false, error = "图片读取失败，请重试") }
+                return@launch
+            }
             val userId = _uiState.value.user?.id ?: "unknown"
             ossRepository.uploadImage(file, "users/$userId/avatar_${System.currentTimeMillis()}.jpg")
                 .onSuccess { result ->
                     result.url?.let { url ->
-                        updateProfile(avatar = url)
+                        val request = UpdateProfileRequest(avatar = url)
+                        updateProfileInternal(request)
+                            .onSuccess { _uiState.update { it.copy(isUploadingAvatar = false) } }
+                            .onFailure { e ->
+                                _uiState.update { it.copy(isUploadingAvatar = false, error = "头像保存失败: ${e.message}") }
+                            }
+                    } ?: run {
+                        _uiState.update { it.copy(isUploadingAvatar = false, error = "头像上传成功但未获取到地址") }
                     }
+                }
+                .onFailure { e ->
+                    _uiState.update { it.copy(isUploadingAvatar = false, error = "头像上传失败: ${e.message}") }
                 }
         }
     }

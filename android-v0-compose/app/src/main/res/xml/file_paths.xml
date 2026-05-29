@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    FileProvider 路径配置
+    用于分享 APK 文件给系统安装器（Android 7.0+ 必需）
+-->
+<paths>
+    <!-- 外部存储的公共下载目录（Environment.DIRECTORY_DOWNLOADS） -->
+    <external-path
+        name="downloads"
+        path="Download/" />
+
+    <!-- 外部存储的根目录（备用） -->
+    <external-path
+        name="external_root"
+        path="." />
+
+    <!-- 内部缓存目录（备用，供 DownloadManager 使用） -->
+    <cache-path
+        name="cache"
+        path="." />
+</paths>

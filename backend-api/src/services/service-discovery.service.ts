@@ -58,10 +58,22 @@ export class ServiceDiscoveryService {
 
   /**
    * Get the best available service of a type
+   * 超时 3 秒返回 null（避免 Redis 不可用时阻塞 gateway/join）
    */
   async getBestService(type: 'asr' | 'tts' | 'interview' | 'gateway'): Promise<ServiceInfo | null> {
-    const services = await this.getServices(type);
-    return services.length > 0 ? services[0] : null;
+    const DISCOVERY_TIMEOUT_MS = 3000;
+    try {
+      const services = await Promise.race([
+        this.getServices(type),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('ServiceDiscovery超时(3s)')), DISCOVERY_TIMEOUT_MS)
+        ),
+      ]);
+      return services.length > 0 ? services[0] : null;
+    } catch (err: any) {
+      console.warn(`[ServiceDiscovery] getBestService(${type}) 失败: ${err.message}`);
+      return null;
+    }
   }
 }
 

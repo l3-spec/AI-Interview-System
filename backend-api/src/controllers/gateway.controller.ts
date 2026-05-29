@@ -31,17 +31,27 @@ export class GatewayController {
       const { sessionId, userId, jobPosition, background, resumeText, deviceId } = req.body;
       if (!sessionId) return res.status(400).json({ error: 'Missing sessionId' });
 
-      // 转发到 interview-service
-      await redisStreamService.add('interview:inbound_stream', {
-        type: 'JOIN_SESSION',
-        sessionId,
-        userId: userId || 'anonymous',
-        jobPosition,
-        background,
-        resumeText,
-        deviceId: deviceId || '',  // 支持 deviceId 区分同设备重连 vs 多设备并行
-        timestamp: Date.now(),
-      });
+      // 转发到 interview-service（超时 5 秒不阻塞客户端响应）
+      try {
+        await Promise.race([
+          redisStreamService.add('interview:inbound_stream', {
+            type: 'JOIN_SESSION',
+            sessionId,
+            userId: userId || 'anonymous',
+            jobPosition,
+            background,
+            resumeText,
+            deviceId: deviceId || '',  // 支持 deviceId 区分同设备重连 vs 多设备并行
+            timestamp: Date.now(),
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Redis Stream 写入超时(5s)')), 5000)
+          ),
+        ]);
+      } catch (streamErr: any) {
+        console.warn(`[Gateway] JOIN_SESSION 推送到 interview-service 失败: ${streamErr.message}`);
+        // 不阻塞客户端，继续返回 ASR/TTS 地址
+      }
 
       // 查询最佳可用的 ASR/TTS 数据通道
       const [bestAsr, bestTts, ai] = await Promise.all([
@@ -74,12 +84,13 @@ export class GatewayController {
         services: {
           asr: {
             wsUrl: asrUrl,
-            available: !!bestAsr,
+            // 只要有有效 URL 就标记 available（ServiceDiscovery 超时时仍有 fallback URL）
+            available: !!asrUrl && asrUrl.includes('ws'),
             model: ai.qwenAsrModel,
           },
           tts: {
             wsUrl: ttsUrl,
-            available: !!bestTts,
+            available: !!ttsUrl && ttsUrl.includes('ws'),
             model: ai.qwenTtsModel,
             voice: ai.ttsVoice,
           },

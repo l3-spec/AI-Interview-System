@@ -350,7 +350,11 @@ private fun ProfileHeader(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                ProfileAvatar(user = user, size = 64.dp) // 更大的头像
+                ProfileAvatar(
+                    user = user,
+                    size = 64.dp,
+                    modifier = Modifier.clickable(onClick = onProfileDetailClick)
+                ) // 更大的头像，点击可跳转个人资料
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,

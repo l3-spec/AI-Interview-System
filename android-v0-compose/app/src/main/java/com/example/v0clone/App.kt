@@ -34,7 +34,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,9 +57,12 @@ import androidx.core.view.WindowCompat
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.xlwl.AiMian.data.auth.AuthManager
+import com.xlwl.AiMian.di.AppModule
 import com.xlwl.AiMian.navigation.AppNavHost
 import com.xlwl.AiMian.navigation.Routes
 import com.xlwl.AiMian.ui.design.StarLinkAccentOrange
+import com.xlwl.AiMian.update.AppUpdateManager
+import com.xlwl.AiMian.update.ForceUpdateDialog
 import com.xlwl.AiMian.ui.design.StarLinkPlaceholderGray
 import com.xlwl.AiMian.ui.design.StarLinkWhite
 import com.xlwl.AiMian.ui.components.PrivacyPolicyDialog
@@ -73,6 +78,32 @@ data class BottomNavigationItemData(
 @Composable
 fun V0App(initialDeepLink: String? = null) {
     PrivacyPolicyDialog()
+
+    // ===== 强制更新检测 =====
+    val context = LocalContext.current
+    val updateManager = remember { AppUpdateManager(context) }
+    var showUpdateDialog by remember { mutableStateOf(false) }
+    var updateInfo by remember { mutableStateOf<AppUpdateManager.UpdateInfo?>(null) }
+
+    // 监听配置变化，检查是否需要强制更新
+    val config by AppModule.configRepository.config.collectAsState(initial = null)
+    LaunchedEffect(config) {
+        val cfg = config ?: return@LaunchedEffect
+        val info = updateManager.checkUpdate(cfg)
+        if (info != null && info.forceUpdate) {
+            updateInfo = info
+            showUpdateDialog = true
+        }
+    }
+
+    // 显示强制更新弹窗
+    if (showUpdateDialog && updateInfo != null) {
+        ForceUpdateDialog(
+            updateInfo = updateInfo!!,
+            updateManager = updateManager,
+        )
+    }
+
     val navController = rememberNavController()
     
     // 处理 Deep Link 跳转
@@ -93,7 +124,6 @@ fun V0App(initialDeepLink: String? = null) {
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: ""
-    val context = LocalContext.current
     val authManager = remember { AuthManager(context) }
     val token by authManager.tokenFlow.collectAsState(initial = null)
     val hideBottomBar = currentRoute.startsWith(Routes.GUIDE) ||

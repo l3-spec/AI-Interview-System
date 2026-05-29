@@ -56,6 +56,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -141,6 +142,17 @@ fun PersonalInfoRoute(
     
     var localAvatarUri by remember { mutableStateOf<Uri?>(null) }
 
+    // 监听上传状态：上传成功后清除本地URI以显示服务端头像，失败时提示错误
+    LaunchedEffect(uiState.isUploadingAvatar, uiState.error) {
+        if (!uiState.isUploadingAvatar) {
+            if (uiState.error != null) {
+                Toast.makeText(context, uiState.error, Toast.LENGTH_SHORT).show()
+            } else if (localAvatarUri != null) {
+                localAvatarUri = null
+            }
+        }
+    }
+
     // BottomSheet 状态控制
     var showNameDialog by remember { mutableStateOf(false) }
     var showGenderSheet by remember { mutableStateOf(false) }
@@ -191,7 +203,9 @@ fun PersonalInfoRoute(
                     InfoRow(
                         label = "头像",
                         onClick = {
-                            pickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            if (!uiState.isUploadingAvatar) {
+                                pickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            }
                         }
                     ) {
                         Surface(
@@ -199,21 +213,30 @@ fun PersonalInfoRoute(
                             modifier = Modifier.size(48.dp),
                             color = SurfaceVariant
                         ) {
-                            val displayAvatar = localAvatarUri ?: user?.avatar
-                            if (displayAvatar != null) {
-                                AsyncImage(
-                                    model = displayAvatar,
-                                    contentDescription = null,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
-                                )
-                            } else {
-                                Icon(
-                                    Icons.Outlined.Face,
-                                    contentDescription = null,
-                                    modifier = Modifier.padding(10.dp),
-                                    tint = TextTertiary
-                                )
+                            Box(contentAlignment = Alignment.Center) {
+                                val displayAvatar = localAvatarUri ?: user?.avatar
+                                if (displayAvatar != null) {
+                                    AsyncImage(
+                                        model = displayAvatar,
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Outlined.Face,
+                                        contentDescription = null,
+                                        modifier = Modifier.padding(10.dp),
+                                        tint = TextTertiary
+                                    )
+                                }
+                                if (uiState.isUploadingAvatar) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(24.dp),
+                                        color = PrimaryOrange,
+                                        strokeWidth = 2.dp
+                                    )
+                                }
                             }
                         }
                     }

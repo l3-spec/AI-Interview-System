@@ -51,20 +51,25 @@ const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCa
   const allowedDocTypes = /pdf|doc|docx/;
   // 允许的视频类型
   const allowedVideoTypes = /mp4|webm|ogg|quicktime/;
+  // 允许的安装包类型
+  const allowedApkTypes = /apk/;
 
   const extname = allowedImageTypes.test(path.extname(file.originalname).toLowerCase()) ||
     allowedDocTypes.test(path.extname(file.originalname).toLowerCase()) ||
-    allowedVideoTypes.test(path.extname(file.originalname).toLowerCase());
+    allowedVideoTypes.test(path.extname(file.originalname).toLowerCase()) ||
+    allowedApkTypes.test(path.extname(file.originalname).toLowerCase());
 
   const mimetype = allowedImageTypes.test(file.mimetype) ||
     /application\/(pdf|msword|vnd.openxmlformats-officedocument.wordprocessingml.document)/.test(file.mimetype) ||
     allowedVideoTypes.test(file.mimetype) ||
-    file.mimetype === 'video/quicktime'; // iOS .mov files often use this
+    file.mimetype === 'video/quicktime' || // iOS .mov files often use this
+    file.mimetype === 'application/vnd.android.package-archive' || // Android APK
+    file.mimetype === 'application/octet-stream'; // 通用二进制（部分浏览器上传APK时使用）
 
   if (mimetype && extname) {
     return cb(null, true);
   } else {
-    cb(new Error('只允许上传图片、文档或视频文件'));
+    cb(new Error('只允许上传图片、文档、视频或APK安装包文件'));
   }
 };
 

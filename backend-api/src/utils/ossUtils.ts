@@ -80,6 +80,8 @@ export const typeToFolder = (type?: string) => {
       return 'avatars';
     case 'banner':
       return 'banners';
+    case 'apk':
+      return 'apks';
     default:
       return 'others';
   }

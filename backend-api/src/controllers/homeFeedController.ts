@@ -533,15 +533,12 @@ function formatCompactCount(count: number) {
  * 获取Banner数据（首页轮播图）
  * GET /api/home/banners
  */
-export const getHomeBanners = async (req: Request, res: Response) => {
+// 通用Banner查询——home/circle/jobs/profile复用同一逻辑
+async function getBannersFromDb(req: Request, res: Response) {
   try {
     const banners = await prisma.homeBanner.findMany({
-      where: {
-        isActive: true,
-      },
-      orderBy: {
-        sortOrder: 'asc',
-      },
+      where: { isActive: true },
+      orderBy: { sortOrder: 'asc' },
       select: {
         id: true,
         title: true,
@@ -555,23 +552,35 @@ export const getHomeBanners = async (req: Request, res: Response) => {
 
     const withResolvedUrls = banners.map((b) => ({
       ...b,
-      // DB 中存 objectKey（uploads/...）或历史代理路径，对外统一为 App 可加载的地址
       imageUrl: toMediaUrl(b.imageUrl) ?? b.imageUrl ?? null,
     }));
 
-    res.json({
-      success: true,
-      data: withResolvedUrls,
-    });
+    res.json({ success: true, data: withResolvedUrls });
   } catch (error: any) {
     console.error('获取Banner失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '服务器错误',
-      error: error.message,
-    });
+    res.status(500).json({ success: false, message: '服务器错误', error: error.message });
   }
-};
+}
+
+export const getHomeBanners = getBannersFromDb;
+
+/**
+ * 获取Profile页面Banner
+ * GET /api/home/profile/banners
+ */
+export const getProfileBanners = getBannersFromDb;
+
+/**
+ * 获取Circle页面Banner
+ * GET /api/home/circle/banners
+ */
+export const getCircleBanners = getBannersFromDb;
+
+/**
+ * 获取Jobs页面Banner
+ * GET /api/home/jobs/banners
+ */
+export const getJobsBanners = getBannersFromDb;
 
 /**
  * 获取首页精选内容卡片

@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -77,6 +78,7 @@ class Qwen3TtsWsClient(
     companion object {
         private const val TAG = "Qwen3TtsWsClient"
         private const val RECONNECT_DELAY_MS = 3000L
+        private const val MAX_RECONNECT_ATTEMPTS = 10  // 面试长连接需要更多重连次数
     }
 
     enum class State { DISCONNECTED, CONNECTING, CONNECTED, SESSION_ACTIVE, CLOSED }
@@ -142,6 +144,12 @@ class Qwen3TtsWsClient(
     private val isPlaying = AtomicBoolean(false)
     private var audioChunkCount = 0
 
+    // 自动重连相关
+    private var lastWsUrl: String? = null
+    private var lastSid: String? = null
+    private var reconnectAttempts = 0
+    private var shouldAutoReconnect = true  // 显式 disconnect() 时置 false
+
     // WAV 缓存（供 DUIX 引擎使用）
     private var currentWavFile: File? = null
     private var pcmOutputStream: FileOutputStream? = null
@@ -166,18 +174,34 @@ class Qwen3TtsWsClient(
      * @param sid 可选的会话 ID（与面试 sessionId 关联）
      */
     fun connect(wsUrl: String, sid: String? = null) {
-        if (_state.value == State.CONNECTING || _state.value == State.SESSION_ACTIVE) {
-            Log.w(TAG, "TTS 已在连接/活跃状态，忽略重复连接")
+        // 面试进行中保护：已在连接/已连接/活跃状态时绝不重建连接
+        val currentState = _state.value
+        if (currentState == State.CONNECTING || currentState == State.CONNECTED || currentState == State.SESSION_ACTIVE) {
+            Log.w(TAG, "TTS 已在 ${currentState} 状态，忽略重复连接请求（面试进行中保护）")
             return
         }
 
+        // 保存连接参数供自动重连使用
+        lastWsUrl = wsUrl
+        lastSid = sid
+        reconnectAttempts = 0
+        shouldAutoReconnect = true
+
+        doConnect(wsUrl, sid)
+    }
+
+    /**
+     * 内部实际连接方法（初始连接和重连共用）
+     */
+    private fun doConnect(wsUrl: String, sid: String?) {
         _state.value = State.CONNECTING
-        Log.i(TAG, "连接 TTS 微服务: $wsUrl")
+        Log.i(TAG, "连接 TTS 微服务: $wsUrl (reconnect=$reconnectAttempts)")
 
         val request = Request.Builder().url(wsUrl).build()
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(ws: WebSocket, response: Response) {
                 Log.i(TAG, "TTS WebSocket 已连接")
+                reconnectAttempts = 0  // 连接成功，重置重连计数
                 _state.value = State.CONNECTED
                 // 自动创建会话
                 createSession(sid)
@@ -192,12 +216,14 @@ class Qwen3TtsWsClient(
                 _state.value = State.DISCONNECTED
                 _errors.tryEmit("TTS连接失败: ${t.message}")
                 cleanup()
+                tryReconnect()
             }
 
             override fun onClosed(ws: WebSocket, code: Int, reason: String) {
                 Log.i(TAG, "TTS WebSocket 已关闭: code=$code, reason=$reason")
                 _state.value = State.CLOSED
                 cleanup()
+                tryReconnect()
             }
         })
     }
@@ -286,6 +312,7 @@ class Qwen3TtsWsClient(
      * 断开连接并释放资源
      */
     fun disconnect() {
+        shouldAutoReconnect = false  // 显式断开不重连
         try {
             finishSession()
             webSocket?.close(1000, "client disconnect")
@@ -294,6 +321,42 @@ class Qwen3TtsWsClient(
         }
         cleanup()
         _state.value = State.DISCONNECTED
+    }
+
+    /**
+     * 自动重连（指数退避，最多 MAX_RECONNECT_ATTEMPTS 次）
+     * 可由连接保活监控主动调用
+     */
+    internal fun tryReconnect() {
+        if (!shouldAutoReconnect) {
+            Log.i(TAG, "显式断开，不自动重连")
+            return
+        }
+        val url = lastWsUrl
+        if (url == null) {
+            Log.w(TAG, "无保存的 URL，无法重连")
+            return
+        }
+        if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+            Log.w(TAG, "TTS 重连次数已达上限($MAX_RECONNECT_ATTEMPTS)，重置计数器后重试")
+            reconnectAttempts = 0  // 面试长连接：达到上限后重置而非放弃
+        }
+        // 已在连接/已连接/活跃状态时不重连
+        val currentState = _state.value
+        if (currentState == State.CONNECTING || currentState == State.CONNECTED || currentState == State.SESSION_ACTIVE) {
+            Log.d(TAG, "TTS 已在 ${currentState} 状态，跳过重连")
+            return
+        }
+        reconnectAttempts++
+        val delayMs = RECONNECT_DELAY_MS * reconnectAttempts  // 3s, 6s, 9s, 12s, 15s
+        Log.w(TAG, "TTS 将在 ${delayMs}ms 后尝试第 $reconnectAttempts 次重连...")
+        scope.launch {
+            delay(delayMs)
+            if (shouldAutoReconnect && scope.isActive) {
+                Log.i(TAG, "TTS 开始第 $reconnectAttempts 次重连")
+                doConnect(url, lastSid)
+            }
+        }
     }
 
     fun release() {

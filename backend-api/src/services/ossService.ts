@@ -351,15 +351,29 @@ class OSSService {
         objectKey = `uploads/${Date.now()}_${basename}`;
       }
 
-      const client = this.getOSSClient(bucketName);
-      await client.put(objectKey, localFilePath);
+      // 尝试上传到指定桶，若桶不存在则回退到默认桶
+      let targetBucket = bucketName || this.bucket;
+      try {
+        const client = this.getOSSClient(targetBucket);
+        await client.put(objectKey!, localFilePath);
+      } catch (uploadErr: any) {
+        // 如果使用了用户桶且桶不存在（NoSuchBucket），回退到默认桶
+        if (targetBucket !== this.bucket && (uploadErr.code === 'NoSuchBucket' || uploadErr.status === 404)) {
+          console.warn(`[OSS] 用户桶 ${targetBucket} 不可用，回退到默认桶 ${this.bucket}`);
+          targetBucket = this.bucket;
+          const client = this.getOSSClient(targetBucket);
+          await client.put(objectKey!, localFilePath);
+        } else {
+          throw uploadErr;
+        }
+      }
 
       // 上传成功后删除本地临时文件，忽略删除错误
       ((fs as any).default || fs).unlink(localFilePath, () => undefined);
 
       return {
-        objectKey,
-        url: this.generateFileUrl(objectKey, true, 3600, bucketName)
+        objectKey: objectKey!,
+        url: this.generateFileUrl(objectKey!, true, 3600, targetBucket !== this.bucket ? targetBucket : undefined)
       };
     } catch (error) {
       console.error('上传本地文件到OSS失败:', error);

@@ -208,6 +208,10 @@ export class ASRSessionManager {
           isFinal: false,
           timestamp: Date.now(),
         });
+        // 发布中间识别结果到 Redis，供 interview-service 判断用户正在说话
+        if (text && text.trim().length > 0) {
+          this.publishEvent(sessionId, 'transcription_partial', { text });
+        }
       },
 
       onTranscriptionCompleted: (transcript) => {

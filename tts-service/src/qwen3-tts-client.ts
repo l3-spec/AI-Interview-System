@@ -150,7 +150,7 @@ export class Qwen3TTSClient {
 
   constructor(config: Qwen3TTSConfig, callbacks: TTSEventCallbacks) {
     this.apiKey = process.env.DASHSCOPE_API_KEY || '';
-    const modelEnv = process.env.QWEN_TTS_MODEL || 'qwen3-tts-flash-realtime';
+    const modelEnv = process.env.QWEN_TTS_MODEL || 'qwen3-tts-instruct-flash-realtime-2026-01-22';
     this.models = modelEnv.split(',').map(m => m.trim()).filter(Boolean);
     
     // 核心兜底逻辑：如果用户只配置了一个模型，

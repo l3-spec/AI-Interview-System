@@ -783,7 +783,7 @@ export const uploadApi = {
   // 上传文件（支持图片）
   uploadFile: async (
     file: File,
-    type: 'logo' | 'license' | 'resume' | 'avatar' | 'banner' = 'banner'
+    type: 'logo' | 'license' | 'resume' | 'avatar' | 'banner' | 'apk' = 'banner'
   ): Promise<ApiResponse<{ url: string; filename: string; objectKey?: string }>> => {
     const formData = new FormData();
     formData.append('file', file);

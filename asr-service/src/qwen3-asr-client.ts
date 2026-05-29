@@ -129,17 +129,18 @@ export class Qwen3ASRClient {
 
   constructor(config: Qwen3ASRConfig, callbacks: ASREventCallbacks) {
     this.apiKey = process.env.DASHSCOPE_API_KEY || '';
-    const modelEnv = process.env.QWEN_ASR_MODEL || 'qwen3-asr-flash-realtime';
+    const modelEnv = process.env.QWEN_ASR_MODEL || 'qwen3-asr-flash-realtime-2026-02-10';
     this.models = modelEnv.split(',').map(m => m.trim()).filter(Boolean);
     
     const defaultFallbacks = [
-      'qwen3-asr-flash-realtime-2025-10-27',
       'qwen3-asr-flash-realtime-2026-02-10',
+      'qwen3-asr-flash-realtime-2025-10-27',
       'qwen3-asr-flash-2026-02-10',
       'qwen3-asr-flash-2025-09-08'
     ];
     
-    if (this.models.length <= 1) {
+    const disableFallback = process.env.QWEN_ASR_DISABLE_FALLBACK === 'true';
+    if (!disableFallback && this.models.length <= 1) {
       for (const fallback of defaultFallbacks) {
         if (!this.models.includes(fallback)) {
           this.models.push(fallback);

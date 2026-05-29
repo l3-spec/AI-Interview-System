@@ -157,16 +157,14 @@ export class TTSSessionManager {
   async createSession(clientWs: WebSocket, options: CreateTTSSessionOptions): Promise<string> {
     const sessionId = options.sessionId || uuidv4();
   
-    // 清理旧暂存指令：包含内存 Map 与 Redis List 两处
-    // 设计意图：避免上次会话崩溃 / 服务重启后残留的过期指令被新客户端重放。
-    // 如需重发，应由 interview-service 重新生成文本，而非依赖这里的暂存重放。
-    this.pendingRedisCommands.delete(sessionId);
+    // 保留内存 Map 中的暂存指令，待 createSession 末尾的 replayPendingRedisCommands 重放
+    // 仅清理 Redis 持久化指令（避免服务重启后旧指令重放）
     if (this.redisBus) {
       this.redisBus.clearPendingCommands(sessionId).catch((err: any) => {
         logger.warn(`[TTS-Manager] 清理 Redis 旧暂存指令失败 (${sessionId}): ${err?.message || err}`);
       });
     }
-    logger.info(`[TTS-Manager] 清理旧暂存指令: sessionId=${sessionId}`);
+    logger.info(`[TTS-Manager] 清理 Redis 持久化暂存指令: sessionId=${sessionId}`);
   
     // 参数校验：sampleRate / mode 强校验，voice 宽松（已在 validate 内做了回退）
     const validation = this.validateSessionConfig(options);

@@ -67,7 +67,7 @@ export class CoordinatorService {
       if (session && session.runtimePhase === 'speaking') {
         session.runtimePhase = 'listening';
         this.startSilenceDetection(sessionId);
-      }
+  }
       this.speakingTimers.delete(sessionId);
     }, timeoutMs);
 
@@ -85,7 +85,13 @@ export class CoordinatorService {
   // ASR 识别结果去重配置（防止 ASR 服务重传或重复确认导致同一文本被处理多次）
   private readonly DEDUP_TTL_SECONDS = 60; // Redis 去重窗口：60 秒
   private readonly DEDUP_KEY_PREFIX = 'interview:dedup:';
-  private readonly MIN_VALID_TEXT_LENGTH = 3; // 最小有效文本长度（短于此值视为噪音）
+  // 最小有效文本长度配置：
+  //   1 字文本 → 仅白名单内的有意义单字放行（避免 ASR 语气词噪音）
+  //   2 字及以上 → 全部放行（中文双字词几乎都是有效表达）
+  private readonly SINGLE_CHAR_ALLOWLIST = new Set([
+    '好', '行', '对', '会', '是', '能', '有', '无', '不', '没',
+    '对', '错', '行', '停', '等', '慢', '快',
+  ]);
 
   // 并发限流配置：单实例最大并发面试会话数
   // 超过该阈值时拒绝新加入的会话，防止 LLM/TTS 资源耗尽导致整体响应恶化
@@ -133,7 +139,7 @@ export class CoordinatorService {
         }
       } catch (err: any) {
         console.warn(`[Coordinator] 启动清理失败 (pattern=${pattern}): ${err?.message || err}`);
-      }
+  }
     }
   }
 
@@ -234,7 +240,7 @@ export class CoordinatorService {
       } catch (err) {
         console.error('[Coordinator] Error in stream consumer loop:', err);
         await new Promise(resolve => setTimeout(resolve, 2000));
-      }
+  }
     }
   }
 
@@ -293,6 +299,18 @@ export class CoordinatorService {
                 console.log(`[Coordinator] ASR speech_stopped → 重启静音计时器 (${sessionId})`);
               }
             }
+          } else if (data.event === 'transcription_partial') {
+            // ASR 中间识别结果：用户正在说话但尚未产出最终结果，立即重置静音计时器
+            const { sessionId: sid, payload } = data;
+            const partialText = (payload?.text || '').trim();
+            if (sid && partialText.length > 0) {
+              const session = interviewFlowService.getSession(sid);
+              if (session && session.runtimePhase === 'listening') {
+                this.clearSilenceDetection(sid);
+                this.silenceCounts.delete(sid);
+                this.startSilenceDetection(sid);
+              }
+            }
           }
         } catch (e) {
           console.error('[Coordinator] Error handling ASR message:', e);
@@ -309,7 +327,7 @@ export class CoordinatorService {
         } catch (e) {
           console.error('[Coordinator] Error handling TTS event:', e);
         }
-      }
+  }
     });
   }
 
@@ -420,7 +438,7 @@ export class CoordinatorService {
           });
         });
         break;
-      }
+  }
       case 'CLIENT_READY': {
         const readyStart = Date.now();
         this.runInQueue(sessionId, async () => {
@@ -428,7 +446,7 @@ export class CoordinatorService {
           this.logPerformance('client_ready', sessionId, Date.now() - readyStart);
         });
         break;
-      }
+  }
       case 'TEXT_MESSAGE':
         // ASR/文本消息去重检查（基于 Redis SET NX EX，防止重传/重复确认）
         if (await this.isDuplicateMessage(sessionId, text || '')) {
@@ -556,7 +574,7 @@ export class CoordinatorService {
           userName = user.name.trim();
           console.log(`[Coordinator] 已解析用户真实名: ${userName} (userId=${userId})`);
         }
-      }
+  }
     } catch (e: any) {
       console.warn(`[Coordinator] 查询用户名失败，使用默认“面试者”: ${e?.message || e}`);
     }
@@ -576,7 +594,7 @@ export class CoordinatorService {
       (session as any).isClientReady = false;
       if (gatewayId) {
         (session as any).gatewayId = gatewayId;
-      }
+  }
     }
 
     // 面试初始化成功后，立即向 TTS 通道发送控制消息，App 据此进入面试态
@@ -586,6 +604,11 @@ export class CoordinatorService {
     });
 
     // 异步生成后续题目，但不要自动开始/播报第一题；第一题必须等候选人回答欢迎问题后再由主控推进。
+    // 先下发等待提示，让 App 知道题目正在生成中
+    this.emitToGateway(sessionId, 'preparing_questions', {
+      text: '正在为您准备面试题目，请稍候...',
+      sessionId,
+    }, gatewayId);
     const prepareTask = interviewFlowService.startInterviewPhase(sessionId, { autoStart: false }).then((res: any) => {
       console.log(`✅ [Coordinator] 面试回合准备就绪 (${sessionId})`);
       return res;
@@ -595,7 +618,7 @@ export class CoordinatorService {
     }).finally(() => {
       if (this.sessionPrepareTasks.get(sessionId) === prepareTask) {
         this.sessionPrepareTasks.delete(sessionId);
-      }
+  }
     });
     this.sessionPrepareTasks.set(sessionId, prepareTask);
 
@@ -684,7 +707,7 @@ export class CoordinatorService {
         this.persistAvatarVoice(sessionId, combinedText, currentRound.roundNumber);
 
         return;
-      }
+  }
     }
 
     // 等待大模型生成面试问题完成
@@ -710,7 +733,7 @@ export class CoordinatorService {
       this.startSpeakingTimeout(sessionId, welcomeText);
 
       // 使用 Qwen3-TTS 合成欢迎语
-      const ttsMode = await this.synthesizeQwen3TtsSegments(sessionId, welcomeText, 'opening');
+      const ttsMode = await this.synthesizeQwen3TtsSegments(sessionId, welcomeText, 'opening', true);
 
       // 首题问出后，激活客户端的倒计时，下发 question_start 控制消息
       await this.emitControlToTTS(sessionId, 'question_start', {
@@ -747,7 +770,7 @@ export class CoordinatorService {
         if (sess.currentRound !== 1 || sess.runtimePhase === 'completed') return;
         console.log(`🔁 [Coordinator] 首题消息重发保护触发 (4s延迟): sessionId=${sessionId}`);
         // 重发控制消息（TTS 合成 + question_start + voice_response）
-        this.synthesizeQwen3TtsSegments(sessionId, welcomeText, 'opening').catch(() => {});
+        this.synthesizeQwen3TtsSegments(sessionId, welcomeText, 'opening', true).catch(() => {});
         this.emitControlToTTS(sessionId, 'question_start', {
           questionIndex: 0,
           timeLimit: firstRound.suggestedTime || 180,
@@ -777,7 +800,7 @@ export class CoordinatorService {
       session.runtimePhase = 'speaking';
       this.startSpeakingTimeout(sessionId, welcomeText);
 
-      const ttsMode = await this.synthesizeQwen3TtsSegments(sessionId, welcomeText, 'opening');
+      const ttsMode = await this.synthesizeQwen3TtsSegments(sessionId, welcomeText, 'opening', true);
 
       await this.emitControlToTTS(sessionId, 'question_start', {
         questionIndex: 0,
@@ -942,7 +965,7 @@ export class CoordinatorService {
         await this.emitControlToTTS(sessionId, 'session_replaced', {
           reason: 'new_connection_from_same_device',
         });
-      }
+  }
       interviewFlowService.removeSession(sessionId);
 
       // 清理相关定时器
@@ -950,7 +973,7 @@ export class CoordinatorService {
       if (forceTimer) {
         clearTimeout(forceTimer);
         this.clientReadyTimers.delete(sessionId);
-      }
+  }
       this.clearSilenceDetection(sessionId);
       this.clearSpeakingTimeout(sessionId);
       // 清理 ASR 冷却定时器
@@ -958,7 +981,7 @@ export class CoordinatorService {
       if (cooldownTimer) {
         clearTimeout(cooldownTimer);
         this.asrCooldownTimers.delete(sessionId);
-      }
+  }
       this.asrPendingText.delete(sessionId);
       this.silenceCounts.delete(sessionId);
 
@@ -989,7 +1012,7 @@ export class CoordinatorService {
             }
           }
         }
-      }
+  }
     }, 60_000); // 每分钟检查一次
   }
 
@@ -1052,9 +1075,15 @@ export class CoordinatorService {
     }
 
     const trimmed = text.trim();
-    // 短文本额外过滤（噪音 / 误识别）
-    if (trimmed.length < this.MIN_VALID_TEXT_LENGTH) {
-      console.log(`[Coordinator] 短文本过滤 (${sessionId}): "${trimmed}" (${trimmed.length}字)`);
+    // 智能短文本过滤：
+    //   - 1 字：仅白名单内有意义的单字放行（好/行/对/会/是/能 等）
+    //   - 2 字及以上：全部放行（“需要”“可以”“不行”“不知道” 等）
+    //   - 语气词/犹豫音（嗯/啊/哦/呃）被白名单机制自然过滤
+    if (trimmed.length === 1 && !this.SINGLE_CHAR_ALLOWLIST.has(trimmed)) {
+      console.log(`[Coordinator] 单字噪音过滤 (${sessionId}): "${trimmed}"`);
+      return true;
+    }
+    if (trimmed.length === 0) {
       return true;
     }
 
@@ -1070,7 +1099,7 @@ export class CoordinatorService {
         // key 已存在，命中重复
         console.warn(`[Coordinator] 去重拦截 (${sessionId}): "${trimmed.slice(0, 50)}..." (hash: ${textHash})`);
         return true;
-      }
+  }
 
       return false; // 首次出现，非重复
     } catch (err: any) {
@@ -1091,7 +1120,7 @@ export class CoordinatorService {
       if (keys.length > 0) {
         await this.pubClient.del(...keys);
         console.log(`[Coordinator] 清除去重缓存 (${sessionId}): ${keys.length} 个`);
-      }
+  }
     } catch (err: any) {
       // 非关键路径，仅记录
       console.warn(`[Coordinator] 清除去重缓存失败 (${sessionId}): ${err?.message || err}`);
@@ -1135,15 +1164,22 @@ export class CoordinatorService {
     }
     if (session) {
       if (!isTimeout && source === 'asr' && session.runtimePhase === 'speaking') {
-        console.log(`[Coordinator] 丢弃播报期间 ASR final，疑似回声/尾包 session=${sessionId}: "${text}"`);
-        return;
-      }
+        // 播报期间仅过滤疑似回声的短文本（≤3字且与当前题目相似）
+        // 4字及以上的用户输入视为有效回答（如“请重复一下问题”），放行处理
+        const currentQuestion = session.rounds.find(r => r.status === 'in_progress')?.question || '';
+        const isLikelyEcho = effectiveText.length <= 3 && currentQuestion.includes(effectiveText);
+        if (isLikelyEcho) {
+          console.log(`[Coordinator] 丢弃播报期间疑似回声 (${sessionId}): "${text}"`);
+          return;
+        }
+        console.log(`[Coordinator] 播报期间收到有效回答，放行 (${sessionId}): "${text}"`);
+  }
       session.lastCandidateTextKey = candidateTextKey;
       session.lastCandidateTextAt = now;
       if (session.runtimePhase === 'speaking') {
         // 客户端已在播报完成后才恢复 ASR；文本到达即视为进入收音阶段，兼容未上报 playback_done 的旧客户端。
         session.runtimePhase = 'listening';
-      }
+  }
     }
 
     const prepareTask = this.sessionPrepareTasks.get(sessionId);
@@ -1163,7 +1199,7 @@ export class CoordinatorService {
       if (readySession) {
         readySession.runtimePhase = 'speaking';
         this.startSpeakingTimeout(sessionId, waitText);
-      }
+  }
       this.persistAvatarVoice(sessionId, waitText);
       return;
     }
@@ -1197,6 +1233,14 @@ export class CoordinatorService {
       await this.handleUserExitRequest(sessionId);
       return;
     }
+
+    // 重复问题请求检测：如「没听清」「重复一下题目」等，重新发送题目，不进评分流程
+    if (!isTimeout && this.detectRepeatRequest(effectiveText)) {
+      console.log(`🔁 [Coordinator] 检测到重复问题请求 (${sessionId}): "${effectiveText.slice(0, 60)}"`);
+      await this.handleRepeatRequest(sessionId);
+      return;
+    }
+
 
     // 检查结束意图（超时提交不进入主动结束意图判定）
     const normalizedText = isTimeout ? '' : text.replace(/\s+/g, '');
@@ -1240,19 +1284,19 @@ export class CoordinatorService {
     try {
       const result = await withTimeout(
         interviewFlowService.processUserResponse(sessionId, effectiveText, { speakNextRound: false }),
-        parseInt(process.env.LLM_TIMEOUT_MS || '5000', 10),
+        parseInt(process.env.LLM_TIMEOUT_MS || '120000', 10),
         'LLM_TIMEOUT'
       );
 
-      // 检查评估打分和反馈，如果连续 2 题大模型打分低于 15 分，直接强制终止
+      // 检查评估打分和反馈，如果有 >=3 题已完成且最近连续 2 题大模型打分低于 20 分，直接强制终止
       const currentSession = interviewFlowService.getSession(sessionId);
       if (currentSession) {
         const completedRoundsWithScores = currentSession.rounds.filter(r => r.status === 'completed' && r.analysis !== undefined);
-        if (completedRoundsWithScores.length >= 2) {
+        if (completedRoundsWithScores.length >= 3) {
           const last1 = completedRoundsWithScores[completedRoundsWithScores.length - 1];
           const last2 = completedRoundsWithScores[completedRoundsWithScores.length - 2];
-          if (last1.analysis && last2.analysis && last1.analysis.score < 15 && last2.analysis.score < 15) {
-             console.log(`[Coordinator] 候选人连续两题打分低于 15 (${last1.analysis.score}, ${last2.analysis.score})，判定环境或能力不匹配，强制终止面试`);
+          if (last1.analysis && last2.analysis && last1.analysis.score < 20 && last2.analysis.score < 20) {
+             console.log(`[Coordinator] 候选人连续两题打分低于 20 (${last1.analysis.score}, ${last2.analysis.score})，判定环境或能力不匹配，强制终止面试`);
              
              // 提前强制终止
              const endResult = await interviewFlowService.endInterview(sessionId, 'unsuitable');
@@ -1274,7 +1318,7 @@ export class CoordinatorService {
              return;
           }
         }
-      }
+  }
 
       if (result.isCompleted) {
          const closingText = '面试已全部完成，感谢您的配合，我们会尽快生成本次面试报告，请留意通知。';
@@ -1308,7 +1352,7 @@ export class CoordinatorService {
          // 超时提交：在下一题前插入过渡语，让节奏更自然
          const transitionText = isTimeout ? '好的，时间到了，我们继续下一个问题。' : undefined;
          await this.emitRoundVoiceResponse(sessionId, result.nextRound, transitionText);
-      }
+  }
     } catch (e: any) {
       // DeepSeek / 大模型 / 网络异常：不再尝试强制切下一题或自动完成面试。
       // 改为通过 Redis 事件总线下发 interview_error 事件，让客户端友好提示并预留后续手动恢复能力。
@@ -1361,9 +1405,46 @@ export class CoordinatorService {
   }
 
   /**
+  * 检测候选人是否在请求重复当前问题，命中后重新发送题目，不进评分流程
+  */
+  private detectRepeatRequest(text: string): boolean {
+    if (!text || text.trim().length > 30) return false;
+    const patterns = [
+      /没听[清到见懂]/,
+      /听不[清到见]/,
+      /(重复|再说|再讲|再问)(一[下遍次]|下|遍|次|题目|问题)/,
+      /可以重复/,
+      /再[说来]一[遍次]/,
+      /没(听到|听见|听清楚)/,
+      /声音.*(小|轻|听不)/,
+      /你再(说|讲|问)/,
+      ];
+    const n = text.trim();
+    const m = patterns.some(p => p.test(n));
+    if (m && n.length > 15 && !/(重复|没听清|听不清|再说一)/.test(n)) return false;
+    return m;
+  }
+
+  private async handleRepeatRequest(sessionId: string): Promise<void> {
+    const session = interviewFlowService.getSession(sessionId);
+    if (!session) return;
+    const cr = session.rounds.find((r: any) => r.status === 'in_progress');
+    const qt = cr?.question || '';
+    if (!qt) return;
+    console.log(`🔁 [Coordinator] 重复问题请求 (${sessionId})，重新发送题目`);
+    await this.emitControlToTTS(sessionId, 'subtitle_text', { text: qt, scene: 'question_repeat' });
+    const ttsMode = await this.synthesizeQwen3TtsSegments(sessionId, qt, 'opening');
+    this.emitToGateway(sessionId, 'voice_response', { text: qt, sessionId, ttsMode, state: 'playing' }, (session as any)?.gatewayId as string);
+    this.clearSilenceDetection(sessionId);
+    this.silenceCounts.delete(sessionId);
+    session.runtimePhase = 'speaking';
+    this.startSpeakingTimeout(sessionId, qt);
+    this.emitToGateway(sessionId, 'asr_partial', { text: '（已为您重复题目）', isFinal: true, sessionId }, (session as any)?.gatewayId as string);
+  }
+
+  /**
    * 处理用户主动退出面试请求
    * - 依据已答题进度智能判定：>=70% 视为正常完成，否则视为中断
-   * - 先合成告别语并通过 voice_response 下发，等待 ~2s 让 TTS 播完后下发 interview_ended 控制消息
    */
   private async handleUserExitRequest(sessionId: string): Promise<void> {
     const flowSession = interviewFlowService.getSession(sessionId);
@@ -1454,7 +1535,7 @@ export class CoordinatorService {
       if (transitionText) {
         await this.synthesizeQwen3TtsSegments(sessionId, transitionText, 'transition');
         this.persistAvatarVoice(sessionId, transitionText, round.roundNumber);
-      }
+  }
     } else {
       const scene = interviewConductor.inferScene(round.question, { isFollowUp: (round.followupCount || 0) > 0 });
       // 过渡语与下一题题干合并送入 TTS，保证「过渡语→题干」的顺序播放
@@ -1462,7 +1543,7 @@ export class CoordinatorService {
       ttsMode = await this.synthesizeQwen3TtsSegments(sessionId, speakText, scene);
       if (transitionText) {
         this.persistAvatarVoice(sessionId, transitionText, round.roundNumber);
-      }
+  }
     }
 
     this.emitToGateway(sessionId, 'voice_response', {
@@ -1485,7 +1566,7 @@ export class CoordinatorService {
     this.persistAvatarVoice(sessionId, round.question, round.roundNumber);
   }
 
-  private async synthesizeQwen3TtsSegments(sessionId: string, responseText: string, scene?: InterviewScene): Promise<'qwen3_streaming' | 'client'> {
+  private async synthesizeQwen3TtsSegments(sessionId: string, responseText: string, scene?: InterviewScene, useHttpFallback = false): Promise<'qwen3_streaming' | 'client'> {
     try {
       const healthTimeoutMs = Number(process.env.TTS_HEALTH_TIMEOUT_MS || 1200);
       const ttsHealth = await Promise.race([
@@ -1496,7 +1577,7 @@ export class CoordinatorService {
       if (!qwen3TTSClient.connected && (!ttsHealth || ttsHealth.status !== 'ok')) {
         console.warn(`[Coordinator] TTS unavailable for session=${sessionId}; fallback to client mode`);
         return 'client';
-      }
+  }
 
       // KTV 字幕：在 TTS 合成前，通过控制通道下发完整文本，App 可立即显示全文并用 transcript_delta 驱动高亮
       await this.emitControlToTTS(sessionId, 'subtitle_text', {
@@ -1512,8 +1593,27 @@ export class CoordinatorService {
         if (segment.text.trim()) {
           qwen3TTSClient.synthesize(sessionId, segment.text, false);
         }
-      }
+  }
       qwen3TTSClient.commitText(sessionId);
+
+      // HTTP 兜底：首题分发时 Redis Pub/Sub 可能因 TTS 会话尚未就绪而丢消息
+      if (useHttpFallback) {
+        const ttsUrl = process.env.TTS_SERVICE_URL || 'http://localhost:3003';
+        console.log(`[Coordinator] HTTP fallback for session=${sessionId}`);
+        try {
+          for (let i = 0; i < segments.length; i++) {
+            const s = segments[i];
+            if (!s.text.trim()) continue;
+            await fetch(`${ttsUrl}/synthesize`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sessionId, text: s.text, commit: i === segments.length - 1 }),
+            });
+          }
+        } catch (e: any) {
+          console.warn(`[Coordinator] HTTP fallback failed: ${e?.message || e}`);
+        }
+  }
       return 'qwen3_streaming';
     } catch (err: any) {
       console.warn(`[Coordinator] Qwen3 TTS dispatch failed session=${sessionId}: ${err?.message || err}`);

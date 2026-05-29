@@ -434,6 +434,7 @@ class OSSController {
   /**
    * 服务端直传文件到OSS
    * 支持multipart/form-data文件上传
+   * 自动根据objectKey前缀路由到对应存储桶（users/ -> 用户桶）
    */
   async uploadFile(req: Request & { file?: Express.Multer.File }, res: Response) {
     try {
@@ -447,15 +448,29 @@ class OSSController {
         (req.body as any)?.objectKey ||
         (req.query as any)?.objectKey;
 
+      // 根据objectKey前缀自动选择存储桶：用户头像/数据 -> interview-users桶
+      let bucketName: string | undefined;
+      if (objectKey && typeof objectKey === 'string') {
+        if (objectKey.startsWith('users/') || objectKey.startsWith('avatars/')) {
+          bucketName = ossService.getBucketForType('avatar');
+          console.log(`[OSS] 文件路由到用户桶: objectKey=${objectKey}, bucket=${bucketName}`);
+        }
+      }
+
+      console.log(`[OSS] 开始上传文件: objectKey=${objectKey || '(auto)'}, bucket=${bucketName || 'default'}, fileSize=${file.size}`);
+
       // 将临时文件上传到OSS
-      const result = await ossService.uploadLocalFile(file.path, objectKey);
+      const result = await ossService.uploadLocalFile(file.path, objectKey, bucketName);
+
+      console.log(`[OSS] 上传成功: url=${result.url}`);
 
       res.json({
         success: true,
         data: result
       });
     } catch (error: any) {
-      console.error('文件上传失败:', error);
+      console.error('[OSS] 文件上传失败:', error?.message || error);
+      console.error('[OSS] 错误详情:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
 
       // 更精确的错误反馈
       if (error && error.code === 'AccessDenied') {
@@ -465,7 +480,14 @@ class OSSController {
         });
       }
 
-      res.status(500).json({ success: false, error_message: '文件上传失败' });
+      if (error && error.code === 'NoSuchBucket') {
+        return res.status(500).json({
+          success: false,
+          error_message: 'OSS存储桶不存在，请联系管理员创建'
+        });
+      }
+
+      res.status(500).json({ success: false, error_message: `文件上传失败: ${error?.message || '未知错误'}` });
     }
   }
 

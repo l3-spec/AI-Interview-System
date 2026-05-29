@@ -39,16 +39,33 @@ export function invalidatePlatformAiConfigCache(): void {
   cache = null;
 }
 
+/** 从 DB 读取配置，超时 5 秒则返回 null（降级到 env 默认值） */
+async function fetchAiConfigFromDb(): Promise<Record<string, string> | null> {
+  const DB_TIMEOUT_MS = 5000;
+  try {
+    const row = await Promise.race([
+      withRetry(() => prisma.platformAiSettings.findUnique({ where: { id: GLOBAL_ID } })),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('DB查询超时(5s)')), DB_TIMEOUT_MS)
+      ),
+    ]);
+    return ((row as any)?.settings as Record<string, string>) || {};
+  } catch (err: any) {
+    console.warn(`[AiConfig] DB 读取失败，降级到环境变量: ${err.message}`);
+    return null;
+  }
+}
+
 /**
  * 合并顺序：数据库 platform_ai_settings → process.env → 内置默认
+ * 数据库不可用时自动降级到环境变量，绝不阻塞请求
  */
 export async function getMergedPlatformAiConfig(): Promise<MergedPlatformAiConfig> {
   if (cache && Date.now() - cache.at < CACHE_TTL_MS) {
     return cache.cfg;
   }
 
-  const row = await withRetry(() => prisma.platformAiSettings.findUnique({ where: { id: GLOBAL_ID } }));
-  const db = (row?.settings as Record<string, string>) || {};
+  const db = (await fetchAiConfigFromDb()) || {};
 
   const cfg: MergedPlatformAiConfig = {
     dashscopeApiKey: trimStr(db.dashscopeApiKey) || (process.env.DASHSCOPE_API_KEY || '').trim(),

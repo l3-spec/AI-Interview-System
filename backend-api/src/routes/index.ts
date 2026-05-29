@@ -21,6 +21,7 @@ import openSourceAvatarRoutes from './openSourceAvatar.routes';
 import assessmentRoutes from './assessment';
 import contentRoutes from './content';
 import homeFeedRoutes from './homeFeed';
+import { getProfileBanners, getCircleBanners, getJobsBanners } from '../controllers/homeFeedController';
 import jobDictionaryRoutes from './jobDictionary';
 import jobPreferenceRoutes from './jobPreferences';
 import messageRoutes from './messages';
@@ -43,6 +44,12 @@ router.get('/health', (req, res) => {
 });
 
 // API路由模块
+// 注意：显式路由必须放在 router.use() 之前，避免被子路由的中间件（如 authenticateToken）拦截
+// 各页面Banner路由（Android端按页面区分的banner端点，无需认证）
+router.get('/profile/banners', getProfileBanners);
+router.get('/circle/banners', getCircleBanners);
+router.get('/jobs/banners', getJobsBanners);
+
 router.use('/auth', authRoutes);               // 认证相关路由
 router.use('/public', publicRoutes);           // 公开API路由（不需要认证）
 router.use('/company', companyRoutes);         // 企业管理路由

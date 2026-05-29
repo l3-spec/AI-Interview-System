@@ -1,5 +1,6 @@
 import { Request } from 'express';
 import { getMergedPlatformAiConfig } from './platformAiSettings.service';
+import { prisma } from '../lib/prisma';
 
 function trim(s: string | undefined): string {
   return (s || '').trim();
@@ -112,6 +113,16 @@ export type ClientRuntimeConfigJson = {
   aliyunAvatarInstanceId: string;
   aliyunAccessKeyId: string;
   aliyunAccessKeySecret: string;
+  /** 应用最新版本号（如 "1.2.0"），用于客户端版本比对 */
+  latestVersionName: string | null;
+  /** 应用最新版本Code（整数递增），用于客户端版本比对 */
+  latestVersionCode: number;
+  /** 是否强制更新，当前生效版本 isMandatory=true 时返回 true */
+  forceUpdate: boolean;
+  /** 应用下载地址（OSS URL） */
+  downloadUrl: string | null;
+  /** 更新说明 */
+  releaseNotes: string | null;
 };
 
 /**
@@ -130,6 +141,31 @@ export async function getClientRuntimeConfig(req: Request): Promise<ClientRuntim
 
   const hideSecrets = trim(process.env.HIDE_CLIENT_RUNTIME_SECRETS).toLowerCase() === 'true';
   const mask = (s: string) => (hideSecrets ? '' : s);
+
+  // 查询当前生效的 Android 版本配置（用于强制更新检测）
+  const platform = (req.query.platform as string || '').toUpperCase() === 'IOS' ? 'IOS' : 'ANDROID';
+  let latestVersionName: string | null = null;
+  let latestVersionCode = 0;
+  let forceUpdate = false;
+  let downloadUrl: string | null = null;
+  let releaseNotes: string | null = null;
+
+  try {
+    const appVersion = await prisma.appVersion.findFirst({
+      where: { platform, isActive: true },
+      orderBy: [{ versionCode: 'desc' }, { createdAt: 'desc' }],
+    });
+    if (appVersion) {
+      latestVersionName = appVersion.versionName;
+      latestVersionCode = appVersion.versionCode;
+      forceUpdate = appVersion.isMandatory;
+      downloadUrl = appVersion.downloadUrl;
+      releaseNotes = appVersion.releaseNotes;
+    }
+  } catch (err) {
+    // 表不存在时降级，不影响其他配置下发
+    console.warn('查询 AppVersion 失败（可能表未创建），跳过版本更新信息:', (err as Error)?.message);
+  }
 
   return {
     // 配置版本号（客户端用于检测更新）
@@ -158,5 +194,11 @@ export async function getClientRuntimeConfig(req: Request): Promise<ClientRuntim
     aliyunAvatarInstanceId: trim(process.env.ALIYUN_AVATAR_INSTANCE_ID) || '',
     aliyunAccessKeyId: mask(trim(process.env.ALIYUN_ACCESS_KEY_ID)),
     aliyunAccessKeySecret: mask(trim(process.env.ALIYUN_ACCESS_KEY_SECRET)),
+    // 应用版本更新信息
+    latestVersionName,
+    latestVersionCode,
+    forceUpdate,
+    downloadUrl,
+    releaseNotes,
   };
 }

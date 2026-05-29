@@ -36,8 +36,8 @@ export class InterviewFlowService {
   private readonly QUESTION_REMINDER_TIMEOUT_MS = parseInt(process.env.QUESTION_REMINDER_TIMEOUT_MS || '300000', 10);
   /** 提醒后跳题等待时长（默认 2 分钟） */
   private readonly QUESTION_SKIP_TIMEOUT_MS = parseInt(process.env.QUESTION_SKIP_TIMEOUT_MS || '120000', 10);
-  /** 面试整体最长时长（默认 15 分钟） */
-  private readonly INTERVIEW_MAX_DURATION_MS = parseInt(process.env.INTERVIEW_MAX_DURATION_MS || '900000', 10);
+  /** 面试整体最长时长默认值（动态值由 DeepSeek 大纲决定） */
+  private readonly DEFAULT_INTERVIEW_MAX_DURATION_MS = parseInt(process.env.INTERVIEW_MAX_DURATION_MS || '1500000', 10);
 
   /** 单题级超时计时器：sessionId -> { reminderTimer, skipTimer } */
   private questionTimers = new Map<string, { reminderTimer: NodeJS.Timeout | null; skipTimer: NodeJS.Timeout | null }>();
@@ -242,8 +242,8 @@ export class InterviewFlowService {
   private async markNextRoundInProgress(session: InterviewSession): Promise<InterviewRound | null> {
     const nextRound = session.rounds.find(r => r.status === 'pending');
     if (!nextRound) {
-      // 不再直接将会话置为 COMPLETED，
-      // 面试是否已完成交由 evaluateAndFinalizeCompletion 综合评估（有效回答数与库存状态）。
+      // 没有 pending 题目，但如果剩余题目仍在生成中，返回 null 但不结束面试
+      // （上层调用方需检查 isGeneratingRemaining 标志）
       return null;
     }
 
@@ -268,6 +268,12 @@ export class InterviewFlowService {
   private async evaluateAndFinalizeCompletion(
     session: InterviewSession
   ): Promise<{ isCompleted: boolean; reason: string }> {
+    // 如果剩余题目仍在后台生成中，不结束面试
+    if ((session as any).isGeneratingRemaining) {
+      console.log(`[FlowController] 剩余题目仍在生成中，不结束面试 (sessionId=${session.sessionId})`);
+      return { isCompleted: false, reason: '剩余题目仍在生成中' };
+    }
+
     // 有效回答：只要非空且不是系统占位符，就视为有效（不再按长度门槛过滤）
     const validAnswers = session.rounds.filter(
       r => r.userResponse &&
@@ -550,7 +556,8 @@ export class InterviewFlowService {
   }
 
   /**
-   * 第二阶段：AI生成面试内容
+   * 第二阶段：AI生成面试内容（两阶段优化版）
+   * 先生成首题快速返回，剩余题目异步生成
    */
   async startInterviewPhase(sessionId: string, options: { autoStart?: boolean } = {}) {
     const session = this.sessions.get(sessionId);
@@ -560,11 +567,6 @@ export class InterviewFlowService {
     if (session.rounds.length === 0) {
       // 服务重启后禁用自动断点续面：不再自动从 DB 恢复题目，
       // 避免旧面试会话的题目被重复下发。请依靠后续 DeepSeek 重新生成。
-      // try {
-      //   await this.tryRehydrateFromPrisma(session, session.userId);
-      // } catch (err: any) {
-      //   console.warn(`[InterviewFlow] startInterviewPhase 内 DB 恢复跳过: ${err?.message || err}`);
-      // }
     }
 
     if (session.rounds.length > 0) {
@@ -604,26 +606,104 @@ export class InterviewFlowService {
 
     session.state = InterviewState.GENERATING;
 
-    // 1. 使用DeepSeek生成面试内容（失败时自动降级到模板题库）
-    const interviewContent = await this.generateInterviewContentWithFallback(session);
-
-    // 2. 将内容转换为语音回合
-    const interviewRounds = await this.createInterviewRounds(sessionId, interviewContent);
-
-    session.rounds = interviewRounds;
+    // === 两阶段题目生成优化 ===
+    // 阶段 1：快速生成首题（开场白 + 第一题），通常 10-20 秒
+    console.log(`[InterviewFlow] 开始生成首题 (sessionId=${sessionId})`);
+    const firstQuestionContent = await this.generateFirstQuestionWithFallback(session);
+    const firstRounds = await this.createInterviewRounds(sessionId, firstQuestionContent);
+    session.rounds = firstRounds;
     session.state = InterviewState.READY;
 
     // 面试题库就绪后，启动整场面试的全局超时计时器
     this.startInterviewTimer(sessionId);
+
+    console.log(`[InterviewFlow] 首题已就绪 (sessionId=${sessionId}, rounds=${firstRounds.length})`);
+
+    // 阶段 2：异步生成剩余题目，后台追加到 session.rounds
+    const remainingTask = this.generateRemainingQuestions(session).then(() => {
+      // 剩余题目生成完成后，从大纲中解析预计总时长并重启全局计时器
+      const durationMinutes = this.parseInterviewDuration(session);
+      if (durationMinutes > 0) {
+        (session as any).estimatedDurationMinutes = durationMinutes;
+        this.restartInterviewTimerWithDynamic(sessionId, durationMinutes);
+      }
+    }).catch(err => {
+      console.warn(`[InterviewFlow] 剩余题目生成失败 (sessionId=${sessionId}): ${err?.message || err}`);
+    });
+    (session as any).remainingQuestionsTask = remainingTask;
+    (session as any).isGeneratingRemaining = true;
+
+    remainingTask.finally(() => {
+      (session as any).isGeneratingRemaining = false;
+      if ((session as any).remainingQuestionsTask === remainingTask) {
+        (session as any).remainingQuestionsTask = undefined;
+      }
+    });
 
     if (autoStart) {
       await this.startNextRound(sessionId);
     }
 
     return {
-      totalRounds: interviewRounds.length,
-      nextRound: interviewRounds[0]
+      totalRounds: firstRounds.length,
+      nextRound: firstRounds[0]
     };
+  }
+
+  /**
+   * 快速生成首题（带降级）
+   */
+  private async generateFirstQuestionWithFallback(session: InterviewSession): Promise<string> {
+    try {
+      const result = await deepseekService.generateFirstQuestion({
+        name: session.userInfo.name,
+        targetJob: session.userInfo.targetJob,
+        companyTarget: (session.userInfo as any).companyTarget,
+        background: session.userInfo.background,
+      });
+      const content = result.content;
+      if (this.parseInterviewContent(content).length === 0) {
+        throw new Error('LLM 首题输出未能解析出任何题干');
+      }
+      return content;
+    } catch (err: any) {
+      console.error(`[InterviewFlow] 首题生成失败: ${err?.message || err}, 使用降级题库`);
+      const fallback = this.FALLBACK_QUESTIONS['default'];
+      // 只返回第一题作为首题
+      return `**[emotion:opening]${fallback[0]}**`;
+    }
+  }
+
+  /**
+   * 异步生成剩余题目并追加到 session.rounds
+   */
+  private async generateRemainingQuestions(session: InterviewSession): Promise<void> {
+    try {
+      console.log(`[InterviewFlow] 开始后台生成剩余题目 (sessionId=${session.sessionId})`);
+      const remainingContent = await this.generateInterviewContentWithFallback(session);
+      // 保存原始大纲内容，用于后续解析面试预计总时长
+      (session as any).rawOutlineContent = remainingContent;
+      const remainingRounds = await this.createInterviewRounds(session.sessionId, remainingContent);
+
+      // 过滤掉与首题重复的题目（根据 roundNumber）
+      const firstRoundNumber = session.rounds[0]?.roundNumber || 1;
+      const newRounds = remainingRounds
+        .filter(r => r.roundNumber !== firstRoundNumber)
+        .map((r, idx) => ({
+          ...r,
+          roundNumber: session.rounds.length + idx + 1, // 重新编号
+          status: 'pending' as const,
+        }));
+
+      if (newRounds.length > 0) {
+        session.rounds.push(...newRounds);
+        console.log(`[InterviewFlow] 剩余题目已追加 (sessionId=${session.sessionId}, 新增=${newRounds.length}, 总计=${session.rounds.length})`);
+      } else {
+        console.warn(`[InterviewFlow] 剩余题目生成后无新增 (sessionId=${session.sessionId})`);
+      }
+    } catch (err: any) {
+      console.warn(`[InterviewFlow] 剩余题目生成异常: ${err?.message || err}`);
+    }
   }
 
   /**
@@ -672,12 +752,12 @@ export class InterviewFlowService {
 - 经验：${session.userInfo.experience || '未指定'}
 - 技能：${session.userInfo.skills?.join(', ') || '未指定'}
 
-请生成包含以下内容的面试：
-1. 开场介绍与首个提问（1个问题，结合候选人姓名、职位以及目标公司信息生成一段自然且亲切的面试问候，同时包含第一个正式面试提问。请确保把问候与第一道提问融合在同一个回合内，作为整场面试的第 1 个问题输出）
-2. 专业技能评估（3-4个问题）
-3. 项目经验询问（2个问题）
-4. 行为面试问题（2个问题）
-5. 总结和反问环节（1个问题）
+请根据岗位要求和候选人背景，自行决定题目数量（建议 8-15 题），确保覆盖以下维度：
+1. 开场介绍与首个提问（结合候选人姓名、职位以及目标公司信息生成自然亲切的面试问候，同时包含第一个正式面试提问）
+2. 专业技能评估（根据岗位核心技能出题）
+3. 项目经验询问（深挖实际项目细节）
+4. 行为面试问题（考察软素质和团队协作）
+5. 总结和反问环节
 
 【重要】每个问题请用 [emotion:标签] 标记语气，用于 TTS 情感合成：
 - [emotion:opening] — 开场问候与首个提问（仅用于第 1 个问题）
@@ -693,8 +773,12 @@ export class InterviewFlowService {
 每个问题后请提供：
 - 问题文本（含情感标注）
 - 预期考察点
-- 建议回答时间
+- 建议回答时间（单位：秒，范围 60-300 秒，根据问题复杂度合理分配）
 - 评分标准
+
+【重要】请在所有问题之前先输出一行：
+面试预计总时长：XX分钟
+（XX 应为 14-25 分钟之间的整数，根据题目数量和难度合理分配）
 
 请用中文回答，保持专业严肃但不失礼貌的面试官语气。`;
 
@@ -1061,17 +1145,33 @@ ${currentRound.followupCount || 0}
     }
 
     // 开始下一轮（或者是刚才插入的追问）；实时链路中由 coordinator 统一播报，避免双 TTS。
-    const nextRound = await this.markNextRoundInProgress(session);
+    let nextRound = await this.markNextRoundInProgress(session);
 
     // 题库耗尽 = 面试正常完成；isCompleted 仅由「是否已无下一题」决定，
     // 不再受回答数量/长度等质量指标影响（质量仅用于决定追问/换题方向）。
     let isCompleted = false;
     if (!nextRound) {
-      const evalResult = await this.evaluateAndFinalizeCompletion(session);
-      isCompleted = evalResult.isCompleted;
-      console.log(
-        `[InterviewFlow] processUserResponse 判定面试完成 (${sessionId}): ${evalResult.reason}`
-      );
+      // 如果剩余题目仍在后台生成中，等待完成后再尝试获取下一题
+      if ((session as any).isGeneratingRemaining) {
+        console.log(`[InterviewFlow] 等待剩余题目生成完成 (sessionId=${sessionId})`);
+        try {
+          const remainingTask = (session as any).remainingQuestionsTask;
+          if (remainingTask) {
+            await Promise.race([remainingTask, new Promise(resolve => setTimeout(resolve, 120_000))]);
+          }
+        } catch {}
+        // 再次尝试获取下一题
+        nextRound = await this.markNextRoundInProgress(session) || null;
+      }
+      if (!nextRound) {
+        const evalResult = await this.evaluateAndFinalizeCompletion(session);
+        isCompleted = evalResult.isCompleted;
+        if (isCompleted) {
+          console.log(
+            `[InterviewFlow] processUserResponse 判定面试完成 (${sessionId}): ${evalResult.reason}`
+          );
+        }
+      }
     }
 
     // 进入「下一道主题题」时，用上一轮回答轻量润色预生成题干（追问回合 roundNumber 不变，不触发）
@@ -1441,23 +1541,80 @@ ${currentRound.followupCount || 0}
   // ==================== 超时保护：整场面试级 ====================
 
   /**
-   * 启动整场面试超时计时器。到达 INTERVIEW_MAX_DURATION_MS 后强制结束面试。
+   * 启动整场面试超时计时器。使用默认值，后续大纲生成完成后动态调整。
    */
   private startInterviewTimer(sessionId: string): void {
     this.clearInterviewTimer(sessionId);
 
+    const durationMs = this.DEFAULT_INTERVIEW_MAX_DURATION_MS;
     const timer = setTimeout(() => {
       console.warn(
-        `[InterviewFlow] 会话 ${sessionId} 面试全局超时 (${this.INTERVIEW_MAX_DURATION_MS / 60000}分钟)`
+        `[InterviewFlow] 会话 ${sessionId} 面试全局超时 (${durationMs / 60000}分钟)`
       );
       this.handleInterviewGlobalTimeout(sessionId).catch((err: any) =>
         console.error(
           `[InterviewFlow] 会话 ${sessionId} 面试全局超时处理异常: ${err?.message || err}`
         )
       );
-    }, this.INTERVIEW_MAX_DURATION_MS);
+    }, durationMs);
 
     this.interviewTimers.set(sessionId, timer);
+  }
+
+  /**
+   * 根据 DeepSeek 大纲返回的预计时长重启全局超时计时器
+   * 将 DeepSeek 规划的面试时长 + 5 分钟缓冲作为全局超时上限
+   */
+  private restartInterviewTimerWithDynamic(sessionId: string, durationMinutes: number): void {
+    // 动态超时 = DeepSeek规划时长 + 5分钟缓冲，限制在 14~30 分钟范围内
+    const clamped = Math.max(14, Math.min(30, durationMinutes));
+    const durationMs = (clamped + 5) * 60 * 1000;
+
+    console.log(`[InterviewFlow] 动态全局超时: sessionId=${sessionId}, DeepSeek规划=${durationMinutes}分钟, 实际超时=${(durationMs / 60000).toFixed(0)}分钟`);
+
+    this.clearInterviewTimer(sessionId);
+    const timer = setTimeout(() => {
+      console.warn(
+        `[InterviewFlow] 会话 ${sessionId} 面试全局超时 (${(durationMs / 60000).toFixed(0)}分钟)`
+      );
+      this.handleInterviewGlobalTimeout(sessionId).catch((err: any) =>
+        console.error(
+          `[InterviewFlow] 会话 ${sessionId} 面试全局超时处理异常: ${err?.message || err}`
+        )
+      );
+    }, durationMs);
+
+    this.interviewTimers.set(sessionId, timer);
+  }
+
+  /**
+   * 从 DeepSeek 大纲原始内容中解析“面试预计总时长”
+   * 匹配格式：面试预计总时长：XX分钟
+   * 返回分钟数，解析失败返回 0
+   */
+  private parseInterviewDuration(session: InterviewSession): number {
+    const rawContent = (session as any).rawOutlineContent || '';
+    if (!rawContent) return 0;
+
+    const match = rawContent.match(/面试预计总时长[：:]\s*(\d+)/);
+    if (match && match[1]) {
+      const minutes = parseInt(match[1], 10);
+      if (minutes >= 10 && minutes <= 30) {
+        console.log(`[InterviewFlow] 解析到面试预计总时长: ${minutes}分钟 (sessionId=${session.sessionId})`);
+        return minutes;
+      }
+    }
+
+    // 解析失败时根据题目数量估算：每题平均 2.5 分钟
+    const questionCount = session.rounds.length;
+    if (questionCount > 0) {
+      const estimated = Math.round(questionCount * 2.5);
+      const clamped = Math.max(14, Math.min(25, estimated));
+      console.log(`[InterviewFlow] 未解析到时长，按题目数估算: ${questionCount}题 → ${clamped}分钟 (sessionId=${session.sessionId})`);
+      return clamped;
+    }
+
+    return 0;
   }
 
   /**

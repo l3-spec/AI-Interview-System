@@ -6,12 +6,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -44,6 +47,8 @@ class Qwen3AsrWsClient(
 ) {
     companion object {
         private const val TAG = "Qwen3AsrWsClient"
+        private const val RECONNECT_DELAY_MS = 3000L
+        private const val MAX_RECONNECT_ATTEMPTS = 10  // 面试长连接需要更多重连次数
     }
 
     enum class State { DISCONNECTED, CONNECTING, CONNECTED, SESSION_ACTIVE, CLOSED }
@@ -77,6 +82,12 @@ class Qwen3AsrWsClient(
 
     private var webSocket: WebSocket? = null
 
+    // 自动重连相关
+    private var lastWsUrl: String? = null
+    private var lastSid: String? = null
+    private var reconnectAttempts = 0
+    private var shouldAutoReconnect = true
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MINUTES)
@@ -90,18 +101,34 @@ class Qwen3AsrWsClient(
      * @param sid 可选的会话 ID
      */
     fun connect(wsUrl: String, sid: String? = null) {
-        if (_state.value == State.CONNECTING || _state.value == State.SESSION_ACTIVE) {
-            Log.w(TAG, "ASR 已在连接/活跃状态，忽略重复连接")
+        // 面试进行中保护：已在连接/已连接/活跃状态时绝不重建连接
+        val currentState = _state.value
+        if (currentState == State.CONNECTING || currentState == State.CONNECTED || currentState == State.SESSION_ACTIVE) {
+            Log.w(TAG, "ASR 已在 ${currentState} 状态，忽略重复连接请求（面试进行中保护）")
             return
         }
 
+        // 保存连接参数供自动重连使用
+        lastWsUrl = wsUrl
+        lastSid = sid
+        reconnectAttempts = 0
+        shouldAutoReconnect = true
+
+        doConnect(wsUrl, sid)
+    }
+
+    /**
+     * 内部实际连接方法（初始连接和重连共用）
+     */
+    private fun doConnect(wsUrl: String, sid: String?) {
         _state.value = State.CONNECTING
-        Log.i(TAG, "连接 ASR 微服务: $wsUrl")
+        Log.i(TAG, "连接 ASR 微服务: $wsUrl (reconnect=$reconnectAttempts)")
 
         val request = Request.Builder().url(wsUrl).build()
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(ws: WebSocket, response: Response) {
                 Log.i(TAG, "ASR WebSocket 已连接")
+                reconnectAttempts = 0  // 连接成功，重置重连计数
                 _state.value = State.CONNECTED
                 createSession(sid)
             }
@@ -114,11 +141,13 @@ class Qwen3AsrWsClient(
                 Log.e(TAG, "ASR WebSocket 连接失败: ${t.message}")
                 _state.value = State.DISCONNECTED
                 _errors.tryEmit("ASR连接失败: ${t.message}")
+                tryReconnect()
             }
 
             override fun onClosed(ws: WebSocket, code: Int, reason: String) {
                 Log.i(TAG, "ASR WebSocket 已关闭: code=$code, reason=$reason")
                 _state.value = State.CLOSED
+                tryReconnect()
             }
         })
     }
@@ -165,6 +194,7 @@ class Qwen3AsrWsClient(
     }
 
     fun disconnect() {
+        shouldAutoReconnect = false  // 显式断开不重连
         try {
             // 普通断开/重连只关闭 WebSocket，由 asr-service 的 close handler 清理 DashScope。
             // 不默认发送 session.finish，避免播放间隙刷新 ASR 时把服务端会话误判为一次正常识别结束。
@@ -174,6 +204,42 @@ class Qwen3AsrWsClient(
         }
         webSocket = null
         _state.value = State.DISCONNECTED
+    }
+
+    /**
+     * 自动重连（指数退避，最多 MAX_RECONNECT_ATTEMPTS 次）
+     * 可由连接保活监控主动调用
+     */
+    internal fun tryReconnect() {
+        if (!shouldAutoReconnect) {
+            Log.i(TAG, "显式断开，不自动重连")
+            return
+        }
+        val url = lastWsUrl
+        if (url == null) {
+            Log.w(TAG, "无保存的 URL，无法重连")
+            return
+        }
+        if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+            Log.w(TAG, "ASR 重连次数已达上限($MAX_RECONNECT_ATTEMPTS)，重置计数器后重试")
+            reconnectAttempts = 0  // 面试长连接：达到上限后重置而非放弃
+        }
+        // 已在连接/已连接/活跃状态时不重连
+        val currentState = _state.value
+        if (currentState == State.CONNECTING || currentState == State.CONNECTED || currentState == State.SESSION_ACTIVE) {
+            Log.d(TAG, "ASR 已在 ${currentState} 状态，跳过重连")
+            return
+        }
+        reconnectAttempts++
+        val delayMs = RECONNECT_DELAY_MS * reconnectAttempts
+        Log.w(TAG, "ASR 将在 ${delayMs}ms 后尝试第 $reconnectAttempts 次重连...")
+        scope.launch {
+            delay(delayMs)
+            if (shouldAutoReconnect && scope.isActive) {
+                Log.i(TAG, "ASR 开始第 $reconnectAttempts 次重连")
+                doConnect(url, lastSid)
+            }
+        }
     }
 
     fun release() {

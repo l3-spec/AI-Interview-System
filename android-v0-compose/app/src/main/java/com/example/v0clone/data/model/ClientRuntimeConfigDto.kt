@@ -36,4 +36,10 @@ data class ClientRuntimeConfigDto(
     @SerializedName("vadThreshold") val vadThreshold: Float? = null,
     @SerializedName("bargeInVadThreshold") val bargeInVadThreshold: Float? = null,
     @SerializedName("speechCooldownMs") val speechCooldownMs: Long? = null,
+    // ===== 应用版本更新信息 =====
+    @SerializedName("latestVersionName") val latestVersionName: String? = null,
+    @SerializedName("latestVersionCode") val latestVersionCode: Int = 0,
+    @SerializedName("forceUpdate") val forceUpdate: Boolean = false,
+    @SerializedName("downloadUrl") val downloadUrl: String? = null,
+    @SerializedName("releaseNotes") val releaseNotes: String? = null,
 )

@@ -13,12 +13,14 @@ import {
   Table,
   Tag,
   Typography,
+  Upload,
   message
 } from 'antd';
+import type { UploadFile } from 'antd/es/upload/interface';
 import type { ColumnsType } from 'antd/es/table';
-import { CheckCircleTwoTone, EditOutlined, ExclamationCircleTwoTone, PlusOutlined } from '@ant-design/icons';
+import { CheckCircleTwoTone, EditOutlined, ExclamationCircleTwoTone, InboxOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { AppPlatform, AppVersion, appVersionApi } from '../services/api';
+import { AppPlatform, AppVersion, appVersionApi, uploadApi } from '../services/api';
 
 type AppVersionForm = {
   versionName: string;
@@ -50,6 +52,7 @@ const AppVersionManagement: React.FC = () => {
   const [total, setTotal] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<AppVersion | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [form] = Form.useForm<AppVersionForm>();
 
   const fetchList = async () => {
@@ -99,6 +102,25 @@ const AppVersionManagement: React.FC = () => {
       isActive: record.isActive
     });
     setModalOpen(true);
+  };
+
+  const handleUpload = async (file: File): Promise<string | null> => {
+    setUploading(true);
+    try {
+      const response = await uploadApi.uploadFile(file, 'apk');
+      if (response.success && response.data?.url) {
+        message.success('APK 上传成功');
+        return response.data.url;
+      }
+      message.error(response.message || 'APK 上传失败');
+      return null;
+    } catch (error: any) {
+      console.error('APK 上传失败', error);
+      message.error(error?.message || 'APK 上传失败');
+      return null;
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -312,12 +334,37 @@ const AppVersionManagement: React.FC = () => {
           >
             <InputNumber style={{ width: '100%' }} min={1} precision={0} />
           </Form.Item>
+          <Form.Item label="APK 安装包上传">
+            <Upload.Dragger
+              accept=".apk"
+              maxCount={1}
+              showUploadList={false}
+              beforeUpload={async (file) => {
+                const url = await handleUpload(file);
+                if (url) {
+                  form.setFieldsValue({ downloadUrl: url });
+                }
+                return false; // 阻止默认上传，使用自定义上传逻辑
+              }}
+              disabled={uploading}
+            >
+              <p className="ant-upload-drag-icon">
+                <InboxOutlined />
+              </p>
+              <p className="ant-upload-text">
+                {uploading ? '正在上传...' : '点击或拖拽 APK 安装包到此区域上传'}
+              </p>
+              <p className="ant-upload-hint">
+                仅支持 .apk 格式文件，上传后将自动填入下载链接
+              </p>
+            </Upload.Dragger>
+          </Form.Item>
           <Form.Item
             label="下载链接"
             name="downloadUrl"
-            rules={[{ required: true, message: '请输入下载链接' }]}
+            rules={[{ required: true, message: '请上传 APK 或输入下载链接' }]}
           >
-            <Input placeholder="https://..." />
+            <Input placeholder="上传 APK 后自动填入，或手动输入 https://..." />
           </Form.Item>
           <Form.Item label="更新内容" name="releaseNotes">
             <Input.TextArea rows={3} placeholder="可选，填写主要更新点" />

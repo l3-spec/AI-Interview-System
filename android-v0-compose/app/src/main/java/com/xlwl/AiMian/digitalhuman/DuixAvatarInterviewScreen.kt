@@ -689,23 +689,23 @@ fun DuixAvatarInterviewScreen(
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        // User Subtitle (Me) - Displayed when user is speaking
-                        if (showUserSubtitle) {
-                            UserRealtimeSubtitle(
-                                text = userTranscript,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = 8.dp)
-                            )
-                        }
-                                
-                        // Interviewer Subtitle (AI) — KTV Style
+                        // Interviewer Subtitle (AI) — KTV Style (面试官在上)
                         if (showAISubtitle) {
                             InterviewerTwoLineSubtitle(
                                 fullText = displayAIText!!,
                                 progress = finalHighlightProgress,
                                 isSpeaking = isDhSpeaking,
                                 modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                                
+                        // User Subtitle (Me) — 用户字幕在下方
+                        if (showUserSubtitle) {
+                            UserRealtimeSubtitle(
+                                text = userTranscript,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp)
                             )
                         }
                                 
@@ -810,9 +810,9 @@ fun DuixAvatarInterviewScreen(
             !isFirstVoiceReceived -> {
                 val phaseMessage = remember(connectionPhase) {
                     when (connectionPhase) {
-                        ConnectionPhase.CONNECTING_TTS -> "连接到实时语音服务..."
-                        ConnectionPhase.CONNECTING_ASR -> "连接到语音实时服务..."
-                        else -> "面试官正在准备面试，请稍后..."
+                        ConnectionPhase.CONNECTING_TTS -> "连接语音服务..."
+                        ConnectionPhase.CONNECTING_ASR -> "连接语音识别服务..."
+                        else -> "面试官正在准备资料，请稍后..."
                     }
                 }
                 Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).zIndex(30f), contentAlignment = Alignment.Center) {
@@ -1461,6 +1461,29 @@ fun LocalCameraPreview(
     )
 }
 
+/**
+ * 动态字幕字号：字数越多字号越小，最低 12sp
+ * ≤20字→22sp, 20-200字线性缩小至12sp, >200字→12sp
+ */
+private fun dynamicSubtitleFontSize(textLen: Int): Float {
+    return when {
+        textLen <= 20 -> 22f
+        textLen <= 200 -> 22f - (textLen - 20).toFloat() / 180f * 10f
+        else -> 12f
+    }
+}
+
+/**
+ * 根据字号估算字幕窗口可容纳的字符数
+ * 每行约 280dp / fontSizeSp 个字，预留 3 行空间
+ */
+private fun subtitleWindowCapacity(fontSizeSp: Float): Int {
+    return ((280f / fontSizeSp) * 3f).toInt().coerceIn(30, 120)
+}
+
+/**
+ * 用户实时字幕（我）：动态字号 + 文字滚动顶走旧内容，无 "..." 截断
+ */
 @Composable
 private fun UserRealtimeSubtitle(
     text: String,
@@ -1468,19 +1491,40 @@ private fun UserRealtimeSubtitle(
 ) {
     if (text.isEmpty()) return
 
-    // Window configuration
-    val maxChars = 44
+    val displayText = "我: $text"
+    val textLen = displayText.length
+
+    // 动态字号
+    val targetFontSize = dynamicSubtitleFontSize(textLen)
+    val animatedFontSize by animateFloatAsState(
+        targetValue = targetFontSize,
+        animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+        label = "user_subtitle_font"
+    )
+
+    // 根据字号计算窗口容量
+    val capacity = subtitleWindowCapacity(animatedFontSize)
     
-    // For user text, we want to always show the newest (end) of the string if it's too long
-    val start = max(0, text.length - maxChars)
-    val windowText = text.substring(start)
+    // 超过容量时只显示尾部最新内容，旧文字被"顶走"
+    val windowText = if (displayText.length > capacity) {
+        displayText.substring(displayText.length - capacity)
+    } else {
+        displayText
+    }
+
+    // 行数也随字号动态调整
+    val maxLines = when {
+        animatedFontSize >= 20f -> 2
+        animatedFontSize >= 16f -> 3
+        else -> 4
+    }
 
     Text(
-        text = "我: $windowText",
-        color = Color(0xFF00C78A), // Greenish for user
-        fontSize = 16.sp,
-        lineHeight = 22.sp,
-        maxLines = 2,
+        text = windowText,
+        color = Color(0xFF00C78A),
+        fontSize = animatedFontSize.sp,
+        lineHeight = (animatedFontSize * 1.4f).sp,
+        maxLines = maxLines,
         overflow = TextOverflow.Clip,
         textAlign = TextAlign.Center,
         fontWeight = FontWeight.Normal,
@@ -1495,15 +1539,6 @@ private fun UserRealtimeSubtitle(
     )
 }
 
-/**
- * 优化4：清理字幕文本中的 markdown 标记（**、*、#、[text](url)），避免未渲染符号污染字幕
- */
-private fun cleanMarkdownForSubtitle(rawText: String): String {
-    return rawText
-        .replace(Regex("\\*\\*|\\*|#{1,6}\\s?"), "")
-        .replace(Regex("\\[([^]]+)]\\([^)]+\\)"), "$1") // [text](url) -> text
-        .trim()
-}
 
 @Composable
 private fun InterviewerTwoLineSubtitle(
@@ -1521,18 +1556,8 @@ private fun InterviewerTwoLineSubtitle(
 
     val textLen = fullText.length
 
-    // 优化1：动态字号
-    //   ≤30 字 → 22sp（短文本大字清晰）
-    //   30-80 字 → 22sp 线性过渡到 18sp
-    //   >80 字 → 16sp（长文本紧凑可读）
-    val targetFontSize = when {
-        textLen <= 30 -> 22f
-        textLen <= 80 -> {
-            val t = (textLen - 30).toFloat() / (80f - 30f)
-            22f - t * (22f - 18f)
-        }
-        else -> 16f
-    }
+    // 动态字号：字数越多越小，22sp→12sp，配合窗口滚动顶走旧文字
+    val targetFontSize = dynamicSubtitleFontSize(textLen)
     val animatedFontSize by animateFloatAsState(
         targetValue = targetFontSize,
         animationSpec = tween(durationMillis = 250, easing = FastOutSlowInEasing),
@@ -1540,22 +1565,12 @@ private fun InterviewerTwoLineSubtitle(
     )
     val animatedLineHeight = animatedFontSize * 1.45f
 
-    // 显示窗口配置：根据字号档位决定窗口字符数与最大行数
-    val maxChars: Int
-    val maxDisplayLines: Int
-    when {
-        textLen <= 30 -> {
-            maxChars = 60
-            maxDisplayLines = 3
-        }
-        textLen <= 80 -> {
-            maxChars = 100
-            maxDisplayLines = 4
-        }
-        else -> {
-            maxChars = 130
-            maxDisplayLines = 4
-        }
+    // 窗口配置：根据实时字号动态计算可容纳字符数
+    val maxChars = subtitleWindowCapacity(targetFontSize)
+    val maxDisplayLines = when {
+        targetFontSize >= 20f -> 3
+        targetFontSize >= 16f -> 4
+        else -> 5
     }
 
     // 滑动窗口：高亮点固定在窗口 35% 处，readIdx 推进时窗口自动前移
@@ -1620,7 +1635,7 @@ private fun InterviewerTwoLineSubtitle(
         fontSize = animatedFontSize.sp,
         lineHeight = animatedLineHeight.sp,
         maxLines = maxDisplayLines,
-        overflow = TextOverflow.Ellipsis,
+        overflow = TextOverflow.Clip,
         textAlign = TextAlign.Start,
         fontWeight = FontWeight.Normal,
         modifier = modifier,
