@@ -35,6 +35,8 @@ export class CoordinatorService {
   private asrCooldownTimers = new Map<string, NodeJS.Timeout>();
   /** ASR 冷却期间暂存的最新识别文本 */
   private asrPendingText = new Map<string, string>();
+  /** 首题 Redis 重发定时器：TTS 服务 Redis 订阅可能延迟，4 秒后重发一次确保消息到达 */
+  private questionRedisRetryTimers = new Map<string, NodeJS.Timeout>();
   private readonly SILENCE_TIMEOUT_MS = parseInt(process.env.SILENCE_TIMEOUT_MS || '30000', 10); // 30秒静音超时
 
   // userId:deviceId → sessionId 的映射，用于重连检测
@@ -44,6 +46,14 @@ export class CoordinatorService {
   // 超时清理定时器
   private sessionTimeoutTimer: NodeJS.Timer | null = null;
   private readonly SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5分钟无心跳超时
+
+  private clearQuestionRedisRetry(sessionId: string) {
+    const existing = this.questionRedisRetryTimers.get(sessionId);
+    if (existing) {
+      clearTimeout(existing);
+      this.questionRedisRetryTimers.delete(sessionId);
+    }
+  }
 
   private startSpeakingTimeout(sessionId: string, text: string) {
     this.clearSpeakingTimeout(sessionId);
@@ -242,6 +252,16 @@ export class CoordinatorService {
         try {
           const data = JSON.parse(message);
           if (data.event === 'transcription_completed') {
+            // 用户已有语音识别结果 → 无条件重置静音计时器（铁证：用户已说话）
+            if (data.sessionId) {
+              const sess = interviewFlowService.getSession(data.sessionId);
+              if (sess && sess.runtimePhase === 'listening') {
+                this.clearSilenceDetection(data.sessionId);
+                this.silenceCounts.delete(data.sessionId);
+                this.startSilenceDetection(data.sessionId);
+                console.log(`[Coordinator] ASR transcription_completed → 重置静音计时器 (${data.sessionId})`);
+              }
+            }
             await this.handleAsrTranscription(data);
           } else if (data.event === 'speech_started') {
             // 用户开始说话（VAD 检测到语音活动），立即重置静音超时计时器
@@ -250,12 +270,16 @@ export class CoordinatorService {
             const { sessionId } = data;
             if (sessionId) {
               const session = interviewFlowService.getSession(sessionId);
-              if (session && session.runtimePhase === 'listening') {
-                this.clearSilenceDetection(sessionId);
-                this.silenceCounts.delete(sessionId);
-                // 重新启动一个新的静音超时计时器（用户可能中途停顿后又继续说）
-                this.startSilenceDetection(sessionId);
-                console.log(`[Coordinator] ASR speech_started → 重置静音计时器 (${sessionId})`);
+              if (session) {
+                if (session.runtimePhase === 'listening') {
+                  this.clearSilenceDetection(sessionId);
+                  this.silenceCounts.delete(sessionId);
+                  // 重新启动一个新的静音超时计时器（用户可能中途停顿后又继续说）
+                  this.startSilenceDetection(sessionId);
+                  console.log(`[Coordinator] ASR speech_started → 重置静音计时器 (${sessionId})`);
+                } else {
+                  console.log(`[Coordinator] ASR speech_started 忽略: phase=${session.runtimePhase} (${sessionId})`);
+                }
               }
             }
           } else if (data.event === 'speech_stopped') {
@@ -440,12 +464,27 @@ export class CoordinatorService {
         this.cleanupDedupKeys(sessionId);
         this.clearSilenceDetection(sessionId);
         this.clearSpeakingTimeout(sessionId);
+        this.clearQuestionRedisRetry(sessionId);
         this.silenceCounts.delete(sessionId);
         const readyTimer = this.clientReadyTimers.get(sessionId);
         if (readyTimer) {
           clearTimeout(readyTimer);
           this.clientReadyTimers.delete(sessionId);
         }
+        // 客户端断开时，将 DB 中仍为 PREPARING/IN_PROGRESS 的会话标记为 CANCELLED
+        // 避免服务重启后残留「僵尸会话」
+        prisma.aIInterviewSession.updateMany({
+          where: { id: sessionId, status: { in: ['PREPARING', 'IN_PROGRESS'] } },
+          data: { status: 'CANCELLED' },
+        }).then(r => {
+          if (r.count > 0) {
+            console.log(`[Coordinator] DISCONNECT → 会话 ${sessionId} 已标记为 CANCELLED`);
+          }
+        }).catch(err => {
+          console.warn(`[Coordinator] DISCONNECT 更新 DB 失败 (${sessionId}): ${err?.message || err}`);
+        });
+        // 从内存中移除会话
+        interviewFlowService.removeSession(sessionId);
         break;
       case 'INTERRUPT':
         this.runInQueue(sessionId, () => this.handleInterrupt(sessionId, gatewayId));
@@ -694,6 +733,41 @@ export class CoordinatorService {
       }, gatewayId || (session as any).gatewayId);
 
       this.persistAvatarVoice(sessionId, welcomeText, 0);
+
+      // === 首题消息重发保护 ===
+      // TTS 服务的 Redis Pub/Sub 订阅可能在 App 连接后延迟数秒才生效，
+      // 导致 interview-service 首次发布的 question_start / voice_response 被丢弃。
+      // 此处在 4 秒后重发一次，确保 TTS 订阅就绪后能收到消息。
+      // 仅在用户尚未回答（仍为首题 + speaking/listening 初始阶段）时重发。
+      this.clearQuestionRedisRetry(sessionId);
+      const retryTimer = setTimeout(() => {
+        const sess = interviewFlowService.getSession(sessionId);
+        if (!sess) return;
+        // 只有仍在第 1 题且用户尚未回答时才重发
+        if (sess.currentRound !== 1 || sess.runtimePhase === 'completed') return;
+        console.log(`🔁 [Coordinator] 首题消息重发保护触发 (4s延迟): sessionId=${sessionId}`);
+        // 重发控制消息（TTS 合成 + question_start + voice_response）
+        this.synthesizeQwen3TtsSegments(sessionId, welcomeText, 'opening').catch(() => {});
+        this.emitControlToTTS(sessionId, 'question_start', {
+          questionIndex: 0,
+          timeLimit: firstRound.suggestedTime || 180,
+          isLast: session.rounds.length <= 1,
+          text: welcomeText,
+        }).catch(() => {});
+        this.emitToGateway(sessionId, 'voice_response', {
+          audioUrl: firstRound.audioUrl || null,
+          text: welcomeText,
+          sessionId,
+          duration: firstRound.duration || 0,
+          ttsMode: ttsMode,
+          isWelcome: true,
+          state: 'playing',
+          questionIndex: 1,
+          timeLimit: firstRound.suggestedTime || 180
+        }, gatewayId || (session as any).gatewayId);
+        this.questionRedisRetryTimers.delete(sessionId);
+      }, 4000);
+      this.questionRedisRetryTimers.set(sessionId, retryTimer);
     } else {
       // 兜底（如果真的没有 rounds，采用以前的死文本）
       const jobPosText = ((session as any).jobPosition || '这个职位').trim().length <= 40 ? ((session as any).jobPosition || '这个职位').trim() : '本岗位';
@@ -931,6 +1005,9 @@ export class CoordinatorService {
     }
 
     console.log(`[Coordinator] ASR 识别完成 (${sessionId}): "${text.slice(0, 80)}..."`);
+
+    // 用户已开始回答，取消首题重发保护定时器
+    this.clearQuestionRedisRetry(sessionId);
 
     // === 语音冷却机制 ===
     // ASR VAD 可能在用户短暂停顿时误判为语音结束，导致追问在用户仍在说话时下发。

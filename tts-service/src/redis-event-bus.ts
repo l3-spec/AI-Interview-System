@@ -26,6 +26,7 @@ export class RedisEventBus {
   private controlHandler: ((sessionId: string, rawMessage: string) => void | Promise<void>) | null = null;
   /** 串行处理 Redis 指令，避免 synthesize 与 commit 并发导致 commit 先于 append 到达 DashScope */
   private commandChain: Promise<void> = Promise.resolve();
+  private subscriptionKeepalive: NodeJS.Timeout | null = null;
 
   constructor() {
     const redisUrl = process.env.REDIS_URL;
@@ -51,6 +52,11 @@ export class RedisEventBus {
       this.publisher.on('error', (err) => logger.error(`[Redis Publisher] Error: ${err.message}`));
       this.subscriber.on('error', (err) => logger.error(`[Redis Subscriber] Error: ${err.message}`));
 
+      // 记录动态订阅的频道，重连后需要重新订阅
+      this.subscriber.on('ready', () => {
+        logger.info('[Redis Subscriber] 连接就绪，确认订阅状态');
+      });
+
       this.init();
     } catch (err: any) {
       logger.warn(`[Redis] 初始化失败: ${err.message}`);
@@ -65,6 +71,7 @@ export class RedisEventBus {
 
       await this.subscriber?.subscribe('tts:commands', 'platform:ai_settings');
       this.subscriber?.on('message', (channel, message) => {
+        logger.info(`[Redis] 收到消息 channel=${channel}, len=${message.length}`);
         if (channel === 'platform:ai_settings') {
           this.applyPlatformAiSettings(message);
           return;
@@ -81,6 +88,21 @@ export class RedisEventBus {
       });
 
       logger.info('[Redis] 事件总线已连接');
+
+      // 订阅保活：每 30 秒检查一次订阅状态，若丢失则自动重新订阅
+      this.subscriptionKeepalive = setInterval(async () => {
+        try {
+          if (!this.subscriber || !this.publisher) return;
+          const channels = await this.publisher!.call('PUBSUB', 'CHANNELS', 'tts:commands') as string[];
+          if (!channels || channels.length === 0) {
+            logger.warn('[Redis] tts:commands 订阅丢失，正在重新订阅...');
+            await this.subscriber.subscribe('tts:commands', 'platform:ai_settings');
+            logger.info('[Redis] 重新订阅成功');
+          }
+        } catch (err: any) {
+          logger.warn(`[Redis] 订阅保活检查失败: ${err?.message || err}`);
+        }
+      }, 30_000);
     } catch (err: any) {
       logger.warn(`[Redis] 连接失败: ${err.message}，TTS 服务将在无 Redis 模式运行`);
       this.isConnected = false;
@@ -216,7 +238,7 @@ export class RedisEventBus {
   private handleCommand(_channel: string, message: string): void {
     try {
       const cmd = JSON.parse(message);
-      logger.debug(`[Redis] 收到指令: ${cmd.command} for session ${cmd.sessionId}`);
+      logger.info(`[Redis] 收到指令: ${cmd.command} for session ${cmd.sessionId}`);
 
       if (this.commandHandler) {
         const handler = this.commandHandler;

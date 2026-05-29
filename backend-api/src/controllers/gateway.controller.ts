@@ -85,6 +85,7 @@ export class GatewayController {
           },
         },
       });
+      console.log(`[Gateway] joinSession 返回: sessionId=${sessionId}, hostIp=${hostIp}, ttsUrl=${ttsUrl}, asrUrl=${asrUrl}`);
     } catch (err: any) {
       console.error('[Gateway] joinSession 失败:', err);
       res.status(500).json({ error: err.message });

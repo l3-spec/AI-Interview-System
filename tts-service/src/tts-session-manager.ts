@@ -196,14 +196,16 @@ export class TTSSessionManager {
         existing.state = 'active';
         delete existing.suspendedAt;
         
-        // 重新订阅 Session 和 Control（异步订阅，防止阻塞）
+        // 重新订阅 Session 和 Control（必须 await，避免消息丢失）
         if (this.redisBus) {
-          this.redisBus.subscribeSession(sessionId).catch(err => {
-            logger.error(`[TTS-Manager] subscribeSession 异步恢复失败: ${err?.message || err}`);
-          });
-          this.redisBus.subscribeControl(sessionId).catch(err => {
-            logger.error(`[TTS-Manager] subscribeControl 异步恢复失败: ${err?.message || err}`);
-          });
+          try {
+            await Promise.all([
+              this.redisBus.subscribeSession(sessionId),
+              this.redisBus.subscribeControl(sessionId),
+            ]);
+          } catch (err: any) {
+            logger.error(`[TTS-Manager] 恢复会话 Redis 订阅失败 (${sessionId}): ${err?.message || err}`);
+          }
         }
 
         // 通知客户端会话已恢复
@@ -337,15 +339,19 @@ export class TTSSessionManager {
 
     this.sessions.set(sessionId, session);
     
-    // Subscribe to session-specific outbound channel for signal proxying（异步订阅，防止阻塞）
+    // Subscribe to session-specific outbound channel for signal proxying
+    // 必须 await：interview-service 可能在 App 连接 TTS 后立即发布 voice_response，
+    // 若此处不等待订阅完成，Pub/Sub 消息会在订阅生效前到达 Redis 而被丢弃，
+    // 导致 App 永远收不到 question_start，卡死在"面试官正在准备面试"页面。
     if (this.redisBus) {
-      this.redisBus.subscribeSession(sessionId).catch(err => {
-        logger.error(`[TTS-Manager] subscribeSession 异步失败: ${err?.message || err}`);
-      });
-      // 同时订阅面试控制消息频道（interview-service → App 的单向控制通道）
-      this.redisBus.subscribeControl(sessionId).catch(err => {
-        logger.error(`[TTS-Manager] subscribeControl 异步失败: ${err?.message || err}`);
-      });
+      try {
+        await Promise.all([
+          this.redisBus.subscribeSession(sessionId),
+          this.redisBus.subscribeControl(sessionId),
+        ]);
+      } catch (err: any) {
+        logger.error(`[TTS-Manager] Redis 订阅失败 (sessionId=${sessionId}): ${err?.message || err}`);
+      }
     }
     logger.info(
       `[TTS-Manager] 会话 ${sessionId} 已注册，开始后台异步预热连接 DashScope`,
@@ -390,17 +396,34 @@ export class TTSSessionManager {
   }
 
   /**
-   * 重放暂存 Redis 指令（已禁用）
+   * 重放暂存 Redis 指令
    *
-   * 不重放旧指令，避免客户端收到过期音频。如果需要重发，由 interview-service 负责重新生成。
+   * 场景：interview-service 在 App 连接 TTS 之前就发布了 synthesize 指令，
+   * 这些指令被暂存在内存 Map 中。当客户端 WebSocket 建连后，需要重放这些指令
+   * 以确保用户能听到面试题目。
    *
-   * 保留方法签名以定位老调用点，内部仅同步清理内存 Map、不产生任何合成动作。
-   * 后续如需完全移除该机制，可进一步删除调用点（createSession / suspended 恢复处）。
+   * 安全保证：
+   *  - createSession 开头已清理旧的 Redis 持久化指令和内存 Map
+   *  - 此处重放的仅是 createSession 执行期间新到达的指令
+   *  - DashScope 连接在 createSession 中已异步启动，重放时 ensureDashScopeConnected 会等待就绪
    */
   private async replayPendingRedisCommands(sessionId: string): Promise<void> {
-    // 仅清理内存中可能遗留的条目；Redis 侧由 createSession 同步清理。
+    const commands = this.pendingRedisCommands.get(sessionId);
     this.pendingRedisCommands.delete(sessionId);
-    // 不重放旧指令，避免客户端收到过期音频。如果需要重发，由 interview-service 负责重新生成
+    if (!commands || commands.length === 0) return;
+
+    logger.info(`[TTS-Manager] 重放 ${commands.length} 条暂存指令: sessionId=${sessionId}`);
+    for (const cmd of commands) {
+      try {
+        if (cmd.command === 'synthesize' && cmd.text) {
+          await this.handleRedisTextCommand(sessionId, cmd.text, cmd.commit);
+        } else if (cmd.command === 'commit') {
+          await this.commitText(sessionId);
+        }
+      } catch (err: any) {
+        logger.warn(`[TTS-Manager] 重放指令失败 (${sessionId}, ${cmd.command}): ${err?.message || err}`);
+      }
+    }
   }
 
   /**

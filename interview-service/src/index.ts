@@ -3,11 +3,36 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { interviewFlowService } from './services/flow-controller.service';
 import { coordinatorService } from './services/coordinator.service';
+import { prisma } from './lib/prisma';
 
 dotenv.config();
 
 import { initServiceLogger } from './utils/service-logger';
 initServiceLogger('interview-service');
+
+/**
+ * 服务启动时清理 DB 中残留的活跃会话
+ *
+ * 原因：interview-service 重启后内存中的会话全部丢失，
+ * 但 DB 中仍处于 PREPARING / IN_PROGRESS 的会话不会被自动清理，
+ * 导致客户端再次进入时拿到已失效的旧会话。
+ * 启动时将它们统一标记为 CANCELLED。
+ */
+async function cleanupStaleDbSessions(): Promise<void> {
+  try {
+    const result = await prisma.aIInterviewSession.updateMany({
+      where: { status: { in: ['PREPARING', 'IN_PROGRESS'] } },
+      data: { status: 'CANCELLED' },
+    });
+    if (result.count > 0) {
+      console.log(`[Startup] 已清理 ${result.count} 个残留活跃会话 → CANCELLED`);
+    }
+  } catch (err: any) {
+    console.warn(`[Startup] 清理残留会话失败: ${err?.message || err}`);
+  }
+}
+
+cleanupStaleDbSessions();
 
 // Ensure coordinator service is initialized to listen to Redis
 const _coordinator = coordinatorService;

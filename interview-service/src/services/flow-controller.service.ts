@@ -1176,6 +1176,16 @@ ${currentRound.followupCount || 0}
       console.log(`[InterviewFlow] 会话 ${sessionId} 面试结束，原因=${reason}`);
     }
 
+    // 确保 DB 状态同步更新为 COMPLETED，避免残留 PREPARING/IN_PROGRESS
+    try {
+      await prisma.aIInterviewSession.updateMany({
+        where: { id: sessionId, status: { in: ['PREPARING', 'IN_PROGRESS'] } },
+        data: { status: 'COMPLETED', completedAt: new Date() },
+      });
+    } catch (dbErr: any) {
+      console.warn(`[InterviewFlow] endInterview 更新 DB 失败 (${sessionId}): ${dbErr?.message || dbErr}`);
+    }
+
     // 统计已回答（即 completed）且回答不是空或超时未作答的题目数量
     const validAnswers = session.rounds.filter(
       r => r.status === 'completed' && r.userResponse && r.userResponse !== '[超时未作答]' && r.userResponse.trim().length > 2
