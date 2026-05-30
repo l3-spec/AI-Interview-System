@@ -1116,6 +1116,133 @@ ${candidateLastAnswer.slice(0, 1200)}
   }
 
   /**
+   * 多轮对话模式：基于完整对话历史，一次性返回分析结果 + 下一步决策 + 下一条消息
+   * 
+   * 替代原来的三阶段独立调用（analyzeResponse → generateFollowup → contextualizePreparedQuestion），
+   * 让 LLM 拥有完整上下文记忆，使追问和题目衔接更自然。
+   */
+  async conductInterviewTurn(params: {
+    /** 完整对话历史（按时间顺序，含 system prompt + 所有既往问答 + 本轮候选人回答） */
+    conversationHistory: Array<{ role: string; content: string }>;
+    /** 当前问题文本（仅用于日志） */
+    currentQuestion: string;
+    /** 候选人本轮回答 */
+    userResponse: string;
+    /** 截至本轮的追问次数 */
+    followupCount: number;
+    /** 目标职位 */
+    jobPosition: string;
+    /** 待问的预生成下一题（用于决定是否需要上下文润色） */
+    pendingNextQuestion?: string;
+  }): Promise<{
+    analysis: AnalysisResult;
+    decision: 'follow_up' | 'next_question' | 'end';
+    nextMessage?: string;
+    isContextualFollowup?: boolean;
+  }> {
+    const { conversationHistory, currentQuestion, userResponse, followupCount, jobPosition, pendingNextQuestion } = params;
+
+    if (!this.isEnabled) {
+      return {
+        analysis: {
+          score: 75,
+          feedback: '回答已收到（模拟模式）',
+          needsFollowup: false,
+          shouldContinueWaiting: false,
+          strengths: ['表达清晰'],
+          weaknesses: ['可增加具体案例'],
+          suggestions: ['建议结合项目经验阐述']
+        },
+        decision: 'next_question',
+        nextMessage: pendingNextQuestion || '请继续下一个问题。',
+        isContextualFollowup: false,
+      };
+    }
+
+    // 构建 system prompt：面试官角色 + 决策规则
+    const systemPrompt = `你是一位专业且严格的AI面试官（10年资深HR总监形象），正在面试${jobPosition}的候选人。
+
+【你的身份——绝对禁止违反】
+1. 你是面试官（提问方），候选人是应聘者（回答方）
+2. 你的职责是评估候选人回答并推进面试流程
+3. 你绝不能以候选人身份回答问题、介绍自己或模拟候选人的回答
+
+【你的任务】
+分析候选人刚才的回答，并做出以下决策之一：
+1. follow_up — 回答不够深入/偏离主题/需举例 → 生成一句简短自然的追问（≤40字）
+2. next_question — 回答已充分 → 推进到下一个主题
+3. end — 面试已自然完成或候选人明确表示结束 → 生成结束语
+
+【分析维度（内部评估，不输出给候选人）】
+- completeness：完整性、深度
+- relevance：是否切题
+- logic：逻辑清晰度
+- professionalism：专业水平
+
+【追问规则】
+- 每个主题最多追问${followupCount >= 2 ? '0次（已达上限）' : `${2 - followupCount}次`}
+- 追问要自然承接候选人的回答，可用「您刚才提到…」
+${followupCount >= 2 ? '- 已达追问上限，请直接推进到下一题' : ''}
+
+${pendingNextQuestion ? `【预生成的下一题（作为参考，可上下文润色）】
+${pendingNextQuestion}` : `【下一题提示】
+需要你根据当前对话进程，自然提出下一个面试问题。问题应承接上文、考察新维度。`}
+
+【判定标准】
+- shouldContinueWaiting=true：回答明显是半截话，以"然后…""还有…""第一个是…"等未完连接词结尾，或总字数<15且无结束语气
+
+【输出格式（严格JSON，不要Markdown包裹）】
+{
+  "score": 0-100,
+  "feedback": "1-2句话的简短分析",
+  "needsFollowup": true/false,
+  "shouldContinueWaiting": true/false,
+  "strengths": ["优点"],
+  "weaknesses": ["不足"],
+  "suggestions": ["改进建议"],
+  "decision": "follow_up" | "next_question" | "end",
+  "nextMessage": "追问问题 / 下一个面试问题 / 结束语"
+}`;
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...conversationHistory.map(m => ({ role: m.role as any, content: m.content })),
+    ];
+
+    try {
+      const content = await this.chatCompletion(messages, {
+        response_format: { type: 'json_object' },
+        model: this.analysisModel,
+        isThinking: false,
+        maxTokens: 1500,
+      });
+
+      // 解析 JSON
+      const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/) || content.match(/\{[\s\S]*\}/);
+      const jsonStr = jsonMatch ? jsonMatch[0].replace(/```json|```/g, '') : content;
+      const result = JSON.parse(jsonStr);
+
+      return {
+        analysis: {
+          score: typeof result.score === 'number' ? result.score : 70,
+          feedback: result.feedback || '回答已收到',
+          needsFollowup: !!result.needsFollowup,
+          shouldContinueWaiting: !!result.shouldContinueWaiting,
+          strengths: Array.isArray(result.strengths) ? result.strengths : [],
+          weaknesses: Array.isArray(result.weaknesses) ? result.weaknesses : [],
+          suggestions: Array.isArray(result.suggestions) ? result.suggestions : []
+        },
+        decision: ['follow_up', 'next_question', 'end'].includes(result.decision) ? result.decision : 'next_question',
+        nextMessage: typeof result.nextMessage === 'string' ? result.nextMessage : undefined,
+        isContextualFollowup: true,
+      };
+    } catch (error: any) {
+      console.error('[Deepseek] conductInterviewTurn 失败:', error.message);
+      throw error;
+    }
+  }
+
+  /**
    * 通用聊天完成方法
    */
   async chatCompletion(

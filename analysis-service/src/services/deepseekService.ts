@@ -65,6 +65,8 @@ interface JobTemplate {
 export class DeepseekService {
   private providerName: string;
   private apiKey: string;
+  /** 独立的 analysis API key（分析专用，fallback 到通用 key） */
+  private analysisApiKey: string;
   private apiUrl: string;
   private model: string;
   private maxTokens: number;
@@ -90,6 +92,9 @@ export class DeepseekService {
       this.apiUrl = process.env.LLM_API_URL || process.env.DEEPSEEK_API_URL || 'https://api.deepseek.com/v1/chat/completions';
       this.model = process.env.LLM_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-chat';
     }
+
+    // 独立的 analysis 专用 API key（用于面试后的职业素质评估），fallback 到通用 key
+    this.analysisApiKey = process.env.ANALYSIS_API_KEY || this.apiKey;
 
     this.reasonerModel = process.env.DEEPSEEK_REASONER_MODEL || 'deepseek-v4-pro';
     this.flashModel = process.env.DEEPSEEK_FLASH_MODEL || 'deepseek-v4-flash';
@@ -441,6 +446,8 @@ export class DeepseekService {
       model?: string; 
       enableThinking?: boolean;
       reasoningEffort?: 'high' | 'max';
+      /** 覆盖默认 apiKey，例如使用独立的 analysis 专用 key */
+      apiKey?: string;
     }
   ): Promise<DeepseekResponse> {
     const selectedModel = options?.model || this.model;
@@ -484,10 +491,11 @@ export class DeepseekService {
     }
 
     const timeoutMs = options?.timeoutMs ?? this.defaultTimeoutMs;
+    const effectiveApiKey = options?.apiKey || this.apiKey;
 
     const response = await axios.post(finalUrl, requestData, {
       headers: {
-        'Authorization': `Bearer ${this.apiKey}`,
+        'Authorization': `Bearer ${effectiveApiKey}`,
         'Content-Type': 'application/json',
       },
       timeout: timeoutMs,

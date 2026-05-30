@@ -1244,19 +1244,35 @@ export class CoordinatorService {
         'LLM_TIMEOUT'
       );
 
-      // 检查评估打分和反馈，如果有 >=3 题已完成且最近连续 2 题大模型打分低于 20 分，直接强制终止
+      // 纯行为信号检测：当候选人连续多轮未有效参与面试时，强制终止
+      // 不依赖 LLM 评分，仅通过回答长度、占位符等可观测行为判断
       const currentSession = interviewFlowService.getSession(sessionId);
       if (currentSession) {
-        const completedRoundsWithScores = currentSession.rounds.filter(r => r.status === 'completed' && r.analysis !== undefined);
-        if (completedRoundsWithScores.length >= 3) {
-          const last1 = completedRoundsWithScores[completedRoundsWithScores.length - 1];
-          const last2 = completedRoundsWithScores[completedRoundsWithScores.length - 2];
-          if (last1.analysis && last2.analysis && last1.analysis.score < 20 && last2.analysis.score < 20) {
-             console.log(`[Coordinator] 候选人连续两题打分低于 20 (${last1.analysis.score}, ${last2.analysis.score})，判定环境或能力不匹配，强制终止面试`);
-             
+        const completedRounds = currentSession.rounds.filter(r => r.status === 'completed');
+        if (completedRounds.length >= 3) {
+          const last3 = completedRounds.slice(-3);
+          const last3Responses = last3.map(r => (r.userResponse || '').trim());
+
+          // 信号1：最近连续 3 轮回答全部为空或占位符（[超时未作答]）
+          const allPlaceholder = last3Responses.every(
+            r => r === '' || r === '[超时未作答]'
+          );
+
+          // 信号2：最近连续 3 轮回答文本长度均 < 10 字符且非占位符（即候选人持续给出极短无效回答）
+          const allTooShort = last3Responses.every(r => {
+            if (r === '' || r === '[超时未作答]') return false; // 占位符走信号1
+            return r.length < 10;
+          });
+
+          if (allPlaceholder || allTooShort) {
+             const reason = allPlaceholder
+               ? '候选人连续 3 轮未作答或返回占位符'
+               : `候选人连续 3 轮给出极短回答（长度: ${last3Responses.map(r => r.length).join(', ')}）`;
+             console.log(`[Coordinator] ${reason}，判定候选人未有效参与面试，强制终止`);
+
              // 提前强制终止
              const endResult = await interviewFlowService.endInterview(sessionId, 'unsuitable');
-             const closingText = '由于检测到您的回答音量较小、背景噪音过大，或内容与本次面试职位极不匹配，我们将暂停本次面试。期待您准备好后再继续。';
+             const closingText = '由于未检测到您有效的面试参与，本次面试将提前结束。期待您准备好后再继续。';
              this.emitToGateway(sessionId, 'voice_response', {
                text: closingText,
                sessionId,
@@ -1266,7 +1282,7 @@ export class CoordinatorService {
                state: 'playing'
              }, (session as any)?.gatewayId as string);
              this.persistAvatarVoice(sessionId, closingText);
-             
+
              await this.emitControlToTTS(sessionId, 'interview_ended', {
                reason: 'unsuitable',
                isCompleted: false, // 属于未成功完成

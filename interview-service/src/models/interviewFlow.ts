@@ -10,6 +10,8 @@ export interface InterviewSession {
   currentRound?: number;
   totalScore?: number;
   feedback?: string;
+  /** 多轮对话历史：按时间顺序存储所有对话消息（system / assistant / user） */
+  conversationHistory: Array<{ role: 'system' | 'assistant' | 'user'; content: string }>;
   /** 来自 Prisma 的镜像字段：用于进程重启后判断是否为「已有进度的重连」 */
   dbMirror?: {
     status: string;

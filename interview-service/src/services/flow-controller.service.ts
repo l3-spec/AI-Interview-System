@@ -79,6 +79,20 @@ export class InterviewFlowService {
     } catch (err: any) {
       console.warn(`[InterviewFlow] sendTextToAvatar 跳过: ${err?.message || err}`);
     }
+
+    // 将面试官发言记录到多轮对话历史
+    const session = this.sessions.get(sessionId);
+    if (session && (session as any).conversationHistory) {
+      (session as any).conversationHistory.push({ role: 'assistant', content: text });
+    }
+  }
+
+  /**
+   * 将候选人回答追加到多轮对话历史
+   */
+  private recordCandidateResponse(session: InterviewSession, text: string): void {
+    session.conversationHistory.push({ role: 'user', content: text });
+    console.log(`[InterviewFlow] 对话历史已更新 (sessionId=${session.sessionId}, 总轮次=${session.conversationHistory.length})`);
   }
 
   private toQuestionIndex(round: InterviewRound): number {
@@ -326,6 +340,7 @@ export class InterviewFlowService {
       state: InterviewState.INTRODUCTION,
       startTime: new Date(),
       rounds: [],
+      conversationHistory: [],
       userInfo: {
         name: userName,
         targetJob: targetJob || '未指定职位',
@@ -451,6 +466,7 @@ export class InterviewFlowService {
       state: InterviewState.INTRODUCTION,
       startTime: new Date(),
       rounds: [],
+      conversationHistory: [],
       userInfo: {
         name: userName,
         targetJob: '',
@@ -1073,41 +1089,41 @@ export class InterviewFlowService {
     try {
       const currentRound = session.rounds.find(r => r.status === 'in_progress');
       let analysisResult;
+      let turnResult: any = undefined;
+      let isCompleted = false;
 
       if (currentRound) {
       currentRound.userResponse = response;
       currentRound.status = 'completed';
 
-      // AI分析用户回答
-      const prompt = `
-请分析候选人对以下面试问题的回答：
+      // === 多轮对话模式：将本轮回答追加到对话历史 ===
+      this.recordCandidateResponse(session, response);
 
-【面试问题】
-${currentRound.question}
+      // 获取待问的预生成下一题（用于传给 LLM 做上下文润色参考）
+      const pendingRounds = session.rounds.filter(r => r.status === 'pending');
+      const pendingNextQuestion = pendingRounds.length > 0 ? pendingRounds[0].question : undefined;
 
-【候选人回答】
-${response}
+      // === 使用多轮对话模式：一次性完成分析 + 决策 + 下一句生成 ===
+      const turnResult = await deepseekService.conductInterviewTurn({
+        conversationHistory: session.conversationHistory,
+        currentQuestion: currentRound.question,
+        userResponse: response,
+        followupCount: currentRound.followupCount || 0,
+        jobPosition: session.userInfo.targetJob,
+        pendingNextQuestion,
+      });
 
-【历史追问次数】
-${currentRound.followupCount || 0}
-
-分析要求：
-1. 评估回答的完整性、专业度和逻辑性。
-2. 判断是否需要追问。如果回答太简略、偏离主题或未触及核心要点，且追问次数未超过2次，请设置 needsFollowup 为 true。
-3. 判断用户是否明显尚未说完（shouldContinueWaiting）。若回答以"然后…""还有…""另外…""第一个…"等未完连接词结尾，或明显是列举式开头但未展开，或总字数少于15字且无结束语气，则设为 true。
-4. 提供具体的评分和反馈。
-      `.trim();
-
-      analysisResult = await deepseekService.analyzeResponse(prompt);
+      analysisResult = turnResult.analysis;
 
       // === shouldContinueWaiting：DeepSeek 判断用户尚未说完 ===
-      // 放在 persistRoundAnswer 之前，避免半截答案被乐观锁永久写入 DB
       if (analysisResult.shouldContinueWaiting) {
         console.log(`[InterviewFlow] DeepSeek 判定用户尚未说完 (${sessionId})，暂不推进，继续等待更多输入`);
         // 重置当前回合状态为 in_progress，允许继续收集回答
         currentRound.status = 'in_progress';
         currentRound.userResponse = undefined as any;
         currentRound.analysis = undefined as any;
+        // 回滚对话历史中本轮的用户消息
+        session.conversationHistory.pop();
         session.isProcessing = false;
         session.runtimePhase = 'listening';
         return {
@@ -1129,26 +1145,18 @@ ${currentRound.followupCount || 0}
         needsFollowup: analysisResult.needsFollowup
       };
 
-      // 智能流控：决定是否追问
-      // 限制：每个问题最多追问2次
+      // === 多轮对话决策处理 ===
       const currentFollowupCount = currentRound.followupCount || 0;
 
-      if (analysisResult.needsFollowup && currentFollowupCount < 2) {
-        // 生成追问
-        const followupPrompt = `
-原始问题：${currentRound.question}
-用户回答：${response}
-请生成一个简短的追问问题，引导用户补充细节。
-注意：只输出追问问题本身，不要加任何前缀标签（如"追问：""追问:"等），不要加引号或Markdown格式。
-        `.trim();
-
-        const followup = await deepseekService.generateFollowup(followupPrompt);
+      if (turnResult.decision === 'follow_up' && turnResult.nextMessage && currentFollowupCount < 2) {
+        // LLM 判定需要追问，且已生成追问文本
+        const followupText = turnResult.nextMessage.trim();
 
         // 插入新的追问回合（带情感标注）
-        const followupScene = interviewConductor.inferScene(followup.question, { isFollowUp: true });
+        const followupScene = interviewConductor.inferScene(followupText, { isFollowUp: true });
         const followupRound: InterviewRound = {
           roundNumber: currentRound.roundNumber,
-          question: followup.question,
+          question: followupText,
           duration: 0,
           expectedPoints: currentRound.expectedPoints,
           suggestedTime: 120,
@@ -1164,7 +1172,26 @@ ${currentRound.followupCount || 0}
         if (currentIndex !== -1) {
           session.rounds.splice(currentIndex + 1, 0, followupRound);
         }
+      } else if (turnResult.decision === 'end') {
+        // LLM 判定面试应结束
+        console.log(`[InterviewFlow] 多轮对话 LLM 判定面试结束 (sessionId=${sessionId})`);
+        const evalResult = await this.evaluateAndFinalizeCompletion(session);
+        isCompleted = evalResult.isCompleted;
+        if (isCompleted && turnResult.nextMessage) {
+          // 发送结束语
+          await this.sendToAvatarAndTTS(sessionId, session.userId, turnResult.nextMessage);
+          session.runtimePhase = 'completed';
+        }
+        session.isProcessing = false;
+        return {
+          nextRound: null,
+          isCompleted,
+          shouldContinueWaiting: false,
+          feedback: analysisResult.feedback,
+          score: analysisResult.score,
+        };
       }
+      // else: decision === 'next_question'，正常推进到下一题
     }
 
     // 开始下一轮（或者是刚才插入的追问）；实时链路中由 coordinator 统一播报，避免双 TTS。
@@ -1172,7 +1199,7 @@ ${currentRound.followupCount || 0}
 
     // 题库耗尽 = 面试正常完成；isCompleted 仅由「是否已无下一题」决定，
     // 不再受回答数量/长度等质量指标影响（质量仅用于决定追问/换题方向）。
-    let isCompleted = false;
+    isCompleted = false;
     if (!nextRound) {
       // 如果剩余题目仍在后台生成中，等待完成后再尝试获取下一题
       if ((session as any).isGeneratingRemaining) {
@@ -1197,28 +1224,23 @@ ${currentRound.followupCount || 0}
       }
     }
 
-    // 进入「下一道主题题」时，用上一轮回答轻量润色预生成题干（追问回合 roundNumber 不变，不触发）
+    // 多轮对话模式下，上下文润色已由 LLM 在 conductInterviewTurn 中完成
+    // 若 LLM 返回的 nextMessage 与预生成题目不同，优先使用 LLM 的版本
     if (
       nextRound &&
       currentRound &&
-      nextRound.roundNumber > currentRound.roundNumber &&
-      (currentRound.userResponse || '').trim()
+      turnResult.nextMessage &&
+      turnResult.decision === 'next_question' &&
+      nextRound.roundNumber > currentRound.roundNumber
     ) {
-      try {
-        const refined = await deepseekService.contextualizePreparedQuestion({
-          jobPosition: session.userInfo.targetJob,
-          preparedQuestion: nextRound.question,
-          candidateLastAnswer: (currentRound.userResponse || '').trim(),
-          candidateName: session.userInfo.name,
-        });
-        if (refined && refined.length > 12) {
-          nextRound.question = refined.trim();
-          nextRound.audioUrl = undefined;
-          nextRound.duration = 0;
-          await this.persistRefinedQuestion(session, nextRound);
-        }
-      } catch (e) {
-        console.warn('[InterviewFlow] 下一题上下文润色跳过:', e);
+      const llmNext = turnResult.nextMessage.trim();
+      // 只要 LLM 输出与预生成题目不同且足够长，就用 LLM 的上下文衔接版本
+      if (llmNext !== nextRound.question && llmNext.length > 10) {
+        console.log(`[InterviewFlow] 使用 LLM 多轮上下文润色的下一题 (sessionId=${sessionId})`);
+        nextRound.question = llmNext;
+        nextRound.audioUrl = undefined;
+        nextRound.duration = 0;
+        await this.persistRefinedQuestion(session, nextRound);
       }
     }
 

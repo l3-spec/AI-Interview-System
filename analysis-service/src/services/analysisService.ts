@@ -1223,8 +1223,13 @@ export class AnalysisService {
         const prompt = this.buildAnalysisPrompt(params);
 
         try {
-            // 调用DeepSeek API进行综合分析
-            const response = await deepseekService['callDeepseekAPI'](prompt);
+            // 调用 DeepSeek V4 Pro（Reasoner）进行综合分析，启用思考模式提升评估深度
+            const response = await deepseekService['callDeepseekAPI'](prompt, {
+                model: (deepseekService as any).reasonerModel,
+                enableThinking: true,
+                reasoningEffort: 'high',
+                apiKey: (deepseekService as any).analysisApiKey,
+            });
             const content = response.choices[0]?.message?.content || '';
 
             // 解析LLM返回的分析结果
