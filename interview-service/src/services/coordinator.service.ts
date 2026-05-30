@@ -35,6 +35,10 @@ export class CoordinatorService {
   private asrCooldownTimers = new Map<string, NodeJS.Timeout>();
   /** ASR 冷却期间暂存的最新识别文本 */
   private asrPendingText = new Map<string, string>();
+  /** ASR 继续等待计数：防止 DeepSeek 无限返回 shouldContinueWaiting 导致卡死 */
+  private asrContinueWaitCount = new Map<string, number>();
+  /** 单题最大继续等待次数 */
+  private readonly MAX_CONTINUE_WAIT = 3;
   private readonly SILENCE_TIMEOUT_MS = parseInt(process.env.SILENCE_TIMEOUT_MS || '30000', 10); // 30秒静音超时
 
   // userId:deviceId → sessionId 的映射，用于重连检测
@@ -938,6 +942,7 @@ export class CoordinatorService {
   }
       this.asrPendingText.delete(sessionId);
       this.silenceCounts.delete(sessionId);
+      this.asrContinueWaitCount.delete(sessionId);
 
       // 清理映射
       this.sessionLastActive.delete(sessionId);
@@ -1271,6 +1276,46 @@ export class CoordinatorService {
         }
   }
 
+      if (result.shouldContinueWaiting) {
+        const waitCount = (this.asrContinueWaitCount.get(sessionId) || 0) + 1;
+        this.asrContinueWaitCount.set(sessionId, waitCount);
+        
+        if (waitCount >= this.MAX_CONTINUE_WAIT) {
+          console.log(`[Coordinator] 继续等待已达上限 (${waitCount}/${this.MAX_CONTINUE_WAIT})，不再等待，下次ASR文本将正常推进 (${sessionId})`);
+          this.asrContinueWaitCount.delete(sessionId);
+          this.asrPendingText.delete(sessionId);
+          // 清空冷却状态，下次 ASR 到达正常处理
+          return;
+        }
+        
+        console.log(`[Coordinator] DeepSeek 判定用户尚未说完，静默继续等待 (${waitCount}/${this.MAX_CONTINUE_WAIT}, sessionId=${sessionId})`);
+        
+        // 静默重启 ASR 冷却定时器：给用户更多时间继续说话
+        this.asrPendingText.delete(sessionId);
+        const continueCooldownMs = 3000;
+        const existingTimer = this.asrCooldownTimers.get(sessionId);
+        if (existingTimer) clearTimeout(existingTimer);
+        
+        const continueTimer = setTimeout(async () => {
+          this.asrCooldownTimers.delete(sessionId);
+          const pendingText = this.asrPendingText.get(sessionId);
+          if (pendingText && pendingText.trim()) {
+            console.log(`[Coordinator] 继续等待期满，新文本到达，正常推进 (${sessionId})`);
+            this.asrPendingText.delete(sessionId);
+            this.runInQueue(sessionId, async () => {
+              await this.processUserResponse(sessionId, pendingText, 'asr');
+            });
+          } else {
+            // 无声：清理等待计数，避免卡死
+            console.log(`[Coordinator] 继续等待期满，无新文本，清理等待状态 (${sessionId})`);
+            this.asrContinueWaitCount.delete(sessionId);
+          }
+        }, continueCooldownMs);
+        
+        this.asrCooldownTimers.set(sessionId, continueTimer);
+        return;
+      }
+
       if (result.isCompleted) {
          const closingText = '面试已全部完成，感谢您的配合，我们会尽快生成本次面试报告，请留意通知。';
          
@@ -1460,6 +1505,9 @@ export class CoordinatorService {
 
   private async emitRoundVoiceResponse(sessionId: string, round: any, transitionText?: string) {
     const session = interviewFlowService.getSession(sessionId);
+
+    // 新题下发：重置 ASR 继续等待计数
+    this.asrContinueWaitCount.delete(sessionId);
 
     // ✅ 【P0 修复】下发新题前先清空 TTS 微服务中本会话的待合成队列，
     // 防止上一题尚未合成完毕的残留分片与新题混在一起播放（典型表现：第二题音频中夹杂第一题片段）。

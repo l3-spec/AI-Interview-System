@@ -33,6 +33,8 @@ export interface AnalysisResult {
   score: number;
   feedback: string;
   needsFollowup: boolean;
+  /** DeepSeek 判断用户是否尚未说完，应该继续等待更多输入 */
+  shouldContinueWaiting: boolean;
   strengths: string[];
   weaknesses: string[];
   suggestions: string[];
@@ -720,6 +722,7 @@ export class DeepseekService {
         score: 80,
         feedback: "回答完整，逻辑清晰。",
         needsFollowup: false,
+        shouldContinueWaiting: false,
         strengths: ["逻辑清晰", "表达流畅"],
         weaknesses: ["缺乏具体案例"],
         suggestions: ["多结合实际项目经验来阐述"]
@@ -735,9 +738,17 @@ export class DeepseekService {
 - score: 数字 (0-100)
 - feedback: 字符串，对回答的简短评价
 - needsFollowup: 布尔值，是否需要进一步追问
+- shouldContinueWaiting: 布尔值，用户是否明显尚未说完（回答是半截话、不完整句子、包含"嗯…让我想想"/"第一个是…"/"还有…"等未完信号），若为true则暂不追问也暂不推进题目
 - strengths: 字符串数组，回答的优点
 - weaknesses: 字符串数组，回答的不足
-- suggestions: 字符串数组，改进建议`
+- suggestions: 字符串数组，改进建议
+
+shouldContinueWaiting 判定规则（重要）：
+1. 回答以"然后…""还有…""另外…""第二个…""接下来…"等未完连接词结尾 → true
+2. 回答明显是列举式开头但尚未完整展开（如只说"第一点…"而未见第二点）→ true
+3. 回答总字数少于15字且无明显结束语气 → true
+4. 回答已自然收尾（"就是这样""差不多这些""基本就这些"）→ false
+5. 回答已完整阐述且自行停止 → false`
         },
         { role: 'user', content: prompt }
       ];
@@ -761,6 +772,7 @@ export class DeepseekService {
           score: typeof result.score === 'number' ? result.score : 70,
           feedback: result.feedback || '回答已收到',
           needsFollowup: !!result.needsFollowup,
+          shouldContinueWaiting: !!result.shouldContinueWaiting,
           strengths: Array.isArray(result.strengths) ? result.strengths : [],
           weaknesses: Array.isArray(result.weaknesses) ? result.weaknesses : [],
           suggestions: Array.isArray(result.suggestions) ? result.suggestions : []
@@ -773,6 +785,7 @@ export class DeepseekService {
           score: 70,
           feedback: content.slice(0, 200),
           needsFollowup: looksLikeFollowup,
+          shouldContinueWaiting: false,
           strengths: [],
           weaknesses: [],
           suggestions: []
@@ -784,6 +797,7 @@ export class DeepseekService {
         score: 0,
         feedback: "分析失败",
         needsFollowup: false,
+        shouldContinueWaiting: false,
         strengths: [],
         weaknesses: [],
         suggestions: []
@@ -845,8 +859,20 @@ ${candidateLastAnswer.slice(0, 1200)}
 
     try {
       const response = await this.callDeepseekAPI(prompt);
-      const content = response.choices[0]?.message?.content || '';
-      return { question: content.trim() };
+      const rawContent = (response.choices[0]?.message?.content || '').trim();
+      
+      // 剥离常见前缀标签："追问：" "追问:" "追问." "追问 " "追问-" 等
+      let cleaned = rawContent
+        .replace(/^追问[：:.s\-—]+/u, '')
+        .replace(/^追[：:.s\-—]+/u, '')
+        .trim();
+      
+      // 如果清洗后为空，回退到原始内容
+      if (!cleaned) {
+        cleaned = rawContent;
+      }
+      
+      return { question: cleaned };
     } catch (error) {
       console.error('生成追问失败:', error);
       return { question: "能请您多谈谈这方面的细节吗？" };

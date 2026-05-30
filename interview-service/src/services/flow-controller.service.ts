@@ -1052,6 +1052,8 @@ export class InterviewFlowService {
   async processUserResponse(sessionId: string, response: string, options: { speakNextRound?: boolean } = {}): Promise<{
     nextRound?: InterviewRound | null; // Changed to allow null
     isCompleted: boolean;
+    /** DeepSeek 判定用户尚未说完，应继续等待更多输入 */
+    shouldContinueWaiting: boolean;
     feedback?: string;
     score?: number; // Added score
   }> {
@@ -1061,7 +1063,7 @@ export class InterviewFlowService {
 
     if (session.isProcessing) {
       console.warn(`[InterviewFlow] Session ${sessionId} is already processing, skipping duplicate response.`);
-      return { isCompleted: false };
+      return { isCompleted: false, shouldContinueWaiting: false };
     }
 
     session.isProcessing = true;
@@ -1075,7 +1077,6 @@ export class InterviewFlowService {
       if (currentRound) {
       currentRound.userResponse = response;
       currentRound.status = 'completed';
-      await this.persistRoundAnswer(session, currentRound, response);
 
       // AI分析用户回答
       const prompt = `
@@ -1093,10 +1094,31 @@ ${currentRound.followupCount || 0}
 分析要求：
 1. 评估回答的完整性、专业度和逻辑性。
 2. 判断是否需要追问。如果回答太简略、偏离主题或未触及核心要点，且追问次数未超过2次，请设置 needsFollowup 为 true。
-3. 提供具体的评分和反馈。
+3. 判断用户是否明显尚未说完（shouldContinueWaiting）。若回答以"然后…""还有…""另外…""第一个…"等未完连接词结尾，或明显是列举式开头但未展开，或总字数少于15字且无结束语气，则设为 true。
+4. 提供具体的评分和反馈。
       `.trim();
 
       analysisResult = await deepseekService.analyzeResponse(prompt);
+
+      // === shouldContinueWaiting：DeepSeek 判断用户尚未说完 ===
+      // 放在 persistRoundAnswer 之前，避免半截答案被乐观锁永久写入 DB
+      if (analysisResult.shouldContinueWaiting) {
+        console.log(`[InterviewFlow] DeepSeek 判定用户尚未说完 (${sessionId})，暂不推进，继续等待更多输入`);
+        // 重置当前回合状态为 in_progress，允许继续收集回答
+        currentRound.status = 'in_progress';
+        currentRound.userResponse = undefined as any;
+        currentRound.analysis = undefined as any;
+        session.isProcessing = false;
+        session.runtimePhase = 'listening';
+        return {
+          nextRound: null,
+          isCompleted: false,
+          shouldContinueWaiting: true,
+        };
+      }
+
+      // 确认回答被接受后，才持久化到 DB
+      await this.persistRoundAnswer(session, currentRound, response);
 
       currentRound.analysis = {
         score: analysisResult.score,
@@ -1117,6 +1139,7 @@ ${currentRound.followupCount || 0}
 原始问题：${currentRound.question}
 用户回答：${response}
 请生成一个简短的追问问题，引导用户补充细节。
+注意：只输出追问问题本身，不要加任何前缀标签（如"追问：""追问:"等），不要加引号或Markdown格式。
         `.trim();
 
         const followup = await deepseekService.generateFollowup(followupPrompt);
@@ -1207,6 +1230,7 @@ ${currentRound.followupCount || 0}
       return {
         nextRound,
         isCompleted,
+        shouldContinueWaiting: false,
         feedback: analysisResult?.feedback,
         score: analysisResult?.score
       };
