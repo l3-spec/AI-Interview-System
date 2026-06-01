@@ -37,6 +37,22 @@ export interface UserInfo {
   education?: string;
   yearsOfExperience?: number;
   companyTarget?: string;
+  /** 性别：男/女/其他，用于生成正确的称呼 */
+  gender?: string;
+  /** 年龄 */
+  age?: number;
+  /** 地区/城市 */
+  region?: string;
+  /** 手机号 */
+  phone?: string;
+  /** 个人签名/简介 */
+  signature?: string;
+  /** 专业 */
+  major?: string;
+  /** 简历文本（如果用户上传了简历） */
+  resumeText?: string;
+  /** 完整候选人画像文本（自动生成，用于注入 LLM prompt） */
+  candidateProfile?: string;
 }
 
 export interface InterviewRound {

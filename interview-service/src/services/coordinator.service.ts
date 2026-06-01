@@ -39,6 +39,27 @@ export class CoordinatorService {
   private asrContinueWaitCount = new Map<string, number>();
   /** 单题最大继续等待次数 */
   private readonly MAX_CONTINUE_WAIT = 3;
+
+  // ===== 语义驱动抢话判断：多段 ASR 累积 + 语义完整性检查 =====
+  /** ASR 多段累积文本（同一问题的多次 transcription_completed 合并于此） */
+  private asrAccumulatedText = new Map<string, string>();
+  /** ASR 累积段数计数（用于判断是否需要语义检查） */
+  private asrSegmentCount = new Map<string, number>();
+  /** ASR 语义检查进行中标记（防止并发检查） */
+  private asrSemanticCheckPending = new Map<string, boolean>();
+  /** 语义驱动冷却定时器（替代固定 1.5s 冷却） */
+  private asrSemanticCooldownTimers = new Map<string, NodeJS.Timeout>();
+  /** 当前问题文本（用于语义检查上下文） */
+  private asrCurrentQuestion = new Map<string, string>();
+  /** 语义完整性检查最大等待时间：从首段到达后最多等 15 秒 */
+  private readonly SEMANTIC_MAX_WAIT_MS = 15000;
+  /** 语义冷却基础时间：每段新文本到达后至少等 2 秒再判断 */
+  private readonly SEMANTIC_COOLDOWN_MS = 2000;
+  /** 语义完整性检查已调用的累计次数（用于性能监控） */
+  private semanticCheckCount = 0;
+  /** 语义检查命中次数（判定为"完整"的次数） */
+  private semanticCheckHits = 0;
+
   private readonly SILENCE_TIMEOUT_MS = parseInt(process.env.SILENCE_TIMEOUT_MS || '30000', 10); // 30秒静音超时
 
   // userId:deviceId → sessionId 的映射，用于重连检测
@@ -988,36 +1009,155 @@ export class CoordinatorService {
 
     console.log(`[Coordinator] ASR 识别完成 (${sessionId}): "${text.slice(0, 80)}..."`);
 
-    // === 语音冷却机制 ===
-    // ASR VAD 可能在用户短暂停顿时误判为语音结束，导致追问在用户仍在说话时下发。
-    // 收到 transcription_completed 后不立即处理，而是启动 1.5 秒冷却定时器：
-    // - 若冷却期内有新的 ASR 结果到达，重置定时器并以最新文本为准
-    // - 冷却期满（用户确实停止说话）后才真正调用 processUserResponse
-    this.asrPendingText.set(sessionId, text);
+    // ===== 语义驱动抢话判断 =====
+    // 替代原来的固定 1.5s 冷却窗口。
+    // 原理：多次 ASR transcription 累积到同一缓冲区，用 LLM 语义完整性检查
+    // 替代 VAD 静音判断，避免"抢话题"。
+    
+    // 1. 累积文本：将新识别的文本追加到缓冲区
+    const existing = this.asrAccumulatedText.get(sessionId) || '';
+    const accumulated = existing ? `${existing}\n${text}` : text;
+    this.asrAccumulatedText.set(sessionId, accumulated);
+    
+    const segmentCount = (this.asrSegmentCount.get(sessionId) || 0) + 1;
+    this.asrSegmentCount.set(sessionId, segmentCount);
+    
+    // 记录当前题目文本（用于语义检查上下文）
+    const session = interviewFlowService.getSession(sessionId);
+    if (session) {
+      const currentRound = session.rounds.find(r => r.status === 'in_progress');
+      if (currentRound && !this.asrCurrentQuestion.has(sessionId)) {
+        this.asrCurrentQuestion.set(sessionId, currentRound.question);
+      }
+    }
 
-    const existingTimer = this.asrCooldownTimers.get(sessionId);
+    // 2. 重置语义冷却定时器
+    const existingTimer = this.asrSemanticCooldownTimers.get(sessionId);
     if (existingTimer) {
       clearTimeout(existingTimer);
     }
 
-    const cooldownMs = 1500; // 1.5 秒语音冷却窗口
-    const timer = setTimeout(async () => {
-      this.asrCooldownTimers.delete(sessionId);
-      const finalText = this.asrPendingText.get(sessionId) || text;
-      this.asrPendingText.delete(sessionId);
+    // 3. 快速路径：单段且文本很长（>150字），大概率已说完 → 缩短冷却
+    const isLongSingleSegment = segmentCount <= 1 && accumulated.length > 150;
+    const cooldownMs = isLongSingleSegment ? 1000 : this.SEMANTIC_COOLDOWN_MS;
 
-      console.log(`[Coordinator] ASR 冷却期满，开始处理回答 (${sessionId}): "${finalText.slice(0, 50)}..."`);
-      const asrStart = Date.now();
-      this.runInQueue(sessionId, async () => {
-        await this.processUserResponse(sessionId, finalText, 'asr');
-        this.logPerformance('process_asr_response', sessionId, Date.now() - asrStart, {
-          textLength: finalText.length,
-          source: 'asr',
-        });
-      });
+    const timer = setTimeout(async () => {
+      this.asrSemanticCooldownTimers.delete(sessionId);
+      const finalText = this.asrAccumulatedText.get(sessionId) || text;
+
+      // 计算从首段到现在的等待时长
+      const isFirstCheck = segmentCount <= 1;
+      
+      // 4. 单段 + 短文本：大概率还在思考，不急于处理
+      if (isFirstCheck && finalText.length < 15) {
+        console.log(`[Coordinator] 单段短文本（${finalText.length}字），继续等待更多输入 (${sessionId})`);
+        // 启动一个更长等待（最多再等 8 秒），届时强制处理
+        const maxWaitTimer = setTimeout(async () => {
+          this.asrSemanticCooldownTimers.delete(sessionId);
+          await this.finalizeAsrAccumulation(sessionId);
+        }, 8000);
+        this.asrSemanticCooldownTimers.set(sessionId, maxWaitTimer);
+        return;
+      }
+
+      // 5. 快速放行：只有真正长文本（>100字）且有完整结尾才跳过语义检查
+      //    短文本即使以句号结尾也可能是"我做过A项目。"→用户还要继续说
+      if (isFirstCheck && /[。！？\.\!\?]$/.test(finalText.trim()) && finalText.length > 100) {
+        console.log(`[Coordinator] 单段长文本(${finalText.length}字)完整句，直接处理 (${sessionId})`);
+        await this.finalizeAsrAccumulation(sessionId);
+        return;
+      }
+
+      // 5b. 中等长度(20-100字)有结尾标点：不跳过语义检查，但缩短冷却
+      const isMediumComplete = isFirstCheck && /[。！？\.\!\?]$/.test(finalText.trim()) && finalText.length >= 20;
+      if (isMediumComplete) {
+        console.log(`[Coordinator] 中等长度(${finalText.length}字)有结尾标点，仍需语义检查 (${sessionId})`);
+      }
+
+      // 6. 语义完整性检查（多段 或 单段无明确结尾）
+      if (this.asrSemanticCheckPending.get(sessionId)) {
+        console.log(`[Coordinator] 语义检查进行中，延迟 1 秒重试 (${sessionId})`);
+        const retryTimer = setTimeout(async () => {
+          this.asrSemanticCooldownTimers.delete(sessionId);
+          await this.handleAsrTranscription({ sessionId, payload: { text: '' } } as any);
+        }, 1000);
+        this.asrSemanticCooldownTimers.set(sessionId, retryTimer);
+        return;
+      }
+
+      // 累计段数已达上限（5段），直接处理
+      if (segmentCount >= 5) {
+        console.log(`[Coordinator] 累积已达 ${segmentCount} 段，强制处理 (${sessionId})`);
+        await this.finalizeAsrAccumulation(sessionId);
+        return;
+      }
+
+      // 执行语义完整性检查
+      this.asrSemanticCheckPending.set(sessionId, true);
+      try {
+        const questionCtx = this.asrCurrentQuestion.get(sessionId);
+        const { deepseekService } = await import('./deepseek.service');
+        
+        console.log(`[Coordinator] 语义完整性检查 (${sessionId}): 段数=${segmentCount}, 字数=${finalText.length}`);
+        const checkStart = Date.now();
+        const result = await deepseekService.checkSemanticCompleteness(finalText, questionCtx);
+        const checkDuration = Date.now() - checkStart;
+        
+        this.semanticCheckCount++;
+        console.log(`[Coordinator] 语义检查结果 (${sessionId}): isComplete=${result.isComplete}, reason=${result.reason}, 耗时=${checkDuration}ms`);
+        
+        if (result.isComplete) {
+          this.semanticCheckHits++;
+          // 语义完整 → 立即处理
+          await this.finalizeAsrAccumulation(sessionId);
+        } else {
+          // 语义不完整 → 重置冷却，继续等待
+          console.log(`[Coordinator] 语义不完整，继续等待更多输入 (${sessionId}): ${result.reason}`);
+          this.asrSemanticCheckPending.set(sessionId, false);
+          // 再等 3 秒后强制处理（防止无限等待）
+          const forceTimer = setTimeout(async () => {
+            this.asrSemanticCooldownTimers.delete(sessionId);
+            await this.finalizeAsrAccumulation(sessionId);
+          }, 5000);
+          this.asrSemanticCooldownTimers.set(sessionId, forceTimer);
+        }
+      } catch (err: any) {
+        console.warn(`[Coordinator] 语义检查异常，降级处理 (${sessionId}):`, err.message);
+        await this.finalizeAsrAccumulation(sessionId);
+      } finally {
+        this.asrSemanticCheckPending.set(sessionId, false);
+      }
     }, cooldownMs);
 
-    this.asrCooldownTimers.set(sessionId, timer);
+    this.asrSemanticCooldownTimers.set(sessionId, timer);
+  }
+
+  /**
+   * 完成 ASR 累积：清理缓冲区，将最终文本送入面试流程处理。
+   */
+  private async finalizeAsrAccumulation(sessionId: string) {
+    const finalText = this.asrAccumulatedText.get(sessionId) || '';
+    const segmentCount = this.asrSegmentCount.get(sessionId) || 1;
+    
+    // 清理所有语义驱动状态
+    this.asrAccumulatedText.delete(sessionId);
+    this.asrSegmentCount.delete(sessionId);
+    this.asrCurrentQuestion.delete(sessionId);
+    this.asrSemanticCheckPending.delete(sessionId);
+    this.asrSemanticCooldownTimers.delete(sessionId);
+
+    if (!finalText.trim()) return;
+
+    console.log(`[Coordinator] ASR 累积完成，开始处理 (${sessionId}): 段数=${segmentCount}, 字数=${finalText.length}, "${finalText.slice(0, 50)}..."`);
+    const asrStart = Date.now();
+    this.runInQueue(sessionId, async () => {
+      await this.processUserResponse(sessionId, finalText, 'asr');
+      this.logPerformance('process_asr_response', sessionId, Date.now() - asrStart, {
+        textLength: finalText.length,
+        source: 'asr',
+        segments: segmentCount,
+      });
+    });
   }
 
   /**

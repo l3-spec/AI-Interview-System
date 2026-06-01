@@ -65,6 +65,9 @@ interface JobTemplate {
   questionCount: number;
 }
 
+/** LLM 任务类型，用于模型路由 */
+type TaskType = 'dialogue' | 'followup' | 'analysis' | 'deep_analysis' | 'question_generation' | 'summary' | 'opening' | 'closing';
+
 export class DeepseekService {
   private providerName: string;
   private apiKey: string;
@@ -79,15 +82,42 @@ export class DeepseekService {
   private readonly defaultTimeoutMs: number;
   /** 整卷面试生成等长输出，易超过 30s，单独放宽 */
   private readonly longGenerationTimeoutMs: number;
+  /** 是否为 DashScope 提供商（支持模型分层路由 + 流式） */
+  private readonly isDashScope: boolean;
+  /** DashScope 模型分层配置 */
+  private readonly dashScopeModels: { flash: string; plus: string; pro: string; max: string };
 
   constructor() {
     this.providerName = process.env.LLM_PROVIDER || 'deepseek';
+    this.isDashScope = this.providerName === 'dashscope';
 
     // 支持火山引擎豆包
     if (this.providerName === 'volcengine') {
       this.apiKey = process.env.VOLCENGINE_API_KEY || '';
       this.apiUrl = process.env.VOLCENGINE_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
       this.model = process.env.VOLCENGINE_DOUBAO_MODEL || '';
+      this.dashScopeModels = { flash: '', plus: '', pro: '', max: '' };
+    } else if (this.isDashScope) {
+      // DashScope（阿里云百炼）OpenAI 兼容模式
+      // 优先使用 PrivateLink 内网地址，回退公网地址
+      this.apiKey = process.env.DASHSCOPE_API_KEY || process.env.LLM_API_KEY || '';
+      this.apiUrl = process.env.DASHSCOPE_LLM_URL ||
+        process.env.LLM_API_URL ||
+        (process.env.DASHSCOPE_WS_URL
+          ? process.env.DASHSCOPE_WS_URL.replace('api-ws/v1/realtime', 'compatible-mode/v1/chat/completions')
+          : 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions');
+      // 默认模型：flash（最快，适合对话）
+      this.model = process.env.LLM_MODEL || process.env.DASHSCOPE_FLASH_MODEL || 'qwen3.6-flash-2026-04-16';
+      this.thinkingModel = process.env.DASHSCOPE_PRO_MODEL || 'qwen3-pro';
+      this.analysisModel = process.env.DASHSCOPE_PLUS_MODEL || this.model;
+      // 模型分层配置（可通过环境变量覆盖各层级）
+      this.dashScopeModels = {
+        flash: process.env.DASHSCOPE_FLASH_MODEL || 'qwen3.6-flash-2026-04-16',
+        plus: process.env.DASHSCOPE_PLUS_MODEL || 'qwen3.6-plus-2026-04-02',
+        pro: process.env.DASHSCOPE_PRO_MODEL || 'qwen3-pro',
+        max: process.env.DASHSCOPE_MAX_MODEL || 'qwen3-max',
+      };
+      console.log(`✅ DashScope LLM 已配置 (兼容模式), 内网=${this.apiUrl.includes('vpc') || this.apiUrl.includes('privatelink')}, 默认模型=${this.model}`);
     } else {
       this.apiKey = process.env.LLM_API_KEY || process.env.DEEPSEEK_API_KEY || '';
       this.apiUrl = process.env.LLM_API_URL || process.env.DEEPSEEK_API_URL || 'https://api.deepseek.com/v1/chat/completions';
@@ -95,6 +125,7 @@ export class DeepseekService {
       this.thinkingModel = process.env.DEEPSEEK_THINKING_MODEL || 'deepseek-v4-pro';
       // 分析模型统一使用 deepseek-v4-flash（与生成模型一致，降低延迟和成本）
       this.analysisModel = process.env.DEEPSEEK_ANALYSIS_MODEL || this.model;
+      this.dashScopeModels = { flash: '', plus: '', pro: '', max: '' };
     }
     
     this.maxTokens = parseInt(process.env.LLM_MAX_TOKENS || process.env.DEEPSEEK_MAX_TOKENS || process.env.VOLCENGINE_MAX_TOKENS || '4096');
@@ -140,6 +171,140 @@ export class DeepseekService {
     if (m) this.model = m;
     const u = (config.deepseekApiUrl || '').trim();
     if (u) this.apiUrl = u;
+  }
+
+  // ==================== 模型分层路由 ====================
+
+  /**
+   * 根据任务类型自动选择合适的模型。
+   * 
+   * 路由策略（DashScope 下生效，非 DashScope 使用默认模型）：
+   * - dialogue / followup / opening / closing → flash（最快，适合实时对话）
+   * - analysis → plus（中等，适合即时分析）
+   * - deep_analysis → pro（高质量分析）
+   * - question_generation / summary → pro（复杂生成任务）
+   * 
+   * 可通过环境变量覆盖各层级：
+   *   DASHSCOPE_FLASH_MODEL / DASHSCOPE_PLUS_MODEL / DASHSCOPE_PRO_MODEL / DASHSCOPE_MAX_MODEL
+   */
+  private selectModel(task: TaskType): string {
+    if (!this.isDashScope) {
+      return this.model; // 非 DashScope 使用默认模型
+    }
+
+    switch (task) {
+      case 'dialogue':
+      case 'followup':
+      case 'opening':
+      case 'closing':
+        return this.dashScopeModels.flash;
+
+      case 'analysis':
+        return this.dashScopeModels.plus;
+
+      case 'deep_analysis':
+        return this.dashScopeModels.pro;
+
+      case 'question_generation':
+      case 'summary':
+        return this.dashScopeModels.pro;
+
+      default:
+        return this.dashScopeModels.flash;
+    }
+  }
+
+  // ==================== 流式聊天完成 ====================
+
+  /**
+   * 流式聊天完成（async generator）。
+   * 通过 SSE 逐 token 产出内容，适用于需要边生成边下发的场景（如 TTS 实时合成）。
+   * 
+   * 使用方式：
+   *   for await (const token of this.chatCompletionStream(messages, options)) {
+   *     // 逐 token 发送到 TTS
+   *   }
+   */
+  private async *chatCompletionStream(
+    messages: any[],
+    options: {
+      temperature?: number;
+      maxTokens?: number;
+      /** 覆盖默认模型 */
+      model?: string;
+      taskType?: TaskType;
+      timeoutMs?: number;
+    } = {}
+  ): AsyncGenerator<string, void, undefined> {
+    if (!this.isEnabled) {
+      yield '抱歉，AI 服务暂未启用。';
+      return;
+    }
+
+    const model = options.model || this.selectModel(options.taskType || 'dialogue');
+    const requestData: any = {
+      model,
+      messages,
+      max_tokens: options.maxTokens || Math.min(this.maxTokens, 1024),
+      temperature: options.temperature ?? this.temperature,
+      stream: true,
+      stream_options: { include_usage: false },
+    };
+
+    // DashScope 流式也禁用 thinking，避免推理链阻塞 token 产出
+    if (this.isDashScope) {
+      requestData.enable_thinking = false;
+    }
+
+    const timeoutMs = options.timeoutMs || this.defaultTimeoutMs;
+    const logTag = this.isDashScope ? '[DashScope]' : `[${this.providerName}]`;
+
+    try {
+      console.log(`${logTag} 流式请求: model=${model}, maxTokens=${requestData.max_tokens}`);
+
+      const response = await axios.post(this.apiUrl, requestData, {
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+        },
+        timeout: timeoutMs,
+        responseType: 'stream',
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
+      });
+
+      const stream = response.data;
+      let buffer = '';
+
+      for await (const chunk of stream) {
+        buffer += chunk.toString();
+        const lines = buffer.split('\n');
+        // 保留最后一个不完整的行
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith('data:')) continue;
+
+          const data = trimmed.slice(5).trim();
+          if (data === '[DONE]') return;
+
+          try {
+            const parsed = JSON.parse(data);
+            const delta = parsed?.choices?.[0]?.delta?.content;
+            if (delta) {
+              yield delta;
+            }
+          } catch {
+            // 跳过解析失败的行（如注释行）
+          }
+        }
+      }
+    } catch (error: any) {
+      console.error(`${logTag} 流式请求失败:`, error.message);
+      yield '抱歉，生成回复时出现了问题。请再说一遍。';
+    }
   }
 
   /**
@@ -287,6 +452,7 @@ export class DeepseekService {
 
       // 调用 Deepseek API（整卷题目生成耗时常 >30s，必须用长超时，勿受 DEEPSEEK_TIMEOUT_MS=15s 等过短配置影响）
       const response = await this.callDeepseekAPI(builtPrompt, {
+        taskType: 'question_generation',
         timeoutMs: this.longGenerationTimeoutMs,
       });
 
@@ -428,14 +594,17 @@ export class DeepseekService {
 
   /**
    * 调用 Deepseek API
+   * @param options.taskType DashScope 模型分层路由类型（非 DashScope 忽略）
    * @param options.timeoutMs 覆盖默认超时（整卷面试生成等请用更长超时，避免 Axios stream aborted）
    */
   private async callDeepseekAPI(
     prompt: string,
-    options?: { timeoutMs?: number; isThinking?: boolean; reasoningEffort?: 'high' | 'max'; maxTokens?: number }
+    options?: { taskType?: TaskType; timeoutMs?: number; isThinking?: boolean; reasoningEffort?: 'high' | 'max'; maxTokens?: number }
   ): Promise<DeepseekResponse> {
     const isThinking = options?.isThinking ?? false;
-    const model = isThinking ? this.thinkingModel : this.model;
+    const model = options?.taskType
+      ? this.selectModel(options.taskType)
+      : (isThinking ? this.thinkingModel : this.model);
 
     const requestData: any = {
       model: model,
@@ -449,6 +618,11 @@ export class DeepseekService {
       temperature: isThinking ? undefined : this.temperature,
       stream: false,
     };
+
+    // DashScope：非思考模式下显式禁用 reasoning，避免 Qwen3 自动产生超长思维链（耗时 30s+）
+    if (this.isDashScope && !isThinking) {
+      requestData.enable_thinking = false;
+    }
 
     if (isThinking) {
       requestData.extra_body = {
@@ -494,7 +668,10 @@ export class DeepseekService {
     
     try {
       if (reasoningContent) {
-        console.log(`${logTag} 思维链内容:`, reasoningContent);
+        const summary = reasoningContent.length > 200
+          ? reasoningContent.substring(0, 200) + '...[截断]'
+          : reasoningContent;
+        console.log(`${logTag} 推理摘要:`, summary);
       }
       console.log(`${logTag} 返回内容:`, responseContent);
       if (responseData?.usage) {
@@ -616,37 +793,51 @@ export class DeepseekService {
    * 生成面试内容 (Placeholder)
    */
   /**
-   * 生成首题（开场白 + 第一道面试题）— 快速响应，用于减少用户等待
+   * 生成首题（开场白 + 第一道面试题）— 基于完整画像由 LLM 自行生成
    */
   async generateFirstQuestion(params: {
     name: string;
     targetJob: string;
     companyTarget?: string;
     background?: string;
+    candidateProfile?: string;
   }): Promise<{ content: string }> {
-    const { name, targetJob, companyTarget, background } = params;
+    const { name, targetJob, companyTarget, background, candidateProfile } = params;
     const companyText = companyTarget ? `\n- 目标公司/企业：${companyTarget}` : '';
-    const prompt = `作为一位专业、公正且严肃的AI面试官（10年资深HR总监形象），请为以下候选人生成面试的开场白与首个提问：
+    
+    // 判断是否是应届/无经验候选人
+    const isFresh = /应届|毕业生|在读|无.*经验|零基础|新人/.test(background || '');
+    
+    // 完整画像文本
+    const profileSection = candidateProfile
+      ? `\n【候选人完整画像——请基于以下信息自然生成称呼和开场白】\n${candidateProfile}\n`
+      : '';
 
-候选人信息：
-- 姓名：${name}
+    const prompt = `作为一位专业、公正且严肃的AI面试官（10年资深HR总监形象），请基于候选人的背景信息，生成面试的开场白与首个提问：
+
+${profileSection}
 - 目标职位：${targetJob}${companyText}
-- 背景：${background || '未指定'}
+- 背景：${background || '未指定'}${isFresh ? '（注意：该候选人为应届毕业生或无相关工作经验，请避免询问过往工作经历）' : ''}
 
 请生成包含以下内容的面试开场：
-1. 开场介绍与首个提问（1个问题，结合候选人姓名、职位以及目标公司信息生成一段自然且亲切的面试问候，同时包含第一个正式面试提问）
+1. 开场介绍与首个提问（1个问题，基于候选人画像信息生成一段自然且亲切的面试问候，同时包含第一个正式面试提问）
+${isFresh ? '2. 首个提问应侧重在校项目、课程设计、实习经历、学习能力等，严禁问"过去工作中""上一份工作""过往的项目经验"等工作经验类问题' : '2. 如有候选人画像信息，可在提问中自然地引用其经历或所在地区'}
+3. 根据性别信息使用正确称呼，不要用"先生/女士"模糊表达；如果姓名只有一个字，结合性别称"X先生"或"X女士"
 
 【重要】请用 [emotion:opening] 标记语气，用于 TTS 情感合成：
 - [emotion:opening] — 开场问候与首个提问
 
-示例：
-"[emotion:opening]${name}您好，欢迎参加今天应聘${companyTarget || ''}${targetJob}的面试。我是您的面试官，很开心与您深入交流。首先，请您结合自身的最突出的工作亮点，谈谈您为什么觉得自己是这个岗位的最佳人选？"
+示例格式（称呼会因候选人画像而不同）：
+${isFresh 
+  ? `"[emotion:opening]林先生您好，欢迎参加${companyTarget || ''}${targetJob}的面试。我是您的面试官，很开心与您深入交流。首先，请您介绍一下在校期间最有代表性的课题项目或实习经历。"`
+  : `"[emotion:opening]林先生您好，欢迎参加${companyTarget || ''}${targetJob}的面试。我是您的面试官，很开心与您深入交流。首先，请您结合自身的最突出的工作亮点，谈谈您为什么觉得自己是这个岗位的最佳人选？"`}
 
 请直接输出开场白和首题，不要包含预期考察点、评分标准等评估字段。
 请用中文回答，保持专业严肃但不失礼貌的面试官语气。`.trim();
 
     try {
       const response = await this.callDeepseekAPI(prompt, {
+        taskType: 'opening',
         timeoutMs: 60_000, // 首题超时较短（60秒）
         maxTokens: 1024,
       });
@@ -681,30 +872,36 @@ export class DeepseekService {
   }
 
   /**
-   * 生成开场白
+   * 生成开场白（基于完整候选人画像，由 LLM 自行生成自然称呼）
    */
-  async generateOpening(userInfo: { name: string; targetJob: string }, isFirstTime: boolean): Promise<OpeningResult> {
-    const prompt = `
-你是一位专业的AI面试官。请为候选人生成一段简短、亲切且专业的开场白。
+  async generateOpening(
+    userInfo: { name: string; targetJob: string; candidateProfile?: string },
+    isFirstTime: boolean
+  ): Promise<OpeningResult> {
+    const profileSection = userInfo.candidateProfile
+      ? `\n【候选人完整画像——请基于以下信息自然生成称呼和开场白】\n${userInfo.candidateProfile}\n`
+      : '';
 
-候选人信息：
-- 姓名：${userInfo.name}
-- 目标职位：${userInfo.targetJob}
+    const prompt = `你是一位专业的AI面试官。请基于候选人的背景信息，生成一段简短、亲切且专业的开场白。
+
+${profileSection}
 - 场景：${isFirstTime ? '第一次进入面试' : '面试中断后重新进入'}
 
 要求：
 1. ${isFirstTime ? '包含欢迎致辞、自我介绍（我是您的AI面试官）、简要说明面试流程（约15-20分钟，分为信息确认和正式面试两部分）。' : '包含欢迎回来致辞，鼓励候选人继续完成面试。'}
 2. 语气专业、亲切、自然。
-3. 长度控制在100字以内。
-4. 请直接输出开场白内容，不要包含任何其他文字。
-    `.trim();
+3. 根据性别信息使用正确称呼（先生/女士），不要用"先生/女士"这种不确定的模糊表达。
+4. 如果姓名只有一个字（可能只是姓氏），结合性别信息自然地称呼（如"林先生"）。
+5. 如果有地区、学历、经验等信息，在开场白中自然地提及，让候选人感到被重视。
+6. 长度控制在100字以内。
+7. 请直接输出开场白内容，不要包含任何其他文字。`.trim();
 
     if (!this.isEnabled) {
-      return { opening: isFirstTime ? "您好，欢迎来到U-Talent面试系统。" : "欢迎回来，让我们继续面试。" };
+      return { opening: isFirstTime ? `${userInfo.name || '候选人'}您好，欢迎来到U-Talent面试系统。` : "欢迎回来，让我们继续面试。" };
     }
 
     try {
-      const response = await this.callDeepseekAPI(prompt);
+      const response = await this.callDeepseekAPI(prompt, { taskType: 'opening' });
       const content = response.choices[0]?.message?.content || '';
       return { opening: content.trim() };
     } catch (error) {
@@ -758,6 +955,7 @@ shouldContinueWaiting 判定规则（重要）：
         response_format: { type: 'json_object' },
         isThinking: isThinking,
         model: this.analysisModel,
+        taskType: 'analysis',
         reasoning_effort: undefined
       });
 
@@ -837,7 +1035,7 @@ ${candidateLastAnswer.slice(0, 1200)}
     }
 
     try {
-      const response = await this.callDeepseekAPI(prompt);
+      const response = await this.callDeepseekAPI(prompt, { taskType: 'followup' });
       const content = (response.choices[0]?.message?.content || '').trim();
       if (content.length < 12) {
         return preparedQuestion;
@@ -858,7 +1056,7 @@ ${candidateLastAnswer.slice(0, 1200)}
     }
 
     try {
-      const response = await this.callDeepseekAPI(prompt);
+      const response = await this.callDeepseekAPI(prompt, { taskType: 'followup' });
       const rawContent = (response.choices[0]?.message?.content || '').trim();
       
       // 剥离常见前缀标签："追问：" "追问:" "追问." "追问 " "追问-" 等
@@ -888,7 +1086,7 @@ ${candidateLastAnswer.slice(0, 1200)}
     }
 
     try {
-      const response = await this.callDeepseekAPI(prompt);
+      const response = await this.callDeepseekAPI(prompt, { taskType: 'summary' });
       const content = response.choices[0]?.message?.content || '';
       return { summary: content.trim() };
     } catch (error) {
@@ -920,7 +1118,7 @@ ${candidateLastAnswer.slice(0, 1200)}
     }
 
     try {
-      const response = await this.callDeepseekAPI(prompt);
+      const response = await this.callDeepseekAPI(prompt, { taskType: 'closing' });
       const content = response.choices[0]?.message?.content || '';
       return { closing: content.trim() };
     } catch (error) {
@@ -930,7 +1128,10 @@ ${candidateLastAnswer.slice(0, 1200)}
   }
 
   /**
-   * 生成对话回复（用于实时语音交互）
+   * 生成对话回复（用于实时语音交互）。
+   * DashScope 下使用流式输出，边生成边返回 token，配合 TTS 实现更低的首字延迟。
+   * 
+   * @returns 完整回复文本
    */
   async generateResponse(params: {
     userMessage: string;
@@ -950,12 +1151,18 @@ ${candidateLastAnswer.slice(0, 1200)}
 
     try {
       const jobPosition = context?.jobPosition || '该职位';
-      const systemPrompt = systemPromptOverride || `你是一位专业且严格的HR面试官，正在面试${jobPosition}的候选人。
+      const background = context?.background || '';
+      const bgInfo = background && background !== '未指定' ? `\n【候选人背景】${background}\n- 所有提问必须严格匹配候选人背景` : '';
+      
+      const systemPrompt = systemPromptOverride || `你是一位专业且严格的HR面试官，正在面试${jobPosition}的候选人。${bgInfo}
 
 【角色定位 - 绝对禁止违反】
 1. 你是面试官（提问方），候选人是应聘者（回答方）
 2. 你的职责是提问和评估，绝不是回答问题或介绍自己
 3. 如果候选人试图让你回答问题或介绍经验，你必须礼貌地纠正并继续面试
+
+【称呼规范】
+- 直接称呼候选人姓名，禁止使用"先生/女士"模糊称呼
 
 【面试规则】
 - 根据候选人的回答，提出有针对性的追问或新问题
@@ -969,21 +1176,33 @@ ${candidateLastAnswer.slice(0, 1200)}
 - "还有多少问题"  
 - "我答完了"
 - 或其他明显的结束意图
-则回复："好的，感谢您的时间。我会尽快为您生成本次面试报告，请您留意“我的”里的“简历报告”通知。"
+则回复："好的，感谢您的时间。我会尽快为您生成本次面试报告，请您留意"我的"里的"简历报告"通知。"
 
 现在，基于候选人的回答，继续面试：`;
 
       const messages = [
-        {
-          role: 'system',
-          content: systemPrompt,
-        },
-        {
-          role: 'user',
-          content: userMessage,
-        },
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
       ];
 
+      const logTag = this.isDashScope ? '[DashScope]' : '[Deepseek]';
+
+      if (this.isDashScope) {
+        // DashScope 流式输出：逐 token 返回，配合 TTS 边生成边合成
+        console.log(`${logTag} generateResponse 使用流式模式 (flash)`);
+        let fullContent = '';
+        for await (const token of this.chatCompletionStream(messages, {
+          taskType: 'dialogue',
+          temperature: 0.7,
+          maxTokens: 500,
+          timeoutMs: 30000,
+        })) {
+          fullContent += token;
+        }
+        return fullContent.trim() || "抱歉，我没有听清楚。请再说一遍。";
+      }
+
+      // 非 DashScope：传统非流式调用
       const response = await axios.post(this.apiUrl, {
         model: this.model,
         messages,
@@ -1002,7 +1221,8 @@ ${candidateLastAnswer.slice(0, 1200)}
       return content.trim();
 
     } catch (error: any) {
-      console.error('DeepSeek生成回复失败:', error.message);
+      const logTag = this.isDashScope ? '[DashScope]' : '[Deepseek]';
+      console.error(`${logTag} 生成回复失败:`, error.message);
       return "抱歉，我没有听清楚。请再说一遍。";
     }
   }
@@ -1074,7 +1294,7 @@ ${candidateLastAnswer.slice(0, 1200)}
       const response = await axios.post(
         this.apiUrl,
         {
-          model: this.model,
+          model: this.isDashScope ? this.selectModel('deep_analysis') : this.model,
           messages,
           max_tokens: 1000,
           temperature: 0.3,
@@ -1132,6 +1352,8 @@ ${candidateLastAnswer.slice(0, 1200)}
     followupCount: number;
     /** 目标职位 */
     jobPosition: string;
+    /** 候选人背景（应届/社招/经验年限等，用于约束提问方向） */
+    candidateBackground?: string;
     /** 待问的预生成下一题（用于决定是否需要上下文润色） */
     pendingNextQuestion?: string;
   }): Promise<{
@@ -1140,7 +1362,7 @@ ${candidateLastAnswer.slice(0, 1200)}
     nextMessage?: string;
     isContextualFollowup?: boolean;
   }> {
-    const { conversationHistory, currentQuestion, userResponse, followupCount, jobPosition, pendingNextQuestion } = params;
+    const { conversationHistory, currentQuestion, userResponse, followupCount, jobPosition, pendingNextQuestion, candidateBackground } = params;
 
     if (!this.isEnabled) {
       return {
@@ -1160,7 +1382,20 @@ ${candidateLastAnswer.slice(0, 1200)}
     }
 
     // 构建 system prompt：面试官角色 + 决策规则
+    const bgInfo = candidateBackground && candidateBackground !== '未指定' ? candidateBackground : '未提供';
     const systemPrompt = `你是一位专业且严格的AI面试官（10年资深HR总监形象），正在面试${jobPosition}的候选人。
+
+【候选人背景 - 必须严格遵循】
+该候选人的背景是：${bgInfo}
+- 所有提问和追问必须与候选人背景严格匹配，绝不允许脱离背景提问
+- 若候选人为应届毕业生/无经验者，严禁询问过往工作经验、上一份工作、项目中取得的业绩成果等社招类问题
+- 对于应届生，应聚焦在校课题项目、实习经历、课程设计、学习能力和成长潜力
+- 若候选人有工作经验，则可深挖项目细节和可量化的业绩成果
+- 若有候选人所在地区、学历、技能等信息，可在追问时自然地引用
+
+【称呼规范 - 绝对禁止违反】
+- 必须直接称呼候选人的姓名，禁止使用"先生/女士"这种模糊称呼
+- 若候选人姓名为单字（如"林"），可说"林同学"或直接称呼其全名
 
 【你的身份——绝对禁止违反】
 1. 你是面试官（提问方），候选人是应聘者（回答方）
@@ -1210,12 +1445,32 @@ ${pendingNextQuestion}` : `【下一题提示】
     ];
 
     try {
-      const content = await this.chatCompletion(messages, {
-        response_format: { type: 'json_object' },
-        model: this.analysisModel,
-        isThinking: false,
-        maxTokens: 1500,
-      });
+      const logTag = this.isDashScope ? '[DashScope]' : '[Deepseek]';
+      
+      let content: string;
+      if (this.isDashScope) {
+        // DashScope 流式模式：收集完整 token 流后解析 JSON
+        // 虽不能边生成边下发 TTS（因为需要先解析 JSON），但流式可大幅降低首 token 延迟
+        console.log(`${logTag} conductInterviewTurn 使用流式模式 (${this.selectModel('dialogue')})`);
+        let fullContent = '';
+        for await (const token of this.chatCompletionStream(messages, {
+          taskType: 'dialogue',
+          temperature: 0.3,
+          maxTokens: 1500,
+          timeoutMs: this.defaultTimeoutMs,
+        })) {
+          fullContent += token;
+        }
+        content = fullContent;
+      } else {
+        // 非 DashScope：传统非流式调用
+        content = await this.chatCompletion(messages, {
+          response_format: { type: 'json_object' },
+          model: this.analysisModel,
+          isThinking: false,
+          maxTokens: 1500,
+        });
+      }
 
       // 解析 JSON
       const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/) || content.match(/\{[\s\S]*\}/);
@@ -1243,6 +1498,211 @@ ${pendingNextQuestion}` : `【下一题提示】
   }
 
   /**
+   * 流式对话生成（纯文本，不含分析 JSON）。
+   * 配合 TTS 实现边生成边合成：每个 token 通过 async generator 产出，
+   * 调用方可逐 token 发送到 qwen3TTSClient.synthesize(sessionId, token, false)。
+   * 
+   * 使用场景：
+   * - 开场白、结束语、简单追问等无需结构化分析的对话
+   * - 与 conductInterviewTurn 配合：本方法产出对话文本（流式→TTS），
+   *   conductInterviewTurn 负责分析（可并行或异步）
+   * 
+   * 使用方式：
+   *   for await (const token of deepseekService.generateDialogueStream(messages)) {
+   *     qwen3TTSClient.synthesize(sessionId, token, false);
+   *   }
+   *   qwen3TTSClient.synthesize(sessionId, '', true); // 提交
+   */
+  async *generateDialogueStream(
+    messages: Array<{ role: string; content: string }>,
+    options: {
+      temperature?: number;
+      maxTokens?: number;
+      timeoutMs?: number;
+    } = {}
+  ): AsyncGenerator<string, string, undefined> {
+    if (!this.isEnabled) {
+      yield '感谢您的回答。请继续下一个问题。';
+      return '感谢您的回答。请继续下一个问题。';
+    }
+
+    const logTag = this.isDashScope ? '[DashScope]' : `[${this.providerName}]`;
+    console.log(`${logTag} generateDialogueStream 开始流式生成 (${this.selectModel('dialogue')})`);
+
+    let fullText = '';
+    try {
+      for await (const token of this.chatCompletionStream(messages, {
+        taskType: 'dialogue',
+        temperature: options.temperature ?? 0.7,
+        maxTokens: options.maxTokens ?? 500,
+        timeoutMs: options.timeoutMs ?? 30000,
+      })) {
+        fullText += token;
+        yield token;
+      }
+    } catch (error: any) {
+      console.error(`${logTag} generateDialogueStream 失败:`, error.message);
+      const fallback = '抱歉，我没有听清楚。请再说一遍。';
+      yield fallback;
+      return fallback;
+    }
+
+    return fullText.trim();
+  }
+
+  /**
+   * 语义完整性检查：快速判断候选人的回答是否已完成。
+   * 
+   * 用于替代固定时长的 VAD 冷却窗口，通过 LLM 理解内容来判断
+   * "用户是说完了还是在思考中"，避免抢话题。
+   * 
+   * 使用 flash 模型（最快），限定 50 token，目标 <1s 延迟。
+   */
+  async checkSemanticCompleteness(text: string, questionContext?: string): Promise<{
+    isComplete: boolean;
+    reason: string;
+  }> {
+    if (!this.isEnabled) {
+      // 未启用时，基于长度简单判断：>20字大概率完整
+      return { isComplete: text.length > 20, reason: '基于长度判断' };
+    }
+
+    const qContext = questionContext ? `\n面试题目：${questionContext.substring(0, 100)}` : '';
+    const prompt = `仅判断以下面试回答是否"语义完整"（即候选人已表达完一个完整观点），不要做其他分析。
+
+回答: "${text.substring(0, 300)}"${qContext}
+
+只输出JSON: {"isComplete": true/false, "reason": "简短理由"}`;
+
+    try {
+      const content = await this.chatCompletion(
+        [
+          { role: 'system', content: '你是一个快速语义完整性检测器。只输出JSON。' },
+          { role: 'user', content: prompt },
+        ],
+        {
+          taskType: 'dialogue', // 用 flash 模型，最快
+          temperature: 0,
+          maxTokens: 50,
+        }
+      );
+
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const result = JSON.parse(jsonMatch[0]);
+        return {
+          isComplete: result.isComplete !== false,
+          reason: result.reason || 'LLM判断',
+        };
+      }
+    } catch (error: any) {
+      console.warn('[DashScope] 语义完整性检查失败，默认放行:', error.message);
+    }
+
+    // 降级：基于长度和标点判断
+    const hasEndingPunctuation = /[。！？\.\!\?]$/.test(text.trim());
+    const isLongEnough = text.length > 50;
+    return {
+      isComplete: hasEndingPunctuation && isLongEnough,
+      reason: '降级规则判断',
+    };
+  }
+
+  /**
+   * 轻量快速分析（仅评分 + 决策，不生成对话文本）。
+   * 与 generateDialogueStream 配合使用：对话文本流式产出后，
+   * 用此方法异步完成分析评分（不阻塞音频播放）。
+   * 
+   * @returns 简化的分析结果（无 nextMessage 字段）
+   */
+  async quickAnalyze(params: {
+    conversationHistory: Array<{ role: string; content: string }>;
+    jobPosition: string;
+    followupCount: number;
+    /** 候选人背景（应届/社招等），用于约束决策方向 */
+    candidateBackground?: string;
+    pendingNextQuestion?: string;
+  }): Promise<{
+    score: number;
+    feedback: string;
+    needsFollowup: boolean;
+    shouldContinueWaiting: boolean;
+    decision: 'follow_up' | 'next_question' | 'end';
+  }> {
+    if (!this.isEnabled) {
+      return {
+        score: 75,
+        feedback: '回答已收到',
+        needsFollowup: false,
+        shouldContinueWaiting: false,
+        decision: 'next_question',
+      };
+    }
+
+    const { conversationHistory, jobPosition, followupCount, pendingNextQuestion, candidateBackground } = params;
+
+    const bgInfo = candidateBackground && candidateBackground !== '未指定' ? candidateBackground : '未提供';
+    const systemPrompt = `你是一位专业的AI面试官，正在面试${jobPosition}的候选人。
+
+【候选人背景】${bgInfo}
+
+【任务】仅分析候选人刚才的回答质量，做出推进决策。
+【输出格式】严格JSON，不要Markdown：
+{
+  "score": 0-100,
+  "feedback": "1-2句话简短分析",
+  "needsFollowup": true/false,
+  "shouldContinueWaiting": true/false,
+  "decision": "follow_up" | "next_question" | "end"
+}
+
+【规则】
+- needsFollowup: 回答不够深入/需举例/偏离岗位要求
+- shouldContinueWaiting: 回答明显未说完（半截话、<15字且无结束语气）
+- 追问上限：${followupCount >= 2 ? 0 : 2 - followupCount}次
+- 若候选人为应届毕业生，评估时侧重学习能力和潜力，而非工作经验
+- decision=end: 仅当候选人明确表示"想结束面试"或所有题目已答完时才用，绝不要因为回答质量差就结束面试
+- decision=next_question: 默认选择，回答已足够推进到下一题
+- decision=follow_up: 回答不够深入需要追问时使用
+${pendingNextQuestion ? `- 预生成下一题作为参考：${pendingNextQuestion}` : ''}`;
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...conversationHistory.map(m => ({ role: m.role as any, content: m.content })),
+    ];
+
+    try {
+      const content = await this.chatCompletion(messages, {
+        taskType: 'analysis',
+        response_format: { type: 'json_object' },
+        temperature: 0.2,
+        maxTokens: 500,
+      });
+
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      const jsonStr = jsonMatch ? jsonMatch[0] : content;
+      const result = JSON.parse(jsonStr);
+
+      return {
+        score: typeof result.score === 'number' ? result.score : 70,
+        feedback: result.feedback || '回答已收到',
+        needsFollowup: !!result.needsFollowup,
+        shouldContinueWaiting: !!result.shouldContinueWaiting,
+        decision: ['follow_up', 'next_question', 'end'].includes(result.decision) ? result.decision : 'next_question',
+      };
+    } catch (error: any) {
+      console.error('[Deepseek] quickAnalyze 失败:', error.message);
+      return {
+        score: 60,
+        feedback: '分析异常',
+        needsFollowup: false,
+        shouldContinueWaiting: false,
+        decision: 'next_question',
+      };
+    }
+  }
+
+  /**
    * 通用聊天完成方法
    */
   async chatCompletion(
@@ -1253,6 +1713,8 @@ ${pendingNextQuestion}` : `【下一题提示】
       response_format?: any;
       /** 覆盖默认模型 */
       model?: string;
+      /** DashScope 任务类型（非 DashScope 忽略） */
+      taskType?: TaskType;
       isThinking?: boolean;
       reasoning_effort?: 'high' | 'max';
     } = {}
@@ -1263,7 +1725,9 @@ ${pendingNextQuestion}` : `【下一题提示】
 
     try {
       const isThinking = options.isThinking ?? false;
-      const model = options.model || (isThinking ? this.thinkingModel : this.model);
+      const model = options.model
+        || (options.taskType ? this.selectModel(options.taskType) : undefined)
+        || (isThinking ? this.thinkingModel : this.model);
 
       const requestData: any = {
         model,
@@ -1273,6 +1737,11 @@ ${pendingNextQuestion}` : `【下一题提示】
         response_format: options.response_format,
         stream: false,
       };
+
+      // DashScope：非思考模式下显式禁用 reasoning，避免 Qwen3 自动产生超长思维链（耗时 30s+）
+      if (this.isDashScope && !isThinking) {
+        requestData.enable_thinking = false;
+      }
 
       if (isThinking) {
         requestData.extra_body = {
@@ -1297,7 +1766,11 @@ ${pendingNextQuestion}` : `【下一题提示】
 
       const choice = response.data?.choices?.[0]?.message;
       if (choice?.reasoning_content) {
-        console.log(`[Deepseek] 思维链: ${choice.reasoning_content}`);
+        // 仅输出前 200 字的摘要，避免超长思维链阻塞日志 I/O
+        const summary = choice.reasoning_content.length > 200
+          ? choice.reasoning_content.substring(0, 200) + '...[截断]'
+          : choice.reasoning_content;
+        console.log(`[DashScope] 推理摘要: ${summary}`);
       }
       return choice?.content || '{}';
     } catch (error: any) {

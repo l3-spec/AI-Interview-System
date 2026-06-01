@@ -5,7 +5,7 @@ import { avatarService } from './avatar.service';
 import { interviewConductor } from './interview-conductor.service';
 import { aiInterviewService } from './ai-interview.service';
 import { qwen3TTSClient } from './qwen3-tts-service-client';
-import { InterviewSession, InterviewRound, InterviewState, ResponseAnalysis } from '../models/interviewFlow';
+import { InterviewSession, InterviewRound, InterviewState, ResponseAnalysis, UserInfo } from '../models/interviewFlow';
 import { prisma } from '../lib/prisma';
 import { redisConnection } from '../config/redis';
 import { redisStreamService } from './redis-stream.service';
@@ -72,7 +72,18 @@ export class InterviewFlowService {
     if (clearPrevious) {
       qwen3TTSClient.clearSynthesis(sessionId);
     }
-    qwen3TTSClient.synthesize(sessionId, text, true);
+
+    // 流式分段推送：将文本按自然断句拆分，逐段发送到 TTS 服务。
+    // TTS 服务（server_commit 模式）会边收边合成，降低首包音频延迟。
+    const segments = this.splitTextForTTS(text);
+    for (let i = 0; i < segments.length; i++) {
+      const isLast = i === segments.length - 1;
+      qwen3TTSClient.synthesize(sessionId, segments[i], isLast);
+      // 微小的间隔让 TTS 服务有时间处理每个片段
+      if (!isLast && segments.length > 1) {
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+    }
 
     try {
       await avatarService.sendTextToAvatar(sessionId, userId, text);
@@ -88,11 +99,268 @@ export class InterviewFlowService {
   }
 
   /**
+   * 将长文本按自然断句拆分，用于流式 TTS 推送。
+   * 每个片段尽量是一个完整的语义单元。
+   */
+  private splitTextForTTS(text: string): string[] {
+    if (!text || text.length <= 30) return [text];
+
+    const segments: string[] = [];
+    // 按中文标点断句：。！？；\n
+    const sentenceRegex = /([^。！？；\n]+[。！？；\n]?)/g;
+    let match;
+    let currentSegment = '';
+
+    while ((match = sentenceRegex.exec(text)) !== null) {
+      const sentence = match[1];
+      if (currentSegment.length + sentence.length < 80) {
+        currentSegment += sentence;
+      } else {
+        if (currentSegment) segments.push(currentSegment);
+        currentSegment = sentence;
+      }
+    }
+    if (currentSegment) segments.push(currentSegment);
+
+    return segments.length > 0 ? segments : [text];
+  }
+
+  /**
+   * 流式对话 + TTS 实时联动（DashScope 专属）。
+   * 
+   * LLM 边生成对话文本，边通过 TTS 服务合成音频，
+   * 实现"思考"和"说话"重叠，大幅降低数字人感知延迟。
+   * 
+   * @returns 完整对话文本
+   */
+  private async streamDialogueToTTS(
+    sessionId: string,
+    userId: string,
+    messages: Array<{ role: string; content: string }>,
+    options?: { temperature?: number; maxTokens?: number }
+  ): Promise<string> {
+    qwen3TTSClient.clearSynthesis(sessionId);
+
+    let fullText = '';
+    let tokenCount = 0;
+    const FLUSH_INTERVAL = 3; // 每3个token推送一次TTS
+
+    try {
+      for await (const token of deepseekService.generateDialogueStream(messages, options)) {
+        fullText += token;
+        tokenCount++;
+
+        // 每 N 个 token 推送一次到 TTS（减少 Redis 消息量）
+        if (tokenCount % FLUSH_INTERVAL === 0) {
+          qwen3TTSClient.synthesize(sessionId, fullText.slice(-50), false);
+        }
+      }
+
+      // 推送剩余未提交的部分
+      const remainder = fullText.slice(-(tokenCount % FLUSH_INTERVAL) * 5 || undefined);
+      if (remainder && tokenCount % FLUSH_INTERVAL !== 0) {
+        qwen3TTSClient.synthesize(sessionId, fullText.slice(-30), true);
+      } else {
+        qwen3TTSClient.synthesize(sessionId, '', true);
+      }
+    } catch (err: any) {
+      console.error(`[InterviewFlow] streamDialogueToTTS 失败: ${err.message}`);
+      // 降级：直接发送完整文本
+      qwen3TTSClient.synthesize(sessionId, fullText || '抱歉，请再说一遍。', true);
+    }
+
+    // 记录到对话历史
+    const session = this.sessions.get(sessionId);
+    if (session && (session as any).conversationHistory) {
+      (session as any).conversationHistory.push({ role: 'assistant', content: fullText });
+    }
+
+    // 通知 Avatar
+    try {
+      await avatarService.sendTextToAvatar(sessionId, userId, fullText);
+    } catch (err: any) {
+      console.warn(`[InterviewFlow] sendTextToAvatar 跳过: ${err?.message || err}`);
+    }
+
+    console.log(`[InterviewFlow] streamDialogueToTTS 完成 (sessionId=${sessionId}, 字数=${fullText.length})`);
+    return fullText.trim();
+  }
+
+  /**
    * 将候选人回答追加到多轮对话历史
    */
   private recordCandidateResponse(session: InterviewSession, text: string): void {
     session.conversationHistory.push({ role: 'user', content: text });
     console.log(`[InterviewFlow] 对话历史已更新 (sessionId=${session.sessionId}, 总轮次=${session.conversationHistory.length})`);
+  }
+
+  /**
+   * 从候选人首轮回答中提取关键背景信息（应届/社招/经验年限等）。
+   * 使用轻量关键词匹配，不依赖额外 LLM 调用。
+   */
+  private extractCandidateBackground(response: string, question: string): string | null {
+    const text = (response || '').trim();
+    if (text.length < 4) return null;
+
+    const keywords: string[] = [];
+
+    // 应届相关
+    if (/应届|毕业生|刚毕业|在校生|大[一二三四]|研[一二三]|硕士在读|本科在读/.test(text)) {
+      keywords.push('应届毕业生');
+    }
+
+    // 工作年限
+    const yearMatch = text.match(/(\d+)\s*年.*?(工作|经验|从业)/);
+    if (yearMatch) {
+      keywords.push(`${yearMatch[1]}年工作经验`);
+    }
+
+    // 转行/无经验
+    if (/转行|零基础|无.*经验|没有.*经验|新人/.test(text)) {
+      if (!keywords.includes('应届毕业生')) {
+        keywords.push('转行/无相关经验');
+      }
+    }
+
+    // 社招
+    if (/工作.*年|在职|离职|跳槽/.test(text) && !keywords.length) {
+      keywords.push('社招');
+    }
+
+    // 教育背景
+    const eduMatch = text.match(/(本科|硕士|博士|大专|专科)/);
+    if (eduMatch && !keywords.some(k => k.includes('毕业'))) {
+      keywords.push(eduMatch[1]);
+    }
+
+    return keywords.length > 0 ? keywords.join('，') : null;
+  }
+
+  /**
+   * 从数据库拉取完整用户画像。
+   * 将 User 表的个人资料字段汇总返回，供面试上下文使用。
+   */
+  private async fetchUserProfile(userId: string): Promise<{
+    name: string;
+    gender: string;
+    age: number | null;
+    education: string;
+    experience: string;
+    skills: string[];
+    region: string;
+    phone: string;
+    signature: string;
+    major: string;
+  }> {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          name: true,
+          gender: true,
+          age: true,
+          education: true,
+          experience: true,
+          skills: true,
+          region: true,
+          phone: true,
+          signature: true,
+        },
+      });
+
+      if (!user) {
+        console.warn(`[InterviewFlow] 用户 ${userId} 不存在，使用空画像`);
+        return { name: '', gender: '', age: null, education: '', experience: '', skills: [], region: '', phone: '', signature: '', major: '' };
+      }
+
+      // 尝试从 education 字段提取专业（如果有"专业：xxx"格式）
+      let major = '';
+      const majorMatch = (user.education || '').match(/专业[：:]\s*(.+)/);
+      if (majorMatch) {
+        major = majorMatch[1].trim();
+      }
+
+      return {
+        name: user.name || '',
+        gender: user.gender || '',
+        age: user.age || null,
+        education: user.education || '',
+        experience: user.experience || '',
+        skills: user.skills ? JSON.parse(user.skills) : [],
+        region: user.region || '',
+        phone: user.phone || '',
+        signature: user.signature || '',
+        major,
+      };
+    } catch (err: any) {
+      console.warn(`[InterviewFlow] 拉取用户画像失败: ${err?.message || err}`);
+      return { name: '', gender: '', age: null, education: '', experience: '', skills: [], region: '', phone: '', signature: '', major: '' };
+    }
+  }
+
+  /**
+   * 构建完整候选人画像文本。
+   * 将所有可用的用户信息整合为一段自然语言描述，注入到 LLM prompt 中。
+   * LLM 基于这些信息自行生成自然的问候和称呼，不做硬编码。
+   */
+  private buildCandidateProfile(userInfo: UserInfo): string {
+    const parts: string[] = [];
+
+    // 基本信息
+    parts.push(`姓名：${userInfo.name || '未知'}`);
+    
+    // 性别
+    if (userInfo.gender) {
+      const genderMap: Record<string, string> = { MALE: '男', FEMALE: '女', OTHER: '其他' };
+      parts.push(`性别：${genderMap[userInfo.gender] || userInfo.gender}`);
+    }
+
+    // 年龄
+    if (userInfo.age) {
+      parts.push(`年龄：${userInfo.age}岁`);
+    }
+
+    // 地区
+    if (userInfo.region) {
+      parts.push(`所在地区：${userInfo.region}`);
+    }
+
+    // 学历
+    if (userInfo.education) {
+      parts.push(`学历：${userInfo.education}`);
+    }
+
+    // 专业
+    if (userInfo.major) {
+      parts.push(`专业：${userInfo.major}`);
+    }
+
+    // 工作经验
+    if (userInfo.experience) {
+      parts.push(`工作经验：${userInfo.experience}`);
+    }
+
+    // 技能
+    if (userInfo.skills && userInfo.skills.length > 0) {
+      parts.push(`技能：${userInfo.skills.join('、')}`);
+    }
+
+    // 个人简介
+    if (userInfo.signature && userInfo.signature !== '写点什么介绍自己吧') {
+      parts.push(`个人简介：${userInfo.signature}`);
+    }
+
+    // 目标职位
+    if (userInfo.targetJob) {
+      parts.push(`应聘职位：${userInfo.targetJob}`);
+    }
+
+    // 简历内容（如果有）
+    if (userInfo.resumeText) {
+      parts.push(`简历摘要：${userInfo.resumeText.substring(0, 800)}`);
+    }
+
+    return parts.join('\n');
   }
 
   private toQuestionIndex(round: InterviewRound): number {
@@ -288,6 +556,23 @@ export class InterviewFlowService {
       return { isCompleted: false, reason: '剩余题目仍在生成中' };
     }
 
+    // === 关键修复：检查是否还有待答/进行中的题目 ===
+    // LLM 可能在用户回答不完整时错误返回 decision: 'end'，
+    // 此时不应直接结束面试，而应继续推进到下一题。
+    const remainingRounds = session.rounds.filter(
+      r => r.status === 'pending' || r.status === 'in_progress'
+    );
+    const pendingCount = session.rounds.filter(r => r.status === 'pending').length;
+    const hasNextQuestion = remainingRounds.length > 0;
+
+    if (hasNextQuestion) {
+      console.log(
+        `[FlowController] LLM 判定 end 但仍有 ${pendingCount} 道待答题，忽略结束指令，继续推进面试 (sessionId=${session.sessionId})`
+      );
+      // 不结束，让 processUserResponse 继续到下一题
+      return { isCompleted: false, reason: `仍有${pendingCount}道待答题，忽略LLM的end判定` };
+    }
+
     // 有效回答：只要非空且不是系统占位符，就视为有效（不再按长度门槛过滤）
     const validAnswers = session.rounds.filter(
       r => r.userResponse &&
@@ -297,7 +582,7 @@ export class InterviewFlowService {
 
     const totalAsked = session.rounds.filter(r => r.question).length;
 
-    // 题库耗尽 = 面试正常完成。只记录数量到日志，供分析服务参考。
+    // 题库耗尽 + 所有题已答完 = 面试正常完成
     console.log(
       `[FlowController] 面试完成评估: sessionId=${session.sessionId}, 总题数=${totalAsked}, 有效回答=${validAnswers.length}`
     );
@@ -333,6 +618,27 @@ export class InterviewFlowService {
       return existing;
     }
 
+    // 从数据库拉取完整用户画像
+    const userProfile = await this.fetchUserProfile(userId);
+
+    const userInfo: UserInfo = {
+      name: userProfile.name || userName,
+      targetJob: targetJob || '未指定职位',
+      background: background || '',
+      experience: userProfile.experience || '',
+      skills: userProfile.skills || [],
+      education: userProfile.education || '',
+      gender: userProfile.gender || '',
+      age: userProfile.age || undefined,
+      region: userProfile.region || '',
+      phone: userProfile.phone || '',
+      signature: userProfile.signature || '',
+      major: userProfile.major || '',
+    };
+
+    // 构建完整候选人画像文本
+    userInfo.candidateProfile = this.buildCandidateProfile(userInfo);
+
     const session: InterviewSession = {
       sessionId,
       userId,
@@ -341,13 +647,7 @@ export class InterviewFlowService {
       startTime: new Date(),
       rounds: [],
       conversationHistory: [],
-      userInfo: {
-        name: userName,
-        targetJob: targetJob || '未指定职位',
-        background: background || '',
-        experience: '',
-        skills: []
-      }
+      userInfo,
     };
 
     this.sessions.set(sessionId, session);
@@ -488,7 +788,11 @@ export class InterviewFlowService {
 
     // 生成动态开场白
     const openingResult = await deepseekService.generateOpening(
-      { name: userName, targetJob: '' }, // targetJob might be empty initially
+      {
+        name: userName,
+        targetJob: '',
+        candidateProfile: session.userInfo.candidateProfile,
+      },
       isFirstTime
     );
 
@@ -676,6 +980,7 @@ export class InterviewFlowService {
         targetJob: session.userInfo.targetJob,
         companyTarget: (session.userInfo as any).companyTarget,
         background: session.userInfo.background,
+        candidateProfile: session.userInfo.candidateProfile,
       });
       const content = result.content;
       if (this.parseInterviewContent(content).length === 0) {
@@ -759,20 +1064,26 @@ export class InterviewFlowService {
    */
   private async generateInterviewContent(session: InterviewSession) {
     const companyText = session.userInfo.companyTarget ? `\n- 目标公司/企业：${session.userInfo.companyTarget}` : '';
+    const bg = session.userInfo.background || '';
+    
+    // 判断候选人类型
+    const isFresh = /应届|毕业生|在读|无.*经验|零基础|新人|转行/.test(bg);
+    
+    // 使用完整候选人画像（如果不为空），否则回退到零散字段
+    const profileText = session.userInfo.candidateProfile
+      || `- 姓名：${session.userInfo.name}\n- 目标职位：${session.userInfo.targetJob}${companyText}\n- 背景：${bg || '未指定'}\n- 经验：${session.userInfo.experience || '未指定'}\n- 技能：${session.userInfo.skills?.join(', ') || '未指定'}`;
+    
     const prompt = `作为一位专业、公正且严肃的AI面试官（10年资深HR总监形象），请为以下候选人生成一套完整的面试问题：
 
-候选人信息：
-- 姓名：${session.userInfo.name}
-- 目标职位：${session.userInfo.targetJob}${companyText}
-- 背景：${session.userInfo.background}
-- 经验：${session.userInfo.experience || '未指定'}
-- 技能：${session.userInfo.skills?.join(', ') || '未指定'}
+【候选人完整画像—请基于以下信息个性化面试内容】
+${profileText}
+${isFresh ? '\n【重要提醒】该候选人为应届毕业生或无相关工作经验者，请勿生成任何涉及"过往工作经验""上一份工作""项目中取得的业绩"等社招类问题。应聚焦：在校课题项目、课程设计、实习经历、学习能力、成长潜力。' : '\n【重要提醒】该候选人有工作经验，可深挖项目细节、业务成果、团队协作实例。若有候选人所在地区信息，可在开场中自然提及。'}
 
 请根据岗位要求和候选人背景，自行决定题目数量（建议 8-15 题），确保覆盖以下维度：
-1. 开场介绍与首个提问（结合候选人姓名、职位以及目标公司信息生成自然亲切的面试问候，同时包含第一个正式面试提问）
+1. 开场介绍与首个提问（结合候选人画像信息生成自然亲切的面试问候，直接称呼候选人姓名，禁止使用"先生/女士"模糊称呼，同时包含第一个正式面试提问）
 2. 专业技能评估（根据岗位核心技能出题）
-3. 项目经验询问（深挖实际项目细节）
-4. 行为面试问题（考察软素质和团队协作）
+3. ${isFresh ? '在校项目/实习经历询问（深挖课题或实习中的实际应用）' : '项目经验询问（深挖实际项目细节）'}
+4. 行为面试问题（考察软素质和团队协作${isFresh ? '，如团队作业中的合作经验' : ''}）
 5. 总结和反问环节
 
 【重要】每个问题请用 [emotion:标签] 标记语气，用于 TTS 情感合成：
@@ -783,8 +1094,11 @@ export class InterviewFlowService {
 - [emotion:closing] — 结束语
 
 示例：
-"[emotion:opening]${session.userInfo.name}您好，欢迎参加今天应聘${session.userInfo.companyTarget || ''}${session.userInfo.targetJob}的面试。我是您的面试官，很开心与您深入交流。首先，请您结合自身的最突出的工作亮点，谈谈您为什么觉得自己是这个岗位的最佳人选？"
-"[emotion:question]请您详细描述一下您在上一份工作中最有挑战性的项目。"
+${isFresh 
+  ? `"[emotion:opening]${session.userInfo.name}您好，欢迎参加今天应聘${session.userInfo.companyTarget || ''}${session.userInfo.targetJob}的面试。我是您的面试官，很开心与您深入交流。首先，请您介绍一下在校期间最有代表性的课题项目或实习经历，并谈谈您对这个岗位的理解。"
+"[emotion:question]请详细描述一个您在校期间完成的课程设计或课题项目，包括您使用的技术栈、遇到的难点以及最终成果。"`
+  : `"[emotion:opening]${session.userInfo.name}您好，欢迎参加今天应聘${session.userInfo.companyTarget || ''}${session.userInfo.targetJob}的面试。我是您的面试官，很开心与您深入交流。首先，请您结合自身的最突出的工作亮点，谈谈您为什么觉得自己是这个岗位的最佳人选？"
+"[emotion:question]请您详细描述一下您在上一份工作中最有挑战性的项目，包括项目背景、您的角色、技术选型以及最终业务成果。"`}
 
 每个问题后请提供：
 - 问题文本（含情感标注）
@@ -1099,19 +1413,98 @@ export class InterviewFlowService {
       // === 多轮对话模式：将本轮回答追加到对话历史 ===
       this.recordCandidateResponse(session, response);
 
+      // === 修复A：首轮回答自动提取候选人背景信息 ===
+      const completedRoundsCount = session.rounds.filter(r => r.status === 'completed').length;
+      if (completedRoundsCount <= 1 && (!session.userInfo.background || session.userInfo.background.trim() === '' || session.userInfo.background === '未指定')) {
+        // 首轮回答通常是自我介绍，提取为候选人背景
+        const extractedBg = this.extractCandidateBackground(response, currentRound.question);
+        if (extractedBg) {
+          session.userInfo.background = extractedBg;
+          console.log(`[InterviewFlow] 自动提取候选人背景 (sessionId=${sessionId}): ${extractedBg}`);
+        }
+      }
+
       // 获取待问的预生成下一题（用于传给 LLM 做上下文润色参考）
       const pendingRounds = session.rounds.filter(r => r.status === 'pending');
       const pendingNextQuestion = pendingRounds.length > 0 ? pendingRounds[0].question : undefined;
 
-      // === 使用多轮对话模式：一次性完成分析 + 决策 + 下一句生成 ===
-      const turnResult = await deepseekService.conductInterviewTurn({
-        conversationHistory: session.conversationHistory,
-        currentQuestion: currentRound.question,
-        userResponse: response,
-        followupCount: currentRound.followupCount || 0,
-        jobPosition: session.userInfo.targetJob,
-        pendingNextQuestion,
-      });
+      // === 使用双调用模式：流式对话（→TTS） + 轻量分析（→评分） ===
+      // DashScope 下：generateDialogueStream 边生成边推送到 TTS，
+      // quickAnalyze 并行完成评分决策，不阻塞音频播放。
+      // 非 DashScope：回退到 conductInterviewTurn 单调用模式。
+
+      if ((deepseekService as any).isDashScope) {
+        // DashScope 双调用模式：流式对话生成 + 并行轻量分析
+        const candidateBg = session.userInfo.background && session.userInfo.background !== '未指定' ? session.userInfo.background : '未提供';
+        const dialogueSystemPrompt = `你是一位专业且严格的AI面试官（10年资深HR总监形象），正在面试${session.userInfo.targetJob}的候选人。
+
+【候选人背景 - 必须严格遵循】
+该候选人的背景是：${candidateBg}
+- 所有提问和追问必须与候选人背景匹配，绝不允许脱离背景提问
+- 若候选人为应届毕业生/无经验者，严禁询问过往工作经验、上一份工作等社招类问题
+- 对于应届生，应聚焦在校项目、实习经历、学习能力和潜力
+- 若候选人有工作经验，则可深挖项目细节和业绩成果
+
+【身份——绝对禁止违反】
+1. 你是面试官（提问方），候选人是应聘者（回答方）
+2. 你的职责是评估候选人并推进面试
+3. 你绝不能以候选人身份回答问题
+
+【当前任务】
+基于候选人刚才的回答，生成你的下一句话（追问、下一题或结束语）。
+- 回答不够深入 → 简短追问（≤40字）
+- 回答充分 → 自然过渡到下一个主题
+- 候选人表示结束 → 礼貌结束语
+- 直接输出对话文本，不要JSON、不要前缀、不要[emotion:...]标记`;
+
+        const dialogueMessages = [
+          { role: 'system', content: dialogueSystemPrompt },
+          ...session.conversationHistory.map((m: any) => ({ role: m.role, content: m.content })),
+        ];
+
+        // 并行：流式获取对话文本 + 轻量分析
+        const dialogueTextPromise = (async (): Promise<string> => {
+          let text = '';
+          for await (const token of deepseekService.generateDialogueStream(dialogueMessages, {
+            temperature: 0.7,
+            maxTokens: 500,
+          })) {
+            text += token;
+          }
+          return text.trim();
+        })();
+
+        const [dialogueText, analysis] = await Promise.all([
+          dialogueTextPromise,
+          deepseekService.quickAnalyze({
+            conversationHistory: session.conversationHistory,
+            jobPosition: session.userInfo.targetJob,
+            candidateBackground: session.userInfo.background || undefined,
+            followupCount: currentRound.followupCount || 0,
+            pendingNextQuestion,
+          }),
+        ]);
+
+        turnResult = {
+          analysis,
+          decision: analysis.decision,
+          nextMessage: dialogueText,
+          isContextualFollowup: true,
+        };
+
+        console.log(`[InterviewFlow] 双调用模式完成 (sessionId=${sessionId}): decision=${analysis.decision}, 对话字数=${dialogueText.length}`);
+      } else {
+        // 非 DashScope：原有单调用模式（已支持候选人背景约束）
+        turnResult = await deepseekService.conductInterviewTurn({
+          conversationHistory: session.conversationHistory,
+          currentQuestion: currentRound.question,
+          userResponse: response,
+          followupCount: currentRound.followupCount || 0,
+          jobPosition: session.userInfo.targetJob,
+          candidateBackground: session.userInfo.background || undefined,
+          pendingNextQuestion,
+        });
+      }
 
       analysisResult = turnResult.analysis;
 
